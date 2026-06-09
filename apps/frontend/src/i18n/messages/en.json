@@ -1,0 +1,100 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "success": "Success",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "submit": "Submit",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "navigation": {
+    "home": "Home",
+    "about": "About",
+    "dashboard": "Dashboard",
+    "users": "Users",
+    "settings": "Settings",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "forgotPassword": "Forgot Password?",
+    "resetPassword": "Reset Password",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "rememberMe": "Remember me",
+    "dontHaveAccount": "Don't have an account?",
+    "alreadyHaveAccount": "Already have an account?",
+    "signInTitle": "Welcome back",
+    "signUpTitle": "Create your account",
+    "forgotPasswordTitle": "Reset your password",
+    "resetPasswordTitle": "Set new password"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome to your dashboard",
+    "overview": "Overview",
+    "recentActivity": "Recent Activity",
+    "statistics": "Statistics"
+  },
+  "users": {
+    "title": "Users",
+    "userList": "User List",
+    "userDetails": "User Details",
+    "createUser": "Create User",
+    "editUser": "Edit User",
+    "deleteUser": "Delete User",
+    "userProfile": "User Profile",
+    "lastActive": "Last Active",
+    "status": "Status",
+    "role": "Role"
+  },
+  "errors": {
+    "pageNotFound": "Page not found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "serverError": "Server error",
+    "networkError": "Network error",
+    "validationError": "Validation error",
+    "required": "This field is required",
+    "invalidEmail": "Please enter a valid email address",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "passwordsDoNotMatch": "Passwords do not match"
+  },
+  "success": {
+    "userCreated": "User created successfully",
+    "userUpdated": "User updated successfully",
+    "userDeleted": "User deleted successfully",
+    "passwordReset": "Password reset successfully",
+    "profileUpdated": "Profile updated successfully"
+  },
+  "home": {
+    "title": "Welcome to Cool Agent",
+    "subtitle": "Your monorepo Next.js application with Mantine UI is ready!",
+    "testNotification": "Test Notification",
+    "getStarted": "Get Started",
+    "dashboard": "Dashboard",
+    "frontendApp": "Frontend App",
+    "frontendDescription": "Modern React frontend with Mantine components and Tailwind CSS",
+    "apiBackend": "API Backend",
+    "apiDescription": "RESTful API with Prisma ORM and PostgreSQL database",
+    "publicSite": "Public Site",
+    "publicDescription": "Public-facing website for marketing and information",
+    "welcome": "Welcome!"
+  }
+}

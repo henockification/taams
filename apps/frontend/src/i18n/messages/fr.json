@@ -1,0 +1,100 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur s'est produite",
+    "success": "Succès",
+    "cancel": "Annuler",
+    "save": "Enregistrer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "submit": "Soumettre",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "navigation": {
+    "home": "Accueil",
+    "about": "À propos",
+    "dashboard": "Tableau de bord",
+    "users": "Utilisateurs",
+    "settings": "Paramètres",
+    "profile": "Profil",
+    "logout": "Déconnexion"
+  },
+  "auth": {
+    "signIn": "Se connecter",
+    "signUp": "S'inscrire",
+    "signOut": "Se déconnecter",
+    "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "confirmPassword": "Confirmer le mot de passe",
+    "firstName": "Prénom",
+    "lastName": "Nom de famille",
+    "rememberMe": "Se souvenir de moi",
+    "dontHaveAccount": "Vous n'avez pas de compte ?",
+    "alreadyHaveAccount": "Vous avez déjà un compte ?",
+    "signInTitle": "Bon retour",
+    "signUpTitle": "Créez votre compte",
+    "forgotPasswordTitle": "Réinitialisez votre mot de passe",
+    "resetPasswordTitle": "Définir un nouveau mot de passe"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "welcome": "Bienvenue sur votre tableau de bord",
+    "overview": "Aperçu",
+    "recentActivity": "Activité récente",
+    "statistics": "Statistiques"
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "userList": "Liste des utilisateurs",
+    "userDetails": "Détails de l'utilisateur",
+    "createUser": "Créer un utilisateur",
+    "editUser": "Modifier l'utilisateur",
+    "deleteUser": "Supprimer l'utilisateur",
+    "userProfile": "Profil utilisateur",
+    "lastActive": "Dernière activité",
+    "status": "Statut",
+    "role": "Rôle"
+  },
+  "errors": {
+    "pageNotFound": "Page non trouvée",
+    "unauthorized": "Non autorisé",
+    "forbidden": "Interdit",
+    "serverError": "Erreur serveur",
+    "networkError": "Erreur réseau",
+    "validationError": "Erreur de validation",
+    "required": "Ce champ est obligatoire",
+    "invalidEmail": "Veuillez entrer une adresse e-mail valide",
+    "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères",
+    "passwordsDoNotMatch": "Les mots de passe ne correspondent pas"
+  },
+  "success": {
+    "userCreated": "Utilisateur créé avec succès",
+    "userUpdated": "Utilisateur mis à jour avec succès",
+    "userDeleted": "Utilisateur supprimé avec succès",
+    "passwordReset": "Mot de passe réinitialisé avec succès",
+    "profileUpdated": "Profil mis à jour avec succès"
+  },
+  "home": {
+    "title": "Bienvenue dans Cool Agent",
+    "subtitle": "Votre application Next.js monorepo avec Mantine UI est prête !",
+    "testNotification": "Tester la notification",
+    "getStarted": "Commencer",
+    "dashboard": "Tableau de bord",
+    "frontendApp": "Application Frontend",
+    "frontendDescription": "Frontend React moderne avec des composants Mantine et Tailwind CSS",
+    "apiBackend": "API Backend",
+    "apiDescription": "API RESTful avec Prisma ORM et base de données PostgreSQL",
+    "publicSite": "Site Public",
+    "publicDescription": "Site web public pour le marketing et l'information",
+    "welcome": "Bienvenue !"
+  }
+}
