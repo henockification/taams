@@ -7,10 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
+import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
 
 interface User {
   id: string;
@@ -36,6 +39,10 @@ export default function UserDetailPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const { data: rolesResponse, isLoading: rolesLoading } = useRoles();
+  const assignUserRoles = useAssignUserRoles();
+  const roles = rolesResponse?.roles ?? [];
 
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -43,7 +50,7 @@ export default function UserDetailPage() {
     
     try {
       const response = await fetch(
-        `http://localhost:3009/api/users/${userId}`,
+        `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3012'}/api/users/${userId}`,
         {
           credentials: 'include',
           headers: {
@@ -85,12 +92,55 @@ export default function UserDetailPage() {
     }
   }, [userId, fetchUser]);
 
+  useEffect(() => {
+    if (!user || roles.length === 0) return;
+
+    setSelectedRoleIds(
+      roles
+        .filter((role) => user.role.includes(role.name))
+        .map((role) => role.id)
+    );
+  }, [roles, user]);
+
   const handleRefresh = () => {
     fetchUser();
   };
 
   const handleBack = () => {
     router.back();
+  };
+
+  const handleRoleToggle = (roleId: string, checked: boolean) => {
+    setSelectedRoleIds((current) => {
+      if (checked) {
+        return current.includes(roleId) ? current : [...current, roleId];
+      }
+
+      return current.filter((id) => id !== roleId);
+    });
+  };
+
+  const handleSaveRoles = async () => {
+    if (!user) return;
+
+    try {
+      await assignUserRoles.mutateAsync({
+        userId: user.id,
+        roleIds: selectedRoleIds,
+      });
+      notifications.show({
+        title: 'Success',
+        message: 'User roles updated successfully',
+        color: 'green',
+      });
+      fetchUser();
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : 'Failed to update user roles',
+        color: 'red',
+      });
+    }
   };
 
   if (loading) {
@@ -244,14 +294,61 @@ export default function UserDetailPage() {
           <CardHeader>
             <CardTitle>Roles & Permissions</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              {user.role.map((role) => (
-                <Badge key={role} variant="default">
-                  {role}
-                </Badge>
-              ))}
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              {user.role.length > 0 ? (
+                user.role.map((role) => (
+                  <Badge key={role} variant="default">
+                    {role}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-sm text-muted-foreground">No roles assigned</span>
+              )}
             </div>
+
+            <Separator />
+
+            {rolesLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : roles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Create roles before assigning access to this user.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {roles.map((role) => (
+                    <Label
+                      key={role.id}
+                      className="flex min-h-20 cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-accent"
+                    >
+                      <Checkbox
+                        checked={selectedRoleIds.includes(role.id)}
+                        onCheckedChange={(checked) => handleRoleToggle(role.id, checked === true)}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0 space-y-1">
+                        <span className="block text-sm font-medium text-foreground">
+                          {role.name}
+                        </span>
+                        <span className="line-clamp-2 block text-xs text-muted-foreground">
+                          {role.description || `${role.permissions.length} permissions`}
+                        </span>
+                      </span>
+                    </Label>
+                  ))}
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveRoles} disabled={assignUserRoles.isPending}>
+                    {assignUserRoles.isPending ? 'Saving...' : 'Save roles'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

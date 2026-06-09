@@ -36,7 +36,6 @@ export interface SignUpInput {
   lastName: string;
   email: string;
   password: string;
-  captchaToken: string;
 }
 
 export interface SignUpResponse {

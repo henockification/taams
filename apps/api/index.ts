@@ -11,6 +11,7 @@ import { openApiApp } from './lib/openapi';
 // Import feature modules
 import authApp from './routes/auth';
 import usersApp from './routes/users/routes';
+import rbacApp from './routes/rbac/routes';
 
 // Load environment variables
 dotenv.config();
@@ -25,8 +26,9 @@ app.use('/api/*', cors({
   origin: (origin, c) => {
     // Apply CORS restrictions for other routes
     const allowedOrigins = [
-      'http://localhost:3008',
+      'http://localhost:3011',
       'https://www.taams.com',
+      process.env.FRONT_END_URL,
       process.env.FRONTEND_URL
     ].filter(Boolean); // Remove any undefined values
     
@@ -60,7 +62,7 @@ app.doc('/api/openapi.json', {
   },
   servers: [
     {
-      url: process.env.VERCEL ? 'https://api.senawidget.com' : 'http://localhost:3009',
+      url: process.env.VERCEL ? 'https://api.senawidget.com' : 'http://localhost:3012',
       description: process.env.VERCEL ? 'Production server' : 'Development server',
     },
   ],
@@ -68,6 +70,7 @@ app.doc('/api/openapi.json', {
 
 // Mount feature modules
 app.route('/api', usersApp);
+app.route('/api', rbacApp);
 
 // Mount centralized OpenAPI app for documentation
 app.route('/api', openApiApp);
@@ -101,6 +104,4 @@ app.onError((err, c) => {
 
 
 export default app;
-
-
 

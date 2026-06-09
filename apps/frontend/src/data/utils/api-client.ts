@@ -12,7 +12,7 @@ export class ApiClient {
   
     constructor() {
       // Use environment variable or fallback to localhost for development
-      this.baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
+      this.baseURL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3012';
       
       // Log the base URL in development for debugging
       if (process.env.NODE_ENV === 'development') {

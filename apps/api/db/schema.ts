@@ -10,6 +10,7 @@ import {
   pgEnum,
   index,
   unique,
+  primaryKey,
   vector,
   numeric,
   check,
@@ -18,52 +19,8 @@ import { relations } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 
 // Define enums
-export const userRole = pgEnum('user_role', ['owner', 'admin', 'agent', 'analyst']);
-export const packageType = pgEnum('package_type', ['REGULAR', 'SEASONAL', 'HOLIDAY', 'LIMITED']);
-export const inventoryMovementType = pgEnum('inventory_movement_type', [
-  'RECEIVE',
-  'SALE',
-  'RETURN',
-  'ADJUSTMENT',
-  'RESERVE',
-  'RELEASE_RESERVE',
-]);
-export const orderFulfillmentType = pgEnum('order_fulfillment_type', ['PICKUP', 'DELIVERY']);
-export const orderStatus = pgEnum('order_status', [
-  'PENDING',
-  'PROCESSING',
-  'SHIPPED',
-  'DELIVERED',
-  'CANCELLED',
-  'REFUNDED',
-  'CANCEL_REQUESTED',
-  'REFUNDING',
-  'PAID',
-  'PARTIALLY_REFUNDED',
-]);
-export const orderPaymentStatus = pgEnum('order_payment_status', [
-  'UNPAID',
-  'ASSUMED_PAID',
-  'PAID',
-  'REFUNDED',
-]);
-export const inventoryReservationStatus = pgEnum('inventory_reservation_status', [
-  'ACTIVE',
-  'RELEASED',
-  'CAPTURED',
-  'EXPIRED',
-]);
-export const shipmentStatus = pgEnum('shipment_status', [
-  'pending',
-  'label_created',
-  'in_transit',
-  'delivered',
-  'exception',
-  'canceled',
-]);
+export const userRole = pgEnum('user_role', ['super_admin', 'admin', 'employee']);
 
-
-// Better Auth tables (matching Better Auth expectations exactly)
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -75,73 +32,133 @@ export const user = pgTable('user', {
   updatedAt: timestamp('updatedAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
 
-export const session = pgTable('session', {
-  id: text('id').primaryKey(),
-  expiresAt: timestamp('expiresAt', { withTimezone: true, precision: 6 }).notNull(),
-  token: text('token').unique(),
-  createdAt: timestamp('createdAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-  ipAddress: text('ipAddress'),
-  userAgent: text('userAgent'),
-  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
+export const authCredentials = pgTable('auth_credentials', {
+  userId: text('user_id').primaryKey().references(() => user.id, { onDelete: 'cascade' }),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
 
-export const account = pgTable('account', {
-  id: text('id').primaryKey(),
-  accountId: text('accountId').notNull(),
-  providerId: text('providerId').notNull(),
-  userId: text('userId').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  accessToken: text('accessToken'),
-  refreshToken: text('refreshToken'),
-  idToken: text('idToken'),
-  expiresAt: timestamp('expiresAt', { withTimezone: true, precision: 6 }),
-  accessTokenExpiresAt: timestamp('accessTokenExpiresAt', { withTimezone: true, precision: 6 }),
-  refreshTokenExpiresAt: timestamp('refreshTokenExpiresAt', { withTimezone: true, precision: 6 }),
-  scope: text('scope'),
-  password: text('password'),
-  createdAt: timestamp('createdAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-}, (table) => ({
-  providerAccountUnique: unique().on(table.providerId, table.accountId),
-}));
+export const authSessions = pgTable('auth_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  token: text('token').notNull().unique(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, precision: 6 }).notNull(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+});
 
-export const verification = pgTable('verification', {
-  id: text('id').primaryKey(),
+export const authVerificationTokens = pgTable('auth_verification_tokens', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  purpose: text('purpose').notNull(),
   identifier: text('identifier').notNull(),
-  value: text('value').notNull(),
-  expiresAt: timestamp('expiresAt', { withTimezone: true, precision: 6 }).notNull(),
-  createdAt: timestamp('createdAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-  updatedAt: timestamp('updatedAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, precision: 6 }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  consumedAt: timestamp('consumed_at', { withTimezone: true, precision: 6 }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 }, (table) => ({
-  identifierValueUnique: unique().on(table.identifier, table.value),
+  identifierPurposeIdx: index('auth_verification_tokens_identifier_purpose_idx').on(table.identifier, table.purpose),
 }));
 
-// Better Auth relations
-export const betterAuthUsersRelations = relations(user, ({ one, many }) => ({
-  accounts: many(account),
-  sessions: many(session),
+export const roles = pgTable('roles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+});
+
+export const permissions = pgTable('permissions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(),
+  resource: text('resource').notNull(),
+  action: text('action').notNull(),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  resourceActionUnique: unique().on(table.resource, table.action),
 }));
 
-export const sessionsRelations = relations(session, ({ one }) => ({
+export const rolePermissions = pgTable('role_permissions', {
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  permissionId: uuid('permission_id').notNull().references(() => permissions.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.roleId, table.permissionId] }),
+}));
+
+export const userRoles = pgTable('user_roles', {
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  roleId: uuid('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.roleId] }),
+}));
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  credential: one(authCredentials),
+  sessions: many(authSessions),
+  userRoles: many(userRoles),
+}));
+
+export const authCredentialsRelations = relations(authCredentials, ({ one }) => ({
   user: one(user, {
-    fields: [session.userId],
+    fields: [authCredentials.userId],
     references: [user.id],
   }),
 }));
 
-export const accountsRelations = relations(account, ({ one }) => ({
+export const authSessionsRelations = relations(authSessions, ({ one }) => ({
   user: one(user, {
-    fields: [account.userId],
+    fields: [authSessions.userId],
     references: [user.id],
   }),
 }));
 
-// Relations
+export const rolesRelations = relations(roles, ({ many }) => ({
+  userRoles: many(userRoles),
+  rolePermissions: many(rolePermissions),
+}));
+
+export const permissionsRelations = relations(permissions, ({ many }) => ({
+  rolePermissions: many(rolePermissions),
+}));
+
+export const userRolesRelations = relations(userRoles, ({ one }) => ({
+  user: one(user, {
+    fields: [userRoles.userId],
+    references: [user.id],
+  }),
+  role: one(roles, {
+    fields: [userRoles.roleId],
+    references: [roles.id],
+  }),
+}));
+
+export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
+  role: one(roles, {
+    fields: [rolePermissions.roleId],
+    references: [roles.id],
+  }),
+  permission: one(permissions, {
+    fields: [rolePermissions.permissionId],
+    references: [permissions.id],
+  }),
+}));
 
 // Export all tables for easy access
 export const allTables = {
   user,
-  session,
-  account,
-  verification
+  authCredentials,
+  authSessions,
+  authVerificationTokens,
+  roles,
+  permissions,
+  rolePermissions,
+  userRoles,
 };

@@ -110,7 +110,7 @@ export function Verification({
   const handleResend = async () => {
     try {
       await onResend();
-      toast.success('A new verification code has been sent to your email');
+      toast.success('A new verification code has been requested');
     } catch (error) {
       toast.error('Failed to resend verification code');
     }
@@ -119,7 +119,7 @@ export function Verification({
   return (
     <div className={`flex flex-col gap-6 ${className}`}>
       <p className="text-sm text-muted-foreground text-center">
-        Enter the 6-digit verification code sent to your email
+        Enter the 6-digit verification code
       </p>
 
       {/* Code Input Fields */}

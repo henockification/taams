@@ -1,13 +1,23 @@
 'use client';
 
-import React from 'react';
+import UsersTable from '@/components/users/UsersTable';
+import { useTranslations } from 'next-intl';
 
 export default function UsersPage() {
+  const t = useTranslations('rbac');
+
   return (
-    <div className="container max-w-6xl py-8">
-      <h1 className="text-3xl font-bold mb-4">Users</h1>
-      <p className="text-muted-foreground">Users list will be displayed here.</p>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-primary">{t('securityEyebrow')}</p>
+        <h1 className="text-2xl font-semibold tracking-normal text-foreground">
+          {t('usersTitle')}
+        </h1>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          {t('usersDescription')}
+        </p>
+      </div>
+      <UsersTable />
     </div>
   );
 }
-

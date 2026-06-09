@@ -1,9 +1,15 @@
 import { Resend } from 'resend';
-import { render } from '@react-email/render';
-import VerifyEmail from '../templates/verify-email';
-import ResetPasswordEmail from '../templates/reset-password';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 'dummy-key-for-development');
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export class EmailService {
   private static instance: EmailService;
@@ -15,42 +21,56 @@ export class EmailService {
     return EmailService.instance;
   }
 
-  public async sendVerifyEmail(email: string, verificationCode: string): Promise<boolean> {
+  public async sendOrderPlacedEmail(
+    userFirstname: string,
+    email: string,
+    orderNumber: string,
+    viewOrderLink: string
+  ): Promise<boolean> {
     try {
-      const emailHtml = await render(VerifyEmail({
-        verificationCode
-      }));
+      const emailHtml = `
+        <p>Hi ${escapeHtml(userFirstname)},</p>
+        <p>Your order #${escapeHtml(orderNumber)} has been placed.</p>
+        <p><a href="${escapeHtml(viewOrderLink)}">View your order</a></p>
+      `;
 
       await resend.emails.send({
-        from: 'Taams <accounts@taams.com>',
+        from: 'Taams <orders@taams.com>',
         to: email,
-        subject: 'Verify Your Account Registration',
+        subject: `Your order #${orderNumber} has been placed`,
         html: emailHtml,
       });
-      console.log('Verify email sent successfully:');
       return true;
     } catch (error) {
-      console.error('Error sending verify email:', error);
+      console.error('Error sending order placed email:', error);
       return false;
     }
   }
 
-  public async sendResetPasswordEmail(firstName: string, email: string, url: string): Promise<boolean> {
+  public async sendOrderPlacedAdminEmail(
+    adminEmail: string,
+    orderNumber: string,
+    customerName: string | null,
+    customerEmail: string,
+    viewOrderLink: string
+  ): Promise<boolean> {
     try {
-      const emailHtml = await render(ResetPasswordEmail({
-        userFirstname: firstName,
-        resetPasswordLink: url
-      }));
+      const emailHtml = `
+        <p>New order #${escapeHtml(orderNumber)} needs attention.</p>
+        <p>Customer: ${escapeHtml(customerName ?? 'Unknown')}</p>
+        <p>Email: ${escapeHtml(customerEmail)}</p>
+        <p><a href="${escapeHtml(viewOrderLink)}">View order</a></p>
+      `;
 
       await resend.emails.send({
-        from: 'Taams <accounts@taams.com>',
-        to: email,
-        subject: 'Reset Your Password',
+        from: 'Taams <orders@taams.com>',
+        to: adminEmail,
+        subject: `New order #${orderNumber} - action required`,
         html: emailHtml,
       });
       return true;
     } catch (error) {
-      console.error('Error sending reset password email:', error);
+      console.error('Error sending order placed admin email:', error);
       return false;
     }
   }

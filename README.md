@@ -7,8 +7,8 @@ A modern monorepo setup with Next.js frontend, Express API backend, and public s
 ```
 taams/
 ├── apps/
-│   ├── frontend/          # Next.js app (port 3008)
-│   ├── api/              # Express API server (port 3009)
+│   ├── frontend/          # Next.js app (port 3011)
+│   ├── api/              # API server (port 3012)
 │   └── public/           # Public marketing site (port 3002)
 ├── packages/
 │   └── shared/           # Shared types and utilities
@@ -58,8 +58,8 @@ npm run dev
 ```
 
 This will start:
-- Frontend: http://localhost:3008
-- API: http://localhost:3009
+- Frontend: http://localhost:3011
+- API: http://localhost:3012
 - Public site: http://localhost:3002
 
 ### Individual App Commands
@@ -183,7 +183,7 @@ await signOut();
 3. Enable Google+ API
 4. Create OAuth 2.0 credentials
 5. Add authorized redirect URIs:
-   - `http://localhost:3009/api/auth/callback/google` (development)
+   - `http://localhost:3012/api/auth/callback/google` (development)
 6. Copy Client ID and Client Secret to your `.env` file
 
 ## 🔧 Scripts

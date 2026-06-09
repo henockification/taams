@@ -7,6 +7,7 @@ export const UserSchema = z.object({
   email: z.string().email().openapi({ example: 'john@example.com' }),
   emailVerified: z.boolean().nullable().openapi({ example: false }),
   role: z.array(z.string()).openapi({ example: ['user'] }),
+  roles: z.array(z.string()).optional().openapi({ example: ['admin'] }),
   createdAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
 });
 
@@ -17,6 +18,7 @@ export const UserDetailSchema = z.object({
   email: z.string().email().openapi({ example: 'john@example.com' }),
   emailVerified: z.boolean().nullable().openapi({ example: false }),
   role: z.array(z.string()).openapi({ example: ['user'] }),
+  roles: z.array(z.string()).optional().openapi({ example: ['admin'] }),
   createdAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
   image: z.string().nullable().openapi({ example: 'https://example.com/avatar.jpg' }),
@@ -39,6 +41,28 @@ export const UsersResponseSchema = z.object({
 export const UserResponseSchema = z.object({
   success: z.boolean().openapi({ example: true }),
   user: UserDetailSchema,
+});
+
+export const CreateUserRequestSchema = z.object({
+  name: z.string().min(1).openapi({ example: 'John Doe' }),
+  email: z.string().email().openapi({ example: 'john@example.com' }),
+  emailVerified: z.boolean().optional().openapi({ example: false }),
+  image: z.string().url().optional().openapi({ example: 'https://example.com/avatar.jpg' }),
+  roleIds: z.array(z.string().uuid()).optional().openapi({
+    example: ['a52da4a6-4b69-4aa0-865c-1a03fddb731f'],
+    description: 'Role ids to assign after user creation',
+  }),
+});
+
+export const UpdateUserRequestSchema = z.object({
+  name: z.string().min(1).optional().openapi({ example: 'Jane Doe' }),
+  email: z.string().email().optional().openapi({ example: 'jane@example.com' }),
+  emailVerified: z.boolean().optional().openapi({ example: true }),
+  image: z.string().url().nullable().optional().openapi({ example: 'https://example.com/avatar.jpg' }),
+  roleIds: z.array(z.string().uuid()).optional().openapi({
+    example: ['a52da4a6-4b69-4aa0-865c-1a03fddb731f'],
+    description: 'Replace all assigned roles for the user',
+  }),
 });
 
 export const ErrorResponseSchema = z.object({

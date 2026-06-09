@@ -1,33 +1,26 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { auth } from '../../lib/auth';
+import { getSessionHandler } from './handlers/getSessionHandler';
+import { requestPasswordResetHandler } from './handlers/requestPasswordResetHandler';
+import { resetPasswordHandler } from './handlers/resetPasswordHandler';
+import { sendVerificationOtpHandler } from './handlers/sendVerificationOtpHandler';
+import { signInEmailHandler } from './handlers/signInEmailHandler';
+import { signOutHandler } from './handlers/signOutHandler';
+import { verifyOtpHandler } from './handlers/verifyOtpHandler';
 
 const authApp = new OpenAPIHono();
 
-export default authApp;
+authApp.post('/sign-in/email', signInEmailHandler);
+authApp.post('/sign-out', signOutHandler);
+authApp.get('/get-session', getSessionHandler);
+authApp.post('/request-password-reset', requestPasswordResetHandler);
+authApp.post('/reset-password', resetPasswordHandler);
+authApp.post('/email-otp/verify-email', verifyOtpHandler);
+authApp.post('/email-otp/send-verification-otp', sendVerificationOtpHandler);
 
-// Better Auth routes - IMPORTANT: Must be placed after all other routes
-authApp.all('*', async (c) => {
-  console.log('Better Auth catch-all handler called for:', c.req.path);
-  const request = c.req.raw;
-  try {
-    const response = await auth.handler(request);
-    console.log('Better Auth response status:', response.status);
-    return response;
-  } catch (error) {
-    console.error('Better Auth handler error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    
-    console.error('Error details:', {
-      message: errorMessage,
-      stack: errorStack,
-      path: c.req.path,
-      method: c.req.method
-    });
-    return c.json({ 
-      error: 'Better Auth handler failed',
-      message: errorMessage,
-      path: c.req.path
-    }, 500);
-  }
+authApp.all('*', (c) => {
+  return c.json({
+    message: 'Auth route not found',
+  }, 404);
 });
+
+export default authApp;

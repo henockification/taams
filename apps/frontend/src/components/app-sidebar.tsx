@@ -1,24 +1,13 @@
 "use client"
 
 import * as React from "react"
-import {
-  LayoutDashboard,
-  Package,
-  ShoppingCart,
-  Users,
-  BarChart,
-  Settings,
-  LogOut,
-  User,
-  ChevronUp,
-  FolderTree,
-  Warehouse,
-} from "lucide-react"
+import Image from "next/image"
+import { Clock3 } from "lucide-react"
+import { useTranslations } from "next-intl"
 
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -28,198 +17,91 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useSession, signOut } from "@/lib/auth-client"
-import { useRouter, usePathname } from "next/navigation"
-import Link from "next/link"
-import Image from "next/image"
+import { getAccessibleNavGroups } from "@/config/app-navigation"
+import { Link, usePathname } from "@/i18n"
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { data: session } = useSession()
-  const router = useRouter()
-  const pathname = usePathname()
-
-  const handleSignOut = async () => {
-    try {
-      await signOut()
-      router.push("/auth/signin")
-    } catch (error) {
-      console.error("Sign out error:", error)
-    }
+type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
+  user?: {
+    role?: string[]
+    permissions?: string[]
   }
+}
 
-  const navGroups = [
-    {
-      label: "Home",
-      items: [
-        {
-          title: "Dashboard",
-          url: "/dashboard",
-          icon: LayoutDashboard,
-        },
-      ],
-    },
-    {
-      label: "Product",
-      items: [
-        {
-          title: "Categories",
-          url: "/categories",
-          icon: FolderTree,
-        },
-        {
-          title: "Items",
-          url: "/items",
-          icon: Package,
-        },
-        {
-          title: "Products",
-          url: "/products",
-          icon: Package,
-        },
-        {
-          title: "Package Boxes",
-          url: "/package-boxes",
-          icon: Package,
-        },
-      ],
-    },
-    {
-      label: "Inventory",
-      items: [
-        {
-          title: "Item Inventory",
-          url: "/item-inventory",
-          icon: Warehouse,
-        },
-      ],
-    },
-    {
-      label: "Customer",
-      items: [
-        {
-          title: "Customers",
-          url: "/customers",
-          icon: Users,
-        },
-        {
-          title: "Orders",
-          url: "/orders",
-          icon: ShoppingCart,
-        },
-      ],
-    },
-    {
-      label: "Analytics",
-      items: [
-        {
-          title: "Analytics",
-          url: "/analytics",
-          icon: BarChart,
-        },
-      ],
-    },
-  ]
+export function AppSidebar({ user, ...props }: AppSidebarProps) {
+  const pathname = usePathname()
+  const t = useTranslations("navigation")
+  const navGroups = getAccessibleNavGroups(user)
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="border-b border-sidebar-border px-3 py-4">
         <Link
-          href="/"
-          className="flex items-center gap-2 px-2 py-1 hover:opacity-80 transition-opacity group-data-[collapsible=icon]:justify-center"
+          href="/dashboard"
+          className="flex items-center gap-3 rounded-md px-1.5 py-1 transition-colors hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center"
         >
-          <div className="relative h-12 w-[160px] shrink-0 overflow-hidden group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground ring-1 ring-sidebar-border">
             <Image
-              src="/logo-transparent.png"
+              src="/logo.png"
               alt="Taams"
-              width={170}
-              height={50}
-              className="h-full w-auto object-contain object-left"
+              width={28}
+              height={28}
               priority
-              style={{ objectFit: "contain", objectPosition: "left" }}
+              className="size-7 object-contain"
             />
-          </div>
+          </span>
+          <span className="grid leading-tight group-data-[collapsible=icon]:hidden">
+            <span className="text-base font-semibold text-sidebar-foreground">Taams</span>
+            <span className="text-xs text-sidebar-foreground/70">
+              {t("attendanceManagement")}
+            </span>
+          </span>
         </Link>
       </SidebarHeader>
-      <SidebarContent>
+
+      <SidebarContent className="px-2 py-3">
         {navGroups.map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.labelKey}>
+            <SidebarGroupLabel className="text-sidebar-foreground/60">
+              {t(group.labelKey)}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={pathname === item.url} tooltip={item.title}>
-                      <Link href={item.url}>
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {group.items.map((item) => {
+                  const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
+
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={isActive}
+                        tooltip={t(item.titleKey)}
+                        className="h-10 gap-3 rounded-md data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      >
+                        <Link href={item.url}>
+                          <item.icon />
+                          <span>{t(item.titleKey)}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        <SidebarGroup className="mt-auto">
+          <div className="mx-2 rounded-md border border-sidebar-border bg-sidebar-accent/60 p-3 text-sidebar-accent-foreground group-data-[collapsible=icon]:hidden">
+            <div className="mb-2 flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+              <Clock3 className="size-4" />
+            </div>
+            <p className="text-sm font-medium">{t("timeOperations")}</p>
+            <p className="mt-1 text-xs leading-5 text-sidebar-foreground/70">
+              {t("timeOperationsDescription")}
+            </p>
+          </div>
+        </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  <Avatar className="h-8 w-8 rounded-lg">
-                    <AvatarImage src={session?.user?.image || ""} alt={session?.user?.name || ""} />
-                    <AvatarFallback className="rounded-lg">
-                      {session?.user?.name?.charAt(0).toUpperCase() || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">{session?.user?.name || "User"}</span>
-                    <span className="truncate text-xs">{session?.user?.email}</span>
-                  </div>
-                  <ChevronUp className="ml-auto size-4" />
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
-              >
-                <DropdownMenuItem asChild>
-                  <Link href="/admin-profile" className="cursor-pointer">
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Profile</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/settings" className="cursor-pointer">
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onSelect={handleSignOut}
-                  className="text-destructive focus:text-destructive cursor-pointer"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

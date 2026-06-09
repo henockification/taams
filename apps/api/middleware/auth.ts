@@ -1,5 +1,7 @@
 import { Context, Next } from 'hono';
-import { auth } from '../lib/auth';
+import { getCookie } from 'hono/cookie';
+import { getSessionByToken } from '../db/orm/auth/manageAuth';
+import { SESSION_COOKIE_NAME } from '../routes/auth/handlers/helpers';
 
 // Extend Hono context with user/session info
 declare module 'hono' {
@@ -11,10 +13,8 @@ declare module 'hono' {
 
 export const requireAuth = async (c: Context, next: Next) => {
   try {
-    // Get session from Better Auth
-    const session = await auth.api.getSession({
-      headers: c.req.raw.headers
-    });
+    const token = getCookie(c, SESSION_COOKIE_NAME);
+    const session = token ? await getSessionByToken(token) : null;
 
     if (!session) {
       return c.json({
@@ -25,7 +25,7 @@ export const requireAuth = async (c: Context, next: Next) => {
 
     // Attach user and session to context
     c.user = session.user;
-    c.session = session.session;
+    c.session = session;
     
     await next();
   } catch (error) {
@@ -39,14 +39,12 @@ export const requireAuth = async (c: Context, next: Next) => {
 
 export const optionalAuth = async (c: Context, next: Next) => {
   try {
-    // Get session from Better Auth (optional)
-    const session = await auth.api.getSession({
-      headers: c.req.header() as any,
-    });
+    const token = getCookie(c, SESSION_COOKIE_NAME);
+    const session = token ? await getSessionByToken(token) : null;
 
     if (session) {
       c.user = session.user;
-      c.session = session.session;
+      c.session = session;
     }
     
     await next();

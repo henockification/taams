@@ -10,7 +10,7 @@ import { UpdateProfileImageRequest, UpdateProfileImageResponse, UserProfileUpdat
 import { apiClient } from '../utils/api-client';
 
 // API endpoints
-const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3009';
+const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3012';
 
 // Users API functions using native fetch (no complex client needed)
 export const usersApi = {
