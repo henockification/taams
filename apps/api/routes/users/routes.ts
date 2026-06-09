@@ -5,7 +5,6 @@ import { ErrorResponseSchema } from '../../schemas/shared';
 import { openApiApp } from '../../lib/openapi';
 import { getUsersHandler } from './handlers/getUsersHandler';
 import { getUserHandler } from './handlers/getUserHandler';
-import { signupHandler } from './handlers/signupHandler';
 
 // Create the users app
 const usersApp = new Hono();
@@ -66,7 +65,6 @@ export const userRoute = createRoute({
 // Register the actual route
 usersApp.get('/users', getUsersHandler);
 usersApp.get('/users/:id', getUserHandler);
-usersApp.post('/users/signup', signupHandler);
 
 // Register the OpenAPI definition
 openApiApp.openapi(usersRoute, getUsersHandler)
