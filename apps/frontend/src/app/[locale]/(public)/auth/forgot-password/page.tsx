@@ -73,6 +73,7 @@ export default function ForgotPasswordPage() {
           ? t('forgotPasswordSuccessDescription', { email: submittedEmail })
           : t('forgotPasswordDescription')
       }
+      sideFooter={<div />}
     >
       {success ? (
         <Card className="border-border/80 shadow-sm">

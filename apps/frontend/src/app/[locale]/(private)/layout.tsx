@@ -97,6 +97,9 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
       users: t('users'),
       roles: t('roles'),
       permissions: t('permissions'),
+      employees: t('employees'),
+      positions: t('positions'),
+      'organization-structure': t('organizationStructure'),
     };
 
     const breadcrumbs: Array<{ label: string; href: string; isLast: boolean }> = [];

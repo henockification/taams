@@ -4,6 +4,8 @@ import {
   UsersResponse,
   SignUpInput,
   SignUpResponse,
+  CreateUserInput,
+  CreateUserResponse,
 } from '../types/api';
 import { PaginationParams } from '../shared/types';
 import { UpdateProfileImageRequest, UpdateProfileImageResponse, UserProfileUpdate } from '../types/users.types';
@@ -85,6 +87,28 @@ export const usersApi = {
 
     if (!response.ok || !data.success) {
       throw new Error(data.error || `HTTP error! status: ${response.status}`);
+    }
+
+    return data;
+  },
+
+  createUser: async (input: CreateUserInput): Promise<CreateUserResponse> => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/users`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(input),
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
     }
 
     return data;

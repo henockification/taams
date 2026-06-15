@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../api/users.api';
-import type { UserFilters, SignUpInput } from '../types/api';
+import type { CreateUserInput, UserFilters, SignUpInput } from '../types/api';
 import type { PaginationParams } from '../shared/types';
 import { userQueryKeys } from '../types/api';
 import { UpdateProfileImageRequest, UserProfileUpdate } from '../types/users.types';
@@ -40,6 +40,17 @@ export const useSignup = () => {
       queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
       // Also invalidate customers list since signup creates a customer
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+  });
+};
+
+export const useCreateUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateUserInput) => usersApi.createUser(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
     },
   });
 };

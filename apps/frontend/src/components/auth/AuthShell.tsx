@@ -13,6 +13,9 @@ interface AuthShellProps {
   description: ReactNode;
   eyebrow?: string;
   footer?: ReactNode;
+  sideContent?: ReactNode;
+  sideFooter?: ReactNode;
+  supportingContent?: ReactNode;
   className?: string;
 }
 
@@ -22,6 +25,9 @@ export function AuthShell({
   description,
   eyebrow,
   footer,
+  sideContent,
+  sideFooter,
+  supportingContent,
   className,
 }: AuthShellProps) {
   const t = useTranslations('auth');
@@ -30,7 +36,7 @@ export function AuthShell({
     <main className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen lg:grid-cols-[minmax(360px,0.95fr)_minmax(420px,1.05fr)]">
         <section className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(255,255,255,0.16),transparent_30%),linear-gradient(135deg,rgba(0,51,102,0.96),rgba(0,36,73,1))]" />
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,51,102,0.98),rgba(0,36,73,1))]" />
           <div className="relative z-10 flex w-full flex-col justify-between p-10 xl:p-14">
             <Link href="/" className="inline-flex items-center gap-3">
               <span className="flex size-12 items-center justify-center rounded-md bg-white shadow-sm">
@@ -43,7 +49,9 @@ export function AuthShell({
                   className="h-8 w-8 object-contain"
                 />
               </span>
-              <span className="text-xl font-semibold tracking-normal">Taams</span>
+              <span className="max-w-64 text-lg font-semibold leading-tight tracking-normal">
+                Time and Attendance Management System
+              </span>
             </Link>
 
             <div className="max-w-lg space-y-5">
@@ -58,13 +66,18 @@ export function AuthShell({
               <p className="max-w-md text-base leading-7 text-white/78">
                 {description}
               </p>
+              {sideContent ? <div className="pt-2">{sideContent}</div> : null}
             </div>
 
-            <div className="grid grid-cols-3 gap-3 text-sm text-white/74">
-              <div className="border-l border-white/24 pl-3">{t('featureRbac')}</div>
-              <div className="border-l border-white/24 pl-3">{t('featureNativeAuth')}</div>
-              <div className="border-l border-white/24 pl-3">{t('featureSmsOtp')}</div>
-            </div>
+            {sideFooter ? (
+              sideFooter
+            ) : (
+              <div className="grid grid-cols-3 gap-3 text-sm text-white/74">
+                <div className="border-l border-white/24 pl-3">{t('featureRbac')}</div>
+                <div className="border-l border-white/24 pl-3">{t('featureNativeAuth')}</div>
+                <div className="border-l border-white/24 pl-3">{t('featureSmsOtp')}</div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -86,7 +99,9 @@ export function AuthShell({
                     className="h-8 w-8 object-contain"
                   />
                 </span>
-                <span className="text-xl font-semibold text-primary">Taams</span>
+                <span className="max-w-64 text-base font-semibold leading-tight text-primary sm:text-lg">
+                  Time and Attendance Management System
+                </span>
               </Link>
             </div>
 
@@ -101,6 +116,8 @@ export function AuthShell({
               </h1>
               <p className="text-sm leading-6 text-muted-foreground">{description}</p>
             </div>
+
+            {supportingContent ? <div>{supportingContent}</div> : null}
 
             {children}
 

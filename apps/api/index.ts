@@ -12,6 +12,7 @@ import { openApiApp } from './lib/openapi';
 import authApp from './routes/auth';
 import usersApp from './routes/users/routes';
 import rbacApp from './routes/rbac/routes';
+import coreApp from './routes/core/routes';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +72,7 @@ app.doc('/api/openapi.json', {
 // Mount feature modules
 app.route('/api', usersApp);
 app.route('/api', rbacApp);
+app.route('/api', coreApp);
 
 // Mount centralized OpenAPI app for documentation
 app.route('/api', openApiApp);
@@ -104,4 +106,3 @@ app.onError((err, c) => {
 
 
 export default app;
-

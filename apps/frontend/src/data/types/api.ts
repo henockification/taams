@@ -38,6 +38,19 @@ export interface SignUpInput {
   password: string;
 }
 
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  emailVerified?: boolean;
+  image?: string;
+  roleIds?: string[];
+}
+
+export interface CreateUserResponse {
+  success: boolean;
+  user: User;
+}
+
 export interface SignUpResponse {
   success: boolean;
   user?: {

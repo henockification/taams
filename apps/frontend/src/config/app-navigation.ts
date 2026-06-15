@@ -1,7 +1,17 @@
-import { KeyRound, LayoutDashboard, ShieldCheck, Users, type LucideIcon } from 'lucide-react';
+import {
+  Building2,
+  CalendarClock,
+  KeyRound,
+  LayoutDashboard,
+  PanelsTopLeft,
+  ShieldCheck,
+  UserRoundCog,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'users' | 'roles' | 'permissions';
+  titleKey: 'dashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'workSchedulesAndShifts';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -9,7 +19,7 @@ export type AppNavItem = {
 };
 
 export type AppNavGroup = {
-  labelKey: 'workspace' | 'security';
+  labelKey: 'workspace' | 'core' | 'workScheduleShift' | 'security';
   items: AppNavItem[];
 };
 
@@ -23,6 +33,44 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'dashboard',
         requiredPermission: 'dashboard:read',
         icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    labelKey: 'core',
+    items: [
+      {
+        titleKey: 'organizationStructure',
+        url: '/organization-structure',
+        permissionResource: 'organization-structure',
+        requiredPermission: 'organization-structure:read',
+        icon: Building2,
+      },
+      {
+        titleKey: 'positions',
+        url: '/positions',
+        permissionResource: 'positions',
+        requiredPermission: 'positions:read',
+        icon: PanelsTopLeft,
+      },
+      {
+        titleKey: 'employees',
+        url: '/employees',
+        permissionResource: 'employees',
+        requiredPermission: 'employees:read',
+        icon: UserRoundCog,
+      },
+    ],
+  },
+  {
+    labelKey: 'workScheduleShift',
+    items: [
+      {
+        titleKey: 'workSchedulesAndShifts',
+        url: '/work-schedules',
+        permissionResource: 'work-schedules',
+        requiredPermission: 'work-schedules:read',
+        icon: CalendarClock,
       },
     ],
   },
