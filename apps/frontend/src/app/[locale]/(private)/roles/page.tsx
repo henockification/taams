@@ -178,26 +178,15 @@ export default function RolesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-primary">{t('securityEyebrow')}</p>
-          <h1 className="text-2xl font-semibold tracking-normal text-foreground">
-            {t('rolesTitle')}
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            {t('rolesDescription')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
-            <ShieldCheck className="size-3.5 text-primary" />
-            {roles.length} {t('rolesCount')}
-          </Badge>
-          <Button onClick={handleOpenCreateRole}>
-            <Plus className="size-4" />
-            {t('addRole')}
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button onClick={handleOpenCreateRole}>
+          <Plus className="size-4" />
+          {t('addRole')}
+        </Button>
+        <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
+          <ShieldCheck className="size-3.5 text-primary" />
+          {roles.length} {t('rolesCount')}
+        </Badge>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">

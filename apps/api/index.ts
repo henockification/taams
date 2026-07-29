@@ -13,6 +13,7 @@ import authApp from './routes/auth';
 import usersApp from './routes/users/routes';
 import rbacApp from './routes/rbac/routes';
 import coreApp from './routes/core/routes';
+import zktecoApp from './routes/zkteco/routes';
 
 // Load environment variables
 dotenv.config();
@@ -73,6 +74,8 @@ app.doc('/api/openapi.json', {
 app.route('/api', usersApp);
 app.route('/api', rbacApp);
 app.route('/api', coreApp);
+app.route('/api/zkteco', zktecoApp);
+app.route('/iclock', zktecoApp);
 
 // Mount centralized OpenAPI app for documentation
 app.route('/api', openApiApp);

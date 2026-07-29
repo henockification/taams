@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { authClient } from '@/lib/auth-client';
+import { coreQueryKeys } from './core.hooks';
 
 export type EmailSignInInput = {
   email: string;
@@ -25,6 +26,7 @@ export function useEmailSignIn() {
       return result.data;
     },
     onSuccess: () => {
+      queryClient.removeQueries({ queryKey: coreQueryKeys.all });
       queryClient.invalidateQueries({ queryKey: authQueryKeys.session });
     },
   });

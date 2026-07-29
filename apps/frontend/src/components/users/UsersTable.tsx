@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { notifications } from '@/lib/notifications';
 import { Badge } from '@/components/ui/badge';
@@ -11,35 +11,94 @@ import type { User } from '../../data/types/api';
 export default function UsersTable() {
   const router = useRouter();
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
   const [searchValue, setSearchValue] = useState('');
   const [filters, setFilters] = useState<TableFilter>({});
   const [sort, setSort] = useState<TableSort | null>(null);
 
-  // Use React Query hook for data fetching
+  // Fetch all users once; search/filter/sort/paginate client-side (same pattern as permanent employees)
   const {
     data: usersResponse,
     isLoading,
     error,
     refetch,
-  } = useUsers(
-    { 
-      search: searchValue,
-      ...filters 
-    }, 
-    { 
-      page: currentPage, 
-      pageSize,
-      sort: sort?.column,
-      order: sort?.direction
+  } = useUsers({}, { page: 1, pageSize: 10000 });
+
+  const allUsers = usersResponse?.users || [];
+
+  const filteredUsers = useMemo(() => {
+    const query = searchValue.trim().toLowerCase();
+    const emailVerifiedFilter = filters.emailVerified;
+
+    let result = allUsers.filter((user) => {
+      if (emailVerifiedFilter !== undefined && emailVerifiedFilter !== '') {
+        const values = Array.isArray(emailVerifiedFilter)
+          ? emailVerifiedFilter
+          : [emailVerifiedFilter];
+        const matchesStatus = values.some(
+          (value) => String(user.emailVerified) === String(value)
+        );
+        if (!matchesStatus) return false;
+      }
+
+      if (!query) return true;
+
+      const haystack = [user.name, user.email, ...(user.role ?? [])]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(query);
+    });
+
+    if (sort) {
+      const { column, direction } = sort;
+      result = [...result].sort((a, b) => {
+        const aValue = a[column as keyof User];
+        const bValue = b[column as keyof User];
+
+        if (aValue == null && bValue == null) return 0;
+        if (aValue == null) return direction === 'asc' ? -1 : 1;
+        if (bValue == null) return direction === 'asc' ? 1 : -1;
+
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+          const comparison = aValue.localeCompare(bValue);
+          return direction === 'asc' ? comparison : -comparison;
+        }
+
+        if (aValue instanceof Date || bValue instanceof Date || column === 'createdAt') {
+          const aTime = new Date(aValue as string).getTime();
+          const bTime = new Date(bValue as string).getTime();
+          return direction === 'asc' ? aTime - bTime : bTime - aTime;
+        }
+
+        if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+        return 0;
+      });
     }
+
+    return result;
+  }, [allUsers, filters, searchValue, sort]);
+
+  const totalUsers = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalUsers / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedUsers = filteredUsers.slice(
+    (safePage - 1) * pageSize,
+    safePage * pageSize
   );
 
-  // Extract data from React Query response
-  const users = usersResponse?.users || [];
-  const totalUsers = usersResponse?.pagination?.total || 0;
+  useEffect(() => {
+    if (safePage !== currentPage) {
+      setCurrentPage(safePage);
+    }
+  }, [currentPage, safePage]);
 
-  // Handle error notifications
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters, pageSize, searchValue, sort]);
+
   if (error && !isLoading) {
     notifications.show({
       title: 'Error',
@@ -48,14 +107,12 @@ export default function UsersTable() {
     });
   }
 
-  // Pagination configuration
   const pagination: TablePagination = {
-    page: currentPage,
+    page: safePage,
     pageSize,
     total: totalUsers,
   };
 
-  // Table columns configuration
   const columns: TableColumn<User>[] = [
     {
       key: 'name',
@@ -116,29 +173,24 @@ export default function UsersTable() {
     },
   ];
 
-  // Event handlers
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
     setPageSize(newPageSize);
-    setCurrentPage(1);
   };
 
   const handleSearchChange = (value: string) => {
     setSearchValue(value);
-    setCurrentPage(1);
   };
 
   const handleFilterChange = (newFilters: TableFilter) => {
     setFilters(newFilters);
-    setCurrentPage(1);
   };
 
   const handleSortChange = (newSort: TableSort) => {
     setSort(newSort);
-    setCurrentPage(1);
   };
 
   const handleRefresh = () => {
@@ -151,7 +203,7 @@ export default function UsersTable() {
 
   return (
     <OurTable<User>
-      data={users}
+      data={paginatedUsers}
       columns={columns}
       loading={isLoading}
       error={error ? (error instanceof Error ? error.message : 'An unexpected error occurred') : null}

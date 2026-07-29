@@ -15,13 +15,23 @@ import {
   EmployeeWorkScheduleResponseSchema,
   EmployeeWorkSchedulesResponseSchema,
   EmployeesResponseSchema,
+  EmployeesPaginatedResponseSchema,
+  PermanentEmployeeImportResponseSchema,
   PositionResponseSchema,
   PositionsResponseSchema,
   UpdateDepartmentRequestSchema,
   UpdateEmployeeRequestSchema,
+  UpdateEmployeeWorkScheduleRequestSchema,
   UpdatePositionRequestSchema,
 } from '../../schemas/core.schema';
 import { openApiApp } from '../../lib/openapi';
+import biometricDevicesApp from './biometric-devices/routes';
+import biometricExemptionsApp from './biometric-exemptions/routes';
+import attendancePunchesApp from './attendance-punches/routes';
+import manualPunchRequestsApp from './manual-punch-requests/routes';
+import leaveManagementApp from './leave-management/routes';
+import timeOperationsApp from './time-operations/routes';
+import dashboardApp from './dashboard/routes';
 import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
 import {
@@ -38,10 +48,15 @@ import {
   createEmployeeHandler,
   createEmployeeSupervisorHandler,
   createEmployeeWorkScheduleHandler,
+  deleteEmployeeWorkScheduleHandler,
+  getAllEmployeeWorkSchedulesHandler,
   getEmployeeHandler,
   getEmployeesHandler,
+  getEmployeesPaginatedHandler,
   getEmployeeSupervisorsHandler,
   getEmployeeWorkSchedulesHandler,
+  importPermanentEmployeesHandler,
+  updateEmployeeWorkScheduleHandler,
   updateEmployeeHandler,
 } from './handlers/employees';
 
@@ -222,6 +237,26 @@ export const getEmployeesRoute = createRoute({
   },
 });
 
+export const getEmployeesPaginatedRoute = createRoute({
+  method: 'get',
+  path: '/employees/paginated',
+  tags: ['Core', 'Employees'],
+  summary: 'Get Employees Paginated',
+  request: {
+    query: z.object({
+      page: z.coerce.number().int().positive().optional(),
+      pageSize: z.coerce.number().int().positive().optional(),
+      search: z.string().optional(),
+    }),
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeesPaginatedResponseSchema } },
+      description: 'Employee list with pagination',
+    },
+  },
+});
+
 export const getEmployeeRoute = createRoute({
   method: 'get',
   path: '/employees/{id}',
@@ -238,6 +273,34 @@ export const getEmployeeRoute = createRoute({
     404: {
       content: { 'application/json': { schema: ErrorResponseSchema } },
       description: 'Employee not found',
+    },
+  },
+});
+
+export const importPermanentEmployeesRoute = createRoute({
+  method: 'post',
+  path: '/employees/permanent/import',
+  tags: ['Core', 'Employees'],
+  summary: 'Import Permanent Employees From Excel',
+  request: {
+    body: {
+      content: {
+        'multipart/form-data': {
+          schema: z.object({
+            file: z.any().openapi({ type: 'string', format: 'binary' }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: PermanentEmployeeImportResponseSchema } },
+      description: 'Permanent employee import result',
+    },
+    400: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Invalid import file or all rows failed',
     },
   },
 });
@@ -355,6 +418,66 @@ export const getEmployeeWorkSchedulesRoute = createRoute({
   },
 });
 
+export const getAllEmployeeWorkSchedulesRoute = createRoute({
+  method: 'get',
+  path: '/employees/work-schedules',
+  tags: ['Core', 'Employees'],
+  summary: 'Get All Employee Work Schedule Assignments',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeeWorkSchedulesResponseSchema } },
+      description: 'Employee work schedule assignments',
+    },
+  },
+});
+
+export const updateEmployeeWorkScheduleRoute = createRoute({
+  method: 'put',
+  path: '/employees/work-schedules/{id}',
+  tags: ['Core', 'Employees'],
+  summary: 'Update Employee Work Schedule Assignment',
+  request: {
+    params: uuidParam,
+    body: {
+      content: {
+        'application/json': {
+          schema: UpdateEmployeeWorkScheduleRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeeWorkScheduleResponseSchema } },
+      description: 'Updated employee work schedule assignment',
+    },
+    404: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Assignment not found',
+    },
+  },
+});
+
+export const deleteEmployeeWorkScheduleRoute = createRoute({
+  method: 'delete',
+  path: '/employees/work-schedules/{id}',
+  tags: ['Core', 'Employees'],
+  summary: 'Remove Employee Work Schedule Assignment',
+  request: {
+    params: uuidParam,
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+      description: 'Removed employee work schedule assignment',
+    },
+    404: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Assignment not found',
+    },
+  },
+});
+
 coreApp.post('/departments', createDepartmentHandler);
 coreApp.get('/departments', getDepartmentsHandler);
 coreApp.put('/departments/:id', updateDepartmentHandler);
@@ -363,12 +486,24 @@ coreApp.get('/positions', getPositionsHandler);
 coreApp.put('/positions/:id', updatePositionHandler);
 coreApp.post('/employees', createEmployeeHandler);
 coreApp.get('/employees', getEmployeesHandler);
+coreApp.get('/employees/paginated', getEmployeesPaginatedHandler);
+coreApp.post('/employees/permanent/import', importPermanentEmployeesHandler);
+coreApp.get('/employees/work-schedules', getAllEmployeeWorkSchedulesHandler);
+coreApp.put('/employees/work-schedules/:id', updateEmployeeWorkScheduleHandler);
+coreApp.delete('/employees/work-schedules/:id', deleteEmployeeWorkScheduleHandler);
 coreApp.get('/employees/:id', getEmployeeHandler);
 coreApp.put('/employees/:id', updateEmployeeHandler);
 coreApp.post('/employees/:id/supervisors', createEmployeeSupervisorHandler);
 coreApp.get('/employees/:id/supervisors', getEmployeeSupervisorsHandler);
 coreApp.post('/employees/:id/work-schedules', createEmployeeWorkScheduleHandler);
 coreApp.get('/employees/:id/work-schedules', getEmployeeWorkSchedulesHandler);
+coreApp.route('/', dashboardApp);
+coreApp.route('/', biometricDevicesApp);
+coreApp.route('/', biometricExemptionsApp);
+coreApp.route('/', attendancePunchesApp);
+coreApp.route('/', manualPunchRequestsApp);
+coreApp.route('/', leaveManagementApp);
+coreApp.route('/', timeOperationsApp);
 coreApp.route('/', shiftsApp);
 coreApp.route('/', workSchedulesApp);
 
@@ -381,11 +516,16 @@ openApiApp
   .openapi(updatePositionRoute, updatePositionHandler as any)
   .openapi(createEmployeeRoute, createEmployeeHandler as any)
   .openapi(getEmployeesRoute, getEmployeesHandler as any)
+  .openapi(getEmployeesPaginatedRoute, getEmployeesPaginatedHandler as any)
+  .openapi(importPermanentEmployeesRoute, importPermanentEmployeesHandler as any)
   .openapi(getEmployeeRoute, getEmployeeHandler as any)
   .openapi(updateEmployeeRoute, updateEmployeeHandler as any)
   .openapi(createEmployeeSupervisorRoute, createEmployeeSupervisorHandler as any)
   .openapi(getEmployeeSupervisorsRoute, getEmployeeSupervisorsHandler as any)
   .openapi(createEmployeeWorkScheduleRoute, createEmployeeWorkScheduleHandler as any)
-  .openapi(getEmployeeWorkSchedulesRoute, getEmployeeWorkSchedulesHandler as any);
+  .openapi(getEmployeeWorkSchedulesRoute, getEmployeeWorkSchedulesHandler as any)
+  .openapi(getAllEmployeeWorkSchedulesRoute, getAllEmployeeWorkSchedulesHandler as any)
+  .openapi(updateEmployeeWorkScheduleRoute, updateEmployeeWorkScheduleHandler as any)
+  .openapi(deleteEmployeeWorkScheduleRoute, deleteEmployeeWorkScheduleHandler as any);
 
 export default coreApp;

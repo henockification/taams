@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useForm } from 'react-hook-form';
 import { notifications } from '@/lib/notifications';
 import { AlertCircle } from 'lucide-react';
-import { authClient } from '../../lib/auth-client';
 import { useEmailSignIn } from '@/data/hooks/auth.hooks';
 
 interface SignInFormData {
@@ -45,9 +44,8 @@ export function SignInForm() {
       await signInMutation.mutateAsync({
         email: formData.email,
         password: formData.password,
+        callbackURL: '/dashboard',
       });
-
-      const session = await authClient.getSession();
 
       notifications.show({
         title: t('signInSuccessTitle'),
@@ -57,16 +55,8 @@ export function SignInForm() {
 
       await new Promise((resolve) => setTimeout(resolve, 250));
 
-      const userRole = session.data?.user?.role;
-      if (
-        Array.isArray(userRole) &&
-        (userRole.includes('super_admin') || userRole.includes('admin'))
-      ) {
-        router.push('/dashboard');
-        router.refresh();
-      } else {
-        router.push('/');
-      }
+      router.push('/dashboard');
+      router.refresh();
     } catch (err) {
       console.error('Sign in error:', err);
       const message =

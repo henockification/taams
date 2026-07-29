@@ -148,6 +148,42 @@ export async function createEmployeeWorkSchedule(input: CreateEmployeeWorkSchedu
   return getEmployeeWorkScheduleById(employeeWorkSchedule.id);
 }
 
+export async function updateEmployeeWorkSchedule(id: string, input: UpdateEmployeeWorkScheduleInput) {
+  await assertEmployeeWorkScheduleExists(id);
+
+  if (input.employeeId) {
+    await assertEmployeeExists(input.employeeId);
+  }
+  if (input.workScheduleId) {
+    await assertWorkScheduleExists(input.workScheduleId);
+  }
+
+  const updateData = normalizeEmployeeWorkScheduleInput(input);
+
+  if (Object.keys(updateData).length === 0) {
+    return getEmployeeWorkScheduleById(id);
+  }
+
+  const [employeeWorkSchedule] = await db
+    .update(employeeWorkSchedules)
+    .set({ ...updateData, updatedAt: new Date() })
+    .where(eq(employeeWorkSchedules.id, id))
+    .returning();
+
+  return getEmployeeWorkScheduleById(employeeWorkSchedule.id);
+}
+
+export async function deleteEmployeeWorkSchedule(id: string) {
+  await assertEmployeeWorkScheduleExists(id);
+
+  const [employeeWorkSchedule] = await db
+    .delete(employeeWorkSchedules)
+    .where(eq(employeeWorkSchedules.id, id))
+    .returning();
+
+  return employeeWorkSchedule;
+}
+
 export async function getEmployeeWorkSchedules(employeeId: string) {
   await assertEmployeeExists(employeeId);
 
@@ -155,6 +191,22 @@ export async function getEmployeeWorkSchedules(employeeId: string) {
     where: eq(employeeWorkSchedules.employeeId, employeeId),
     with: {
       employee: true,
+      workSchedule: true,
+    },
+  });
+
+  return schedules.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom));
+}
+
+export async function getAllEmployeeWorkSchedules() {
+  const schedules = await db.query.employeeWorkSchedules.findMany({
+    with: {
+      employee: {
+        with: {
+          department: true,
+          position: true,
+        },
+      },
       workSchedule: true,
     },
   });
@@ -206,6 +258,15 @@ async function assertEmployeeExists(id: string, tx: DbClient = db) {
   });
 
   if (!found) throw new Error('Employee not found');
+}
+
+async function assertEmployeeWorkScheduleExists(id: string, tx: DbClient = db) {
+  const found = await tx.query.employeeWorkSchedules.findFirst({
+    where: eq(employeeWorkSchedules.id, id),
+    columns: { id: true },
+  });
+
+  if (!found) throw new Error('Employee work schedule assignment not found');
 }
 
 function normalizeWorkScheduleInput(input: Partial<CreateWorkScheduleInput>) {

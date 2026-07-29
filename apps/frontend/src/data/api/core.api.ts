@@ -1,18 +1,59 @@
 import type {
+  AttendancePunchesResponse,
+  AttendancePunchResponse,
+  AttendanceSyncBatchesResponse,
+  AttendanceSyncBatchResponse,
+  BiometricDeviceConnectionTestResponse,
+  BiometricDeviceResponse,
+  BiometricDevicesResponse,
+  BiometricExemptionResponse,
+  BiometricExemptionsResponse,
+  BulkUpsertLeaveBalancesInput,
+  ChangeManualPunchRequestStatusInput,
+  ChangeLeaveRequestStatusInput,
+  CreateAttendancePunchInput,
+  CreateBiometricDeviceInput,
+  CreateBiometricExemptionInput,
+  CreateBiometricDeviceSyncInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
+  CreateEmployeeWorkScheduleInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
   CreateWorkScheduleDayInput,
   CreateWorkScheduleInput,
+  CreateManualPunchRequestInput,
+  CreateLeaveFiscalYearInput,
+  CreateLeaveRequestInput,
+  CreateLeaveTypeInput,
   DepartmentResponse,
+  DepartmentHeadDashboardSummaryResponse,
   DepartmentsResponse,
+  DashboardSummaryResponse,
   EmployeeResponse,
   EmployeeSupervisorsResponse,
+  EmployeeWorkScheduleResponse,
+  EmployeeWorkSchedulesResponse,
   EmployeesResponse,
+  EmployeesPaginatedResponse,
+  ExecutiveDashboardSummaryResponse,
+  HrDashboardSummaryResponse,
+  PermanentEmployeeImportResponse,
+  LeaveBalanceResponse,
+  LeaveBalancesResponse,
+  LeaveBalanceTransferResponse,
+  LeaveFiscalYearResponse,
+  LeaveFiscalYearsResponse,
+  LeaveRequestResponse,
+  LeaveRequestsResponse,
+  LeaveTypeResponse,
+  LeaveTypesResponse,
+  ManualPunchRequestActionResponse,
+  ManualPunchRequestResponse,
+  ManualPunchRequestsResponse,
   PositionResponse,
   PositionsResponse,
   ShiftBreakResponse,
@@ -21,14 +62,22 @@ import type {
   ShiftSegmentResponse,
   ShiftSegmentsResponse,
   ShiftsResponse,
+  TimeOperationsSummaryResponse,
+  TransferLeaveBalanceInput,
   UpdateDepartmentInput,
+  UpdateBiometricDeviceInput,
+  UpdateBiometricExemptionInput,
   UpdateEmployeeInput,
+  UpdateEmployeeWorkScheduleInput,
+  UpdateLeaveFiscalYearInput,
+  UpdateLeaveTypeInput,
   UpdatePositionInput,
   UpdateShiftBreakInput,
   UpdateShiftInput,
   UpdateShiftSegmentInput,
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
+  UpsertLeaveBalanceInput,
   WorkScheduleDayResponse,
   WorkScheduleDaysResponse,
   WorkScheduleResponse,
@@ -38,13 +87,16 @@ import type {
 const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3012';
 
 async function coreFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}/api${path}`, {
     ...init,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
+    headers: isFormData
+      ? init?.headers
+      : {
+          'Content-Type': 'application/json',
+          ...(init?.headers ?? {}),
+        },
   });
 
   const data = await response.json().catch(() => null);
@@ -57,6 +109,29 @@ async function coreFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const coreApi = {
+  getDashboardSummary: () => coreFetch<DashboardSummaryResponse>('/dashboard/summary'),
+  getExecutiveDashboardSummary: (params: { date?: string; month?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    if (params.month) query.set('month', params.month);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<ExecutiveDashboardSummaryResponse>(`/executive-dashboard/summary${suffix}`);
+  },
+  getHrDashboardSummary: (params: { date?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<HrDashboardSummaryResponse>(`/hr-dashboard/summary${suffix}`);
+  },
+  getDepartmentHeadDashboardSummary: (params: { date?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<DepartmentHeadDashboardSummaryResponse>(`/department-head-dashboard/summary${suffix}`);
+  },
   getDepartments: () => coreFetch<DepartmentsResponse>('/departments'),
   createDepartment: (input: CreateDepartmentInput) =>
     coreFetch<DepartmentResponse>('/departments', {
@@ -138,6 +213,15 @@ export const coreApi = {
       body: JSON.stringify(input),
     }),
   getEmployees: () => coreFetch<EmployeesResponse>('/employees'),
+  getEmployeesPaginated: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set('page', String(params.page));
+    if (params.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params.search) query.set('search', params.search);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<EmployeesPaginatedResponse>(`/employees/paginated${suffix}`);
+  },
   getEmployee: (employeeId: string) => coreFetch<EmployeeResponse>(`/employees/${employeeId}`),
   createEmployee: (input: CreateEmployeeInput) =>
     coreFetch<EmployeeResponse>('/employees', {
@@ -149,6 +233,15 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+  importPermanentEmployees: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return coreFetch<PermanentEmployeeImportResponse>('/employees/permanent/import', {
+      method: 'POST',
+      body: formData,
+    });
+  },
   getEmployeeSupervisors: (employeeId: string) =>
     coreFetch<EmployeeSupervisorsResponse>(`/employees/${employeeId}/supervisors`),
   createEmployeeSupervisor: ({ employeeId, ...input }: CreateEmployeeSupervisorInput) =>
@@ -156,4 +249,137 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  getEmployeeWorkSchedules: (employeeId: string) =>
+    coreFetch<EmployeeWorkSchedulesResponse>(`/employees/${employeeId}/work-schedules`),
+  getAllEmployeeWorkSchedules: () =>
+    coreFetch<EmployeeWorkSchedulesResponse>('/employees/work-schedules'),
+  createEmployeeWorkSchedule: ({ employeeId, ...input }: CreateEmployeeWorkScheduleInput) =>
+    coreFetch<EmployeeWorkScheduleResponse>(`/employees/${employeeId}/work-schedules`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateEmployeeWorkSchedule: ({ employeeWorkScheduleId, ...input }: UpdateEmployeeWorkScheduleInput) =>
+    coreFetch<EmployeeWorkScheduleResponse>(`/employees/work-schedules/${employeeWorkScheduleId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteEmployeeWorkSchedule: (employeeWorkScheduleId: string) =>
+    coreFetch<{ success: boolean }>(`/employees/work-schedules/${employeeWorkScheduleId}`, {
+      method: 'DELETE',
+    }),
+  getBiometricDevices: () => coreFetch<BiometricDevicesResponse>('/biometric-devices'),
+  getBiometricExemptions: () => coreFetch<BiometricExemptionsResponse>('/biometric-exemptions'),
+  createBiometricExemption: (input: CreateBiometricExemptionInput) =>
+    coreFetch<BiometricExemptionResponse>('/biometric-exemptions', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateBiometricExemption: ({ biometricExemptionId, ...input }: UpdateBiometricExemptionInput) =>
+    coreFetch<BiometricExemptionResponse>(`/biometric-exemptions/${biometricExemptionId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deleteBiometricExemption: (biometricExemptionId: string) =>
+    coreFetch<BiometricExemptionResponse>(`/biometric-exemptions/${biometricExemptionId}`, {
+      method: 'DELETE',
+    }),
+  getBiometricDevice: (biometricDeviceId: string) =>
+    coreFetch<BiometricDeviceResponse>(`/biometric-devices/${biometricDeviceId}`),
+  createBiometricDevice: (input: CreateBiometricDeviceInput) =>
+    coreFetch<BiometricDeviceResponse>('/biometric-devices', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateBiometricDevice: ({ biometricDeviceId, ...input }: UpdateBiometricDeviceInput) =>
+    coreFetch<BiometricDeviceResponse>(`/biometric-devices/${biometricDeviceId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  syncBiometricDevice: ({ biometricDeviceId, ...input }: CreateBiometricDeviceSyncInput) =>
+    coreFetch<AttendanceSyncBatchResponse>(`/biometric-devices/${biometricDeviceId}/sync`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  testBiometricDeviceConnection: (biometricDeviceId: string) =>
+    coreFetch<BiometricDeviceConnectionTestResponse>(`/biometric-devices/${biometricDeviceId}/test-connection`, {
+      method: 'POST',
+    }),
+  getBiometricDeviceSyncHistory: (biometricDeviceId: string) =>
+    coreFetch<AttendanceSyncBatchesResponse>(`/biometric-devices/${biometricDeviceId}/sync-history`),
+  createAttendancePunch: (input: CreateAttendancePunchInput) =>
+    coreFetch<AttendancePunchResponse>('/attendance-punches', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches'),
+  getEmployeeAttendancePunches: (employeeId: string) =>
+    coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
+  getUnprocessedAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches/unprocessed'),
+  getManualPunchRequests: () => coreFetch<ManualPunchRequestsResponse>('/manual-punch-requests'),
+  createManualPunchRequest: (input: CreateManualPunchRequestInput) =>
+    coreFetch<ManualPunchRequestResponse>('/manual-punch-requests', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  changeManualPunchRequestStatus: ({ manualPunchRequestId, ...input }: ChangeManualPunchRequestStatusInput) =>
+    coreFetch<ManualPunchRequestActionResponse>(`/manual-punch-requests/${manualPunchRequestId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getLeaveFiscalYears: () => coreFetch<LeaveFiscalYearsResponse>('/leave/fiscal-years'),
+  createLeaveFiscalYear: (input: CreateLeaveFiscalYearInput) =>
+    coreFetch<LeaveFiscalYearResponse>('/leave/fiscal-years', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateLeaveFiscalYear: ({ fiscalYearId, ...input }: UpdateLeaveFiscalYearInput) =>
+    coreFetch<LeaveFiscalYearResponse>(`/leave/fiscal-years/${fiscalYearId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setActiveLeaveFiscalYear: (fiscalYearId: string) =>
+    coreFetch<LeaveFiscalYearResponse>(`/leave/fiscal-years/${fiscalYearId}/active`, {
+      method: 'POST',
+    }),
+  getLeaveTypes: () => coreFetch<LeaveTypesResponse>('/leave/types'),
+  createLeaveType: (input: CreateLeaveTypeInput) =>
+    coreFetch<LeaveTypeResponse>('/leave/types', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateLeaveType: ({ leaveTypeId, ...input }: UpdateLeaveTypeInput) =>
+    coreFetch<LeaveTypeResponse>(`/leave/types/${leaveTypeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  getLeaveBalances: (fiscalYearId?: string) =>
+    coreFetch<LeaveBalancesResponse>(`/leave/balances${fiscalYearId ? `?fiscalYearId=${fiscalYearId}` : ''}`),
+  upsertLeaveBalance: (input: UpsertLeaveBalanceInput) =>
+    coreFetch<LeaveBalanceResponse>('/leave/balances', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  bulkUpsertLeaveBalances: (input: BulkUpsertLeaveBalancesInput) =>
+    coreFetch<LeaveBalancesResponse>('/leave/balances/bulk', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  transferLeaveBalance: (input: TransferLeaveBalanceInput) =>
+    coreFetch<LeaveBalanceTransferResponse>('/leave/balances/transfer', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getLeaveRequests: (kind?: 'annual' | 'other') =>
+    coreFetch<LeaveRequestsResponse>(`/leave/requests${kind ? `?kind=${kind}` : ''}`),
+  createLeaveRequest: (input: CreateLeaveRequestInput) =>
+    coreFetch<LeaveRequestResponse>('/leave/requests', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  changeLeaveRequestStatus: ({ leaveRequestId, ...input }: ChangeLeaveRequestStatusInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getTimeOperationsSummary: () => coreFetch<TimeOperationsSummaryResponse>('/time-operations/summary'),
 };

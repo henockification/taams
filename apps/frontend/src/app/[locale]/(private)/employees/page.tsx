@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronRight, Eye, Pencil, Plus, UsersRound } from 'lucide-react';
+import { Building2, ChevronRight, Eye, FileSpreadsheet, Pencil, Plus, UsersRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { Switch } from '@/components/ui/switch';
 import { useRouter } from '@/i18n';
 import { notifications } from '@/lib/notifications';
 import {
+  useBiometricExemptions,
   useCreateEmployee,
   useDepartments,
   useEmployees,
@@ -47,6 +48,7 @@ import type { Department, Employee, EmploymentStatus, EmploymentType } from '@/d
 
 const employmentStatuses: EmploymentStatus[] = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'];
 const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
+const manualEmploymentTypes = employmentTypes.filter((type) => type !== 'PERMANENT');
 type DepartmentNode = Department & { children: DepartmentNode[] };
 
 const initialForm = {
@@ -65,7 +67,7 @@ const initialForm = {
   departmentId: '',
   positionId: '',
   employmentStatus: 'ACTIVE' as EmploymentStatus,
-  employmentType: 'PERMANENT' as EmploymentType,
+  employmentType: 'CONTRACT' as EmploymentType,
   hireDate: '',
   terminationDate: '',
   isActive: true,
@@ -158,6 +160,7 @@ export default function EmployeesPage() {
   const { data: departmentsResponse } = useDepartments();
   const { data: positionsResponse } = usePositions();
   const { data: rolesResponse } = useRoles();
+  const { data: biometricExemptionsResponse } = useBiometricExemptions();
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const createUser = useCreateUser();
@@ -166,6 +169,7 @@ export default function EmployeesPage() {
   const departments = departmentsResponse?.departments ?? [];
   const positions = positionsResponse?.positions ?? [];
   const roles = rolesResponse?.roles ?? [];
+  const biometricExemptions = biometricExemptionsResponse?.biometricExemptions ?? [];
   const [search, setSearch] = useState('');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -225,6 +229,17 @@ export default function EmployeesPage() {
       return haystack.includes(query);
     });
   }, [employees, isRootDepartmentSelected, search, selectedDepartmentId]);
+  const exemptEmployeeIds = useMemo(
+    () => new Set(biometricExemptions.filter((exemption) => exemption.isActive && exemption.employeeId).map((exemption) => exemption.employeeId as string)),
+    [biometricExemptions],
+  );
+  const exemptPositionIds = useMemo(
+    () => new Set(biometricExemptions.filter((exemption) => exemption.isActive && exemption.positionId).map((exemption) => exemption.positionId as string)),
+    [biometricExemptions],
+  );
+  const isBiometricExempt = (employee: Employee) => Boolean(
+    exemptEmployeeIds.has(employee.id) || (employee.positionId ? exemptPositionIds.has(employee.positionId) : false),
+  );
 
   useEffect(() => {
     if (departments.length === 0) {
@@ -296,6 +311,16 @@ export default function EmployeesPage() {
   const saveEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    const isExistingPermanentEmployee = Boolean(editingEmployee && editingEmployee.employmentType === 'PERMANENT');
+    if (!isExistingPermanentEmployee && form.employmentType === 'PERMANENT') {
+      notifications.show({
+        title: common('error'),
+        message: t('permanentEmployeeManualCreateBlocked'),
+        color: 'red',
+      });
+      return;
+    }
+
     try {
       let userId = editingEmployee?.userId ?? null;
 
@@ -362,11 +387,16 @@ export default function EmployeesPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-primary">{t('coreEyebrow')}</p>
-          <h1 className="text-2xl font-semibold tracking-normal">{t('employees')}</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">{t('employeesDescription')}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={openCreateEmployee}>
+            <Plus className="size-4" />
+            {t('addEmployee')}
+          </Button>
+          <Button variant="outline" onClick={() => router.push('/permanent-employees')}>
+            <FileSpreadsheet className="size-4" />
+            {t('pullPermanentEmployees')}
+          </Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
@@ -381,10 +411,6 @@ export default function EmployeesPage() {
               <p className="text-base font-semibold">{selectedDepartmentEmployeeCount}</p>
             </div>
           </div>
-          <Button onClick={openCreateEmployee}>
-            <Plus className="size-4" />
-            {t('addEmployee')}
-          </Button>
         </div>
       </div>
 
@@ -456,6 +482,11 @@ export default function EmployeesPage() {
                       <p className="text-xs text-muted-foreground">
                         {employee.employeeCode} · {employee.position?.nameEn ?? t('noPosition')}
                       </p>
+                      {isBiometricExempt(employee) ? (
+                        <Badge variant="outline" className="mt-1 border-emerald-500 text-emerald-700 dark:text-emerald-400">
+                          {t('biometricExempt')}
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="text-sm">
                       <p>{employee.email ?? '-'}</p>
@@ -565,10 +596,23 @@ export default function EmployeesPage() {
               </div>
               <div className="space-y-2">
                 <Label>{t('employmentType')}</Label>
-                <Select value={form.employmentType} onValueChange={(value) => setForm((current) => ({ ...current, employmentType: value as EmploymentType }))}>
+                <Select
+                  value={form.employmentType}
+                  onValueChange={(value) => setForm((current) => ({ ...current, employmentType: value as EmploymentType }))}
+                  disabled={Boolean(editingEmployee && editingEmployee.employmentType === 'PERMANENT')}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{employmentTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    {(editingEmployee?.employmentType === 'PERMANENT' ? employmentTypes : manualEmploymentTypes).map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
                 </Select>
+                {!editingEmployee ? (
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {t('permanentEmployeeExternalOnly')}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-2">
                 <Label>{t('hireDate')}</Label>
@@ -642,6 +686,7 @@ export default function EmployeesPage() {
                   !form.firstNameEn.trim() ||
                   !form.lastNameEn.trim() ||
                   !form.departmentId ||
+                  (!(editingEmployee && editingEmployee.employmentType === 'PERMANENT') && form.employmentType === 'PERMANENT') ||
                   (form.createLoginUser && (!form.email.trim() || form.roleIds.length === 0))
                 }
               >

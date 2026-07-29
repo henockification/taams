@@ -22,6 +22,9 @@ dotenv.config({ path: resolve(__dirname, '../.env') });
 
 const DEFAULT_PERMISSIONS = [
   { name: 'dashboard:read', resource: 'dashboard', action: 'read', description: 'View dashboard' },
+  { name: 'executive-dashboard:read', resource: 'executive-dashboard', action: 'read', description: 'View executive dashboard' },
+  { name: 'hr-dashboard:read', resource: 'hr-dashboard', action: 'read', description: 'View HR dashboard' },
+  { name: 'department-head-dashboard:read', resource: 'department-head-dashboard', action: 'read', description: 'View supervisor dashboard' },
   { name: 'users:read', resource: 'users', action: 'read', description: 'View users' },
   { name: 'users:create', resource: 'users', action: 'create', description: 'Create users' },
   { name: 'users:update', resource: 'users', action: 'update', description: 'Update users' },

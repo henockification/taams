@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { Separator } from '@/components/ui/separator';
@@ -14,21 +15,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
-import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
+  ChevronDown,
+  LogOut,
+  Settings,
+  User,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useSession, signOut } from '@/lib/auth-client';
 import { Link, usePathname, useRouter } from '@/i18n';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { LanguageSwitcher } from '@/components/language-switcher';
-import { getFirstAccessiblePath, userCanAccessPath } from '@/config/app-navigation';
+import { getFirstAccessiblePath, getNavItemForPath, userCanAccessPath } from '@/config/app-navigation';
+import { coreQueryKeys } from '@/data/hooks/core.hooks';
 
 interface PrivateLayoutProps {
   children: React.ReactNode;
@@ -36,9 +35,13 @@ interface PrivateLayoutProps {
 
 export default function PrivateLayout({ children }: PrivateLayoutProps) {
   const { data: session, isPending } = useSession();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const t = useTranslations('navigation');
+  const dashboardT = useTranslations('dashboard');
+  const coreT = useTranslations('core');
+  const rbacT = useTranslations('rbac');
 
   // Redirect to signin if not authenticated, or to home if not admin
   React.useEffect(() => {
@@ -50,7 +53,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
     }
 
     if (!userCanAccessPath(session.user, pathname)) {
-      router.push(getFirstAccessiblePath(session.user) ?? '/');
+      router.push(getFirstAccessiblePath(session.user) ?? '/dashboard');
     }
   }, [session, isPending, router, pathname]);
 
@@ -73,6 +76,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
   const handleSignOut = async () => {
     try {
       await signOut();
+      queryClient.removeQueries({ queryKey: coreQueryKeys.all });
       router.push('/auth/signin');
     } catch (error) {
       console.error('Sign out error:', error);
@@ -87,56 +91,74 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
     return parts.map((part: string) => part.charAt(0).toUpperCase()).join('');
   };
 
-  const generateBreadcrumbs = () => {
-    if (!pathname) return [];
+  const getPageDescription = () => {
+    const navItem = getNavItemForPath(pathname);
 
-    const segments = pathname.split('/').filter(Boolean);
-
-    const routeLabels: Record<string, string> = {
-      dashboard: t('dashboard'),
-      users: t('users'),
-      roles: t('roles'),
-      permissions: t('permissions'),
-      employees: t('employees'),
-      positions: t('positions'),
-      'organization-structure': t('organizationStructure'),
-    };
-
-    const breadcrumbs: Array<{ label: string; href: string; isLast: boolean }> = [];
-
-    breadcrumbs.push({
-      label: t('dashboard'),
-      href: '/dashboard',
-      isLast: segments.length === 0 || segments[0] === 'dashboard',
-    });
-
-    let currentPath = '';
-    segments.forEach((segment, index) => {
-      if (segment === 'dashboard' && index === 0) {
-        return;
-      }
-
-      currentPath += `/${segment}`;
-      const isLast = index === segments.length - 1;
-
-      breadcrumbs.push({
-        label: routeLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1).replace(/-/g, ' '),
-        href: currentPath,
-        isLast,
-      });
-    });
-
-    return breadcrumbs;
+    switch (navItem?.titleKey) {
+      case 'dashboard':
+        return dashboardT('emptyDescription');
+      case 'executiveDashboard':
+        return coreT('executiveDashboardDescription');
+      case 'hrDashboard':
+        return coreT('hrDashboardDescription');
+      case 'departmentHeadDashboard':
+        return coreT('departmentHeadDashboardDescription');
+      case 'organizationStructure':
+        return coreT('organizationStructureDescription');
+      case 'positions':
+        return coreT('positionsDescription');
+      case 'employees':
+        return coreT('employeesDescription');
+      case 'permanentEmployees':
+        return coreT('permanentEmployeesDescription');
+      case 'fiscalYears':
+        return coreT('fiscalYearsDescription');
+      case 'leaveTypes':
+        return coreT('leaveTypesDescription');
+      case 'leaveBalances':
+        return coreT('initialBalancesDescription');
+      case 'leaveTransfer':
+        return coreT('leaveTransferDescription');
+      case 'leaveRequestApprovals':
+        return coreT('leaveRequestApprovalsDescription');
+      case 'annualLeaveRequests':
+        return coreT('annualLeaveRequestsDescription');
+      case 'otherLeaveRequests':
+        return coreT('otherLeaveRequestsDescription');
+      case 'manualPunchRequests':
+        return coreT('manualPunchRequestsDescription');
+      case 'workSchedules':
+        return coreT('workSchedulesDescription');
+      case 'shifts':
+        return coreT('shiftsDescription');
+      case 'scheduleAssignments':
+        return coreT('assignWorkScheduleDescription');
+      case 'biometricDevices':
+        return coreT('biometricDevicesDescription');
+      case 'biometricExemptions':
+        return coreT('biometricExemptionsDescription');
+      case 'attendancePunches':
+        return coreT('attendancePunchesDescription');
+      case 'users':
+        return rbacT('usersDescription');
+      case 'roles':
+        return rbacT('rolesDescription');
+      case 'permissions':
+        return rbacT('permissionsDescription');
+      default:
+        return '';
+    }
   };
 
-  const breadcrumbs = generateBreadcrumbs();
-  const currentPage = breadcrumbs[breadcrumbs.length - 1]?.label ?? t('dashboard');
+  const currentNavItem = getNavItemForPath(pathname);
+  const currentPage = currentNavItem ? t(currentNavItem.titleKey) : t('dashboard');
+  const currentDescription = getPageDescription();
 
   return (
     <SidebarProvider>
       <AppSidebar user={session.user} />
       <SidebarInset>
-        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 backdrop-blur transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-14">
+        <header className="sticky top-0 z-20 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:min-h-14">
           <div className="flex min-w-0 items-center gap-3">
             <SidebarTrigger className="-ml-1 text-primary hover:bg-accent hover:text-accent-foreground" />
             <Separator orientation="vertical" className="hidden h-5 sm:block" />
@@ -144,26 +166,11 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
               <h1 className="truncate text-sm font-semibold text-foreground sm:text-base">
                 {currentPage}
               </h1>
-              <Breadcrumb className="hidden sm:block">
-                <BreadcrumbList>
-                  {breadcrumbs.map((crumb, index) => (
-                    <React.Fragment key={crumb.href}>
-                      {index > 0 && <BreadcrumbSeparator className="hidden md:block" />}
-                      <BreadcrumbItem className="hidden md:block">
-                        {crumb.isLast ? (
-                          <BreadcrumbPage className="capitalize">{crumb.label}</BreadcrumbPage>
-                        ) : (
-                          <BreadcrumbLink asChild>
-                            <Link href={crumb.href} className="capitalize">
-                              {crumb.label}
-                            </Link>
-                          </BreadcrumbLink>
-                        )}
-                      </BreadcrumbItem>
-                    </React.Fragment>
-                  ))}
-                </BreadcrumbList>
-              </Breadcrumb>
+              {currentDescription ? (
+                <p className="hidden max-w-[min(52rem,calc(100vw-22rem))] truncate text-xs text-muted-foreground sm:block">
+                  {currentDescription}
+                </p>
+              ) : null}
             </div>
           </div>
 

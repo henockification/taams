@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -103,12 +102,7 @@ export default function PositionsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-primary">{t('coreEyebrow')}</p>
-          <h1 className="text-2xl font-semibold tracking-normal">{t('positions')}</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">{t('positionsDescription')}</p>
-        </div>
+      <div className="flex justify-start">
         <Button onClick={openCreatePosition}>
           <Plus className="size-4" />
           {t('addPosition')}
@@ -118,7 +112,6 @@ export default function PositionsPage() {
       <Card className="rounded-lg">
         <CardHeader>
           <CardTitle>{t('positions')}</CardTitle>
-          <CardDescription>{t('positionsDescription')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {isLoading ? (

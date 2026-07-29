@@ -27,6 +27,13 @@ export const usersRoute = createRoute({
   tags: ['Users'],
   summary: 'Get All Users',
   description: 'Retrieve a list of all users from the database',
+  request: {
+    query: z.object({
+      page: z.string().optional(),
+      pageSize: z.string().optional(),
+      search: z.string().optional(),
+    }),
+  },
   responses: {
     200: {
       content: {

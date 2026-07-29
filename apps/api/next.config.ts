@@ -1,6 +1,21 @@
 import type { NextConfig } from 'next'
+import path from 'path'
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../..'),
+  async rewrites() {
+    return [
+      {
+        source: '/iclock/cdata',
+        destination: '/api/zkteco/cdata',
+      },
+      {
+        source: '/iclock/getrequest',
+        destination: '/api/zkteco/getrequest'
+      }
+    ];
+  },
   // Disable source maps completely to avoid the source-map issue
   productionBrowserSourceMaps: false,
   // Disable server source maps as well

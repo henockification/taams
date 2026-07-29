@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { user } from '../../schema';
-import { count } from 'drizzle-orm';
+import { count, ilike, or } from 'drizzle-orm';
 
 type UserModel = {
   id: string;
@@ -16,21 +16,32 @@ type UserModel = {
 export async function getAllUsersPaginated({
   page = 1,
   pageSize = 20,
+  search = '',
 }: {
   page?: number;
   pageSize?: number;
+  search?: string;
 }): Promise<{ users: UserModel[]; total: number; page: number; pageSize: number }> {
   const offset = (page - 1) * pageSize;
+  const normalizedSearch = search.trim();
+  const whereClause = normalizedSearch
+    ? or(
+        ilike(user.name, `%${normalizedSearch}%`),
+        ilike(user.email, `%${normalizedSearch}%`),
+      )
+    : undefined;
 
   // Get total count
   const [{ count: totalCount }] = await db
     .select({ count: count() })
-    .from(user);
+    .from(user)
+    .where(whereClause);
 
   // Get paginated users
   const users = await db
     .select()
     .from(user)
+    .where(whereClause)
     .orderBy(user.createdAt)
     .limit(pageSize)
     .offset(offset);

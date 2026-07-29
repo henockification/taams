@@ -310,36 +310,29 @@ export default function OrganizationStructurePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-primary">{t('coreEyebrow')}</p>
-          <h1 className="text-2xl font-semibold tracking-normal">{t('organizationStructure')}</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">{t('organizationStructureDescription')}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex w-fit rounded-md border border-border p-1">
-            <Button
-              type="button"
-              variant={organizationView === 'tree' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setOrganizationView('tree')}
-            >
-              <ListTree className="size-4" />
-              {t('treeView')}
-            </Button>
-            <Button
-              type="button"
-              variant={organizationView === 'chart' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setOrganizationView('chart')}
-            >
-              <GitBranch className="size-4" />
-              {t('chartView')}
-            </Button>
-          </div>
-          <Button onClick={() => openCreateDepartment()}>
-            <Plus className="size-4" />
-            {t('addRootDepartment')}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button onClick={() => openCreateDepartment()}>
+          <Plus className="size-4" />
+          {t('addRootDepartment')}
+        </Button>
+        <div className="flex w-fit rounded-md border border-border p-1">
+          <Button
+            type="button"
+            variant={organizationView === 'tree' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setOrganizationView('tree')}
+          >
+            <ListTree className="size-4" />
+            {t('treeView')}
+          </Button>
+          <Button
+            type="button"
+            variant={organizationView === 'chart' ? 'secondary' : 'ghost'}
+            size="sm"
+            onClick={() => setOrganizationView('chart')}
+          >
+            <GitBranch className="size-4" />
+            {t('chartView')}
           </Button>
         </div>
       </div>

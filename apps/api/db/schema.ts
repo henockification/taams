@@ -13,6 +13,7 @@ import {
   pgEnum,
   index,
   unique,
+  uniqueIndex,
   primaryKey,
   vector,
   numeric,
@@ -125,6 +126,29 @@ export const positions = pgTable('positions', {
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
 
+export const biometricExemptions = pgTable('biometric_exemptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'cascade' }),
+  positionId: uuid('position_id').references(() => positions.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: text('created_by').references(() => user.id),
+  updatedBy: text('updated_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  employeeOrPositionCheck: check('chk_biometric_exemption_target', sql`num_nonnulls(${table.employeeId}, ${table.positionId}) = 1`),
+  activeEmployeeUnique: uniqueIndex('biometric_exemptions_active_employee_unique')
+    .on(table.employeeId)
+    .where(sql`${table.isActive} = true AND ${table.employeeId} IS NOT NULL`),
+  activePositionUnique: uniqueIndex('biometric_exemptions_active_position_unique')
+    .on(table.positionId)
+    .where(sql`${table.isActive} = true AND ${table.positionId} IS NOT NULL`),
+  employeeIdx: index('biometric_exemptions_employee_id_idx').on(table.employeeId),
+  positionIdx: index('biometric_exemptions_position_id_idx').on(table.positionId),
+  activeIdx: index('biometric_exemptions_active_idx').on(table.isActive),
+}));
+
 export const shifts = pgTable('shifts', {
   id: uuid('id').primaryKey().defaultRandom(),
   nameEn: varchar('name_en', { length: 100 }).notNull(),
@@ -205,10 +229,21 @@ export const employees = pgTable('employees', {
   email: varchar('email', { length: 150 }),
   departmentId: uuid('department_id').notNull().references(() => departments.id),
   positionId: uuid('position_id').references(() => positions.id),
+  positionName: varchar('position_name', { length: 200 }),
   employmentStatus: varchar('employment_status', { length: 30 }).notNull().default('ACTIVE'),
   employmentType: varchar('employment_type', { length: 30 }).notNull().default('PERMANENT'),
   hireDate: date('hire_date'),
   terminationDate: date('termination_date'),
+  sourceIdNo: varchar('source_id_no', { length: 50 }),
+  sourceEmployeeCode: varchar('source_employee_code', { length: 50 }),
+  sourceEmploymentStatus: varchar('source_employment_status', { length: 100 }),
+  sourceDepartmentName: varchar('source_department_name', { length: 200 }),
+  sourcePositionName: varchar('source_position_name', { length: 200 }),
+  sourcePositionCode: varchar('source_position_code', { length: 50 }),
+  salary: numeric('salary', { precision: 14, scale: 2 }),
+  salaryStep: varchar('salary_step', { length: 50 }),
+  sourceImportedAt: timestamp('source_imported_at', { withTimezone: true, precision: 6 }),
+  sourceRawPayload: jsonb('source_raw_payload'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
@@ -238,6 +273,207 @@ export const employeeSupervisors = pgTable('employee_supervisors', {
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 }, (table) => ({
   employeeNotOwnSupervisorCheck: check('chk_employee_not_own_supervisor', sql`${table.employeeId} <> ${table.supervisorId}`),
+}));
+
+export const biometricDevices = pgTable('biometric_devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  deviceName: varchar('device_name', { length: 150 }).notNull(),
+  deviceCode: varchar('device_code', { length: 100 }).notNull().unique(),
+  ipAddress: varchar('ip_address', { length: 100 }),
+  port: integer('port').default(4370),
+  locationName: varchar('location_name', { length: 150 }),
+  departmentId: uuid('department_id').references(() => departments.id),
+  deviceType: varchar('device_type', { length: 50 }).notNull().default('BIOMETRIC'),
+  connectionType: varchar('connection_type', { length: 50 }).notNull().default('TCP_IP'),
+  vendor: varchar('vendor', { length: 50 }).notNull().default('ZKTECO'),
+  protocol: varchar('protocol', { length: 50 }).notNull().default('TCP_IP'),
+  integrationMode: varchar('integration_mode', { length: 30 }).notNull().default('HYBRID'),
+  preferredMode: varchar('preferred_mode', { length: 30 }).notNull().default('PUSH_ADMS'),
+  pushEnabled: boolean('push_enabled').notNull().default(true),
+  pullEnabled: boolean('pull_enabled').notNull().default(true),
+  pushSecret: varchar('push_secret', { length: 200 }),
+  communicationKey: varchar('communication_key', { length: 100 }),
+  serialNumber: varchar('serial_number', { length: 150 }),
+  model: varchar('model', { length: 150 }),
+  manufacturer: varchar('manufacturer', { length: 150 }),
+  isActive: boolean('is_active').notNull().default(true),
+  lastSyncAt: timestamp('last_sync_at', { withTimezone: false }),
+  lastSuccessfulSyncAt: timestamp('last_successful_sync_at', { withTimezone: false }),
+  lastFailedSyncAt: timestamp('last_failed_sync_at', { withTimezone: false }),
+  lastPushAt: timestamp('last_push_at', { withTimezone: false }),
+  lastPullAt: timestamp('last_pull_at', { withTimezone: false }),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: false }),
+  lastErrorMessage: text('last_error_message'),
+  syncIntervalMinutes: integer('sync_interval_minutes').notNull().default(5),
+  autoSyncEnabled: boolean('auto_sync_enabled').notNull().default(true),
+  healthStatus: varchar('health_status', { length: 30 }).notNull().default('UNKNOWN'),
+  fallbackToPull: boolean('fallback_to_pull').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  deviceTypeCheck: check('chk_device_type', sql`${table.deviceType} IN ('BIOMETRIC', 'RFID', 'FACE_RECOGNITION', 'MOBILE', 'WEB')`),
+  connectionTypeCheck: check('chk_connection_type', sql`${table.connectionType} IN ('TCP_IP', 'USB', 'WIFI', 'API')`),
+  integrationModeCheck: check('chk_device_integration_mode', sql`${table.integrationMode} IN ('PUSH_ADMS', 'TCP_PULL', 'HYBRID', 'MANUAL_ONLY', 'DISABLED')`),
+  healthStatusCheck: check('chk_device_health_status', sql`${table.healthStatus} IN ('ONLINE', 'OFFLINE', 'UNKNOWN', 'ERROR')`),
+}));
+
+export const attendanceSyncBatches = pgTable('attendance_sync_batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  deviceId: uuid('device_id').references(() => biometricDevices.id),
+  syncStartedAt: timestamp('sync_started_at', { withTimezone: false }).notNull().defaultNow(),
+  syncCompletedAt: timestamp('sync_completed_at', { withTimezone: false }),
+  syncStatus: varchar('sync_status', { length: 30 }).notNull().default('STARTED'),
+  totalRecords: integer('total_records').notNull().default(0),
+  successfulRecords: integer('successful_records').notNull().default(0),
+  failedRecords: integer('failed_records').notNull().default(0),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  syncStatusCheck: check('chk_sync_status', sql`${table.syncStatus} IN ('STARTED', 'COMPLETED', 'FAILED', 'PARTIAL')`),
+  deviceIdIdx: index('idx_attendance_sync_batches_device_id').on(table.deviceId),
+}));
+
+export const attendancePunches = pgTable('attendance_punches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').references(() => employees.id),
+  biometricId: varchar('biometric_id', { length: 100 }).notNull(),
+  deviceId: uuid('device_id').references(() => biometricDevices.id),
+  syncBatchId: uuid('sync_batch_id').references(() => attendanceSyncBatches.id),
+  externalUid: varchar('external_uid', { length: 200 }),
+  punchTime: timestamp('punch_time', { withTimezone: false }).notNull(),
+  punchType: varchar('punch_type', { length: 30 }).notNull().default('UNKNOWN'),
+  verificationType: varchar('verification_type', { length: 50 }),
+  devicePunchId: varchar('device_punch_id', { length: 150 }),
+  source: varchar('source', { length: 30 }).notNull().default('DEVICE'),
+  isProcessed: boolean('is_processed').notNull().default(false),
+  isManual: boolean('is_manual').notNull().default(false),
+  manualReason: text('manual_reason'),
+  approvedBy: text('approved_by').references(() => user.id),
+  approvedAt: timestamp('approved_at', { withTimezone: false }),
+  processedAt: timestamp('processed_at', { withTimezone: false }),
+  rawPayload: jsonb('raw_payload'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  punchTypeCheck: check('chk_punch_type', sql`${table.punchType} IN ('IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN')`),
+  punchSourceCheck: check('chk_punch_source', sql`${table.source} IN ('DEVICE', 'MANUAL', 'IMPORT', 'MOBILE', 'WEB')`),
+  uniquePunch: uniqueIndex('ux_attendance_punch_unique').on(
+    table.biometricId,
+    table.punchTime,
+    sql`COALESCE(${table.deviceId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+  ),
+  externalUidUnique: uniqueIndex('ux_attendance_punch_external_uid').on(table.deviceId, table.externalUid).where(sql`${table.externalUid} IS NOT NULL`),
+  employeeIdIdx: index('idx_attendance_punches_employee_id').on(table.employeeId),
+  biometricIdIdx: index('idx_attendance_punches_biometric_id').on(table.biometricId),
+  punchTimeIdx: index('idx_attendance_punches_punch_time').on(table.punchTime),
+  employeeTimeIdx: index('idx_attendance_punches_employee_time').on(table.employeeId, table.punchTime),
+  processedIdx: index('idx_attendance_punches_processed').on(table.isProcessed),
+}));
+
+export const manualPunchRequests = pgTable('manual_punch_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  requestedPunchTime: timestamp('requested_punch_time', { withTimezone: false }).notNull(),
+  requestedPunchType: varchar('requested_punch_type', { length: 30 }).notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  requestedBy: text('requested_by').notNull().references(() => user.id),
+  approvedBy: text('approved_by').references(() => user.id),
+  approvedAt: timestamp('approved_at', { withTimezone: false }),
+  rejectedBy: text('rejected_by').references(() => user.id),
+  rejectedAt: timestamp('rejected_at', { withTimezone: false }),
+  rejectionReason: text('rejection_reason'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  manualPunchStatusCheck: check('chk_manual_punch_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  manualRequestedPunchTypeCheck: check('chk_manual_requested_punch_type', sql`${table.requestedPunchType} IN ('IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN')`),
+}));
+
+export const leaveFiscalYears = pgTable('leave_fiscal_years', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 100 }).notNull().unique(),
+  startsAt: date('starts_at').notNull(),
+  endsAt: date('ends_at').notNull(),
+  isActive: boolean('is_active').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  dateRangeCheck: check('chk_leave_fiscal_year_date_range', sql`${table.startsAt} <= ${table.endsAt}`),
+}));
+
+export const leaveTypes = pgTable('leave_types', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  code: varchar('code', { length: 50 }).notNull().unique(),
+  nameEn: varchar('name_en', { length: 150 }).notNull(),
+  nameAm: varchar('name_am', { length: 150 }),
+  description: text('description'),
+  deductsAnnualBalance: boolean('deducts_annual_balance').notNull().default(false),
+  requiresBalance: boolean('requires_balance').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+});
+
+export const leaveBalances = pgTable('leave_balances', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  fiscalYearId: uuid('fiscal_year_id').notNull().references(() => leaveFiscalYears.id),
+  employmentTypeSnapshot: varchar('employment_type_snapshot', { length: 30 }).notNull(),
+  opening: numeric('opening', { precision: 8, scale: 2 }).notNull().default('0'),
+  transferredIn: numeric('transferred_in', { precision: 8, scale: 2 }).notNull().default('0'),
+  used: numeric('used', { precision: 8, scale: 2 }).notNull().default('0'),
+  available: numeric('available', { precision: 8, scale: 2 }).notNull().default('0'),
+  createdBy: text('created_by').references(() => user.id),
+  updatedBy: text('updated_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  balanceEmployeeFiscalYearUnique: unique('leave_balances_employee_fiscal_year_unique').on(table.employeeId, table.fiscalYearId),
+  employmentTypeSnapshotCheck: check('chk_leave_balance_employment_type', sql`${table.employmentTypeSnapshot} IN ('PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY')`),
+  nonNegativeOpeningCheck: check('chk_leave_balance_opening_nonnegative', sql`${table.opening} >= 0`),
+  nonNegativeTransferredInCheck: check('chk_leave_balance_transferred_in_nonnegative', sql`${table.transferredIn} >= 0`),
+  nonNegativeUsedCheck: check('chk_leave_balance_used_nonnegative', sql`${table.used} >= 0`),
+  nonNegativeAvailableCheck: check('chk_leave_balance_available_nonnegative', sql`${table.available} >= 0`),
+}));
+
+export const leaveBalanceTransactions = pgTable('leave_balance_transactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leaveBalanceId: uuid('leave_balance_id').notNull().references(() => leaveBalances.id),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  fiscalYearId: uuid('fiscal_year_id').notNull().references(() => leaveFiscalYears.id),
+  leaveRequestId: uuid('leave_request_id'),
+  linkedTransactionId: uuid('linked_transaction_id'),
+  type: varchar('type', { length: 40 }).notNull(),
+  days: numeric('days', { precision: 8, scale: 2 }).notNull(),
+  note: text('note'),
+  createdBy: text('created_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  transactionTypeCheck: check('chk_leave_balance_transaction_type', sql`${table.type} IN ('INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'REVERSAL', 'ADJUSTMENT')`),
+}));
+
+export const leaveRequests = pgTable('leave_requests', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  leaveTypeId: uuid('leave_type_id').notNull().references(() => leaveTypes.id),
+  fiscalYearId: uuid('fiscal_year_id').references(() => leaveFiscalYears.id),
+  startDate: date('start_date').notNull(),
+  endDate: date('end_date').notNull(),
+  requestedDays: numeric('requested_days', { precision: 8, scale: 2 }).notNull(),
+  reason: text('reason').notNull(),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  requestedBy: text('requested_by').notNull().references(() => user.id),
+  approvedBy: text('approved_by').references(() => user.id),
+  approvedAt: timestamp('approved_at', { withTimezone: false }),
+  rejectedBy: text('rejected_by').references(() => user.id),
+  rejectedAt: timestamp('rejected_at', { withTimezone: false }),
+  rejectionReason: text('rejection_reason'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  leaveRequestDateRangeCheck: check('chk_leave_request_date_range', sql`${table.startDate} <= ${table.endDate}`),
+  leaveRequestStatusCheck: check('chk_leave_request_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  leaveRequestedDaysPositiveCheck: check('chk_leave_request_days_positive', sql`${table.requestedDays} > 0`),
 }));
 
 export const userRelations = relations(user, ({ one, many }) => ({
@@ -389,6 +625,155 @@ export const employeeSupervisorsRelations = relations(employeeSupervisors, ({ on
   }),
 }));
 
+export const biometricExemptionsRelations = relations(biometricExemptions, ({ one }) => ({
+  employee: one(employees, {
+    fields: [biometricExemptions.employeeId],
+    references: [employees.id],
+  }),
+  position: one(positions, {
+    fields: [biometricExemptions.positionId],
+    references: [positions.id],
+  }),
+  createdByUser: one(user, {
+    fields: [biometricExemptions.createdBy],
+    references: [user.id],
+    relationName: 'biometricExemptionCreatedBy',
+  }),
+  updatedByUser: one(user, {
+    fields: [biometricExemptions.updatedBy],
+    references: [user.id],
+    relationName: 'biometricExemptionUpdatedBy',
+  }),
+}));
+
+export const biometricDevicesRelations = relations(biometricDevices, ({ one, many }) => ({
+  department: one(departments, {
+    fields: [biometricDevices.departmentId],
+    references: [departments.id],
+  }),
+  syncBatches: many(attendanceSyncBatches),
+  punches: many(attendancePunches),
+}));
+
+export const attendanceSyncBatchesRelations = relations(attendanceSyncBatches, ({ one, many }) => ({
+  device: one(biometricDevices, {
+    fields: [attendanceSyncBatches.deviceId],
+    references: [biometricDevices.id],
+  }),
+  punches: many(attendancePunches),
+}));
+
+export const attendancePunchesRelations = relations(attendancePunches, ({ one }) => ({
+  employee: one(employees, {
+    fields: [attendancePunches.employeeId],
+    references: [employees.id],
+  }),
+  approver: one(user, {
+    fields: [attendancePunches.approvedBy],
+    references: [user.id],
+  }),
+  device: one(biometricDevices, {
+    fields: [attendancePunches.deviceId],
+    references: [biometricDevices.id],
+  }),
+  syncBatch: one(attendanceSyncBatches, {
+    fields: [attendancePunches.syncBatchId],
+    references: [attendanceSyncBatches.id],
+  }),
+}));
+
+export const manualPunchRequestsRelations = relations(manualPunchRequests, ({ one }) => ({
+  employee: one(employees, {
+    fields: [manualPunchRequests.employeeId],
+    references: [employees.id],
+  }),
+  requester: one(user, {
+    fields: [manualPunchRequests.requestedBy],
+    references: [user.id],
+    relationName: 'manualPunchRequestRequester',
+  }),
+  approver: one(user, {
+    fields: [manualPunchRequests.approvedBy],
+    references: [user.id],
+    relationName: 'manualPunchRequestApprover',
+  }),
+  rejecter: one(user, {
+    fields: [manualPunchRequests.rejectedBy],
+    references: [user.id],
+    relationName: 'manualPunchRequestRejecter',
+  }),
+}));
+
+export const leaveFiscalYearsRelations = relations(leaveFiscalYears, ({ many }) => ({
+  balances: many(leaveBalances),
+  requests: many(leaveRequests),
+}));
+
+export const leaveTypesRelations = relations(leaveTypes, ({ many }) => ({
+  requests: many(leaveRequests),
+}));
+
+export const leaveBalancesRelations = relations(leaveBalances, ({ one, many }) => ({
+  employee: one(employees, {
+    fields: [leaveBalances.employeeId],
+    references: [employees.id],
+  }),
+  fiscalYear: one(leaveFiscalYears, {
+    fields: [leaveBalances.fiscalYearId],
+    references: [leaveFiscalYears.id],
+  }),
+  transactions: many(leaveBalanceTransactions),
+}));
+
+export const leaveBalanceTransactionsRelations = relations(leaveBalanceTransactions, ({ one }) => ({
+  leaveBalance: one(leaveBalances, {
+    fields: [leaveBalanceTransactions.leaveBalanceId],
+    references: [leaveBalances.id],
+  }),
+  employee: one(employees, {
+    fields: [leaveBalanceTransactions.employeeId],
+    references: [employees.id],
+  }),
+  fiscalYear: one(leaveFiscalYears, {
+    fields: [leaveBalanceTransactions.fiscalYearId],
+    references: [leaveFiscalYears.id],
+  }),
+  leaveRequest: one(leaveRequests, {
+    fields: [leaveBalanceTransactions.leaveRequestId],
+    references: [leaveRequests.id],
+  }),
+}));
+
+export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
+  employee: one(employees, {
+    fields: [leaveRequests.employeeId],
+    references: [employees.id],
+  }),
+  leaveType: one(leaveTypes, {
+    fields: [leaveRequests.leaveTypeId],
+    references: [leaveTypes.id],
+  }),
+  fiscalYear: one(leaveFiscalYears, {
+    fields: [leaveRequests.fiscalYearId],
+    references: [leaveFiscalYears.id],
+  }),
+  requester: one(user, {
+    fields: [leaveRequests.requestedBy],
+    references: [user.id],
+    relationName: 'leaveRequestRequester',
+  }),
+  approver: one(user, {
+    fields: [leaveRequests.approvedBy],
+    references: [user.id],
+    relationName: 'leaveRequestApprover',
+  }),
+  rejecter: one(user, {
+    fields: [leaveRequests.rejectedBy],
+    references: [user.id],
+    relationName: 'leaveRequestRejecter',
+  }),
+}));
+
 // Export all tables for easy access
 export const allTables = {
   user,
@@ -409,4 +794,14 @@ export const allTables = {
   employeeWorkSchedules,
   employees,
   employeeSupervisors,
+  biometricExemptions,
+  biometricDevices,
+  attendanceSyncBatches,
+  attendancePunches,
+  manualPunchRequests,
+  leaveFiscalYears,
+  leaveTypes,
+  leaveBalances,
+  leaveBalanceTransactions,
+  leaveRequests,
 };

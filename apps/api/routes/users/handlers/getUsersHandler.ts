@@ -8,8 +8,9 @@ export async function getUsersHandler(c: Context) {
     // Get pagination parameters from query string
     const page = parseInt(c.req.query('page') || '1');
     const pageSize = parseInt(c.req.query('pageSize') || '20');
+    const search = c.req.query('search') || '';
     
-    const result = await getAllUsersPaginated({ page, pageSize });
+    const result = await getAllUsersPaginated({ page, pageSize, search });
 
     // Transform the data to match the schema
     const transformedUsers = result.users.map(u => ({

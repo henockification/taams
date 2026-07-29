@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 import { ArrowLeft, Plus, UserRoundCog } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +35,7 @@ import { Switch } from '@/components/ui/switch';
 import { Link } from '@/i18n';
 import { notifications } from '@/lib/notifications';
 import {
+  useBiometricExemptions,
   useCreateEmployeeSupervisor,
   useEmployee,
   useEmployees,
@@ -43,12 +44,14 @@ import {
 
 export default function EmployeeDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const employeeId = params.id as string;
   const t = useTranslations('core');
   const common = useTranslations('common');
   const { data: employeeResponse, isLoading } = useEmployee(employeeId);
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useEmployeeSupervisors(employeeId);
   const { data: employeesResponse } = useEmployees();
+  const { data: biometricExemptionsResponse } = useBiometricExemptions();
   const createSupervisor = useCreateEmployeeSupervisor();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [supervisorId, setSupervisorId] = useState('');
@@ -58,6 +61,21 @@ export default function EmployeeDetailPage() {
 
   const employee = employeeResponse?.employee;
   const supervisors = supervisorsResponse?.supervisors ?? [];
+  const biometricExemptions = biometricExemptionsResponse?.biometricExemptions ?? [];
+  const backHref = searchParams.get('from') === 'permanent-employees' ? '/permanent-employees' : '/employees';
+  const englishFullName = employee
+    ? [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ')
+    : null;
+  const departmentName = employee?.department?.nameEn ?? employee?.sourceDepartmentName ?? null;
+  const positionName = employee?.positionName ?? employee?.position?.nameEn ?? employee?.sourcePositionName ?? null;
+  const positionCode = employee?.sourcePositionCode ?? employee?.sourceEmployeeCode ?? null;
+  const importedEmploymentStatus = employee?.sourceEmploymentStatus ?? null;
+  const isBiometricExempt = Boolean(
+    employee && biometricExemptions.some((exemption) => exemption.isActive && (
+      exemption.employeeId === employee.id
+      || (employee.positionId && exemption.positionId === employee.positionId)
+    )),
+  );
   const employeeOptions = useMemo(() => {
     return (employeesResponse?.employees ?? []).filter((option) => option.id !== employeeId);
   }, [employeeId, employeesResponse?.employees]);
@@ -100,7 +118,7 @@ export default function EmployeeDetailPage() {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         <Button variant="outline" asChild className="w-fit">
-          <Link href="/employees">
+          <Link href={backHref}>
             <ArrowLeft className="size-4" />
             {common('back')}
           </Link>
@@ -116,32 +134,42 @@ export default function EmployeeDetailPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <Button variant="outline" asChild className="mb-2 w-fit">
-            <Link href="/employees">
-              <ArrowLeft className="size-4" />
-              {common('back')}
-            </Link>
-          </Button>
-          <p className="text-sm font-medium text-primary">{employee.employeeCode}</p>
-          <h1 className="text-2xl font-semibold tracking-normal">
+      <div className="flex flex-col justify-between gap-3 rounded-lg border border-border bg-card p-4 lg:flex-row lg:items-center">
+        <Button variant="outline" asChild className="w-fit">
+          <Link href={backHref}>
+            <ArrowLeft className="size-4" />
+            {common('back')}
+          </Link>
+        </Button>
+        <div className="min-w-0 flex-1 lg:text-right">
+          <p className="truncate text-sm font-medium text-foreground">
             {employee.firstNameEn} {employee.middleNameEn} {employee.lastNameEn}
-          </h1>
-          <p className="text-sm text-muted-foreground">{employee.email || employee.phoneNumber || t('noContact')}</p>
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {employee.employeeCode} · {employee.email || employee.phoneNumber || t('noContact')}
+          </p>
         </div>
-        <Badge variant={employee.employmentStatus === 'ACTIVE' ? 'default' : 'secondary'}>
-          {employee.employmentStatus}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={employee.employmentStatus === 'ACTIVE' ? 'default' : 'secondary'}>
+            {employee.employmentStatus}
+          </Badge>
+          {isBiometricExempt ? (
+            <Badge variant="outline" className="border-emerald-500 text-emerald-700 dark:text-emerald-400">
+              {t('biometricExempt')}
+            </Badge>
+          ) : null}
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="rounded-lg lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <Card className="rounded-lg">
           <CardHeader>
             <CardTitle>{t('employeeProfile')}</CardTitle>
             <CardDescription>{t('employeeProfileDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
+            <Info label={t('englishFullName')} value={englishFullName} />
+            <Info label={t('idNo')} value={employee.sourceIdNo ?? employee.employeeCode} />
             <Info label={t('employeeCode')} value={employee.employeeCode} />
             <Info label={t('payrollId')} value={employee.payrollId} />
             <Info label={t('biometricId')} value={employee.biometricId} />
@@ -151,64 +179,59 @@ export default function EmployeeDetailPage() {
             <Info label={t('gender')} value={employee.gender} />
             <Info label={t('phoneNumber')} value={employee.phoneNumber} />
             <Info label={t('email')} value={employee.email} />
+            <Info label={t('department')} value={departmentName} />
+            <Info label={t('position')} value={positionName} />
+            <Info label={t('positionCode')} value={positionCode} />
+            <Info label={t('employmentType')} value={employee.employmentType} />
+            <Info label={t('employmentStatus')} value={importedEmploymentStatus ?? employee.employmentStatus} />
+            <Info label={t('hireDate')} value={employee.hireDate} />
+            <Info label={t('terminationDate')} value={employee.terminationDate} />
+            <Info label={t('salary')} value={employee.salary} />
+            <Info label={t('step')} value={employee.salaryStep} />
           </CardContent>
         </Card>
 
         <Card className="rounded-lg">
-          <CardHeader>
-            <CardTitle>{t('organization')}</CardTitle>
-            <CardDescription>{t('organizationDescription')}</CardDescription>
+          <CardHeader className="gap-4">
+            <div>
+              <CardTitle>{t('supervisors')}</CardTitle>
+              <CardDescription>{t('supervisorsDescription')}</CardDescription>
+            </div>
+            <Button onClick={() => setDialogOpen(true)} className="w-full">
+              <Plus className="size-4" />
+              {t('assignSupervisor')}
+            </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Info label={t('department')} value={employee.department?.nameEn} />
-            <Info label={t('position')} value={employee.position?.nameEn} />
-            <Info label={t('employmentType')} value={employee.employmentType} />
-            <Info label={t('hireDate')} value={employee.hireDate} />
-            <Info label={t('terminationDate')} value={employee.terminationDate} />
+          <CardContent className="space-y-3">
+            {supervisorsLoading ? (
+              <p className="text-sm text-muted-foreground">{t('loadingEmployees')}</p>
+            ) : supervisors.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('noSupervisors')}</p>
+            ) : (
+              supervisors.map((assignment) => (
+                <div key={assignment.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                      <UserRoundCog className="size-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">
+                        {assignment.supervisor?.firstNameEn} {assignment.supervisor?.lastNameEn}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {assignment.effectiveFrom} {assignment.effectiveTo ? `- ${assignment.effectiveTo}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant={assignment.isPrimary ? 'default' : 'outline'} className="shrink-0">
+                    {assignment.isPrimary ? t('primary') : t('secondary')}
+                  </Badge>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
-
-      <Card className="rounded-lg">
-        <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle>{t('supervisors')}</CardTitle>
-            <CardDescription>{t('supervisorsDescription')}</CardDescription>
-          </div>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4" />
-            {t('assignSupervisor')}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {supervisorsLoading ? (
-            <p className="text-sm text-muted-foreground">{t('loadingEmployees')}</p>
-          ) : supervisors.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('noSupervisors')}</p>
-          ) : (
-            supervisors.map((assignment) => (
-              <div key={assignment.id} className="flex items-start justify-between rounded-md border border-border p-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                    <UserRoundCog className="size-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium">
-                      {assignment.supervisor?.firstNameEn} {assignment.supervisor?.lastNameEn}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {assignment.effectiveFrom} {assignment.effectiveTo ? `- ${assignment.effectiveTo}` : ''}
-                    </p>
-                  </div>
-                </div>
-                <Badge variant={assignment.isPrimary ? 'default' : 'outline'}>
-                  {assignment.isPrimary ? t('primary') : t('secondary')}
-                </Badge>
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

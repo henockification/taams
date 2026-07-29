@@ -193,20 +193,14 @@ export default function UserDetailPage() {
   return (
     <div className="container max-w-6xl py-8">
       <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">User Details</h1>
-            <p className="text-muted-foreground">Detailed information about the user</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
-              <RotateCw className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" onClick={handleBack}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Go Back
-            </Button>
-          </div>
+        <div className="flex items-center justify-start gap-2">
+          <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+            <RotateCw className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" onClick={handleBack}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Go Back
+          </Button>
         </div>
 
         <Card>

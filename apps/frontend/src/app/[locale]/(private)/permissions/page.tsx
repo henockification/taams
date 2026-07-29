@@ -56,6 +56,7 @@ export default function PermissionsPage() {
   const createPermission = useCreatePermission();
   const updatePermission = useUpdatePermission();
   const [form, setForm] = useState(initialForm);
+  const [selectedResourceOptionUrl, setSelectedResourceOptionUrl] = useState('');
   const [permissionDialogOpen, setPermissionDialogOpen] = useState(false);
   const [editingPermission, setEditingPermission] = useState<Permission | null>(null);
 
@@ -94,18 +95,19 @@ export default function PermissionsPage() {
   const handleOpenCreatePermission = () => {
     setEditingPermission(null);
     setForm(initialForm);
+    setSelectedResourceOptionUrl('');
     setPermissionDialogOpen(true);
   };
 
   const handleOpenUpdatePermission = (permission: Permission) => {
-    const resource = permissionResourceOptions.some(
+    const resourceOption = permissionResourceOptions.find(
       (option) => option.permissionResource === permission.resource
-    )
-      ? permission.resource
-      : '';
+    );
+    const resource = resourceOption ? permission.resource : '';
     const action = isKnownAction(permission.action) ? permission.action : '';
 
     setEditingPermission(permission);
+    setSelectedResourceOptionUrl(resourceOption?.url ?? '');
     setForm({
       name: getPermissionName(resource, action) || permission.name,
       resource,
@@ -149,6 +151,7 @@ export default function PermissionsPage() {
       }
 
       setForm(initialForm);
+      setSelectedResourceOptionUrl('');
       setEditingPermission(null);
       setPermissionDialogOpen(false);
     } catch (error) {
@@ -172,6 +175,12 @@ export default function PermissionsPage() {
     });
   };
 
+  const handleResourceChange = (value: string) => {
+    const selectedOption = permissionResourceOptions.find((option) => option.url === value);
+    setSelectedResourceOptionUrl(value);
+    updateForm('resource', selectedOption?.permissionResource ?? '');
+  };
+
   const isSavingPermission = createPermission.isPending || updatePermission.isPending;
   const canSavePermission =
     form.resource.trim() &&
@@ -181,26 +190,15 @@ export default function PermissionsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-primary">{t('securityEyebrow')}</p>
-          <h1 className="text-2xl font-semibold tracking-normal text-foreground">
-            {t('permissionsTitle')}
-          </h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            {t('permissionsDescription')}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
-            <KeyRound className="size-3.5 text-primary" />
-            {permissions.length} {t('permissionsCount')}
-          </Badge>
-          <Button onClick={handleOpenCreatePermission}>
-            <Plus className="size-4" />
-            {t('addPermission')}
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button onClick={handleOpenCreatePermission}>
+          <Plus className="size-4" />
+          {t('addPermission')}
+        </Button>
+        <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
+          <KeyRound className="size-3.5 text-primary" />
+          {permissions.length} {t('permissionsCount')}
+        </Badge>
       </div>
 
       <Card className="rounded-lg">
@@ -301,15 +299,15 @@ export default function PermissionsPage() {
               <div className="space-y-2">
                 <Label>{t('resource')}</Label>
                 <Select
-                  value={form.resource}
-                  onValueChange={(value) => updateForm('resource', value)}
+                  value={selectedResourceOptionUrl}
+                  onValueChange={handleResourceChange}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={t('resourcePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {permissionResourceOptions.map((option) => (
-                      <SelectItem key={option.url} value={option.permissionResource}>
+                      <SelectItem key={option.url} value={option.url}>
                         {navigation(option.titleKey)}
                       </SelectItem>
                     ))}

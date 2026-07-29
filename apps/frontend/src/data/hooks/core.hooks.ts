@@ -1,27 +1,58 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { coreApi } from '../api/core.api';
 import type {
+  CreateAttendancePunchInput,
+  BulkUpsertLeaveBalancesInput,
+  ChangeLeaveRequestStatusInput,
+  ChangeManualPunchRequestStatusInput,
+  CreateBiometricDeviceInput,
+  CreateBiometricExemptionInput,
+  CreateBiometricDeviceSyncInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
+  CreateEmployeeWorkScheduleInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
   CreateWorkScheduleDayInput,
   CreateWorkScheduleInput,
+  CreateManualPunchRequestInput,
+  CreateLeaveFiscalYearInput,
+  CreateLeaveRequestInput,
+  LeaveRequest,
+  CreateLeaveTypeInput,
+  TransferLeaveBalanceInput,
+  UpdateBiometricDeviceInput,
+  UpdateBiometricExemptionInput,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
+  UpdateEmployeeWorkScheduleInput,
+  UpdateLeaveFiscalYearInput,
+  UpdateLeaveTypeInput,
   UpdatePositionInput,
   UpdateShiftBreakInput,
   UpdateShiftInput,
   UpdateShiftSegmentInput,
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
+  UpsertLeaveBalanceInput,
+  LeaveRequestsResponse,
 } from '../types/core.types';
 
 export const coreQueryKeys = {
   all: ['core'] as const,
+  dashboardSummary: (userId?: string | null) => {
+    if (userId) {
+      return [...coreQueryKeys.all, 'dashboard', 'summary', userId] as const;
+    }
+
+    return [...coreQueryKeys.all, 'dashboard', 'summary'] as const;
+  },
+  executiveDashboardSummary: (date: string, month: string) => [...coreQueryKeys.all, 'executive-dashboard', 'summary', date, month] as const,
+  hrDashboardSummary: (date: string) => [...coreQueryKeys.all, 'hr-dashboard', 'summary', date] as const,
+  departmentHeadDashboardSummary: (date: string) => [...coreQueryKeys.all, 'department-head-dashboard', 'summary', date] as const,
   departments: () => [...coreQueryKeys.all, 'departments'] as const,
   positions: () => [...coreQueryKeys.all, 'positions'] as const,
   shifts: () => [...coreQueryKeys.all, 'shifts'] as const,
@@ -32,9 +63,66 @@ export const coreQueryKeys = {
   workSchedule: (id: string) => [...coreQueryKeys.workSchedules(), id] as const,
   workScheduleDays: (id: string) => [...coreQueryKeys.workSchedule(id), 'days'] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
+  employeesPaginated: (page: number, pageSize: number, search: string) => [...coreQueryKeys.all, 'employees', 'paginated', page, pageSize, search] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
+  employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
+  allEmployeeWorkSchedules: () => [...coreQueryKeys.all, 'employee-work-schedules'] as const,
+  biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
+  biometricDevice: (id: string) => [...coreQueryKeys.biometricDevices(), id] as const,
+  biometricDeviceSyncHistory: (id: string) => [...coreQueryKeys.biometricDevice(id), 'sync-history'] as const,
+  biometricExemptions: () => [...coreQueryKeys.all, 'biometric-exemptions'] as const,
+  biometricExemption: (id: string) => [...coreQueryKeys.biometricExemptions(), id] as const,
+  attendancePunches: () => [...coreQueryKeys.all, 'attendance-punches'] as const,
+  employeeAttendancePunches: (id: string) => [...coreQueryKeys.attendancePunches(), 'employee', id] as const,
+  unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
+  manualPunchRequests: () => [...coreQueryKeys.all, 'manual-punch-requests'] as const,
+  leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
+  leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
+  leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
+  leaveRequests: (kind?: 'annual' | 'other') => [...coreQueryKeys.all, 'leave', 'requests', kind ?? 'all'] as const,
+  timeOperationsSummary: () => [...coreQueryKeys.all, 'time-operations', 'summary'] as const,
 };
+
+export function useDashboardSummary(userId?: string | null) {
+  return useQuery({
+    queryKey: coreQueryKeys.dashboardSummary(userId),
+    queryFn: () => coreApi.getDashboardSummary(),
+    enabled: Boolean(userId),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+}
+
+export function useExecutiveDashboardSummary(params: { date: string; month: string }) {
+  return useQuery({
+    queryKey: coreQueryKeys.executiveDashboardSummary(params.date, params.month),
+    queryFn: () => coreApi.getExecutiveDashboardSummary(params),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+}
+
+export function useHrDashboardSummary(params: { date: string }) {
+  return useQuery({
+    queryKey: coreQueryKeys.hrDashboardSummary(params.date),
+    queryFn: () => coreApi.getHrDashboardSummary(params),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+}
+
+export function useDepartmentHeadDashboardSummary(params: { date: string }) {
+  return useQuery({
+    queryKey: coreQueryKeys.departmentHeadDashboardSummary(params.date),
+    queryFn: () => coreApi.getDepartmentHeadDashboardSummary(params),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+}
 
 export function useDepartments() {
   return useQuery({
@@ -51,6 +139,7 @@ export function useCreateDepartment() {
     mutationFn: (input: CreateDepartmentInput) => coreApi.createDepartment(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.departments() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }
@@ -63,6 +152,7 @@ export function useUpdateDepartment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.departments() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }
@@ -82,6 +172,7 @@ export function useCreatePosition() {
     mutationFn: (input: CreatePositionInput) => coreApi.createPosition(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.positions() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }
@@ -94,6 +185,7 @@ export function useUpdatePosition() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.positions() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }
@@ -261,6 +353,15 @@ export function useEmployees() {
   });
 }
 
+export function useEmployeesPaginated(page: number, pageSize: number, search = '') {
+  return useQuery({
+    queryKey: coreQueryKeys.employeesPaginated(page, pageSize, search),
+    queryFn: () => coreApi.getEmployeesPaginated({ page, pageSize, search }),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useEmployee(employeeId: string) {
   return useQuery({
     queryKey: coreQueryKeys.employee(employeeId),
@@ -278,6 +379,7 @@ export function useCreateEmployee() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employee(data.employee.id) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }
@@ -290,6 +392,22 @@ export function useUpdateEmployee() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employee(data.employee.id) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useImportPermanentEmployees() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (file: File) => coreApi.importPermanentEmployees(file),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      data.employees.forEach((employee) => {
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employee(employee.id) });
+      });
     },
   });
 }
@@ -310,6 +428,530 @@ export function useCreateEmployeeSupervisor() {
     mutationFn: (input: CreateEmployeeSupervisorInput) => coreApi.createEmployeeSupervisor(input),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeSupervisors(variables.employeeId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
+  });
+}
+
+export function useEmployeeWorkSchedules(employeeId: string) {
+  return useQuery({
+    queryKey: coreQueryKeys.employeeWorkSchedules(employeeId),
+    queryFn: () => coreApi.getEmployeeWorkSchedules(employeeId),
+    enabled: Boolean(employeeId),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useAllEmployeeWorkSchedules() {
+  return useQuery({
+    queryKey: coreQueryKeys.allEmployeeWorkSchedules(),
+    queryFn: () => coreApi.getAllEmployeeWorkSchedules(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateEmployeeWorkSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateEmployeeWorkScheduleInput) => coreApi.createEmployeeWorkSchedule(input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeWorkSchedules(variables.employeeId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.allEmployeeWorkSchedules() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useUpdateEmployeeWorkSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateEmployeeWorkScheduleInput) => coreApi.updateEmployeeWorkSchedule(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.allEmployeeWorkSchedules() });
+      if (data.employeeWorkSchedule.employeeId) {
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeWorkSchedules(data.employeeWorkSchedule.employeeId) });
+      }
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useDeleteEmployeeWorkSchedule() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (employeeWorkScheduleId: string) => coreApi.deleteEmployeeWorkSchedule(employeeWorkScheduleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.allEmployeeWorkSchedules() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useBiometricDevices() {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricDevices(),
+    queryFn: () => coreApi.getBiometricDevices(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useBiometricDevice(biometricDeviceId: string) {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricDevice(biometricDeviceId),
+    queryFn: () => coreApi.getBiometricDevice(biometricDeviceId),
+    enabled: Boolean(biometricDeviceId),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateBiometricDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateBiometricDeviceInput) => coreApi.createBiometricDevice(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevices() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useUpdateBiometricDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateBiometricDeviceInput) => coreApi.updateBiometricDevice(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevices() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevice(data.biometricDevice.id) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useSyncBiometricDevice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateBiometricDeviceSyncInput) => coreApi.syncBiometricDevice(input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevices() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevice(variables.biometricDeviceId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDeviceSyncHistory(variables.biometricDeviceId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useTestBiometricDeviceConnection() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (biometricDeviceId: string) => coreApi.testBiometricDeviceConnection(biometricDeviceId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevices() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevice(data.biometricDevice.id) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useBiometricDeviceSyncHistory(biometricDeviceId: string) {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricDeviceSyncHistory(biometricDeviceId),
+    queryFn: () => coreApi.getBiometricDeviceSyncHistory(biometricDeviceId),
+    enabled: Boolean(biometricDeviceId),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useBiometricExemptions() {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricExemptions(),
+    queryFn: () => coreApi.getBiometricExemptions(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateBiometricExemption() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateBiometricExemptionInput) => coreApi.createBiometricExemption(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemptions() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+    },
+  });
+}
+
+export function useUpdateBiometricExemption() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateBiometricExemptionInput) => coreApi.updateBiometricExemption(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemptions() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemption(data.biometricExemption.id) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+    },
+  });
+}
+
+export function useDeleteBiometricExemption() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (biometricExemptionId: string) => coreApi.deleteBiometricExemption(biometricExemptionId),
+    onSuccess: (_data, biometricExemptionId) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemptions() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemption(biometricExemptionId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+    },
+  });
+}
+
+export function useAttendancePunches() {
+  return useQuery({
+    queryKey: coreQueryKeys.attendancePunches(),
+    queryFn: () => coreApi.getAttendancePunches(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useEmployeeAttendancePunches(employeeId: string) {
+  return useQuery({
+    queryKey: coreQueryKeys.employeeAttendancePunches(employeeId),
+    queryFn: () => coreApi.getEmployeeAttendancePunches(employeeId),
+    enabled: Boolean(employeeId),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useUnprocessedAttendancePunches() {
+  return useQuery({
+    queryKey: coreQueryKeys.unprocessedAttendancePunches(),
+    queryFn: () => coreApi.getUnprocessedAttendancePunches(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateAttendancePunch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateAttendancePunchInput) => coreApi.createAttendancePunch(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.attendancePunches() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.unprocessedAttendancePunches() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      if (data.attendancePunch.employeeId) {
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeAttendancePunches(data.attendancePunch.employeeId) });
+      }
+    },
+  });
+}
+
+export function useManualPunchRequests() {
+  return useQuery({
+    queryKey: coreQueryKeys.manualPunchRequests(),
+    queryFn: () => coreApi.getManualPunchRequests(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateManualPunchRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateManualPunchRequestInput) => coreApi.createManualPunchRequest(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.manualPunchRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useChangeManualPunchRequestStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChangeManualPunchRequestStatusInput) => coreApi.changeManualPunchRequestStatus(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.manualPunchRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.attendancePunches() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.unprocessedAttendancePunches() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      if (data.attendancePunch?.employeeId) {
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeAttendancePunches(data.attendancePunch.employeeId) });
+      }
+    },
+  });
+}
+
+export function useLeaveFiscalYears() {
+  return useQuery({
+    queryKey: coreQueryKeys.leaveFiscalYears(),
+    queryFn: () => coreApi.getLeaveFiscalYears(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateLeaveFiscalYear() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateLeaveFiscalYearInput) => coreApi.createLeaveFiscalYear(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveFiscalYears() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useUpdateLeaveFiscalYear() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateLeaveFiscalYearInput) => coreApi.updateLeaveFiscalYear(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveFiscalYears() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useSetActiveLeaveFiscalYear() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (fiscalYearId: string) => coreApi.setActiveLeaveFiscalYear(fiscalYearId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveFiscalYears() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useLeaveTypes() {
+  return useQuery({
+    queryKey: coreQueryKeys.leaveTypes(),
+    queryFn: () => coreApi.getLeaveTypes(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateLeaveType() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateLeaveTypeInput) => coreApi.createLeaveType(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveTypes() });
+    },
+  });
+}
+
+export function useUpdateLeaveType() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateLeaveTypeInput) => coreApi.updateLeaveType(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveTypes() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+    },
+  });
+}
+
+export function useLeaveBalances(fiscalYearId?: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: coreQueryKeys.leaveBalances(fiscalYearId),
+    queryFn: () => coreApi.getLeaveBalances(fiscalYearId),
+    enabled: options?.enabled ?? true,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useUpsertLeaveBalance() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpsertLeaveBalanceInput) => coreApi.upsertLeaveBalance(input),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances(variables.fiscalYearId) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useBulkUpsertLeaveBalances() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: BulkUpsertLeaveBalancesInput) => coreApi.bulkUpsertLeaveBalances(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useTransferLeaveBalance() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: TransferLeaveBalanceInput) => coreApi.transferLeaveBalance(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useLeaveRequests(kind?: 'annual' | 'other') {
+  return useQuery({
+    queryKey: coreQueryKeys.leaveRequests(kind),
+    queryFn: () => coreApi.getLeaveRequests(kind),
+    staleTime: 60 * 1000,
+  });
+}
+
+type CreateLeaveRequestContext = {
+  tempId: string;
+  previousAll?: LeaveRequestsResponse;
+  previousKind?: LeaveRequestsResponse;
+};
+
+export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateLeaveRequestInput) => coreApi.createLeaveRequest(input),
+    onMutate: async (input) => {
+      const tempId = `temp-${Date.now()}`;
+      const previousAll = queryClient.getQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests());
+      const previousKind = kind ? queryClient.getQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests(kind)) : undefined;
+      const optimisticRequest: LeaveRequest = {
+        id: tempId,
+        employeeId: input.employeeId,
+        leaveTypeId: input.leaveTypeId,
+        fiscalYearId: input.fiscalYearId ?? null,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        requestedDays: '0.00',
+        reason: input.reason,
+        status: 'PENDING',
+        requestedBy: input.requestedBy ?? '',
+        approvedBy: null,
+        approvedAt: null,
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await queryClient.cancelQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      if (kind) {
+        await queryClient.cancelQueries({ queryKey: coreQueryKeys.leaveRequests(kind) });
+      }
+
+      queryClient.setQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests(), (current) => ({
+        success: true,
+        leaveRequests: [optimisticRequest, ...(current?.leaveRequests ?? [])],
+      }));
+
+      if (kind) {
+        queryClient.setQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests(kind), (current) => ({
+          success: true,
+          leaveRequests: [optimisticRequest, ...(current?.leaveRequests ?? [])],
+        }));
+      }
+
+      return { tempId, previousAll, previousKind } satisfies CreateLeaveRequestContext;
+    },
+    onError: (_error, _input, context) => {
+      if (!context) return;
+      if (context.previousAll) {
+        queryClient.setQueryData(coreQueryKeys.leaveRequests(), context.previousAll);
+      }
+      if (kind && context.previousKind) {
+        queryClient.setQueryData(coreQueryKeys.leaveRequests(kind), context.previousKind);
+      }
+    },
+    onSuccess: (data, _input, context) => {
+      const leaveRequest = data.leaveRequest;
+      const requestKind = leaveRequest.leaveType?.code?.toUpperCase() === 'ANNUAL' ? 'annual' : 'other';
+
+      queryClient.setQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests(), (current) => {
+        const existing = current?.leaveRequests ?? [];
+        return {
+          success: true,
+          leaveRequests: existing
+            .filter((request) => request.id !== context?.tempId && request.id !== leaveRequest.id)
+            .concat(leaveRequest)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+        };
+      });
+
+      queryClient.setQueryData<LeaveRequestsResponse>(coreQueryKeys.leaveRequests(requestKind), (current) => {
+        const existing = current?.leaveRequests ?? [];
+        return {
+          success: true,
+          leaveRequests: existing
+            .filter((request) => request.id !== context?.tempId && request.id !== leaveRequest.id)
+            .concat(leaveRequest)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+        };
+      });
+
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+    },
+  });
+}
+
+export function useChangeLeaveRequestStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChangeLeaveRequestStatusInput) => coreApi.changeLeaveRequestStatus(input),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances(data.leaveRequest.fiscalYearId ?? undefined) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useTimeOperationsSummary() {
+  return useQuery({
+    queryKey: coreQueryKeys.timeOperationsSummary(),
+    queryFn: () => coreApi.getTimeOperationsSummary(),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
