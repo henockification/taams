@@ -3,7 +3,7 @@
 # -------------------------------------------------------
 # Base
 # -------------------------------------------------------
-    FROM node:22-bookworm-slim AS base
+    FROM node:20-bookworm-slim
 
     WORKDIR /app
     
@@ -22,10 +22,20 @@
     COPY apps/frontend/package.json ./apps/frontend/package.json
     COPY packages/shared/package.json ./packages/shared/package.json
     
-    RUN npm ci \
+    RUN npm config set fetch-retries 5 \
+    && npm config set fetch-retry-factor 2 \
+    && npm config set fetch-retry-mintimeout 10000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm config set fetch-timeout 300000 \
+    && npm ci \
         --no-audit \
         --no-fund \
-        --prefer-offline
+        --foreground-scripts \
+        --loglevel verbose \
+    || (echo "===== NPM DEBUG LOG =====" \
+        && find /root/.npm/_logs -type f -name "*-debug-0.log" \
+           -exec cat {} \; \
+        && exit 1)
     
     
     # -------------------------------------------------------
@@ -50,7 +60,7 @@
     # -------------------------------------------------------
     # Runtime
     # -------------------------------------------------------
-    FROM node:22-bookworm-slim AS runner
+    FROM node:20-bookworm-slim AS runner
     
     WORKDIR /app
     
