@@ -1,3 +1,48 @@
+# syntax=docker/dockerfile:1
+
+FROM node:22-alpine AS base
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+
+# -------------------------------------------------------
+# Dependencies
+# -------------------------------------------------------
+FROM base AS dependencies
+
+COPY package.json package-lock.json ./
+
+COPY apps/api/package.json ./apps/api/package.json
+COPY apps/frontend/package.json ./apps/frontend/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
+
+RUN npm ci
+
+
+# -------------------------------------------------------
+# Build
+# -------------------------------------------------------
+FROM base AS build
+
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+ARG NEXT_PUBLIC_BASE_URL
+ARG NEXT_PUBLIC_STOREFRONT_API_KEY
+ARG DATABASE_URL
+
+ENV NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
+ENV NEXT_PUBLIC_STOREFRONT_API_KEY=${NEXT_PUBLIC_STOREFRONT_API_KEY}
+ENV DATABASE_URL=${DATABASE_URL}
+
+RUN npm run build
+
+
+# -------------------------------------------------------
+# Runtime
+# -------------------------------------------------------
 FROM node:22-alpine AS runner
 
 WORKDIR /app
@@ -12,6 +57,9 @@ USER node
 EXPOSE 3000
 
 
+# -------------------------------------------------------
+# API target
+# -------------------------------------------------------
 FROM runner AS api
 
 COPY --from=build --chown=node:node \
@@ -23,6 +71,9 @@ COPY --from=build --chown=node:node \
 CMD ["node", "apps/api/server.js"]
 
 
+# -------------------------------------------------------
+# Frontend target
+# -------------------------------------------------------
 FROM runner AS frontend
 
 COPY --from=build --chown=node:node \
