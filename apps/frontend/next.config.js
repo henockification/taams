@@ -1,48 +1,12 @@
-const path = require('path');
-const withNextIntl = require('next-intl/plugin')(
-  // Relative path required for Turbopack support
-  './src/i18n/request.ts'
-);
+const path = require("path");
 
-/** @type {import('next').NextConfig} */
+/** @type {import("next").NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
-  output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '../..'),
-  transpilePackages: ['@taams/shared'],
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'images.unsplash.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'files.taams.com',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'pub-7b37cc0ad9384817b58ad75dd236e1f8.r2.dev',
-        port: '',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: '*.r2.dev',
-        port: '',
-        pathname: '/**',
-      },
-    ],
-  },
-  // Explicitly configure webpack to ensure it's used instead of Turbopack
-  webpack: (config, { isServer }) => {
-    // Return config to ensure webpack is used
-    return config;
-  },
-}
+  output: "standalone",
 
-module.exports = withNextIntl(nextConfig)
+  // Allows Next.js to trace shared monorepo dependencies
+  // outside apps/frontend.
+  outputFileTracingRoot: path.join(__dirname, "../../"),
+};
+
+module.exports = nextConfig;
