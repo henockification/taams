@@ -112,6 +112,21 @@ CMD ["bash", "-lc", "\
 "]
 
 # =======================================================
+# Database schema push target
+# Use only for initializing a new empty environment
+# =======================================================
+FROM source AS db-push
+
+ARG DATABASE_URL
+
+ENV NODE_ENV=production
+ENV DATABASE_URL=${DATABASE_URL}
+ENV CI=true
+ENV NO_COLOR=1
+
+CMD ["npm", "run", "drizzle:push", "--workspace=@taams/api"]
+
+# =======================================================
 # Shared runtime
 # =======================================================
 FROM node:20-bookworm-slim AS runner
