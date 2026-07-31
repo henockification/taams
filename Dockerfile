@@ -98,8 +98,10 @@ ARG DATABASE_URL
 
 ENV NODE_ENV=production
 ENV DATABASE_URL=${DATABASE_URL}
+ENV CI=true
+ENV NO_COLOR=1
 
-CMD ["npm", "run", "drizzle:migrate", "--workspace=@taams/api"]
+CMD ["sh", "-c", "cd /app/apps/api && npx drizzle-kit migrate --config=drizzle.config.ts 2>&1 | tee /tmp/migration.log; echo '=== migration finished ==='; sleep 3600"]
 
 
 # =======================================================
