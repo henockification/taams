@@ -90,7 +90,7 @@ ENV SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
 CMD ["npm", "run", "db:seed-super-admin", "--workspace=@taams/api"]
 
 # =======================================================
-# Database migration target
+# Database migration target — temporary diagnostics
 # =======================================================
 FROM source AS db-migrate
 
@@ -101,8 +101,15 @@ ENV DATABASE_URL=${DATABASE_URL}
 ENV CI=true
 ENV NO_COLOR=1
 
-CMD ["sh", "-c", "cd /app/apps/api && npx drizzle-kit migrate --config=drizzle.config.ts 2>&1 | tee /tmp/migration.log; echo '=== migration finished ==='; sleep 3600"]
-
+CMD ["bash", "-lc", "\
+  set -o pipefail; \
+  cd /app/apps/api; \
+  npx drizzle-kit migrate --config=drizzle.config.ts 2>&1 | tee /tmp/migration.log; \
+  status=${PIPESTATUS[0]}; \
+  echo \"=== drizzle exit code: ${status} ===\"; \
+  sleep 3600; \
+  exit ${status} \
+"]
 
 # =======================================================
 # Shared runtime
