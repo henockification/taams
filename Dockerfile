@@ -89,6 +89,18 @@ ENV SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
 
 CMD ["npm", "run", "db:seed-super-admin", "--workspace=@taams/api"]
 
+# =======================================================
+# Database migration target
+# =======================================================
+FROM source AS db-migrate
+
+ARG DATABASE_URL
+
+ENV NODE_ENV=production
+ENV DATABASE_URL=${DATABASE_URL}
+
+CMD ["npm", "run", "drizzle:migrate", "--workspace=@taams/api"]
+
 
 # =======================================================
 # Shared runtime
