@@ -71,6 +71,24 @@ ENV NEXT_PUBLIC_STOREFRONT_API_KEY=${NEXT_PUBLIC_STOREFRONT_API_KEY}
 
 RUN npm run build --workspace=@taams/frontend
 
+# =======================================================
+# Database seed target
+# =======================================================
+FROM source AS db-seed
+
+ARG DATABASE_URL
+ARG SUPER_ADMIN_EMAIL
+ARG SUPER_ADMIN_NAME
+ARG SUPER_ADMIN_PASSWORD
+
+ENV NODE_ENV=production
+ENV DATABASE_URL=${DATABASE_URL}
+ENV SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
+ENV SUPER_ADMIN_NAME=${SUPER_ADMIN_NAME}
+ENV SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
+
+CMD ["npm", "run", "db:seed-super-admin", "--workspace=@taams/api"]
+
 
 # =======================================================
 # Shared runtime
