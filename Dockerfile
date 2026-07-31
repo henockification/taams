@@ -38,28 +38,38 @@ RUN npm config set fetch-retries 5 \
 
 
 # =======================================================
-# Build
+# Shared source
 # =======================================================
-FROM base AS build
+FROM base AS source
 
-# Copy the full npm-installed dependency structure.
-# This preserves root node_modules and any workspace-specific
-# node_modules created under apps/api or apps/frontend.
 COPY --from=dependencies /app ./
-
-# Copy the complete monorepo source.
-# Ensure node_modules is excluded by .dockerignore.
 COPY . .
+
+
+# =======================================================
+# API build
+# =======================================================
+FROM source AS api-build
+
+ARG DATABASE_URL
+
+ENV DATABASE_URL=${DATABASE_URL}
+
+RUN npm run build --workspace=@taams/api
+
+
+# =======================================================
+# Frontend build
+# =======================================================
+FROM source AS frontend-build
 
 ARG NEXT_PUBLIC_BASE_URL
 ARG NEXT_PUBLIC_STOREFRONT_API_KEY
-ARG DATABASE_URL
 
 ENV NEXT_PUBLIC_BASE_URL=${NEXT_PUBLIC_BASE_URL}
 ENV NEXT_PUBLIC_STOREFRONT_API_KEY=${NEXT_PUBLIC_STOREFRONT_API_KEY}
-ENV DATABASE_URL=${DATABASE_URL}
 
-RUN npm run build
+RUN npm run build --workspace=@taams/frontend
 
 
 # =======================================================
@@ -84,14 +94,14 @@ EXPOSE 3000
 # =======================================================
 FROM runner AS api
 
-COPY --from=build --chown=node:node \
+COPY --from=api-build --chown=node:node \
     /app/apps/api/.next/standalone ./
 
-COPY --from=build --chown=node:node \
+COPY --from=api-build --chown=node:node \
     /app/apps/api/.next/static ./apps/api/.next/static
 
 # Uncomment only if apps/api/public exists.
-# COPY --from=build --chown=node:node \
+# COPY --from=api-build --chown=node:node \
 #     /app/apps/api/public ./apps/api/public
 
 CMD ["node", "apps/api/server.js"]
@@ -102,13 +112,13 @@ CMD ["node", "apps/api/server.js"]
 # =======================================================
 FROM runner AS frontend
 
-COPY --from=build --chown=node:node \
+COPY --from=frontend-build --chown=node:node \
     /app/apps/frontend/.next/standalone ./
 
-COPY --from=build --chown=node:node \
+COPY --from=frontend-build --chown=node:node \
     /app/apps/frontend/.next/static ./apps/frontend/.next/static
 
-COPY --from=build --chown=node:node \
+COPY --from=frontend-build --chown=node:node \
     /app/apps/frontend/public ./apps/frontend/public
 
 CMD ["node", "apps/frontend/server.js"]
