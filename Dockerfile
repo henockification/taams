@@ -113,7 +113,7 @@ CMD ["bash", "-lc", "\
 
 # =======================================================
 # Database schema push target
-# Use only for initializing a new empty environment
+# Use only for initializing a fresh empty environment
 # =======================================================
 FROM source AS db-push
 
@@ -124,7 +124,15 @@ ENV DATABASE_URL=${DATABASE_URL}
 ENV CI=true
 ENV NO_COLOR=1
 
-CMD ["npm", "run", "drizzle:push", "--workspace=@taams/api"]
+CMD [
+  "npm",
+  "exec",
+  "--workspace=@taams/api",
+  "--",
+  "drizzle-kit",
+  "push",
+  "--force"
+]
 
 # =======================================================
 # Shared runtime
