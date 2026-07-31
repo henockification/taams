@@ -31,7 +31,6 @@ RUN npm config set fetch-retries 5 \
         --no-audit \
         --no-fund \
         --foreground-scripts \
-        --loglevel verbose \
     || (echo "===== NPM DEBUG LOG =====" \
         && find /root/.npm/_logs -type f -name "*-debug-0.log" \
            -exec cat {} \; \
@@ -43,8 +42,13 @@ RUN npm config set fetch-retries 5 \
 # =======================================================
 FROM base AS build
 
-COPY --from=dependencies /app/node_modules ./node_modules
+# Copy the full npm-installed dependency structure.
+# This preserves root node_modules and any workspace-specific
+# node_modules created under apps/api or apps/frontend.
+COPY --from=dependencies /app ./
 
+# Copy the complete monorepo source.
+# Ensure node_modules is excluded by .dockerignore.
 COPY . .
 
 ARG NEXT_PUBLIC_BASE_URL
@@ -86,7 +90,7 @@ COPY --from=build --chown=node:node \
 COPY --from=build --chown=node:node \
     /app/apps/api/.next/static ./apps/api/.next/static
 
-# Uncomment only when apps/api/public exists.
+# Uncomment only if apps/api/public exists.
 # COPY --from=build --chown=node:node \
 #     /app/apps/api/public ./apps/api/public
 
