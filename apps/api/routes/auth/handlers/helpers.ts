@@ -6,11 +6,11 @@ export const SESSION_COOKIE_NAME = 'taams_session';
 export function setSessionCookie(c: Context, token: string, expiresAt: Date) {
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'Lax',
-    path: '/',
+    secure: process.env.FRONTEND_URL?.startsWith("https://") ?? false,
+    sameSite: "Lax",
+    path: "/",
     expires: expiresAt,
-    domain: process.env.NODE_ENV === 'production' ? '.taams.com' : undefined,
+    domain: process.env.COOKIE_DOMAIN || undefined,
   });
 }
 
@@ -20,8 +20,8 @@ export function getSessionCookie(c: Context) {
 
 export function clearSessionCookie(c: Context) {
   deleteCookie(c, SESSION_COOKIE_NAME, {
-    path: '/',
-    domain: process.env.NODE_ENV === 'production' ? '.taams.com' : undefined,
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
   });
 }
 
