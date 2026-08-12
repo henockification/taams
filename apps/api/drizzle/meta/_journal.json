@@ -64,6 +64,13 @@
       "when": 1786579203000,
       "tag": "0012_employee_biometric_id_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786579204000,
+      "tag": "0013_employee_biometric_id_backfill_retry",
+      "breakpoints": true
     }
   ]
 }
