@@ -167,3 +167,17 @@ COPY --from=frontend-build --chown=node:node \
     /app/apps/frontend/public ./apps/frontend/public
 
 CMD ["node", "apps/frontend/server.js"]
+
+# =======================================================
+# ZKTeco Pull Worker
+# =======================================================
+FROM source AS zkteco-worker
+
+ARG DATABASE_URL
+
+ENV NODE_ENV=production
+ENV DATABASE_URL=${DATABASE_URL}
+
+WORKDIR /app/apps/api
+
+CMD ["npm", "run", "worker:zkteco"]
