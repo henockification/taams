@@ -94,13 +94,14 @@ CMD ["npm", "run", "db:seed-super-admin", "--workspace=@taams/api"]
 # =======================================================
 FROM source AS db-migrate
 
+ARG DATABASE_URL
+
 ENV NODE_ENV=production
-ENV CI=true
-ENV NO_COLOR=1
+ENV DATABASE_URL=${DATABASE_URL}
 
 WORKDIR /app/apps/api
 
-CMD ["npm", "run", "drizzle:migrate", "--", "--config=drizzle.config.ts"]
+CMD ["sh", "-c", "sleep infinity"]
 
 # =======================================================
 # Database schema push target
