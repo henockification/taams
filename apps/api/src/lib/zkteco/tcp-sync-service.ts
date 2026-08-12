@@ -5,7 +5,7 @@ type TcpDevice = {
   serialNumber: string;
   ipAddress: string;
   port: number;
-  communicationKey?: number;
+  communicationKey?: string | number | null;
 };
 
 export async function syncOneDevice(device: TcpDevice) {
