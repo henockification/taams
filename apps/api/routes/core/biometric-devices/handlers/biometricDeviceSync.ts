@@ -1,9 +1,10 @@
 import { Context } from 'hono';
 import { CreateBiometricDeviceSyncRequestSchema } from '../../../../schemas/core.schema';
 import {
-  createBiometricDeviceSyncBatch,
+  getBiometricDeviceById,
   getAttendanceSyncBatchesByDeviceId,
 } from '../../../../db/orm/core/manageBiometricDevices';
+import { pullZktecoAttendanceForDevice } from '../../../../lib/zkteco/tcp-pull-sync';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceSyncBatch } from '../../helpers/formatters';
 
@@ -17,7 +18,16 @@ export async function syncBiometricDeviceHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const attendanceSyncBatch = await createBiometricDeviceSyncBatch(deviceId, parsed.data);
+    const biometricDevice = await getBiometricDeviceById(deviceId);
+
+    if (!biometricDevice) {
+      return c.json({
+        success: false,
+        error: 'Biometric device not found',
+      }, 404);
+    }
+
+    const attendanceSyncBatch = await pullZktecoAttendanceForDevice(biometricDevice);
 
     return c.json({
       success: true,

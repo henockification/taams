@@ -102,6 +102,47 @@ export async function createBiometricDeviceSyncBatch(deviceId: string, input: Cr
   return getAttendanceSyncBatchById(batch.id);
 }
 
+export async function completeBiometricDeviceSyncBatch(
+  batchId: string,
+  input: Required<Pick<CreateBiometricDeviceSyncInput, 'syncStatus' | 'totalRecords' | 'successfulRecords' | 'failedRecords'>> &
+    Pick<CreateBiometricDeviceSyncInput, 'errorMessage'>,
+) {
+  const completedAt = new Date();
+  const batch = await getAttendanceSyncBatchById(batchId);
+
+  if (!batch) throw new Error('Attendance sync batch not found');
+
+  await db
+    .update(attendanceSyncBatches)
+    .set({
+      syncStatus: input.syncStatus,
+      totalRecords: input.totalRecords,
+      successfulRecords: input.successfulRecords,
+      failedRecords: input.failedRecords,
+      errorMessage: input.errorMessage ?? null,
+      syncCompletedAt: completedAt,
+    } as any)
+    .where(eq(attendanceSyncBatches.id, batchId));
+
+  if (batch.deviceId) {
+    await db
+      .update(biometricDevices)
+      .set({
+        lastSyncAt: completedAt,
+        lastPullAt: completedAt,
+        lastSeenAt: completedAt,
+        lastSuccessfulSyncAt: input.syncStatus === 'FAILED' ? batch.device?.lastSuccessfulSyncAt ?? null : completedAt,
+        lastFailedSyncAt: input.syncStatus === 'FAILED' ? completedAt : batch.device?.lastFailedSyncAt ?? null,
+        healthStatus: input.syncStatus === 'FAILED' ? 'ERROR' : 'ONLINE',
+        lastErrorMessage: input.syncStatus === 'FAILED' ? input.errorMessage ?? null : null,
+        updatedAt: completedAt,
+      } as any)
+      .where(eq(biometricDevices.id, batch.deviceId));
+  }
+
+  return getAttendanceSyncBatchById(batchId);
+}
+
 export async function getAttendanceSyncBatchesByDeviceId(deviceId: string) {
   await assertBiometricDeviceExists(deviceId);
 
