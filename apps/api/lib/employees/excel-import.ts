@@ -98,7 +98,7 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
     input: {
       employeeCode: sourceIdNo,
       payrollId: null,
-      biometricId: null,
+      biometricId: sourceIdNo,
       firstNameEn: nameParts.firstNameEn,
       middleNameEn: nameParts.middleNameEn,
       lastNameEn: nameParts.lastNameEn,

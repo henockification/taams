@@ -247,7 +247,7 @@ export async function upsertPermanentEmployees(inputs: PermanentEmployeeImportIn
       target: employees.employeeCode,
       set: {
         payrollId: null,
-        biometricId: null,
+        biometricId: sql`excluded.biometric_id`,
         userId: sql`COALESCE(${employees.userId}, excluded.user_id)`,
         firstNameEn: sql`excluded.first_name_en`,
         middleNameEn: sql`excluded.middle_name_en`,
