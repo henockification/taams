@@ -1,4 +1,4 @@
-import { and, asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendancePunches, attendanceSyncBatches, biometricDevices, departments, employees, user } from '../../schema';
 import type {
@@ -225,7 +225,7 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
 }
 
 export async function getAttendancePunches() {
-  return db.query.attendancePunches.findMany({
+  const punches = await db.query.attendancePunches.findMany({
     with: {
       employee: {
         with: {
@@ -246,6 +246,8 @@ export async function getAttendancePunches() {
     },
     orderBy: (table, { desc }) => [desc(table.punchTime)],
   });
+
+  return hydratePunchEmployeesByBiometricId(punches);
 }
 
 export async function getAttendancePunchesPaginated({
@@ -254,12 +256,20 @@ export async function getAttendancePunchesPaginated({
   employeeId,
   deviceId,
   status,
+  dateFrom,
+  dateTo,
+  timeFrom,
+  timeTo,
 }: {
   page?: number;
   pageSize?: number;
   employeeId?: string | null;
   deviceId?: string | null;
   status?: 'processed' | 'unprocessed' | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  timeFrom?: string | null;
+  timeTo?: string | null;
 }) {
   const safePage = Math.max(1, page);
   const safePageSize = Math.min(200, Math.max(1, pageSize));
@@ -269,6 +279,7 @@ export async function getAttendancePunchesPaginated({
     deviceId ? eq(attendancePunches.deviceId, deviceId) : undefined,
     status === 'processed' ? eq(attendancePunches.isProcessed, true) : undefined,
     status === 'unprocessed' ? eq(attendancePunches.isProcessed, false) : undefined,
+    ...buildPunchTimeConditions({ dateFrom, dateTo, timeFrom, timeTo }),
   ].filter(Boolean);
   const whereClause = conditions.length ? and(...conditions as any) : undefined;
   const totalQuery = db.select({ value: count() }).from(attendancePunches);
@@ -304,7 +315,7 @@ export async function getAttendancePunchesPaginated({
   ]);
 
   return {
-    attendancePunches: punches,
+    attendancePunches: await hydratePunchEmployeesByBiometricId(punches),
     total: Number(totalResult[0]?.value ?? 0),
     page: safePage,
     pageSize: safePageSize,
@@ -314,7 +325,7 @@ export async function getAttendancePunchesPaginated({
 export async function getAttendancePunchesByEmployeeId(employeeId: string) {
   await assertEmployeeExists(employeeId);
 
-  return db.query.attendancePunches.findMany({
+  const punches = await db.query.attendancePunches.findMany({
     where: eq(attendancePunches.employeeId, employeeId),
     with: {
       employee: {
@@ -336,10 +347,12 @@ export async function getAttendancePunchesByEmployeeId(employeeId: string) {
     },
     orderBy: (table, { desc }) => [desc(table.punchTime)],
   });
+
+  return hydratePunchEmployeesByBiometricId(punches);
 }
 
 export async function getUnprocessedAttendancePunches() {
-  return db.query.attendancePunches.findMany({
+  const punches = await db.query.attendancePunches.findMany({
     where: eq(attendancePunches.isProcessed, false),
     with: {
       employee: {
@@ -361,10 +374,12 @@ export async function getUnprocessedAttendancePunches() {
     },
     orderBy: (table, { asc }) => [asc(table.punchTime)],
   });
+
+  return hydratePunchEmployeesByBiometricId(punches);
 }
 
 async function getAttendancePunchById(id: string, tx: DbClient = db) {
-  return tx.query.attendancePunches.findFirst({
+  const punch = await tx.query.attendancePunches.findFirst({
     where: eq(attendancePunches.id, id),
     with: {
       employee: {
@@ -385,6 +400,94 @@ async function getAttendancePunchById(id: string, tx: DbClient = db) {
       },
     },
   });
+
+  return punch ? (await hydratePunchEmployeesByBiometricId([punch], tx))[0] : punch;
+}
+
+async function hydratePunchEmployeesByBiometricId<T extends { biometricId: string; employee?: unknown | null }>(
+  punches: T[],
+  tx: DbClient = db,
+) {
+  const biometricIds = [...new Set(
+    punches
+      .filter((punch) => !punch.employee)
+      .map((punch) => punch.biometricId)
+      .filter(Boolean),
+  )];
+
+  if (biometricIds.length === 0) {
+    return punches;
+  }
+
+  const matchedEmployees = await tx.query.employees.findMany({
+    where: inArray(employees.biometricId, biometricIds),
+    with: {
+      department: true,
+      position: true,
+    },
+  });
+
+  const employeeByBiometricId = new Map<string, (typeof matchedEmployees)[number]>(
+    matchedEmployees
+      .filter((employee: (typeof matchedEmployees)[number]) => employee.biometricId)
+      .map((employee: (typeof matchedEmployees)[number]) => [employee.biometricId as string, employee]),
+  );
+
+  return punches.map((punch) => ({
+    ...punch,
+    employee: punch.employee ?? employeeByBiometricId.get(punch.biometricId) ?? null,
+  }));
+}
+
+function buildPunchTimeConditions({
+  dateFrom,
+  dateTo,
+  timeFrom,
+  timeTo,
+}: {
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  timeFrom?: string | null;
+  timeTo?: string | null;
+}) {
+  const conditions = [];
+  const start = buildPunchBoundary(dateFrom, timeFrom, 'start');
+  const end = buildPunchBoundary(dateTo, timeTo, 'end');
+
+  if (start) {
+    conditions.push(gte(attendancePunches.punchTime, start));
+  }
+
+  if (end) {
+    conditions.push(lte(attendancePunches.punchTime, end));
+  }
+
+  return conditions;
+}
+
+function buildPunchBoundary(dateValue: string | null | undefined, timeValue: string | null | undefined, boundary: 'start' | 'end') {
+  const normalizedDate = dateValue?.trim();
+  if (!normalizedDate) return null;
+
+  const normalizedTime = normalizeTimeInput(timeValue) ?? (boundary === 'start' ? '00:00:00' : '23:59:59.999');
+  const candidate = new Date(`${normalizedDate}T${normalizedTime}`);
+
+  if (Number.isNaN(candidate.getTime())) {
+    return null;
+  }
+
+  return candidate;
+}
+
+function normalizeTimeInput(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized) return null;
+
+  if (/^\d{2}:\d{2}$/.test(normalized)) {
+    return `${normalized}:00`;
+  }
+
+  return normalized;
 }
 
 async function getAttendanceSyncBatchById(id: string, tx: DbClient = db) {

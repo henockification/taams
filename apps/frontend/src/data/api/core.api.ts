@@ -321,6 +321,10 @@ export const coreApi = {
     employeeId?: string;
     deviceId?: string;
     status?: 'processed' | 'unprocessed';
+    dateFrom?: string;
+    dateTo?: string;
+    timeFrom?: string;
+    timeTo?: string;
   } = {}) => {
     const query = new URLSearchParams();
     if (params.page) query.set('page', String(params.page));
@@ -328,6 +332,10 @@ export const coreApi = {
     if (params.employeeId) query.set('employeeId', params.employeeId);
     if (params.deviceId) query.set('deviceId', params.deviceId);
     if (params.status) query.set('status', params.status);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+    if (params.timeFrom) query.set('timeFrom', params.timeFrom);
+    if (params.timeTo) query.set('timeTo', params.timeTo);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<AttendancePunchesResponse>(`/attendance-punches/paginated${suffix}`);

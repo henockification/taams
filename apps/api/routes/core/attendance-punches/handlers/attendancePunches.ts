@@ -51,12 +51,20 @@ export async function getAttendancePunchesPaginatedHandler(c: Context) {
     const deviceId = c.req.query('deviceId') || null;
     const statusParam = c.req.query('status');
     const status = statusParam === 'processed' || statusParam === 'unprocessed' ? statusParam : null;
+    const dateFrom = c.req.query('dateFrom') || null;
+    const dateTo = c.req.query('dateTo') || null;
+    const timeFrom = c.req.query('timeFrom') || null;
+    const timeTo = c.req.query('timeTo') || null;
     const result = await getAttendancePunchesPaginated({
       page,
       pageSize,
       employeeId,
       deviceId,
       status,
+      dateFrom,
+      dateTo,
+      timeFrom,
+      timeTo,
     });
 
     return c.json({

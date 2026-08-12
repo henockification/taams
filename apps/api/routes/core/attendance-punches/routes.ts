@@ -72,6 +72,10 @@ export const getAttendancePunchesPaginatedRoute = createRoute({
       employeeId: z.string().uuid().optional(),
       deviceId: z.string().uuid().optional(),
       status: z.enum(['processed', 'unprocessed']).optional(),
+      dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      timeFrom: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+      timeTo: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
     }),
   },
   responses: {

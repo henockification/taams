@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Clock3, ListFilter, ScanLine } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Check, ChevronsUpDown, Clock3, ListFilter, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +14,18 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -38,7 +50,6 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee } from '@/data/types/core.types';
 
-const allEmployeesValue = '__all';
 const allDevicesValue = '__all';
 
 function formatDateTime(value: string | null) {
@@ -57,6 +68,10 @@ export default function AttendancePunchesPage() {
   const [employeeId, setEmployeeId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [status, setStatus] = useState<'all' | 'processed' | 'unprocessed'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
 
@@ -66,6 +81,10 @@ export default function AttendancePunchesPage() {
     employeeId: employeeId || undefined,
     deviceId: deviceId || undefined,
     status: status === 'all' ? undefined : status,
+    dateFrom: dateFrom || undefined,
+    dateTo: dateTo || undefined,
+    timeFrom: timeFrom || undefined,
+    timeTo: timeTo || undefined,
   });
   const { data: employeesResponse } = useEmployees();
   const { data: devicesResponse } = useBiometricDevices();
@@ -124,25 +143,18 @@ export default function AttendancePunchesPage() {
                 <TabsTrigger value="processed"><ListFilter className="size-4" />{t('processed')}</TabsTrigger>
               </TabsList>
             </Tabs>
-            <Select
-              value={employeeId || allEmployeesValue}
+            <EmployeeCombobox
+              value={employeeId}
               onValueChange={(value) => {
-                setEmployeeId(value === allEmployeesValue ? '' : value);
+                setEmployeeId(value);
                 resetToFirstPage();
               }}
-            >
-              <SelectTrigger className="w-full sm:w-64">
-                <SelectValue placeholder={t('selectEmployee')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={allEmployeesValue}>{t('allPunches')}</SelectItem>
-                {employees.map((employee) => (
-                  <SelectItem key={employee.id} value={employee.id}>
-                    {employeeName(employee)} · {employee.employeeCode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              employees={employees}
+              placeholder={t('selectEmployee')}
+              searchPlaceholder={t('searchEmployee')}
+              allLabel={t('allEmployees')}
+              emptyMessage={t('noMatchingEmployees')}
+            />
             <Select
               value={deviceId || allDevicesValue}
               onValueChange={(value) => {
@@ -165,6 +177,52 @@ export default function AttendancePunchesPage() {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 grid gap-3 lg:grid-cols-4">
+            <Field label={t('startDate')} id="attendance-punches-date-from">
+              <Input
+                id="attendance-punches-date-from"
+                type="date"
+                value={dateFrom}
+                onChange={(event) => {
+                  setDateFrom(event.target.value);
+                  resetToFirstPage();
+                }}
+              />
+            </Field>
+            <Field label={t('endDate')} id="attendance-punches-date-to">
+              <Input
+                id="attendance-punches-date-to"
+                type="date"
+                value={dateTo}
+                onChange={(event) => {
+                  setDateTo(event.target.value);
+                  resetToFirstPage();
+                }}
+              />
+            </Field>
+            <Field label={t('startTime')} id="attendance-punches-time-from">
+              <Input
+                id="attendance-punches-time-from"
+                type="time"
+                value={timeFrom}
+                onChange={(event) => {
+                  setTimeFrom(event.target.value);
+                  resetToFirstPage();
+                }}
+              />
+            </Field>
+            <Field label={t('endTime')} id="attendance-punches-time-to">
+              <Input
+                id="attendance-punches-time-to"
+                type="time"
+                value={timeTo}
+                onChange={(event) => {
+                  setTimeTo(event.target.value);
+                  resetToFirstPage();
+                }}
+              />
+            </Field>
+          </div>
           {punchesQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : punches.length === 0 ? (
@@ -194,8 +252,8 @@ export default function AttendancePunchesPage() {
                         <TableCell className="whitespace-nowrap">{formatDateTime(punch.punchTime)}</TableCell>
                         <TableCell>
                           <div className="min-w-0">
-                            <p className="truncate font-medium">{employeeName(punch.employee) || t('unknown')}</p>
-                            <p className="truncate text-xs text-muted-foreground">{punch.employee?.employeeCode ?? '-'}</p>
+                            <p className="truncate font-medium">{employeeName(punch.employee) || punch.biometricId || t('unknown')}</p>
+                            <p className="truncate text-xs text-muted-foreground">{punch.employee?.employeeCode ?? punch.biometricId ?? '-'}</p>
                             {isExemptEmployee(punch.employee) ? (
                               <Badge variant="outline" className="mt-1 border-emerald-500 text-emerald-700 dark:text-emerald-400">
                                 {t('biometricExempt')}
@@ -259,5 +317,99 @@ function Summary({ label, value }: { label: string; value: number }) {
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-semibold">{value}</p>
     </div>
+  );
+}
+
+function Field({
+  label,
+  id,
+  children,
+}: {
+  label: string;
+  id: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function EmployeeCombobox({
+  value,
+  onValueChange,
+  employees,
+  placeholder,
+  searchPlaceholder,
+  allLabel,
+  emptyMessage,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  employees: Employee[];
+  placeholder: string;
+  searchPlaceholder: string;
+  allLabel: string;
+  emptyMessage: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const selectedEmployee = employees.find((employee) => employee.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between font-normal lg:w-72"
+        >
+          <span className="truncate">
+            {selectedEmployee ? `${employeeName(selectedEmployee)} · ${selectedEmployee.employeeCode}` : allLabel}
+          </span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[--radix-popover-trigger-width] p-0">
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={allLabel}
+                onSelect={() => {
+                  onValueChange('');
+                  setOpen(false);
+                }}
+              >
+                <Check className={`size-4 ${value === '' ? 'opacity-100' : 'opacity-0'}`} />
+                <span className="truncate">{allLabel}</span>
+              </CommandItem>
+              {employees.map((employee) => (
+                <CommandItem
+                  key={employee.id}
+                  value={`${employeeName(employee)} ${employee.employeeCode}`}
+                  onSelect={() => {
+                    onValueChange(employee.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={`size-4 ${value === employee.id ? 'opacity-100' : 'opacity-0'}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{employeeName(employee)}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{employee.employeeCode}</span>
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

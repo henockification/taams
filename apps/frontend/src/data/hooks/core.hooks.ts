@@ -80,6 +80,10 @@ export const coreQueryKeys = {
     employeeId: string;
     deviceId: string;
     status: string;
+    dateFrom: string;
+    dateTo: string;
+    timeFrom: string;
+    timeTo: string;
   }) => [...coreQueryKeys.attendancePunches(), 'paginated', params] as const,
   employeeAttendancePunches: (id: string) => [...coreQueryKeys.attendancePunches(), 'employee', id] as const,
   unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
@@ -644,6 +648,10 @@ export function useAttendancePunchesPaginated(params: {
   employeeId?: string;
   deviceId?: string;
   status?: 'processed' | 'unprocessed';
+  dateFrom?: string;
+  dateTo?: string;
+  timeFrom?: string;
+  timeTo?: string;
 }) {
   const normalized = {
     page: params.page,
@@ -651,6 +659,10 @@ export function useAttendancePunchesPaginated(params: {
     employeeId: params.employeeId ?? '',
     deviceId: params.deviceId ?? '',
     status: params.status ?? '',
+    dateFrom: params.dateFrom ?? '',
+    dateTo: params.dateTo ?? '',
+    timeFrom: params.timeFrom ?? '',
+    timeTo: params.timeTo ?? '',
   };
 
   return useQuery({
@@ -661,6 +673,10 @@ export function useAttendancePunchesPaginated(params: {
       employeeId: params.employeeId,
       deviceId: params.deviceId,
       status: params.status,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
+      timeFrom: params.timeFrom,
+      timeTo: params.timeTo,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
