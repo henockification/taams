@@ -25,6 +25,8 @@ const DEFAULT_PERMISSIONS = [
   { name: 'executive-dashboard:read', resource: 'executive-dashboard', action: 'read', description: 'View executive dashboard' },
   { name: 'hr-dashboard:read', resource: 'hr-dashboard', action: 'read', description: 'View HR dashboard' },
   { name: 'department-head-dashboard:read', resource: 'department-head-dashboard', action: 'read', description: 'View supervisor dashboard' },
+  { name: 'attendance-approvals:approve', resource: 'attendance-approvals', action: 'approve', description: 'Approve supervised daily attendance' },
+  { name: 'hr-attendance-approvals:approve', resource: 'hr-attendance-approvals', action: 'approve', description: 'Approve daily attendance for payroll readiness' },
   { name: 'users:read', resource: 'users', action: 'read', description: 'View users' },
   { name: 'users:create', resource: 'users', action: 'create', description: 'Create users' },
   { name: 'users:update', resource: 'users', action: 'update', description: 'Update users' },

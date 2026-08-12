@@ -4,6 +4,7 @@ import {
   createAttendancePunch,
   getAttendancePunches,
   getAttendancePunchesByEmployeeId,
+  getAttendancePunchesPaginated,
   getUnprocessedAttendancePunches,
 } from '../../../../db/orm/core/manageBiometricDevices';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -39,6 +40,36 @@ export async function getAttendancePunchesHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch attendance punches');
+  }
+}
+
+export async function getAttendancePunchesPaginatedHandler(c: Context) {
+  try {
+    const page = Number(c.req.query('page') || 1);
+    const pageSize = Number(c.req.query('pageSize') || 50);
+    const employeeId = c.req.query('employeeId') || null;
+    const deviceId = c.req.query('deviceId') || null;
+    const statusParam = c.req.query('status');
+    const status = statusParam === 'processed' || statusParam === 'unprocessed' ? statusParam : null;
+    const result = await getAttendancePunchesPaginated({
+      page,
+      pageSize,
+      employeeId,
+      deviceId,
+      status,
+    });
+
+    return c.json({
+      success: true,
+      attendancePunches: result.attendancePunches.map(formatAttendancePunch),
+      pagination: {
+        total: result.total,
+        page: result.page,
+        pageSize: result.pageSize,
+      },
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch paginated attendance punches');
   }
 }
 

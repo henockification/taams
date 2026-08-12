@@ -369,6 +369,66 @@ export const attendancePunches = pgTable('attendance_punches', {
   processedIdx: index('idx_attendance_punches_processed').on(table.isProcessed),
 }));
 
+export const attendanceDailyRecords = pgTable('attendance_daily_records', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  attendanceDate: date('attendance_date').notNull(),
+  firstPunchId: uuid('first_punch_id').references(() => attendancePunches.id),
+  lastPunchId: uuid('last_punch_id').references(() => attendancePunches.id),
+  checkInAt: timestamp('check_in_at', { withTimezone: false }),
+  checkOutAt: timestamp('check_out_at', { withTimezone: false }),
+  totalPunches: integer('total_punches').notNull().default(0),
+  attendanceDays: numeric('attendance_days', { precision: 4, scale: 2 }).notNull().default('0'),
+  leaveDays: numeric('leave_days', { precision: 4, scale: 2 }).notNull().default('0'),
+  payableDays: numeric('payable_days', { precision: 4, scale: 2 }).notNull().default('0'),
+  absenceDays: numeric('absence_days', { precision: 4, scale: 2 }).notNull().default('1'),
+  isBiometricExempt: boolean('is_biometric_exempt').notNull().default(false),
+  payrollNote: text('payroll_note'),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING_SUPERVISOR'),
+  supervisorApprovedBy: text('supervisor_approved_by').references(() => user.id),
+  supervisorApprovedAt: timestamp('supervisor_approved_at', { withTimezone: false }),
+  hrApprovedBy: text('hr_approved_by').references(() => user.id),
+  hrApprovedAt: timestamp('hr_approved_at', { withTimezone: false }),
+  returnedBy: text('returned_by').references(() => user.id),
+  returnedAt: timestamp('returned_at', { withTimezone: false }),
+  returnReason: text('return_reason'),
+  payrollReadyAt: timestamp('payroll_ready_at', { withTimezone: false }),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  statusCheck: check('chk_attendance_daily_record_status', sql`${table.status} IN ('PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED', 'HR_APPROVED')`),
+  attendanceDaysCheck: check('chk_attendance_daily_record_attendance_days', sql`${table.attendanceDays} >= 0 AND ${table.attendanceDays} <= 1`),
+  leaveDaysCheck: check('chk_attendance_daily_record_leave_days', sql`${table.leaveDays} >= 0 AND ${table.leaveDays} <= 1`),
+  payableDaysCheck: check('chk_attendance_daily_record_payable_days', sql`${table.payableDays} >= 0 AND ${table.payableDays} <= 1`),
+  absenceDaysCheck: check('chk_attendance_daily_record_absence_days', sql`${table.absenceDays} >= 0 AND ${table.absenceDays} <= 1`),
+  employeeDateUnique: uniqueIndex('ux_attendance_daily_records_employee_date').on(table.employeeId, table.attendanceDate),
+  employeeIdIdx: index('idx_attendance_daily_records_employee_id').on(table.employeeId),
+  attendanceDateIdx: index('idx_attendance_daily_records_attendance_date').on(table.attendanceDate),
+  statusIdx: index('idx_attendance_daily_records_status').on(table.status),
+}));
+
+export const attendanceDailyRecordAdjustments = pgTable('attendance_daily_record_adjustments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  attendanceDailyRecordId: uuid('attendance_daily_record_id').notNull().references(() => attendanceDailyRecords.id),
+  adjustedBy: text('adjusted_by').notNull().references(() => user.id),
+  previousAttendanceDays: numeric('previous_attendance_days', { precision: 4, scale: 2 }).notNull(),
+  newAttendanceDays: numeric('new_attendance_days', { precision: 4, scale: 2 }).notNull(),
+  previousLeaveDays: numeric('previous_leave_days', { precision: 4, scale: 2 }).notNull(),
+  newLeaveDays: numeric('new_leave_days', { precision: 4, scale: 2 }).notNull(),
+  previousPayableDays: numeric('previous_payable_days', { precision: 4, scale: 2 }).notNull(),
+  newPayableDays: numeric('new_payable_days', { precision: 4, scale: 2 }).notNull(),
+  previousAbsenceDays: numeric('previous_absence_days', { precision: 4, scale: 2 }).notNull(),
+  newAbsenceDays: numeric('new_absence_days', { precision: 4, scale: 2 }).notNull(),
+  previousPayrollNote: text('previous_payroll_note'),
+  newPayrollNote: text('new_payroll_note'),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  recordIdIdx: index('idx_attendance_daily_record_adjustments_record_id').on(table.attendanceDailyRecordId),
+  adjustedByIdx: index('idx_attendance_daily_record_adjustments_adjusted_by').on(table.adjustedBy),
+  createdAtIdx: index('idx_attendance_daily_record_adjustments_created_at').on(table.createdAt),
+}));
+
 export const manualPunchRequests = pgTable('manual_punch_requests', {
   id: uuid('id').primaryKey().defaultRandom(),
   employeeId: uuid('employee_id').notNull().references(() => employees.id),
@@ -682,6 +742,51 @@ export const attendancePunchesRelations = relations(attendancePunches, ({ one })
   }),
 }));
 
+export const attendanceDailyRecordsRelations = relations(attendanceDailyRecords, ({ one, many }) => ({
+  employee: one(employees, {
+    fields: [attendanceDailyRecords.employeeId],
+    references: [employees.id],
+  }),
+  firstPunch: one(attendancePunches, {
+    fields: [attendanceDailyRecords.firstPunchId],
+    references: [attendancePunches.id],
+    relationName: 'attendanceDailyRecordFirstPunch',
+  }),
+  lastPunch: one(attendancePunches, {
+    fields: [attendanceDailyRecords.lastPunchId],
+    references: [attendancePunches.id],
+    relationName: 'attendanceDailyRecordLastPunch',
+  }),
+  supervisorApprover: one(user, {
+    fields: [attendanceDailyRecords.supervisorApprovedBy],
+    references: [user.id],
+    relationName: 'attendanceDailyRecordSupervisorApprover',
+  }),
+  hrApprover: one(user, {
+    fields: [attendanceDailyRecords.hrApprovedBy],
+    references: [user.id],
+    relationName: 'attendanceDailyRecordHrApprover',
+  }),
+  returner: one(user, {
+    fields: [attendanceDailyRecords.returnedBy],
+    references: [user.id],
+    relationName: 'attendanceDailyRecordReturner',
+  }),
+  adjustments: many(attendanceDailyRecordAdjustments),
+}));
+
+export const attendanceDailyRecordAdjustmentsRelations = relations(attendanceDailyRecordAdjustments, ({ one }) => ({
+  attendanceDailyRecord: one(attendanceDailyRecords, {
+    fields: [attendanceDailyRecordAdjustments.attendanceDailyRecordId],
+    references: [attendanceDailyRecords.id],
+  }),
+  adjuster: one(user, {
+    fields: [attendanceDailyRecordAdjustments.adjustedBy],
+    references: [user.id],
+    relationName: 'attendanceDailyRecordAdjustmentAdjuster',
+  }),
+}));
+
 export const manualPunchRequestsRelations = relations(manualPunchRequests, ({ one }) => ({
   employee: one(employees, {
     fields: [manualPunchRequests.employeeId],
@@ -798,6 +903,8 @@ export const allTables = {
   biometricDevices,
   attendanceSyncBatches,
   attendancePunches,
+  attendanceDailyRecords,
+  attendanceDailyRecordAdjustments,
   manualPunchRequests,
   leaveFiscalYears,
   leaveTypes,

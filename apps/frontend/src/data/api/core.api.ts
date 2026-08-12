@@ -1,4 +1,6 @@
 import type {
+  AttendanceDailyRecordResponse,
+  AttendanceDailyRecordsResponse,
   AttendancePunchesResponse,
   AttendancePunchResponse,
   AttendanceSyncBatchesResponse,
@@ -41,6 +43,7 @@ import type {
   EmployeesPaginatedResponse,
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
+  GenerateAttendanceDailyRecordsResponse,
   PermanentEmployeeImportResponse,
   LeaveBalanceResponse,
   LeaveBalancesResponse,
@@ -312,9 +315,78 @@ export const coreApi = {
       body: JSON.stringify(input),
     }),
   getAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches'),
+  getAttendancePunchesPaginated: (params: {
+    page?: number;
+    pageSize?: number;
+    employeeId?: string;
+    deviceId?: string;
+    status?: 'processed' | 'unprocessed';
+  } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set('page', String(params.page));
+    if (params.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params.employeeId) query.set('employeeId', params.employeeId);
+    if (params.deviceId) query.set('deviceId', params.deviceId);
+    if (params.status) query.set('status', params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<AttendancePunchesResponse>(`/attendance-punches/paginated${suffix}`);
+  },
   getEmployeeAttendancePunches: (employeeId: string) =>
     coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
   getUnprocessedAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches/unprocessed'),
+  getSupervisorAttendanceDailyRecords: (params: { date?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/supervisor${suffix}`);
+  },
+  getHrAttendanceDailyRecords: (params: { date?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/hr${suffix}`);
+  },
+  generateAttendanceDailyRecords: (params: { date?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<GenerateAttendanceDailyRecordsResponse>(`/attendance-approvals/generate${suffix}`, {
+      method: 'POST',
+    });
+  },
+  supervisorApproveAttendanceDailyRecord: (attendanceDailyRecordId: string) =>
+    coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${attendanceDailyRecordId}/supervisor-approve`, {
+      method: 'POST',
+    }),
+  updateSupervisorAttendanceDailyRecordPayroll: (input: {
+    attendanceDailyRecordId: string;
+    attendanceDays?: string;
+    leaveDays?: string;
+    payableDays?: string;
+    payrollNote?: string | null;
+  }) =>
+    coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/supervisor-edit`, {
+      method: 'POST',
+      body: JSON.stringify({
+        attendanceDays: input.attendanceDays,
+        leaveDays: input.leaveDays,
+        payableDays: input.payableDays,
+        payrollNote: input.payrollNote,
+      }),
+    }),
+  hrApproveAttendanceDailyRecord: (attendanceDailyRecordId: string) =>
+    coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${attendanceDailyRecordId}/hr-approve`, {
+      method: 'POST',
+    }),
+  returnAttendanceDailyRecord: (input: { attendanceDailyRecordId: string; reason: string }) =>
+    coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/return`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: input.reason }),
+    }),
   getManualPunchRequests: () => coreFetch<ManualPunchRequestsResponse>('/manual-punch-requests'),
   createManualPunchRequest: (input: CreateManualPunchRequestInput) =>
     coreFetch<ManualPunchRequestResponse>('/manual-punch-requests', {

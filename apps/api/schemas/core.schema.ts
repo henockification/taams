@@ -195,6 +195,7 @@ export const DeviceHealthStatusSchema = z.enum(['ONLINE', 'OFFLINE', 'UNKNOWN', 
 export const SyncStatusSchema = z.enum(['STARTED', 'COMPLETED', 'FAILED', 'PARTIAL']);
 export const PunchTypeSchema = z.enum(['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN']);
 export const PunchSourceSchema = z.enum(['DEVICE', 'MANUAL', 'IMPORT', 'MOBILE', 'WEB']);
+export const AttendanceDailyRecordStatusSchema = z.enum(['PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED', 'HR_APPROVED']);
 
 export const BiometricDeviceSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -271,6 +272,37 @@ export const AttendancePunchSchema = z.object({
   employee: EmployeeSchema.nullable().optional(),
   device: BiometricDeviceSchema.nullable().optional(),
   syncBatch: AttendanceSyncBatchSchema.nullable().optional(),
+});
+
+export const AttendanceDailyRecordSchema = z.object({
+  id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
+  employeeId: UuidSchema,
+  attendanceDate: z.string().openapi({ example: '2026-06-09' }),
+  firstPunchId: z.string().uuid().nullable(),
+  lastPunchId: z.string().uuid().nullable(),
+  checkInAt: z.string().nullable().openapi({ example: '2026-06-09T08:15:00.000Z' }),
+  checkOutAt: z.string().nullable().openapi({ example: '2026-06-09T17:32:00.000Z' }),
+  totalPunches: z.number().int().nonnegative().openapi({ example: 2 }),
+  attendanceDays: z.string().openapi({ example: '0.50' }),
+  leaveDays: z.string().openapi({ example: '0.50' }),
+  payableDays: z.string().openapi({ example: '1.00' }),
+  absenceDays: z.string().openapi({ example: '0.00' }),
+  isBiometricExempt: z.boolean().openapi({ example: false }),
+  payrollNote: z.string().nullable().openapi({ example: 'Half-day attendance from a single punch; Approved leave 0.50 day(s)' }),
+  status: AttendanceDailyRecordStatusSchema,
+  supervisorApprovedBy: z.string().nullable(),
+  supervisorApprovedAt: z.string().nullable(),
+  hrApprovedBy: z.string().nullable(),
+  hrApprovedAt: z.string().nullable(),
+  returnedBy: z.string().nullable(),
+  returnedAt: z.string().nullable(),
+  returnReason: z.string().nullable(),
+  payrollReadyAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  employee: EmployeeSchema.nullable().optional(),
+  firstPunch: AttendancePunchSchema.nullable().optional(),
+  lastPunch: AttendancePunchSchema.nullable().optional(),
 });
 
 export const CreateDepartmentRequestSchema = z.object({
@@ -497,6 +529,17 @@ export const ChangeManualPunchRequestStatusRequestSchema = z.object({
   rejectedBy: z.string().min(1).optional(),
   rejectedAt: z.string().datetime().optional(),
   rejectionReason: z.string().nullable().optional(),
+});
+
+export const ReturnAttendanceDailyRecordRequestSchema = z.object({
+  reason: z.string().min(1),
+});
+
+export const UpdateAttendanceDailyRecordPayrollRequestSchema = z.object({
+  attendanceDays: z.union([z.string(), z.number()]).optional(),
+  leaveDays: z.union([z.string(), z.number()]).optional(),
+  payableDays: z.union([z.string(), z.number()]).optional(),
+  payrollNote: z.string().nullable().optional(),
 });
 
 export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
@@ -809,11 +852,32 @@ export const AttendanceSyncBatchResponseSchema = z.object({
 export const AttendancePunchesResponseSchema = z.object({
   success: z.boolean(),
   attendancePunches: z.array(AttendancePunchSchema),
+  pagination: z.object({
+    total: z.number().int().nonnegative(),
+    page: z.number().int().positive(),
+    pageSize: z.number().int().positive(),
+  }).optional(),
 });
 
 export const AttendancePunchResponseSchema = z.object({
   success: z.boolean(),
   attendancePunch: AttendancePunchSchema,
+});
+
+export const AttendanceDailyRecordsResponseSchema = z.object({
+  success: z.boolean(),
+  attendanceDailyRecords: z.array(AttendanceDailyRecordSchema),
+});
+
+export const AttendanceDailyRecordResponseSchema = z.object({
+  success: z.boolean(),
+  attendanceDailyRecord: AttendanceDailyRecordSchema,
+});
+
+export const GenerateAttendanceDailyRecordsResponseSchema = z.object({
+  success: z.boolean(),
+  generated: z.number().int().nonnegative(),
+  attendanceDailyRecords: z.array(AttendanceDailyRecordSchema),
 });
 
 export const ManualPunchRequestResponseSchema = z.object({

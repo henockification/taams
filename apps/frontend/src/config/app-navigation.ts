@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -225,6 +225,20 @@ export const appNavGroups: AppNavGroup[] = [
         icon: ScanLine,
       },
       {
+        titleKey: 'attendanceApprovals',
+        url: '/attendance-approvals/supervisor',
+        permissionResource: 'attendance-approvals',
+        requiredPermission: 'attendance-approvals:approve',
+        icon: FileCheck2,
+      },
+      {
+        titleKey: 'hrAttendanceApproval',
+        url: '/attendance-approvals/hr',
+        permissionResource: 'hr-attendance-approvals',
+        requiredPermission: 'hr-attendance-approvals:approve',
+        icon: ShieldCheck,
+      },
+      {
         titleKey: 'manualPunchRequests',
         url: '/manual-punch-requests',
         permissionResource: 'manual-punch-requests',
@@ -284,6 +298,8 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrRole(user)) return true;
   if (item.url === '/department-head-dashboard' && hasDepartmentHeadRole(user)) return true;
+  if (item.url === '/attendance-approvals/supervisor' && hasDepartmentHeadRole(user)) return true;
+  if (item.url === '/attendance-approvals/hr' && hasHrRole(user)) return true;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
@@ -344,6 +360,8 @@ export function getNavItemForPath(pathname: string) {
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/leave-request-approvals') return Boolean(user);
   if (pathname === '/department-head-dashboard') return Boolean(user);
+  if (pathname === '/attendance-approvals/supervisor') return hasDepartmentHeadRole(user);
+  if (pathname === '/attendance-approvals/hr') return hasHrRole(user);
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
 }

@@ -184,6 +184,7 @@ export type DeviceHealthStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'ERROR';
 export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
+export type AttendanceDailyRecordStatus = 'PENDING_SUPERVISOR' | 'RETURNED' | 'SUPERVISOR_APPROVED' | 'HR_APPROVED';
 export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type TimeOperationSeverity = 'critical' | 'warning' | 'info' | 'success';
 export type TimeOperationStatus = 'CLEAR' | 'WATCH' | 'ACTION_REQUIRED';
@@ -278,6 +279,37 @@ export type AttendancePunch = {
   employee?: Employee | null;
   device?: BiometricDevice | null;
   syncBatch?: AttendanceSyncBatch | null;
+};
+
+export type AttendanceDailyRecord = {
+  id: string;
+  employeeId: string;
+  attendanceDate: string;
+  firstPunchId: string | null;
+  lastPunchId: string | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  totalPunches: number;
+  attendanceDays: string;
+  leaveDays: string;
+  payableDays: string;
+  absenceDays: string;
+  isBiometricExempt: boolean;
+  payrollNote: string | null;
+  status: AttendanceDailyRecordStatus;
+  supervisorApprovedBy: string | null;
+  supervisorApprovedAt: string | null;
+  hrApprovedBy: string | null;
+  hrApprovedAt: string | null;
+  returnedBy: string | null;
+  returnedAt: string | null;
+  returnReason: string | null;
+  payrollReadyAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee?: Employee | null;
+  firstPunch?: AttendancePunch | null;
+  lastPunch?: AttendancePunch | null;
 };
 
 export type CreateBiometricExemptionInput = {
@@ -667,8 +699,19 @@ export type BiometricExemptionResponse = { success: boolean; biometricExemption:
 export type BiometricDeviceConnectionTestResponse = { success: boolean; connectionTest: BiometricDeviceConnectionTest; biometricDevice: BiometricDevice };
 export type AttendanceSyncBatchesResponse = { success: boolean; attendanceSyncBatches: AttendanceSyncBatch[] };
 export type AttendanceSyncBatchResponse = { success: boolean; attendanceSyncBatch: AttendanceSyncBatch };
-export type AttendancePunchesResponse = { success: boolean; attendancePunches: AttendancePunch[] };
+export type AttendancePunchesResponse = {
+  success: boolean;
+  attendancePunches: AttendancePunch[];
+  pagination?: {
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+};
 export type AttendancePunchResponse = { success: boolean; attendancePunch: AttendancePunch };
+export type AttendanceDailyRecordsResponse = { success: boolean; attendanceDailyRecords: AttendanceDailyRecord[] };
+export type AttendanceDailyRecordResponse = { success: boolean; attendanceDailyRecord: AttendanceDailyRecord };
+export type GenerateAttendanceDailyRecordsResponse = { success: boolean; generated: number; attendanceDailyRecords: AttendanceDailyRecord[] };
 export type ManualPunchRequestsResponse = { success: boolean; manualPunchRequests: ManualPunchRequest[] };
 export type ManualPunchRequestResponse = { success: boolean; manualPunchRequest: ManualPunchRequest };
 export type ManualPunchRequestActionResponse = { success: boolean; manualPunchRequest: ManualPunchRequest; attendancePunch: AttendancePunch | null };

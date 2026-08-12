@@ -1,5 +1,5 @@
 import ZKLib from "node-zklib";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../db/db";
 import { attendancePunches, employees } from "../../db/schema";
 import {
@@ -72,22 +72,32 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
           continue;
         }
 
+        const employee = await db.query.employees.findFirst({
+          where: eq(employees.employeeCode, parsed.biometricId),
+          columns: { id: true },
+        });
+
         const alreadyImported = await db.query.attendancePunches.findFirst({
           where: and(
             eq(attendancePunches.deviceId, device.id),
             eq(attendancePunches.externalUid, parsed.externalUid),
           ),
-          columns: { id: true },
+          columns: { id: true, employeeId: true },
         });
 
         if (alreadyImported) {
+          if (!alreadyImported.employeeId && employee) {
+            await db
+              .update(attendancePunches)
+              .set({ employeeId: employee.id } as any)
+              .where(and(
+                eq(attendancePunches.id, alreadyImported.id),
+                isNull(attendancePunches.employeeId),
+              ));
+          }
+
           continue;
         }
-
-        const employee = await db.query.employees.findFirst({
-          where: eq(employees.biometricId, parsed.biometricId),
-          columns: { id: true },
-        });
 
         await createAttendancePunch({
           employeeId: employee?.id ?? null,

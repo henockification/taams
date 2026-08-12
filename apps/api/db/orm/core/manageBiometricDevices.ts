@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendancePunches, attendanceSyncBatches, biometricDevices, departments, employees, user } from '../../schema';
 import type {
@@ -246,6 +246,69 @@ export async function getAttendancePunches() {
     },
     orderBy: (table, { desc }) => [desc(table.punchTime)],
   });
+}
+
+export async function getAttendancePunchesPaginated({
+  page = 1,
+  pageSize = 50,
+  employeeId,
+  deviceId,
+  status,
+}: {
+  page?: number;
+  pageSize?: number;
+  employeeId?: string | null;
+  deviceId?: string | null;
+  status?: 'processed' | 'unprocessed' | null;
+}) {
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.min(200, Math.max(1, pageSize));
+  const offset = (safePage - 1) * safePageSize;
+  const conditions = [
+    employeeId ? eq(attendancePunches.employeeId, employeeId) : undefined,
+    deviceId ? eq(attendancePunches.deviceId, deviceId) : undefined,
+    status === 'processed' ? eq(attendancePunches.isProcessed, true) : undefined,
+    status === 'unprocessed' ? eq(attendancePunches.isProcessed, false) : undefined,
+  ].filter(Boolean);
+  const whereClause = conditions.length ? and(...conditions as any) : undefined;
+  const totalQuery = db.select({ value: count() }).from(attendancePunches);
+
+  const punchQuery = db.query.attendancePunches.findMany({
+    where: whereClause,
+    with: {
+      employee: {
+        with: {
+          department: true,
+          position: true,
+        },
+      },
+      device: {
+        with: {
+          department: true,
+        },
+      },
+      syncBatch: {
+        with: {
+          device: true,
+        },
+      },
+    },
+    orderBy: (table, { desc }) => [desc(table.punchTime)],
+    limit: safePageSize,
+    offset,
+  });
+
+  const [totalResult, punches] = await Promise.all([
+    whereClause ? totalQuery.where(whereClause) : totalQuery,
+    punchQuery,
+  ]);
+
+  return {
+    attendancePunches: punches,
+    total: Number(totalResult[0]?.value ?? 0),
+    page: safePage,
+    pageSize: safePageSize,
+  };
 }
 
 export async function getAttendancePunchesByEmployeeId(employeeId: string) {

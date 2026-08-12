@@ -275,6 +275,39 @@ export function formatAttendancePunch(punch: any) {
   };
 }
 
+export function formatAttendanceDailyRecord(record: any) {
+  return {
+    id: record.id,
+    employeeId: record.employeeId,
+    attendanceDate: formatDate(record.attendanceDate),
+    firstPunchId: record.firstPunchId ?? null,
+    lastPunchId: record.lastPunchId ?? null,
+    checkInAt: formatTimestamp(record.checkInAt),
+    checkOutAt: formatTimestamp(record.checkOutAt),
+    totalPunches: record.totalPunches,
+    attendanceDays: record.attendanceDays,
+    leaveDays: record.leaveDays,
+    payableDays: record.payableDays,
+    absenceDays: record.absenceDays,
+    isBiometricExempt: record.isBiometricExempt,
+    payrollNote: record.payrollNote ?? null,
+    status: record.status,
+    supervisorApprovedBy: record.supervisorApprovedBy ?? null,
+    supervisorApprovedAt: formatTimestamp(record.supervisorApprovedAt),
+    hrApprovedBy: record.hrApprovedBy ?? null,
+    hrApprovedAt: formatTimestamp(record.hrApprovedAt),
+    returnedBy: record.returnedBy ?? null,
+    returnedAt: formatTimestamp(record.returnedAt),
+    returnReason: record.returnReason ?? null,
+    payrollReadyAt: formatTimestamp(record.payrollReadyAt),
+    createdAt: formatTimestamp(record.createdAt),
+    updatedAt: formatTimestamp(record.updatedAt),
+    employee: record.employee ? formatEmployee(record.employee) : null,
+    firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
+    lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
+  };
+}
+
 export function formatManualPunchRequest(request: any) {
   return {
     id: request.id,
