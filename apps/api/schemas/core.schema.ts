@@ -589,6 +589,7 @@ export const LeaveTypeSchema = z.object({
   description: z.string().nullable(),
   deductsAnnualBalance: z.boolean(),
   requiresBalance: z.boolean(),
+  allowedDays: z.string().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -664,6 +665,7 @@ export const CreateLeaveTypeRequestSchema = z.object({
   description: z.string().nullable().optional(),
   deductsAnnualBalance: z.boolean().optional(),
   requiresBalance: z.boolean().optional(),
+  allowedDays: z.union([z.string(), z.number()]).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 

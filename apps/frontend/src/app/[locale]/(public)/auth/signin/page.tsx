@@ -14,16 +14,19 @@ export default function SignInPage() {
       description={t('signInDescription')}
       footer={t('signInFooter')}
       sideContent={
-        <div className="rounded-lg border border-white/20 bg-white/10 p-4 shadow-sm backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-white">{t('signInPanelTitle')}</p>
-              <p className="mt-1 text-xs leading-5 text-white/70">{t('signInPanelDescription')}</p>
+        <div className="grid max-w-md grid-cols-2 gap-2 text-sm font-medium text-white/86">
+          {[
+            t('coverageEmployees'),
+            t('coverageAttendance'),
+            t('coverageLeave'),
+            t('coverageHrUnits'),
+            t('coverageReports'),
+            t('coverageDeviceSync'),
+          ].map((item) => (
+            <div key={item} className="rounded-md border border-white/18 bg-white/9 px-3 py-2">
+              {item}
             </div>
-            <span className="rounded-md bg-white px-2 py-1 text-xs font-medium text-primary">
-              TAAMS
-            </span>
-          </div>
+          ))}
         </div>
       }
       sideFooter={<div />}

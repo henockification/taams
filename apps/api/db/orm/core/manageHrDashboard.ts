@@ -163,8 +163,9 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       .map((employee) => employee.id),
   );
   const punchesByEmployee = groupPunchesByEmployee(scopedDayPunches);
-  const leaveEmployeeIds = new Set(
+  const coveredLeaveEmployeeIds = new Set(
     scopedApprovedLeavesToday
+      .filter((request) => !isUnpaidLeaveType(request.leaveType))
       .filter((request) => activeEmployeeIds.has(request.employeeId))
       .map((request) => request.employeeId),
   );
@@ -172,7 +173,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
   const employeesWithoutPunch = activeEmployees.filter((employee) => (
     !punchesByEmployee.has(employee.id)
-    && !leaveEmployeeIds.has(employee.id)
+    && !coveredLeaveEmployeeIds.has(employee.id)
     && !exemptEmployeeIds.has(employee.id)
   ));
   const missingCheckoutEmployees = getMissingCheckoutEmployees({
@@ -243,7 +244,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       employeesOnLeave: createWidget(
         'employees-on-leave',
         'Employees on Leave',
-        leaveEmployeeIds.size,
+        scopedApprovedLeavesToday.length,
         '/leave-request-approvals',
       ),
       employeesWithoutPunch: createWidget(
@@ -311,6 +312,10 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       unprocessedPunches: scopedUnprocessedPunches,
     },
   };
+}
+
+function isUnpaidLeaveType(leaveType: any) {
+  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
 }
 
 function normalizeDateParam(date?: string) {

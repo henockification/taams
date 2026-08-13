@@ -8,6 +8,7 @@ import {
   employeeSupervisors,
   employees,
   leaveRequests,
+  leaveTypes,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
@@ -44,6 +45,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
         lte(leaveRequests.startDate, attendanceDate),
         gte(leaveRequests.endDate, attendanceDate),
       ),
+      with: { leaveType: true },
     }),
     db.query.biometricExemptions.findMany({
       where: eq(biometricExemptions.isActive, true),
@@ -52,6 +54,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
 
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
+  const unpaidLeaveDaysByEmployee = new Map<string, number>();
 
   for (const punch of punches) {
     if (!punch.employeeId) continue;
@@ -59,10 +62,9 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
   }
 
   for (const leave of approvedLeaves) {
-    leaveDaysByEmployee.set(
-      leave.employeeId,
-      Math.min(1, (leaveDaysByEmployee.get(leave.employeeId) ?? 0) + getLeaveDaysForDate(leave)),
-    );
+    const leaveDays = getLeaveDaysForDate(leave);
+    const target = isUnpaidLeaveType(leave.leaveType) ? unpaidLeaveDaysByEmployee : leaveDaysByEmployee;
+    target.set(leave.employeeId, Math.min(1, (target.get(leave.employeeId) ?? 0) + leaveDays));
   }
 
   const records = [];
@@ -74,8 +76,9 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
     const checkOutAt = employeePunches.length > 1 ? lastPunch?.punchTime ?? null : null;
     const attendanceDays = getAttendanceDays(employeePunches.length);
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
+    const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
     const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions);
-    const payroll = resolvePayrollDays({ attendanceDays, leaveDays, isBiometricExempt });
+    const payroll = resolvePayrollDays({ attendanceDays, leaveDays, unpaidLeaveDays, isBiometricExempt });
 
     const [record] = await db
       .insert(attendanceDailyRecords)
@@ -416,22 +419,29 @@ function getLeaveDaysForDate(leave: { startDate: string; endDate: string; reques
   return roundDayValue(Math.min(1, requestedDays / durationDays));
 }
 
-function resolvePayrollDays(input: { attendanceDays: number; leaveDays: number; isBiometricExempt: boolean }) {
+function resolvePayrollDays(input: { attendanceDays: number; leaveDays: number; unpaidLeaveDays: number; isBiometricExempt: boolean }) {
   const coveredByAttendanceOrLeave = Math.min(1, input.attendanceDays + input.leaveDays);
   const payableDays = input.isBiometricExempt ? Math.max(coveredByAttendanceOrLeave, 1) : coveredByAttendanceOrLeave;
   const absenceDays = Math.max(0, 1 - payableDays);
+  const unpaidPayrollDays = Math.min(absenceDays, input.unpaidLeaveDays);
+  const uncoveredAbsenceDays = Math.max(0, absenceDays - unpaidPayrollDays);
   const notes = [];
 
   if (input.attendanceDays === 0.5) notes.push('Half-day attendance from a single punch');
   if (input.leaveDays > 0) notes.push(`Approved leave ${formatDayValue(input.leaveDays)} day(s)`);
+  if (unpaidPayrollDays > 0) notes.push(`Approved unpaid leave ${formatDayValue(unpaidPayrollDays)} day(s) for payroll`);
   if (input.isBiometricExempt) notes.push('Biometric exempt');
-  if (absenceDays > 0) notes.push(`Uncovered absence ${formatDayValue(absenceDays)} day(s)`);
+  if (uncoveredAbsenceDays > 0) notes.push(`Uncovered absence ${formatDayValue(uncoveredAbsenceDays)} day(s)`);
 
   return {
     payableDays: roundDayValue(payableDays),
     absenceDays: roundDayValue(absenceDays),
     note: notes.length ? notes.join('; ') : null,
   };
+}
+
+function isUnpaidLeaveType(leaveType: typeof leaveTypes.$inferSelect | null | undefined) {
+  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
 }
 
 function daysInclusive(startDate: string, endDate: string) {

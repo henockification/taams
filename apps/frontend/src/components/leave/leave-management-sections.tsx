@@ -55,6 +55,7 @@ const initialLeaveTypeForm = {
   description: '',
   deductsAnnualBalance: false,
   requiresBalance: false,
+  allowedDays: '',
   isActive: true,
 };
 const initialBalanceForm = {
@@ -280,6 +281,7 @@ export function LeaveTypesSection() {
       description: leaveType.description ?? '',
       deductsAnnualBalance: leaveType.deductsAnnualBalance,
       requiresBalance: leaveType.requiresBalance,
+      allowedDays: leaveType.allowedDays ?? '',
       isActive: leaveType.isActive,
     } : initialLeaveTypeForm);
     setDialogOpen(true);
@@ -295,6 +297,7 @@ export function LeaveTypesSection() {
         description: leaveTypeForm.description.trim() || null,
         deductsAnnualBalance: leaveTypeForm.deductsAnnualBalance,
         requiresBalance: leaveTypeForm.requiresBalance,
+        allowedDays: leaveTypeForm.allowedDays.trim() || null,
         isActive: leaveTypeForm.isActive,
       };
       if (editingLeaveType) {
@@ -343,6 +346,7 @@ export function LeaveTypesSection() {
                   <TableRow>
                     <TableHead>{t('code')}</TableHead>
                     <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('allowedDays')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
@@ -352,6 +356,7 @@ export function LeaveTypesSection() {
                   <TableRow key={type.id}>
                     <TableCell><Badge variant="secondary">{type.code}</Badge></TableCell>
                     <TableCell>{type.nameEn}</TableCell>
+                    <TableCell>{type.allowedDays ?? '-'}</TableCell>
                     <TableCell>{type.isActive ? t('active') : t('inactive')}</TableCell>
                     <TableCell className="text-right">
                       <Button type="button" size="sm" variant="outline" onClick={() => openLeaveTypeDialog(type)}>
@@ -382,6 +387,17 @@ export function LeaveTypesSection() {
               </Field>
               <Field label={t('nameAm')} id="leave-type-name-am">
                 <Input id="leave-type-name-am" value={leaveTypeForm.nameAm} onChange={(event) => setLeaveTypeForm((current) => ({ ...current, nameAm: event.target.value }))} />
+              </Field>
+              <Field label={t('allowedDays')} id="leave-type-allowed-days">
+                <Input
+                  id="leave-type-allowed-days"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={leaveTypeForm.allowedDays}
+                  onChange={(event) => setLeaveTypeForm((current) => ({ ...current, allowedDays: event.target.value }))}
+                  placeholder={t('allowedDaysPlaceholder')}
+                />
               </Field>
               <div className="grid gap-2">
                 <div className="flex items-center gap-2 rounded-md border border-border px-3 py-2">

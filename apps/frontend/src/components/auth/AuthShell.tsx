@@ -38,19 +38,24 @@ export function AuthShell({
         <section className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex">
           <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,51,102,0.98),rgba(0,36,73,1))]" />
           <div className="relative z-10 flex w-full flex-col justify-between p-10 xl:p-14">
-            <Link href="/" className="inline-flex items-center gap-3">
-              <span className="flex size-12 items-center justify-center rounded-md bg-white shadow-sm">
+            <Link href="/" className="inline-flex items-center gap-5">
+              <span className="flex size-24 items-center justify-center rounded-xl bg-white shadow-sm">
                 <Image
                   src="/logo.png"
                   alt="Taams"
-                  width={34}
-                  height={34}
+                  width={82}
+                  height={82}
                   priority
-                  className="h-8 w-8 object-contain"
+                  className="h-20 w-20 object-contain"
                 />
               </span>
-              <span className="max-w-64 text-lg font-semibold leading-tight tracking-normal">
-                Time and Attendance Management System
+              <span className="flex min-w-0 flex-col">
+                <span className="text-5xl font-black leading-none tracking-normal text-white">
+                  TAAMS
+                </span>
+                <span className="mt-2 max-w-72 text-base font-semibold leading-5 text-white/80">
+                  Time and Attendance Management System
+                </span>
               </span>
             </Link>
 
@@ -72,10 +77,10 @@ export function AuthShell({
             {sideFooter ? (
               sideFooter
             ) : (
-              <div className="grid grid-cols-3 gap-3 text-sm text-white/74">
-                <div className="border-l border-white/24 pl-3">{t('featureRbac')}</div>
-                <div className="border-l border-white/24 pl-3">{t('featureNativeAuth')}</div>
-                <div className="border-l border-white/24 pl-3">{t('featureSmsOtp')}</div>
+              <div className="grid grid-cols-3 gap-3 text-xs font-medium text-white/76">
+                <div className="border-l border-white/24 pl-3">{t('coverageAttendance')}</div>
+                <div className="border-l border-white/24 pl-3">{t('coverageLeave')}</div>
+                <div className="border-l border-white/24 pl-3">{t('coverageReports')}</div>
               </div>
             )}
           </div>
@@ -89,18 +94,21 @@ export function AuthShell({
           <div className={cn('w-full max-w-[430px] space-y-6', className)}>
             <div className="flex justify-center lg:hidden">
               <Link href="/" className="inline-flex items-center gap-3">
-                <span className="flex size-12 items-center justify-center rounded-md bg-white shadow-sm ring-1 ring-border">
+                <span className="flex size-14 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-border">
                   <Image
                     src="/logo.png"
                     alt="Taams"
-                    width={34}
-                    height={34}
+                    width={42}
+                    height={42}
                     priority
-                    className="h-8 w-8 object-contain"
+                    className="h-10 w-10 object-contain"
                   />
                 </span>
-                <span className="max-w-64 text-base font-semibold leading-tight text-primary sm:text-lg">
-                  Time and Attendance Management System
+                <span className="flex flex-col">
+                  <span className="text-2xl font-black leading-none text-primary">TAAMS</span>
+                  <span className="max-w-64 text-xs font-semibold leading-tight text-primary/75 sm:text-sm">
+                    Time and Attendance Management System
+                  </span>
                 </span>
               </Link>
             </div>

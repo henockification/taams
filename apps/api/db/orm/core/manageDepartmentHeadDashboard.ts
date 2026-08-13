@@ -157,6 +157,11 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
   const punchesByEmployee = groupPunchesByEmployee(dayPunches);
   const presentEmployeeIds = new Set([...punchesByEmployee.keys()]);
   const leaveEmployeeIds = new Set(approvedLeaves.map((request) => request.employeeId));
+  const coveredLeaveEmployeeIds = new Set(
+    approvedLeaves
+      .filter((request) => !isUnpaidLeaveType(request.leaveType))
+      .map((request) => request.employeeId),
+  );
   const exemptEmployeeIds = new Set(
     departmentEmployees
       .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
@@ -166,7 +171,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
   const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
   const absentEmployees = departmentEmployees.filter((employee) => (
     !presentEmployeeIds.has(employee.id)
-    && !leaveEmployeeIds.has(employee.id)
+    && !coveredLeaveEmployeeIds.has(employee.id)
     && !exemptEmployeeIds.has(employee.id)
   ));
 
@@ -197,6 +202,10 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
       pendingCorrections,
     },
   };
+}
+
+function isUnpaidLeaveType(leaveType: any) {
+  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
 }
 
 function createEmptySummary(input: { generatedAt: Date; selectedDate: string; supervisor: any }) {

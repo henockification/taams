@@ -26,6 +26,62 @@ import type {
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
+const KNOWN_LEAVE_TYPES = [
+  {
+    code: 'ANNUAL',
+    nameEn: 'Annual Leave',
+    nameAm: 'ዓመታዊ ፈቃድ',
+    description: 'Annual leave deducted from employee fiscal-year balance.',
+    deductsAnnualBalance: true,
+    requiresBalance: true,
+    allowedDays: null,
+  },
+  {
+    code: 'SICK',
+    nameEn: 'Sick Leave',
+    nameAm: 'የሕመም ፈቃድ',
+    description: 'Sick leave capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '240.00',
+  },
+  {
+    code: 'MATERNITY',
+    nameEn: 'Maternity Leave',
+    nameAm: 'የወሊድ ፈቃድ',
+    description: 'Maternity leave with pay.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '120.00',
+  },
+  {
+    code: 'PATERNITY',
+    nameEn: 'Paternity Leave',
+    nameAm: 'የአባትነት ፈቃድ',
+    description: 'Paternity leave with pay.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '10.00',
+  },
+  {
+    code: 'SPECIAL_FULL_PAY',
+    nameEn: 'Special Leave with Full Pay',
+    nameAm: 'ልዩ ፈቃድ ከሙሉ ክፍያ ጋር',
+    description: 'Special leave with full pay capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '7.00',
+  },
+  {
+    code: 'UNPAID',
+    nameEn: 'Unpaid Leave',
+    nameAm: 'ያለ ክፍያ ፈቃድ',
+    description: 'Special leave without pay capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '365.00',
+  },
+] as const;
 
 export async function getLeaveFiscalYears() {
   return db.select().from(leaveFiscalYears).orderBy(asc(leaveFiscalYears.startsAt));
@@ -91,7 +147,7 @@ export async function setActiveLeaveFiscalYear(id: string) {
 }
 
 export async function getLeaveTypes() {
-  await ensureAnnualLeaveType();
+  await ensureKnownLeaveTypes();
   return db.select().from(leaveTypes).orderBy(asc(leaveTypes.nameEn));
 }
 
@@ -103,6 +159,9 @@ export async function createLeaveType(input: CreateLeaveTypeInput) {
     description: input.description ?? null,
     deductsAnnualBalance: input.deductsAnnualBalance ?? false,
     requiresBalance: input.requiresBalance ?? false,
+    allowedDays: input.allowedDays === undefined || input.allowedDays === null || input.allowedDays === ''
+      ? null
+      : fixed(parseDays(input.allowedDays, 'allowedDays')),
     isActive: input.isActive ?? true,
   } as any).returning();
 
@@ -118,6 +177,11 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
       description: input.description,
       deductsAnnualBalance: input.deductsAnnualBalance,
       requiresBalance: input.requiresBalance,
+      allowedDays: input.allowedDays === undefined
+        ? undefined
+        : input.allowedDays === null || input.allowedDays === ''
+          ? null
+          : fixed(parseDays(input.allowedDays, 'allowedDays')),
       isActive: input.isActive,
       updatedAt: new Date(),
     }) as any)
@@ -306,7 +370,7 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 }
 
 export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: EmployeeVisibilityScope) {
-  await ensureAnnualLeaveType();
+  await ensureKnownLeaveTypes();
   const requests = await db.query.leaveRequests.findMany({
     with: {
       employee: {
@@ -345,6 +409,7 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   const requestedDays = requiresBalance
     ? await calculateWorkingDays(input.employeeId, input.startDate, input.endDate)
     : calculateCalendarDays(input.startDate, input.endDate);
+  assertWithinAllowedDays(leaveType, requestedDays);
   if (requiresBalance) {
     const balance = await getEmployeeFiscalYearBalance(input.employeeId, fiscalYear!.id);
     if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
@@ -455,18 +520,10 @@ async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVis
   return requests.filter((request) => visibleEmployeeIds.has(request.employeeId));
 }
 
-async function ensureAnnualLeaveType() {
-  const existing = await db.query.leaveTypes.findFirst({ where: eq(leaveTypes.code, 'ANNUAL') });
-  if (existing) return existing;
-  return createLeaveType({
-    code: 'ANNUAL',
-    nameEn: 'Annual Leave',
-    nameAm: 'ዓመታዊ ፈቃድ',
-    description: 'Annual leave deducted from employee fiscal-year balance.',
-    deductsAnnualBalance: true,
-    requiresBalance: true,
-    isActive: true,
-  });
+async function ensureKnownLeaveTypes() {
+  await db.insert(leaveTypes)
+    .values(KNOWN_LEAVE_TYPES.map((leaveType) => ({ ...leaveType, isActive: true })) as any)
+    .onConflictDoNothing({ target: leaveTypes.code });
 }
 
 async function getLeaveBalanceById(id: string, tx: DbClient = db) {
@@ -638,7 +695,21 @@ function createBalanceTransaction(
 }
 
 function isAnnualLeaveType(leaveType: any) {
-  return leaveType?.code === 'ANNUAL' || leaveType?.requiresBalance || leaveType?.deductsAnnualBalance;
+  return normalizeLeaveCode(leaveType) === 'ANNUAL';
+}
+
+function normalizeLeaveCode(leaveType: any) {
+  return String(leaveType?.code ?? '').trim().toUpperCase();
+}
+
+function assertWithinAllowedDays(leaveType: any, requestedDays: number) {
+  if (isAnnualLeaveType(leaveType)) return;
+  if (leaveType?.allowedDays === null || leaveType?.allowedDays === undefined) return;
+
+  const allowedDays = numeric(leaveType.allowedDays);
+  if (allowedDays > 0 && requestedDays > allowedDays) {
+    throw new Error(`${leaveType.nameEn ?? 'Leave'} cannot exceed ${fixed(allowedDays)} day(s) per request`);
+  }
 }
 
 function assertDateRange(startDate: string, endDate: string) {

@@ -575,6 +575,7 @@ export type LeaveType = {
   description: string | null;
   deductsAnnualBalance: boolean;
   requiresBalance: boolean;
+  allowedDays: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -652,6 +653,7 @@ export type CreateLeaveTypeInput = {
   description?: string | null;
   deductsAnnualBalance?: boolean;
   requiresBalance?: boolean;
+  allowedDays?: string | number | null;
   isActive?: boolean;
 };
 

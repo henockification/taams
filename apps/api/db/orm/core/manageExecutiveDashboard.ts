@@ -283,6 +283,7 @@ function groupApprovedLeave(approvedLeaves: any[], activeEmployeeIds: Set<string
 
   for (const request of approvedLeaves) {
     if (!activeEmployeeIds.has(request.employeeId)) continue;
+    if (isUnpaidLeaveType(request.leaveType)) continue;
     const category = categorizeLeaveType(request.leaveType);
     if (category === 'REMOTE') groups.remote.add(request.employeeId);
     else if (category === 'FIELD_DUTY') groups.fieldDuty.add(request.employeeId);
@@ -291,6 +292,10 @@ function groupApprovedLeave(approvedLeaves: any[], activeEmployeeIds: Set<string
   }
 
   return groups;
+}
+
+function isUnpaidLeaveType(leaveType: any) {
+  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
 }
 
 function categorizeLeaveType(leaveType: any) {

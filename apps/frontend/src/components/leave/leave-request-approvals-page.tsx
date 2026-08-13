@@ -233,7 +233,7 @@ export function LeaveRequestApprovalsPage() {
                       <TableCell>{formatDate(request.endDate)}</TableCell>
                       <TableCell>{request.requestedDays}</TableCell>
                       <TableCell>
-                        {request.leaveType?.deductsAnnualBalance || request.leaveType?.requiresBalance ? (
+                        {request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL' ? (
                           <BalanceCell balance={request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) ?? null : null} />
                         ) : (
                           '-'

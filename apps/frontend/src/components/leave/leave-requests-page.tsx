@@ -119,7 +119,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   }, [currentEmployee?.id, selectedYearBalancesQuery.data?.leaveBalances]);
   const selectedLeaveTypeId = kind === 'annual' ? annualType?.id ?? form.leaveTypeId : form.leaveTypeId;
   const selectedLeaveType = leaveTypes.find((type) => type.id === selectedLeaveTypeId);
-  const requiresFiscalYearBalance = Boolean(selectedLeaveType?.requiresBalance || selectedLeaveType?.deductsAnnualBalance || selectedLeaveType?.code.toUpperCase() === 'ANNUAL');
+  const requiresFiscalYearBalance = selectedLeaveType?.code.trim().toUpperCase() === 'ANNUAL';
 
   const openDialog = () => {
     setForm({

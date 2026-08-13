@@ -5,12 +5,13 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import {
   authCredentials,
   permissions,
   rolePermissions,
   roles,
+  leaveTypes,
   user,
   userRoles,
 } from '../db/schema';
@@ -51,6 +52,69 @@ const DEFAULT_PERMISSIONS = [
   { name: 'system:manage', resource: 'system', action: 'manage', description: 'Manage the system' },
 ];
 
+const DEFAULT_LEAVE_TYPES = [
+  {
+    code: 'ANNUAL',
+    nameEn: 'Annual Leave',
+    nameAm: 'ዓመታዊ ፈቃድ',
+    description: 'Annual leave deducted from employee fiscal-year balance.',
+    deductsAnnualBalance: true,
+    requiresBalance: true,
+    allowedDays: null,
+    isActive: true,
+  },
+  {
+    code: 'SICK',
+    nameEn: 'Sick Leave',
+    nameAm: 'የሕመም ፈቃድ',
+    description: 'Sick leave capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '240.00',
+    isActive: true,
+  },
+  {
+    code: 'MATERNITY',
+    nameEn: 'Maternity Leave',
+    nameAm: 'የወሊድ ፈቃድ',
+    description: 'Maternity leave with pay.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '120.00',
+    isActive: true,
+  },
+  {
+    code: 'PATERNITY',
+    nameEn: 'Paternity Leave',
+    nameAm: 'የአባትነት ፈቃድ',
+    description: 'Paternity leave with pay.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '10.00',
+    isActive: true,
+  },
+  {
+    code: 'SPECIAL_FULL_PAY',
+    nameEn: 'Special Leave with Full Pay',
+    nameAm: 'ልዩ ፈቃድ ከሙሉ ክፍያ ጋር',
+    description: 'Special leave with full pay capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '7.00',
+    isActive: true,
+  },
+  {
+    code: 'UNPAID',
+    nameEn: 'Unpaid Leave',
+    nameAm: 'ያለ ክፍያ ፈቃድ',
+    description: 'Special leave without pay capped by policy.',
+    deductsAnnualBalance: false,
+    requiresBalance: false,
+    allowedDays: '365.00',
+    isActive: true,
+  },
+] as const;
+
 function requireEnv(name: string) {
   const value = process.env[name]?.trim();
 
@@ -59,6 +123,10 @@ function requireEnv(name: string) {
   }
 
   return value;
+}
+
+function excluded(columnName: string) {
+  return sql.raw(`excluded."${columnName}"`);
 }
 
 async function main() {
@@ -85,6 +153,24 @@ async function main() {
         });
 
       const seededPermissions = await tx.select().from(permissions);
+
+      const seededLeaveTypes = await tx
+        .insert(leaveTypes)
+        .values(DEFAULT_LEAVE_TYPES)
+        .onConflictDoUpdate({
+          target: leaveTypes.code,
+          set: {
+            nameEn: excluded('name_en'),
+            nameAm: excluded('name_am'),
+            description: excluded('description'),
+            deductsAnnualBalance: excluded('deducts_annual_balance'),
+            requiresBalance: excluded('requires_balance'),
+            allowedDays: excluded('allowed_days'),
+            isActive: true,
+            updatedAt: now,
+          },
+        })
+        .returning();
 
       const [superAdminRole] = await tx
         .insert(roles)
@@ -177,6 +263,7 @@ async function main() {
         userId: adminUserId,
         roleId: superAdminRole.id,
         permissionsCount: seededPermissions.length,
+        leaveTypesCount: seededLeaveTypes.length,
       };
     });
 
@@ -185,6 +272,7 @@ async function main() {
     console.log(`User ID: ${result.userId}`);
     console.log(`Role ID: ${result.roleId}`);
     console.log(`Permissions assigned: ${result.permissionsCount}`);
+    console.log(`Leave types seeded: ${result.leaveTypesCount}`);
   } finally {
     await client.end();
   }

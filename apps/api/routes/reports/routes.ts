@@ -67,6 +67,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'leaveDays', label: 'Leave days' },
       { key: 'payableDays', label: 'Payable days' },
       { key: 'absenceDays', label: 'Absence days' },
+      { key: 'payrollNote', label: 'Payroll note' },
       { key: 'status', label: 'Status' },
     ],
     buildRows: buildAttendanceDailyRows,
@@ -264,6 +265,7 @@ async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
       leaveDays: record.leaveDays,
       payableDays: record.payableDays,
       absenceDays: record.absenceDays,
+      payrollNote: record.payrollNote ?? '',
       status: record.status,
     }));
 }

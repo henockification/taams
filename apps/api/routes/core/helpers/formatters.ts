@@ -363,6 +363,7 @@ export function formatLeaveType(leaveType: any) {
     description: leaveType.description ?? null,
     deductsAnnualBalance: leaveType.deductsAnnualBalance,
     requiresBalance: leaveType.requiresBalance,
+    allowedDays: leaveType.allowedDays ?? null,
     isActive: leaveType.isActive,
     createdAt: formatTimestamp(leaveType.createdAt),
     updatedAt: formatTimestamp(leaveType.updatedAt),

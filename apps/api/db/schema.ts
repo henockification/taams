@@ -490,6 +490,7 @@ export const leaveTypes = pgTable('leave_types', {
   description: text('description'),
   deductsAnnualBalance: boolean('deducts_annual_balance').notNull().default(false),
   requiresBalance: boolean('requires_balance').notNull().default(false),
+  allowedDays: numeric('allowed_days', { precision: 8, scale: 2 }),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
