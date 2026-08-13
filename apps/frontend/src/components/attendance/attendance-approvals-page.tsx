@@ -22,6 +22,13 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
@@ -44,6 +51,7 @@ import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } fro
 import { notifications } from '@/lib/notifications';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
+const allDepartmentsValue = '__all_departments';
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -66,6 +74,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [editForm, setEditForm] = useState({
     attendanceDays: '0.00',
     leaveDays: '0.00',
@@ -84,6 +94,31 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const records = query.data?.attendanceDailyRecords ?? [];
   const summary = useMemo(() => summarize(records), [records]);
   const isHrMode = mode === 'hr';
+  const departments = useMemo(() => {
+    const byId = new Map<string, { id: string; nameEn: string }>();
+    for (const record of records) {
+      const department = record.employee?.department;
+      if (department?.id) byId.set(department.id, { id: department.id, nameEn: department.nameEn });
+    }
+    return [...byId.values()].sort((left, right) => left.nameEn.localeCompare(right.nameEn));
+  }, [records]);
+  const filteredRecords = useMemo(() => {
+    const search = employeeSearch.trim().toLowerCase();
+    return records.filter((record) => {
+      const employee = record.employee;
+      const haystack = [
+        employeeName(employee),
+        employee?.employeeCode,
+        employee?.payrollId,
+        employee?.biometricId,
+      ].filter(Boolean).join(' ').toLowerCase();
+      const matchesEmployee = !search || haystack.includes(search);
+      const matchesDepartment = !isHrMode
+        || departmentFilter === allDepartmentsValue
+        || employee?.departmentId === departmentFilter;
+      return matchesEmployee && matchesDepartment;
+    });
+  }, [departmentFilter, employeeSearch, isHrMode, records]);
 
   async function handleRefresh() {
     try {
@@ -186,6 +221,28 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           <CardDescription>{t('attendanceDate')}: {date}</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
+            <Input
+              type="search"
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+              placeholder={t('searchEmployee')}
+              className="md:max-w-xs"
+            />
+            {isHrMode ? (
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger className="md:w-64">
+                  <SelectValue placeholder={t('selectDepartment')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                  {departments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
           {query.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : records.length === 0 ? (
@@ -194,12 +251,19 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               title={t('noAttendanceApprovals')}
               description={t('noAttendanceApprovalsDescription')}
             />
+          ) : filteredRecords.length === 0 ? (
+            <EmptyState
+              icon={ScanLine}
+              title={t('noAttendanceApprovals')}
+              description={t('noMatchingAttendanceApprovalsDescription')}
+            />
           ) : (
-            <div className="overflow-hidden rounded-md border border-border">
-              <Table>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <Table className="min-w-[86rem]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('employee')}</TableHead>
+                    <TableHead>{t('department')}</TableHead>
                     <TableHead>{t('attendanceDate')}</TableHead>
                     <TableHead>{t('checkIn')}</TableHead>
                     <TableHead>{t('checkOut')}</TableHead>
@@ -212,14 +276,15 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {records.map((record) => (
+                  {filteredRecords.map((record) => (
                     <TableRow key={record.id}>
-                      <TableCell>
+                      <TableCell className="min-w-56">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{employeeName(record.employee) || t('unknown')}</p>
                           <p className="truncate text-xs text-muted-foreground">{record.employee?.employeeCode ?? '-'}</p>
                         </div>
                       </TableCell>
+                      <TableCell className="min-w-44 whitespace-nowrap">{record.employee?.department?.nameEn ?? record.employee?.sourceDepartmentName ?? '-'}</TableCell>
                       <TableCell className="whitespace-nowrap">{record.attendanceDate}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
