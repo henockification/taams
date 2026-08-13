@@ -24,11 +24,12 @@ export async function createRoleHandler(c: Context) {
     }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = message.includes('not found') ? 400 : 500;
+    const isClientError = message.includes('not found') || message.includes('reserved by the system');
+    const status = isClientError ? 400 : 500;
 
     return c.json({
       success: false,
-      error: 'Failed to create role',
+      error: isClientError ? message : 'Failed to create role',
       details: message,
     }, status);
   }

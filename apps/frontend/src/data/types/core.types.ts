@@ -479,6 +479,31 @@ export type DashboardSummary = {
 
 export type ExecutiveDashboardSeverity = 'critical' | 'warning' | 'info';
 
+export type AttendanceReportingDisciplineSummary = {
+  totalRecords: number;
+  reportedRecords: number;
+  adjustedRecords: number;
+  adjustmentCount: number;
+  hrApprovedRecords: number;
+  pendingSupervisorRecords: number;
+  returnedRecords: number;
+  reportingRate: number;
+  correctionRate: number;
+  hrReadyRate: number;
+  departmentBreakdown: Array<{
+    departmentId: string | null;
+    department: string;
+    totalRecords: number;
+    reportedRecords: number;
+    adjustedRecords: number;
+    adjustmentCount: number;
+    hrApprovedRecords: number;
+    reportingRate: number;
+    correctionRate: number;
+    hrReadyRate: number;
+  }>;
+};
+
 export type ExecutiveDashboardSummary = {
   generatedAt: string | null;
   date: string;
@@ -526,6 +551,7 @@ export type ExecutiveDashboardSummary = {
     correctionsReturned: number;
     payrollReadyPercent: number;
   };
+  attendanceReportingDiscipline: AttendanceReportingDisciplineSummary;
   departmentPerformance: Array<{
     departmentId: string | null;
     department: string;
@@ -578,6 +604,7 @@ export type HrDashboardSummary = {
   generatedAt: string | null;
   date: string;
   currentAnnualLeaveBalance: LeaveBalance | null;
+  attendanceReportingDiscipline: AttendanceReportingDisciplineSummary;
   widgets: {
     pendingApprovals: HrDashboardWidget;
     correctionsReturned: HrDashboardWidget;
@@ -818,6 +845,33 @@ export type DashboardSummaryResponse = { success: boolean; dashboard: DashboardS
 export type ExecutiveDashboardSummaryResponse = { success: boolean; executiveDashboard: ExecutiveDashboardSummary };
 export type HrDashboardSummaryResponse = { success: boolean; hrDashboard: HrDashboardSummary };
 export type DepartmentHeadDashboardSummaryResponse = { success: boolean; departmentHeadDashboard: DepartmentHeadDashboardSummary };
+
+export type ReportKey =
+  | 'attendance-daily'
+  | 'attendance-punches'
+  | 'leave-balances'
+  | 'leave-requests'
+  | 'employees'
+  | 'device-sync';
+
+export type ReportColumn = {
+  key: string;
+  label: string;
+};
+
+export type ReportResponse = {
+  success: boolean;
+  report: {
+    key: ReportKey;
+    title: string;
+    generatedAt: string;
+    columns: ReportColumn[];
+    rows: Record<string, string | number | boolean | null>[];
+    summary: {
+      totalRows: number;
+    };
+  };
+};
 
 export type CreateDepartmentInput = {
   nameEn: string;

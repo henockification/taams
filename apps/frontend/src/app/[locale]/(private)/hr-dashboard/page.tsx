@@ -122,6 +122,8 @@ export default function HrDashboardPage() {
         <AttendanceExceptions dashboard={dashboard} />
       </div>
 
+      <AttendanceReportingDiscipline dashboard={dashboard} />
+
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <PeopleStatus dashboard={dashboard} />
         <LeaveStatus dashboard={dashboard} />
@@ -263,6 +265,53 @@ function AttendanceExceptions({ dashboard }: { dashboard: HrDashboardSummary }) 
         ) : dashboard.details.attendanceExceptions.map((item) => (
           <AlertRow key={item.id} severity={item.severity} title={`${item.title}: ${item.count}`} description={item.description} />
         ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function AttendanceReportingDiscipline({ dashboard }: { dashboard: HrDashboardSummary }) {
+  const t = useTranslations("hrDashboard")
+  const summary = dashboard.attendanceReportingDiscipline
+  const items = [
+    [t("supervisorReportingRate"), `${summary.reportingRate}%`, t("supervisorReportingRateDescription")],
+    [t("supervisorCorrectionRate"), `${summary.correctionRate}%`, t("supervisorCorrectionRateDescription")],
+    [t("hrReadyRate"), `${summary.hrReadyRate}%`, t("hrReadyRateDescription")],
+    [t("returnedRecords"), summary.returnedRecords, t("returnedRecordsDescription")],
+  ]
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("attendanceReportingDiscipline")}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {items.map(([label, value, description]) => (
+            <div key={label} className="rounded-md border border-border p-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <SimpleTable
+            headers={[t("department"), t("records"), t("reportedToHr"), t("correctedBeforeHr"), t("hrReady"), t("correctionRate")]}
+            emptyLabel={t("noRows")}
+          >
+            {summary.departmentBreakdown.slice(0, 10).map((department) => (
+              <TableRow key={department.departmentId ?? department.department}>
+                <TableCell className="min-w-52 font-medium">{department.department}</TableCell>
+                <TableCell className="min-w-24">{department.totalRecords}</TableCell>
+                <TableCell className="min-w-36">{department.reportedRecords} <span className="text-muted-foreground">({department.reportingRate}%)</span></TableCell>
+                <TableCell className="min-w-36">{department.adjustedRecords}</TableCell>
+                <TableCell className="min-w-36">{department.hrApprovedRecords} <span className="text-muted-foreground">({department.hrReadyRate}%)</span></TableCell>
+                <TableCell className="min-w-28">{department.correctionRate}%</TableCell>
+              </TableRow>
+            ))}
+          </SimpleTable>
+        </div>
       </CardContent>
     </Card>
   )

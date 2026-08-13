@@ -3,6 +3,24 @@ import { db } from '../../db';
 import { employees, hrUnits, user, userHrUnits } from '../../schema';
 
 type DbClient = typeof db | any;
+const LEGACY_HR_ROLE_NAMES = new Set(['human_resource', 'hr', 'hr_manager', 'hr_clerk']);
+const HR_PERMISSION_RESOURCES = new Set([
+  'employees',
+  'permanent-employees',
+  'hr-dashboard',
+  'hr-attendance-approvals',
+  'manual-punch-requests',
+  'leave-balances',
+  'leave-transfer',
+  'leave-fiscal-years',
+  'leave-types',
+  'leave-request-approvals',
+  'biometric-exemptions',
+  'attendance-punches',
+  'work-schedules',
+  'shifts',
+  'schedule-assignments',
+]);
 
 export type CreateHrUnitInput = {
   nameEn: string;
@@ -83,12 +101,8 @@ export async function resolveEmployeeVisibilityScope(input: {
     return { type: 'unrestricted' };
   }
 
-  const hasHrAccess = roles.some((role) => (
-    role === 'human_resource'
-    || role === 'hr'
-    || role === 'hr_manager'
-    || role === 'hr_clerk'
-  )) || permissions.some((permission) => permission.startsWith('hr-') || permission.includes(':approve'));
+  const hasHrAccess = roles.some((role) => LEGACY_HR_ROLE_NAMES.has(role))
+    || permissions.some(isHrCapabilityPermission);
 
   if (hasHrAccess) {
     const memberships = await getUserHrUnits(input.userId);
@@ -101,6 +115,12 @@ export async function resolveEmployeeVisibilityScope(input: {
   }
 
   return { type: 'self', userId: input.userId };
+}
+
+export function isHrCapabilityPermission(permission: string) {
+  const normalized = permission.trim().toLowerCase();
+  const resource = normalized.split(':')[0];
+  return normalized.startsWith('hr-') || HR_PERMISSION_RESOURCES.has(resource);
 }
 
 export function scopedEmployeeWhere(scope: EmployeeVisibilityScope) {

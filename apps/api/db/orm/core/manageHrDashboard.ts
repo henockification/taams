@@ -13,6 +13,7 @@ import {
   manualPunchRequests,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
 import { scopedEmployeeWhere, type EmployeeVisibilityScope } from './manageHrUnits';
 
 const DEFAULT_SHIFT_START = '08:30:00';
@@ -44,7 +45,6 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     activeExemptions,
     workScheduleAssignments,
     pendingManualRequests,
-    pendingLeaveRequests,
     returnedCorrections,
     unprocessedPunches,
     activeDevices,
@@ -107,12 +107,6 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
     }),
-    db.query.leaveRequests.findMany({
-      where: eq(leaveRequests.status, 'PENDING'),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
-      orderBy: (table, { asc }) => [asc(table.createdAt)],
-      limit: 20,
-    }),
     db.query.manualPunchRequests.findMany({
       where: and(
         eq(manualPunchRequests.status, 'REJECTED'),
@@ -160,7 +154,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const scopedUpcomingLeaveRequests = upcomingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedWorkScheduleAssignments = workScheduleAssignments.filter((assignment) => isVisibleEmployee(assignment.employeeId));
   const scopedPendingManualRequests = pendingManualRequests.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedPendingLeaveRequests = pendingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedPendingLeaveRequests: any[] = [];
   const scopedReturnedCorrections = returnedCorrections.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedUnprocessedPunches = unprocessedPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
   const exemptEmployeeIds = new Set(
@@ -216,11 +210,17 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     lateEmployees: lateEmployeeIds.size,
     unprocessedPunches: scopedUnprocessedPunches.length,
   });
+  const attendanceReportingDiscipline = await getAttendanceReportingDisciplineSummary({
+    employees: activeEmployees,
+    dateFrom: selectedDate,
+    dateTo: selectedDate,
+  });
 
   return {
     generatedAt,
     date: selectedDate,
     currentAnnualLeaveBalance,
+    attendanceReportingDiscipline,
     widgets: {
       pendingApprovals: createWidget(
         'pending-approvals',

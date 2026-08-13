@@ -62,6 +62,8 @@ import type {
   ManualPunchRequestsResponse,
   PositionResponse,
   PositionsResponse,
+  ReportKey,
+  ReportResponse,
   ShiftBreakResponse,
   ShiftBreaksResponse,
   ShiftResponse,
@@ -116,6 +118,19 @@ async function coreFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
+async function coreBlobFetch(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}/api${path}`, {
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || data?.message || data?.details || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.blob();
+}
+
 export const coreApi = {
   getDashboardSummary: () => coreFetch<DashboardSummaryResponse>('/dashboard/summary'),
   getExecutiveDashboardSummary: (params: { date?: string; month?: string } = {}) => {
@@ -139,6 +154,22 @@ export const coreApi = {
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<DepartmentHeadDashboardSummaryResponse>(`/department-head-dashboard/summary${suffix}`);
+  },
+  getReport: (key: ReportKey, params: Record<string, string> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([paramKey, value]) => {
+      if (value) query.set(paramKey, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return coreFetch<ReportResponse>(`/reports/${key}${suffix}`);
+  },
+  downloadReportExcel: (key: ReportKey, params: Record<string, string> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([paramKey, value]) => {
+      if (value) query.set(paramKey, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return coreBlobFetch(`/reports/${key}/excel${suffix}`);
   },
   getDepartments: () => coreFetch<DepartmentsResponse>('/departments'),
   createDepartment: (input: CreateDepartmentInput) =>

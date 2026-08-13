@@ -204,8 +204,12 @@ async function canUseHrApproval(userId: string, roles: string[]) {
   if (
     normalizedRoles.includes('super_admin')
     || normalizedRoles.includes('superadmin')
+    || normalizedRoles.includes('admin')
+    || normalizedRoles.includes('executive')
     || normalizedRoles.includes('human_resource')
     || normalizedRoles.includes('hr')
+    || normalizedRoles.includes('hr_manager')
+    || normalizedRoles.includes('hr_clerk')
   ) {
     return true;
   }

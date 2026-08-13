@@ -24,6 +24,7 @@ import type {
   CreateLeaveRequestInput,
   LeaveRequest,
   CreateLeaveTypeInput,
+  ReportKey,
   TransferLeaveBalanceInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
@@ -99,6 +100,7 @@ export const coreQueryKeys = {
   leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
   leaveRequests: (kind?: 'annual' | 'other') => [...coreQueryKeys.all, 'leave', 'requests', kind ?? 'all'] as const,
   timeOperationsSummary: () => [...coreQueryKeys.all, 'time-operations', 'summary'] as const,
+  report: (key: ReportKey, params: Record<string, string>) => [...coreQueryKeys.all, 'reports', key, params] as const,
 };
 
 export function useDashboardSummary(userId?: string | null) {
@@ -128,6 +130,15 @@ export function useHrDashboardSummary(params: { date: string }) {
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
     refetchInterval: 60 * 1000,
+  });
+}
+
+export function useReport(key: ReportKey, params: Record<string, string>) {
+  return useQuery({
+    queryKey: coreQueryKeys.report(key, params),
+    queryFn: () => coreApi.getReport(key, params),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
   });
 }
 

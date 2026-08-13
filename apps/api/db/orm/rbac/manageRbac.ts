@@ -3,6 +3,8 @@ import { db } from '../../db';
 import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
 
 type DbClient = typeof db | any;
+const RESERVED_ROLE_NAMES = new Set(['super_admin', 'employee', 'executive']);
+const RESERVED_ROLE_MESSAGE = 'This role name is reserved by the system and cannot be created or assigned to a custom role.';
 
 export type CreateRoleInput = {
   name: string;
@@ -104,6 +106,8 @@ export async function updatePermission(permissionId: string, input: UpdatePermis
 
 export async function createRole(input: CreateRoleInput) {
   return db.transaction(async (tx) => {
+    assertRoleNameIsNotReserved(input.name);
+
     if (input.permissionIds?.length) {
       await assertPermissionsExist(input.permissionIds, tx);
     }
@@ -111,7 +115,7 @@ export async function createRole(input: CreateRoleInput) {
     const [role] = await tx
       .insert(roles)
       .values({
-        name: input.name,
+        name: normalizeRoleName(input.name),
         description: input.description,
       })
       .returning();
@@ -134,7 +138,10 @@ export async function updateRole(roleId: string, input: UpdateRoleInput) {
     await assertRoleExists(roleId, tx);
 
     const updateData: Record<string, unknown> = {};
-    if (input.name !== undefined) updateData.name = input.name;
+    if (input.name !== undefined) {
+      assertRoleNameIsNotReserved(input.name);
+      updateData.name = normalizeRoleName(input.name);
+    }
     if (input.description !== undefined) updateData.description = input.description;
 
     if (Object.keys(updateData).length > 0) {
@@ -361,4 +368,14 @@ async function getRoleNamesByIds(roleIds: string[], tx: DbClient = db) {
   }
 
   return foundRoles.map((role: { name: string }) => role.name);
+}
+
+function normalizeRoleName(name: string) {
+  return name.trim().toLowerCase();
+}
+
+function assertRoleNameIsNotReserved(name: string) {
+  if (RESERVED_ROLE_NAMES.has(normalizeRoleName(name))) {
+    throw new Error(RESERVED_ROLE_MESSAGE);
+  }
 }

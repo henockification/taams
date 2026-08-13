@@ -40,7 +40,6 @@ import {
   useChangeLeaveRequestStatus,
   useDashboardSummary,
   useLeaveBalances,
-  useLeaveFiscalYears,
   useLeaveRequests,
 } from '@/data/hooks/core.hooks';
 import type { LeaveBalance, LeaveRequest } from '@/data/types/core.types';
@@ -74,20 +73,15 @@ export function LeaveRequestApprovalsPage() {
   const [rejectionReason, setRejectionReason] = useState('');
 
   const dashboardQuery = useDashboardSummary(session.data?.user?.id);
-  const fiscalYearsQuery = useLeaveFiscalYears();
-  const activeFiscalYear = useMemo(
-    () => fiscalYearsQuery.data?.leaveFiscalYears.find((fiscalYear) => fiscalYear.isActive) ?? null,
-    [fiscalYearsQuery.data?.leaveFiscalYears],
-  );
-  const leaveBalancesQuery = useLeaveBalances(activeFiscalYear?.id, { enabled: Boolean(activeFiscalYear?.id) });
+  const leaveBalancesQuery = useLeaveBalances();
   const leaveRequestsQuery = useLeaveRequests();
   const changeStatus = useChangeLeaveRequestStatus();
 
   const dashboard = dashboardQuery.data?.dashboard;
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
   const balances = leaveBalancesQuery.data?.leaveBalances ?? [];
-  const balanceByEmployeeId = useMemo(
-    () => new Map(balances.map((balance) => [balance.employeeId, balance])),
+  const balanceByEmployeeYear = useMemo(
+    () => new Map(balances.map((balance) => [`${balance.employeeId}:${balance.fiscalYearId}`, balance])),
     [balances],
   );
   const directReportIds = useMemo(() => new Set(dashboard?.sections.manager?.directReports.map((employee) => employee.id) ?? []), [dashboard?.sections.manager?.directReports]);
@@ -168,7 +162,7 @@ export function LeaveRequestApprovalsPage() {
     }
   };
 
-  const isLoading = session.isPending || dashboardQuery.isLoading || leaveRequestsQuery.isLoading || fiscalYearsQuery.isLoading || leaveBalancesQuery.isLoading;
+  const isLoading = session.isPending || dashboardQuery.isLoading || leaveRequestsQuery.isLoading || leaveBalancesQuery.isLoading;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -239,8 +233,8 @@ export function LeaveRequestApprovalsPage() {
                       <TableCell>{formatDate(request.endDate)}</TableCell>
                       <TableCell>{request.requestedDays}</TableCell>
                       <TableCell>
-                        {request.leaveType?.deductsAnnualBalance ? (
-                          <BalanceCell balance={balanceByEmployeeId.get(request.employeeId) ?? null} />
+                        {request.leaveType?.deductsAnnualBalance || request.leaveType?.requiresBalance ? (
+                          <BalanceCell balance={request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) ?? null : null} />
                         ) : (
                           '-'
                         )}

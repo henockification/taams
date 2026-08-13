@@ -25,11 +25,12 @@ export async function updateRoleHandler(c: Context) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = message.includes('not found') ? 404 : 500;
+    const isReservedRoleName = message.includes('reserved by the system');
+    const status = message.includes('not found') ? 404 : isReservedRoleName ? 400 : 500;
 
     return c.json({
       success: false,
-      error: 'Failed to update role',
+      error: isReservedRoleName ? message : 'Failed to update role',
       details: message,
     }, status);
   }

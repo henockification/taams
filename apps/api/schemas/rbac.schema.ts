@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const PermissionActionSchema = z.enum(['read', 'add', 'edit', 'approve', 'reject']);
+const RoleNameSchema = z.preprocess(
+  (value) => typeof value === 'string' ? value.trim().toLowerCase() : value,
+  z.string().min(1).max(80).regex(/^[a-z0-9:_-]+$/),
+);
 
 export const PermissionSchema = z.object({
   id: z.string().uuid().openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -22,7 +26,7 @@ export const RoleSchema = z.object({
 });
 
 export const CreateRoleRequestSchema = z.object({
-  name: z.string().min(1).max(80).regex(/^[a-z0-9:_-]+$/).openapi({ example: 'admin' }),
+  name: RoleNameSchema.openapi({ example: 'attendance_manager' }),
   description: z.string().max(500).optional().openapi({ example: 'System administrator' }),
   permissionIds: z.array(z.string().uuid()).optional().openapi({
     example: ['a52da4a6-4b69-4aa0-865c-1a03fddb731f'],
@@ -30,7 +34,7 @@ export const CreateRoleRequestSchema = z.object({
 });
 
 export const UpdateRoleRequestSchema = z.object({
-  name: z.string().min(1).max(80).regex(/^[a-z0-9:_-]+$/).optional().openapi({ example: 'admin' }),
+  name: RoleNameSchema.optional().openapi({ example: 'attendance_manager' }),
   description: z.string().max(500).nullable().optional().openapi({ example: 'System administrator' }),
 });
 

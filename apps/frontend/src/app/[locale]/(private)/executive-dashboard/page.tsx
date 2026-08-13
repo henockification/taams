@@ -128,6 +128,8 @@ export default function ExecutiveDashboardPage() {
         <DepartmentPerformance dashboard={dashboard} />
       </div>
 
+      <AttendanceReportingDiscipline dashboard={dashboard} />
+
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <MonthlyTrend dashboard={dashboard} />
         <AlertsPanel dashboard={dashboard} />
@@ -364,6 +366,66 @@ function DepartmentPerformance({ dashboard }: { dashboard: ExecutiveDashboardSum
             ))}
           </TableBody>
         </Table>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AttendanceReportingDiscipline({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const summary = dashboard.attendanceReportingDiscipline
+  const items = [
+    [t("supervisorReportingRate"), `${summary.reportingRate}%`, t("supervisorReportingRateDescription")],
+    [t("supervisorCorrectionRate"), `${summary.correctionRate}%`, t("supervisorCorrectionRateDescription")],
+    [t("hrReadyRate"), `${summary.hrReadyRate}%`, t("hrReadyRateDescription")],
+    [t("adjustmentsLogged"), summary.adjustmentCount, t("adjustmentsLoggedDescription")],
+  ]
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("attendanceReportingDiscipline")}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {items.map(([label, value, description]) => (
+            <div key={label} className="rounded-md border border-border p-3">
+              <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
+              <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[30%]">{t("department")}</TableHead>
+                <TableHead className="w-[13%]">{t("records")}</TableHead>
+                <TableHead className="w-[15%]">{t("reportedToHr")}</TableHead>
+                <TableHead className="w-[15%]">{t("correctedBeforeHr")}</TableHead>
+                <TableHead className="w-[13%]">{t("hrReady")}</TableHead>
+                <TableHead className="w-[14%]">{t("correctionRate")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.departmentBreakdown.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">{t("noData")}</TableCell>
+                </TableRow>
+              ) : summary.departmentBreakdown.slice(0, 10).map((department) => (
+                <TableRow key={department.departmentId ?? department.department}>
+                  <TableCell className="whitespace-normal break-words font-medium leading-5">{department.department}</TableCell>
+                  <TableCell>{department.totalRecords}</TableCell>
+                  <TableCell>{department.reportedRecords} <span className="text-muted-foreground">({department.reportingRate}%)</span></TableCell>
+                  <TableCell>{department.adjustedRecords}</TableCell>
+                  <TableCell>{department.hrApprovedRecords} <span className="text-muted-foreground">({department.hrReadyRate}%)</span></TableCell>
+                  <TableCell>{department.correctionRate}%</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   )

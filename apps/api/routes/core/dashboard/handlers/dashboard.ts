@@ -98,7 +98,13 @@ export async function getHrDashboardSummaryHandler(c: Context) {
     const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
     const hasHrRole = roles.some((role) => (
       role === 'human_resource'
+      || role === 'hr'
+      || role === 'hr_manager'
+      || role === 'hr_clerk'
       || role === 'super_admin'
+      || role === 'superadmin'
+      || role === 'admin'
+      || role === 'executive'
     ));
     const hasPermission = hasHrRole || await userHasPermission(session.user.id, 'hr-dashboard:read');
 

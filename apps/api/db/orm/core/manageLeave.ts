@@ -322,11 +322,7 @@ export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: Employ
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  const scopedRequests = !scope || scope.type === 'unrestricted'
-    ? requests
-    : scope.type === 'hr_units'
-      ? requests.filter((request) => request.employee?.hrUnitId && scope.hrUnitIds.includes(request.employee.hrUnitId))
-      : requests.filter((request) => request.employee?.userId === scope.userId);
+  const scopedRequests = await filterLeaveRequestsForViewer(requests, scope);
 
   if (!kind) return scopedRequests;
   return scopedRequests.filter((request) => isAnnualLeaveType(request.leaveType) === (kind === 'annual'));
@@ -339,14 +335,21 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   if (!leaveType) throw new Error('Leave type not found');
   if (input.requestedBy) await assertUserExists(input.requestedBy);
 
+  const requiresBalance = isAnnualLeaveType(leaveType);
+  if (requiresBalance && !input.fiscalYearId) throw new Error('Fiscal year is required for annual leave');
   const fiscalYear = input.fiscalYearId
     ? await getLeaveFiscalYearById(input.fiscalYearId)
-    : await getFiscalYearForDate(input.startDate);
-  if (!fiscalYear && leaveType.requiresBalance) throw new Error('Fiscal year is required for annual leave');
+    : null;
+  if (input.fiscalYearId && !fiscalYear) throw new Error('Leave fiscal year not found');
 
-  const requestedDays = leaveType.requiresBalance
+  const requestedDays = requiresBalance
     ? await calculateWorkingDays(input.employeeId, input.startDate, input.endDate)
     : calculateCalendarDays(input.startDate, input.endDate);
+  if (requiresBalance) {
+    const balance = await getEmployeeFiscalYearBalance(input.employeeId, fiscalYear!.id);
+    if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
+    if (numeric(balance.available) < requestedDays) throw new Error('Insufficient annual leave balance');
+  }
 
   const [request] = await db.insert(leaveRequests).values({
     employeeId: input.employeeId,
@@ -393,7 +396,7 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
     await assertCanReviewRequest(request.employeeId, approvedBy, tx);
 
     const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
-    if (leaveType?.requiresBalance) {
+    if (isAnnualLeaveType(leaveType)) {
       if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
       if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
@@ -427,8 +430,29 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
 export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, scope: EmployeeVisibilityScope) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
-  await assertCanAccessEmployee(request.employeeId, scope);
   return changeLeaveRequestStatus(id, input);
+}
+
+async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVisibilityScope) {
+  if (!scope || scope.type === 'unrestricted') return requests;
+
+  if (scope.type === 'hr_units') {
+    return requests.filter((request) => (
+      request.status === 'APPROVED'
+      && request.employee?.hrUnitId
+      && scope.hrUnitIds.includes(request.employee.hrUnitId)
+    ));
+  }
+
+  const viewerEmployee = await db.query.employees.findFirst({
+    where: eq(employees.userId, scope.userId),
+    columns: { id: true },
+  });
+  if (!viewerEmployee) return [];
+
+  const directReportIds = await getDirectReportIds(viewerEmployee.id);
+  const visibleEmployeeIds = new Set([viewerEmployee.id, ...directReportIds]);
+  return requests.filter((request) => visibleEmployeeIds.has(request.employeeId));
 }
 
 async function ensureAnnualLeaveType() {
@@ -452,6 +476,7 @@ async function getLeaveBalanceById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -467,6 +492,7 @@ async function getLeaveRequestById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -546,6 +572,18 @@ async function assertCanReviewRequest(employeeId: string, reviewerUserId: string
     columns: { id: true },
   });
   if (!assignment) throw new Error('Only the direct supervisor or an admin can review this leave request');
+}
+
+async function getDirectReportIds(supervisorEmployeeId: string, tx: DbClient = db) {
+  const assignments = await tx.query.employeeSupervisors.findMany({
+    where: and(
+      eq(employeeSupervisors.supervisorId, supervisorEmployeeId),
+      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, today())),
+    ),
+    columns: { employeeId: true },
+  });
+
+  return assignments.map((assignment: { employeeId: string }) => assignment.employeeId);
 }
 
 async function calculateWorkingDays(employeeId: string, startDate: string, endDate: string, tx: DbClient = db) {

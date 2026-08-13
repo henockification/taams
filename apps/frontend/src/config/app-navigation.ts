@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CalendarDays,
   ClipboardPlus,
+  ClipboardList,
   FileSpreadsheet,
   FileCheck2,
   Fingerprint,
@@ -16,6 +17,7 @@ import {
   PanelsTopLeft,
   PlaneTakeoff,
   Scale,
+  Sheet,
   ShieldCheck,
   ScanLine,
   Timer,
@@ -26,7 +28,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'hrUnits' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'hrUnits' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -35,7 +37,7 @@ export type AppNavItem = {
 };
 
 export type AppNavGroup = {
-  labelKey: 'workspace' | 'core' | 'leaveManagement' | 'employeeServices' | 'workScheduleShift' | 'biometric' | 'security';
+  labelKey: 'workspace' | 'core' | 'leaveManagement' | 'employeeServices' | 'workScheduleShift' | 'biometric' | 'reports' | 'security';
   icon: LucideIcon;
   items: AppNavItem[];
 };
@@ -265,6 +267,54 @@ export const appNavGroups: AppNavGroup[] = [
     ],
   },
   {
+    labelKey: 'reports',
+    icon: ClipboardList,
+    items: [
+      {
+        titleKey: 'attendanceDailyReport',
+        url: '/reports/attendance-daily',
+        permissionResource: 'reports-attendance-daily',
+        requiredPermission: 'reports-attendance-daily:read',
+        icon: CalendarDays,
+      },
+      {
+        titleKey: 'attendancePunchesReport',
+        url: '/reports/attendance-punches',
+        permissionResource: 'reports-attendance-punches',
+        requiredPermission: 'reports-attendance-punches:read',
+        icon: ScanLine,
+      },
+      {
+        titleKey: 'leaveBalancesReport',
+        url: '/reports/leave-balances',
+        permissionResource: 'reports-leave-balances',
+        requiredPermission: 'reports-leave-balances:read',
+        icon: Scale,
+      },
+      {
+        titleKey: 'leaveRequestsReport',
+        url: '/reports/leave-requests',
+        permissionResource: 'reports-leave-requests',
+        requiredPermission: 'reports-leave-requests:read',
+        icon: PlaneTakeoff,
+      },
+      {
+        titleKey: 'employeeRosterReport',
+        url: '/reports/employees',
+        permissionResource: 'reports-employees',
+        requiredPermission: 'reports-employees:read',
+        icon: Users,
+      },
+      {
+        titleKey: 'deviceSyncReport',
+        url: '/reports/device-sync',
+        permissionResource: 'reports-device-sync',
+        requiredPermission: 'reports-device-sync:read',
+        icon: Sheet,
+      },
+    ],
+  },
+  {
     labelKey: 'security',
     icon: ShieldCheck,
     items: [
@@ -303,7 +353,8 @@ type AuthzUser = {
 } | null | undefined;
 
 export function isSuperAdmin(user: AuthzUser) {
-  return Boolean(user?.role?.includes('super_admin'));
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  return roles.includes('super_admin') || roles.includes('superadmin');
 }
 
 export function userHasPermission(user: AuthzUser, permission: string) {
@@ -314,10 +365,10 @@ export function userHasPermission(user: AuthzUser, permission: string) {
 export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
-  if (item.url === '/hr-dashboard' && hasHrRole(user)) return true;
+  if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
   if (item.url === '/department-head-dashboard' && hasDepartmentHeadRole(user)) return true;
   if (item.url === '/attendance-approvals/supervisor' && hasDepartmentHeadRole(user)) return true;
-  if (item.url === '/attendance-approvals/hr' && hasHrRole(user)) return true;
+  if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
@@ -335,10 +386,26 @@ export function hasHrRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => (
     role === 'super_admin'
+    || role === 'superadmin'
+    || role === 'admin'
+    || role === 'executive'
     || role === 'human_resource'
+    || role === 'hr'
     || role === 'hr_manager'
     || role === 'hr_clerk'
-  ));
+  )) || Boolean(user?.permissions?.some(isHrCapabilityPermission));
+}
+
+export function hasHrDashboardAccess(user: AuthzUser) {
+  return hasUnrestrictedRole(user)
+    || hasLegacyHrRole(user)
+    || userHasPermission(user, 'hr-dashboard:read');
+}
+
+export function hasHrAttendanceApprovalAccess(user: AuthzUser) {
+  return hasUnrestrictedRole(user)
+    || hasLegacyHrRole(user)
+    || userHasPermission(user, 'hr-attendance-approvals:approve');
 }
 
 export function hasEmployeeDashboardRole(user: AuthzUser) {
@@ -347,6 +414,7 @@ export function hasEmployeeDashboardRole(user: AuthzUser) {
   if (!roles.includes('employee')) return false;
   return !roles.some((role) => (
     role === 'super_admin'
+    || role === 'superadmin'
     || role === 'admin'
     || role === 'executive'
     || role === 'human_resource'
@@ -356,6 +424,28 @@ export function hasEmployeeDashboardRole(user: AuthzUser) {
     || role === 'department_head'
     || role === 'supervisor'
   ));
+}
+
+function isHrCapabilityPermission(permission: string) {
+  const normalized = permission.trim().toLowerCase();
+  const resource = normalized.split(':')[0];
+  return normalized.startsWith('hr-') || [
+    'employees',
+    'permanent-employees',
+    'hr-dashboard',
+    'hr-attendance-approvals',
+    'manual-punch-requests',
+    'leave-balances',
+    'leave-transfer',
+    'leave-fiscal-years',
+    'leave-types',
+    'leave-request-approvals',
+    'biometric-exemptions',
+    'attendance-punches',
+    'work-schedules',
+    'shifts',
+    'schedule-assignments',
+  ].includes(resource);
 }
 
 export function hasDepartmentHeadRole(user: AuthzUser) {
@@ -383,7 +473,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/leave-request-approvals') return Boolean(user);
   if (pathname === '/department-head-dashboard') return Boolean(user);
   if (pathname === '/attendance-approvals/supervisor') return hasDepartmentHeadRole(user);
-  if (pathname === '/attendance-approvals/hr') return hasHrRole(user);
+  if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
 }
@@ -399,7 +489,27 @@ export function getAccessibleNavGroups(user: AuthzUser) {
 
 export function getFirstAccessiblePath(user: AuthzUser) {
   if (hasExecutiveRole(user)) return '/executive-dashboard';
-  if (hasHrRole(user)) return '/hr-dashboard';
+  if (hasHrDashboardAccess(user)) return '/hr-dashboard';
   if (hasDepartmentHeadRole(user)) return '/department-head-dashboard';
   return getAccessibleNavGroups(user)[0]?.items[0]?.url ?? null;
+}
+
+function hasUnrestrictedRole(user: AuthzUser) {
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  return roles.some((role) => (
+    role === 'super_admin'
+    || role === 'superadmin'
+    || role === 'admin'
+    || role === 'executive'
+  ));
+}
+
+function hasLegacyHrRole(user: AuthzUser) {
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  return roles.some((role) => (
+    role === 'human_resource'
+    || role === 'hr'
+    || role === 'hr_manager'
+    || role === 'hr_clerk'
+  ));
 }

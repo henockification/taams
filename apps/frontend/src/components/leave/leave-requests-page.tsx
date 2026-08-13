@@ -41,6 +41,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   useCreateLeaveRequest,
   useDashboardSummary,
+  useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
   useLeaveTypes,
@@ -97,6 +98,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
   const leaveTypes = leaveTypesQuery.data?.leaveTypes ?? [];
   const currentEmployee = dashboardQuery.data?.dashboard.employee ?? null;
+  const selectedYearBalancesQuery = useLeaveBalances(form.fiscalYearId, { enabled: Boolean(form.fiscalYearId && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
   const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
   const annualType = leaveTypes.find((type) => type.code.toUpperCase() === 'ANNUAL');
@@ -111,6 +113,13 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const pendingRequests = useMemo(() => myRequests.filter((request) => request.status === 'PENDING'), [myRequests]);
   const approvedRequests = useMemo(() => myRequests.filter((request) => request.status === 'APPROVED'), [myRequests]);
   const rejectedRequests = useMemo(() => myRequests.filter((request) => request.status === 'REJECTED'), [myRequests]);
+  const selectedYearBalance = useMemo(() => {
+    if (!currentEmployee?.id) return null;
+    return (selectedYearBalancesQuery.data?.leaveBalances ?? []).find((balance) => balance.employeeId === currentEmployee.id) ?? null;
+  }, [currentEmployee?.id, selectedYearBalancesQuery.data?.leaveBalances]);
+  const selectedLeaveTypeId = kind === 'annual' ? annualType?.id ?? form.leaveTypeId : form.leaveTypeId;
+  const selectedLeaveType = leaveTypes.find((type) => type.id === selectedLeaveTypeId);
+  const requiresFiscalYearBalance = Boolean(selectedLeaveType?.requiresBalance || selectedLeaveType?.deductsAnnualBalance || selectedLeaveType?.code.toUpperCase() === 'ANNUAL');
 
   const openDialog = () => {
     setForm({
@@ -246,6 +255,17 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     ))}
                   </SelectContent>
                 </Select>
+                {requiresFiscalYearBalance ? (
+                  <BalancePreview
+                    isLoading={selectedYearBalancesQuery.isLoading}
+                    balance={selectedYearBalance}
+                    emptyLabel={form.fiscalYearId ? t('leaveBalanceNotFound') : t('selectFiscalYearToViewBalance')}
+                    loadingLabel={common('loading')}
+                    openingLabel={t('openingBalance')}
+                    usedLabel={t('usedBalance')}
+                    availableLabel={t('availableBalance')}
+                  />
+                ) : null}
               </Field>
               <Field label={t('startDate')} id="leave-start">
                 <Input id="leave-start" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} required />
@@ -261,7 +281,15 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
               <Button
                 type="submit"
-                disabled={createRequest.isPending || !currentEmployee?.id || !(kind === 'annual' ? annualType?.id : form.leaveTypeId) || !form.startDate || !form.endDate || !form.reason.trim()}
+                disabled={
+                  createRequest.isPending
+                  || !currentEmployee?.id
+                  || !selectedLeaveTypeId
+                  || (requiresFiscalYearBalance && (!form.fiscalYearId || !selectedYearBalance))
+                  || !form.startDate
+                  || !form.endDate
+                  || !form.reason.trim()
+                }
               >
                 {createRequest.isPending ? t('saving') : common('save')}
               </Button>
@@ -269,6 +297,49 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function BalancePreview({
+  isLoading,
+  balance,
+  emptyLabel,
+  loadingLabel,
+  openingLabel,
+  usedLabel,
+  availableLabel,
+}: {
+  isLoading: boolean;
+  balance: { opening: string; used: string; available: string; fiscalYear?: { name?: string | null } | null } | null;
+  emptyLabel: string;
+  loadingLabel: string;
+  openingLabel: string;
+  usedLabel: string;
+  availableLabel: string;
+}) {
+  if (isLoading) {
+    return <p className="text-xs text-muted-foreground">{loadingLabel}</p>;
+  }
+
+  if (!balance) {
+    return <p className="text-xs text-muted-foreground">{emptyLabel}</p>;
+  }
+
+  return (
+    <div className="grid grid-cols-3 gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
+      <BalanceMetric label={openingLabel} value={balance.opening} />
+      <BalanceMetric label={usedLabel} value={balance.used} />
+      <BalanceMetric label={availableLabel} value={balance.available} strong />
+    </div>
+  );
+}
+
+function BalanceMetric({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+  return (
+    <div>
+      <p className="text-muted-foreground">{label}</p>
+      <p className={strong ? 'font-semibold text-foreground' : 'font-medium text-foreground'}>{value}</p>
     </div>
   );
 }

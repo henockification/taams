@@ -43,6 +43,8 @@ import {
 } from '@/data/hooks/rbac.hooks';
 import type { Permission, Role } from '@/data/types/rbac.types';
 
+const reservedRoleNames = new Set(['super_admin', 'employee', 'executive']);
+
 export default function RolesPage() {
   const t = useTranslations('rbac');
   const common = useTranslations('common');
@@ -62,6 +64,8 @@ export default function RolesPage() {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   const selectedRole = roles.find((role) => role.id === selectedRoleId);
+  const normalizedRoleName = roleName.trim().toLowerCase();
+  const isReservedRoleName = reservedRoleNames.has(normalizedRoleName);
 
   useEffect(() => {
     if (!selectedRoleId && roles.length > 0) {
@@ -101,6 +105,7 @@ export default function RolesPage() {
 
   const handleSaveRole = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isReservedRoleName) return;
 
     try {
       if (editingRole) {
@@ -368,8 +373,12 @@ export default function RolesPage() {
                 value={roleName}
                 onChange={(event) => setRoleName(event.target.value)}
                 placeholder={t('roleNamePlaceholder')}
+                aria-invalid={isReservedRoleName}
                 required
               />
+              {isReservedRoleName ? (
+                <p className="text-xs text-destructive">{t('reservedRoleName')}</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="role-description">{t('roleDescription')}</Label>
@@ -389,7 +398,7 @@ export default function RolesPage() {
               >
                 {common('cancel')}
               </Button>
-              <Button type="submit" disabled={isSavingRole || !roleName.trim()}>
+              <Button type="submit" disabled={isSavingRole || !roleName.trim() || isReservedRoleName}>
                 {isSavingRole ? t('saving') : editingRole ? t('updateRole') : t('createRole')}
               </Button>
             </DialogFooter>

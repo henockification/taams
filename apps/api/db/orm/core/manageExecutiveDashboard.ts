@@ -11,6 +11,7 @@ import {
   manualPunchRequests,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
 
 const DEFAULT_SHIFT_START = '08:30:00';
 const LOW_ATTENDANCE_THRESHOLD = 90;
@@ -151,6 +152,11 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     presentEmployeeIds.size + leaveGroups.all.size + leaveGroups.officialDuty.size + leaveGroups.fieldDuty.size + leaveGroups.remote.size,
     Math.max(activeEmployees.length - exemptEmployeeIds.size, 0),
   );
+  const attendanceReportingDiscipline = await getAttendanceReportingDisciplineSummary({
+    employees: activeEmployees,
+    dateFrom: monthRange.start.toISOString().slice(0, 10),
+    dateTo: monthRange.end.toISOString().slice(0, 10),
+  });
 
   const workforceStatus = {
     totalEmployees: activeEmployees.length,
@@ -210,6 +216,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     liveAttendanceTimeline: buildTimeline(dayPunches),
     leaveSummary,
     hrPerformance,
+    attendanceReportingDiscipline,
     departmentPerformance,
     monthlyAttendanceTrend: buildMonthlyTrend({
       punches: trendPunches,
