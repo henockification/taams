@@ -19,16 +19,6 @@ export type Position = {
   updatedAt: string;
 };
 
-export type HrUnit = {
-  id: string;
-  nameEn: string;
-  nameAm: string | null;
-  code: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type Shift = {
   id: string;
   nameEn: string;
@@ -118,7 +108,6 @@ export type Employee = {
   gender: string | null;
   phoneNumber: string | null;
   email: string | null;
-  hrUnitId: string | null;
   departmentId: string;
   positionId: string | null;
   positionName: string | null;
@@ -140,7 +129,6 @@ export type Employee = {
   createdAt: string;
   updatedAt: string;
   department?: Department;
-  hrUnit?: HrUnit | null;
   position?: Position | null;
 };
 
@@ -731,9 +719,6 @@ export type EmployeeSupervisorsResponse = { success: boolean; supervisors: Emplo
 export type EmployeeSupervisorResponse = { success: boolean; supervisor: EmployeeSupervisor };
 export type EmployeeWorkSchedulesResponse = { success: boolean; employeeWorkSchedules: EmployeeWorkSchedule[] };
 export type EmployeeWorkScheduleResponse = { success: boolean; employeeWorkSchedule: EmployeeWorkSchedule };
-export type HrUnitsResponse = { success: boolean; hrUnits: HrUnit[] };
-export type HrUnitResponse = { success: boolean; hrUnit: HrUnit };
-export type UserHrUnitsResponse = { success: boolean; hrUnits: HrUnit[] };
 export type BiometricDevicesResponse = { success: boolean; biometricDevices: BiometricDevice[] };
 export type BiometricDeviceResponse = { success: boolean; biometricDevice: BiometricDevice };
 export type BiometricExemptionsResponse = { success: boolean; biometricExemptions: BiometricExemption[] };
@@ -949,15 +934,6 @@ export type CreateWorkScheduleDayInput = {
 
 export type UpdateWorkScheduleDayInput = Partial<CreateWorkScheduleDayInput> & { workScheduleDayId: string };
 
-export type CreateHrUnitInput = {
-  nameEn: string;
-  nameAm?: string | null;
-  code?: string | null;
-  isActive?: boolean;
-};
-
-export type UpdateHrUnitInput = Partial<CreateHrUnitInput> & { hrUnitId: string };
-
 export type CreateEmployeeInput = {
   userId?: string | null;
   employeeCode: string;
@@ -972,7 +948,6 @@ export type CreateEmployeeInput = {
   gender?: string | null;
   phoneNumber?: string | null;
   email?: string | null;
-  hrUnitId: string;
   departmentId: string;
   positionId?: string | null;
   positionName?: string | null;

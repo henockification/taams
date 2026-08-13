@@ -9,7 +9,6 @@ import {
   FileCheck2,
   Fingerprint,
   HeartPulse,
-  IdCard,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -28,7 +27,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'hrUnits' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -89,13 +88,6 @@ export const appNavGroups: AppNavGroup[] = [
       //   requiredPermission: 'organization-structure:read',
       //   icon: Building2,
       // },
-      {
-        titleKey: 'hrUnits',
-        url: '/hr-units',
-        permissionResource: 'hr-units',
-        requiredPermission: 'hr-units:read',
-        icon: IdCard,
-      },
       // Temporarily hidden: positions should not appear in navigation or be directly accessible.
       // {
       //   titleKey: 'positions',

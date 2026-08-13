@@ -19,7 +19,7 @@ import {
 import { getSessionByToken } from '../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames } from '../../../db/orm/rbac/manageRbac';
 import { getSessionCookie } from '../../auth/handlers/helpers';
-import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../db/orm/core/manageHrUnits';
+import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../db/orm/core/manageEmployeeVisibility';
 import {
   mapExcelRowToEmployeeInput,
   parseEmployeeWorkbook,
@@ -152,7 +152,6 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
     const scope = await resolveScope(c);
     const formData = await c.req.formData();
     const file = formData.get('file');
-    const hrUnitId = formData.get('hrUnitId');
 
     if (!file || typeof file === 'string' || typeof (file as any).arrayBuffer !== 'function') {
       return validationErrorResponse(c, 'An .xls or .xlsx file is required');
@@ -190,12 +189,8 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
       validInputs.push(mapped.input);
     }
 
-    if (!hrUnitId || typeof hrUnitId !== 'string') {
-      return validationErrorResponse(c, 'HR unit is required');
-    }
-
     const result = validInputs.length > 0
-      ? await upsertPermanentEmployees(validInputs, { hrUnitId, scope, employmentType })
+      ? await upsertPermanentEmployees(validInputs, { scope, employmentType })
       : { created: 0, updated: 0, skipped: 0, employees: [] };
 
     return c.json({

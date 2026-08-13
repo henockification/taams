@@ -4,7 +4,7 @@ import { getDepartmentHeadDashboardSummary } from '../../../../db/orm/core/manag
 import { getExecutiveDashboardSummary } from '../../../../db/orm/core/manageExecutiveDashboard';
 import { getHrDashboardSummary } from '../../../../db/orm/core/manageHrDashboard';
 import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
-import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse } from '../../helpers/errors';

@@ -23,7 +23,7 @@ import type {
   UpdateLeaveTypeInput,
   UpsertLeaveBalanceInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 const KNOWN_LEAVE_TYPES = [
@@ -199,7 +199,6 @@ export async function getLeaveBalances(fiscalYearId?: string, scope?: EmployeeVi
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -208,10 +207,7 @@ export async function getLeaveBalances(fiscalYearId?: string, scope?: EmployeeVi
     orderBy: (table, { asc }) => [asc(table.createdAt)],
   });
 
-  if (!scope || scope.type === 'unrestricted') return balances;
-  if (scope.type === 'hr_units') {
-    return balances.filter((balance) => balance.employee?.hrUnitId && scope.hrUnitIds.includes(balance.employee.hrUnitId));
-  }
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return balances;
   return balances.filter((balance) => balance.employee?.userId === scope.userId);
 }
 
@@ -376,7 +372,6 @@ export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: Employ
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -501,13 +496,7 @@ export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLe
 async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVisibilityScope) {
   if (!scope || scope.type === 'unrestricted') return requests;
 
-  if (scope.type === 'hr_units') {
-    return requests.filter((request) => (
-      request.status === 'APPROVED'
-      && request.employee?.hrUnitId
-      && scope.hrUnitIds.includes(request.employee.hrUnitId)
-    ));
-  }
+  if (scope.type === 'hr') return requests.filter((request) => request.status === 'APPROVED');
 
   const viewerEmployee = await db.query.employees.findFirst({
     where: eq(employees.userId, scope.userId),
@@ -533,7 +522,6 @@ async function getLeaveBalanceById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -549,7 +537,6 @@ async function getLeaveRequestById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },

@@ -12,7 +12,7 @@ import {
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 
@@ -169,10 +169,7 @@ export async function getHrAttendanceDailyRecords(date?: string | null, scope?: 
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
 
-  if (!scope || scope.type === 'unrestricted') return records;
-  if (scope.type === 'hr_units') {
-    return records.filter((record) => record.employee?.hrUnitId && scope.hrUnitIds.includes(record.employee.hrUnitId));
-  }
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return records;
   return records.filter((record) => record.employee?.userId === scope.userId);
 }
 
@@ -469,7 +466,7 @@ function parseDayInput(value: string | number, fieldName: string) {
 }
 
 const recordRelations = {
-  employee: { with: { department: true, hrUnit: true, position: true } },
+  employee: { with: { department: true, position: true } },
   firstPunch: true,
   lastPunch: true,
 } as const;

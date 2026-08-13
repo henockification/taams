@@ -30,16 +30,6 @@ export const DepartmentSchema = z.object({
   updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
 });
 
-export const HrUnitSchema = z.object({
-  id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
-  nameEn: z.string().openapi({ example: 'HR Unit 1' }),
-  nameAm: z.string().nullable().openapi({ example: null }),
-  code: z.string().nullable().openapi({ example: 'HR-1' }),
-  isActive: z.boolean().openapi({ example: true }),
-  createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
-  updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
-});
-
 export const PositionSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
   nameEn: z.string().openapi({ example: 'HR Manager' }),
@@ -137,7 +127,6 @@ export const EmployeeSchema = z.object({
   gender: z.string().nullable().openapi({ example: 'MALE' }),
   phoneNumber: z.string().nullable().openapi({ example: '+251911000000' }),
   email: z.string().nullable().openapi({ example: 'abebe@example.com' }),
-  hrUnitId: z.string().uuid().nullable().openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
   departmentId: UuidSchema,
   positionId: z.string().nullable(),
   positionName: z.string().nullable().openapi({ example: 'Expert' }),
@@ -159,7 +148,6 @@ export const EmployeeSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   department: DepartmentSchema.optional(),
-  hrUnit: HrUnitSchema.nullable().optional(),
   position: PositionSchema.nullable().optional(),
 });
 
@@ -417,7 +405,6 @@ export const CreateEmployeeRequestSchema = z.object({
   gender: z.string().max(20).nullable().optional(),
   phoneNumber: z.string().max(50).nullable().optional(),
   email: z.string().email().max(150).nullable().optional(),
-  hrUnitId: UuidSchema,
   departmentId: UuidSchema,
   positionId: UuidSchema.nullable().optional(),
   positionName: z.string().max(200).nullable().optional(),
@@ -439,19 +426,6 @@ export const CreateEmployeeRequestSchema = z.object({
 });
 
 export const UpdateEmployeeRequestSchema = CreateEmployeeRequestSchema.partial();
-
-export const CreateHrUnitRequestSchema = z.object({
-  nameEn: z.string().min(1).max(150),
-  nameAm: z.string().max(150).nullable().optional(),
-  code: z.string().max(50).nullable().optional(),
-  isActive: z.boolean().optional(),
-});
-
-export const UpdateHrUnitRequestSchema = CreateHrUnitRequestSchema.partial();
-
-export const AssignUserHrUnitsRequestSchema = z.object({
-  hrUnitIds: z.array(UuidSchema),
-});
 
 export const CreateEmployeeSupervisorRequestSchema = z.object({
   supervisorId: UuidSchema,
@@ -795,21 +769,6 @@ export const EmployeeWorkSchedulesResponseSchema = z.object({
 export const EmployeeWorkScheduleResponseSchema = z.object({
   success: z.boolean(),
   employeeWorkSchedule: EmployeeWorkScheduleSchema,
-});
-
-export const HrUnitsResponseSchema = z.object({
-  success: z.boolean(),
-  hrUnits: z.array(HrUnitSchema),
-});
-
-export const HrUnitResponseSchema = z.object({
-  success: z.boolean(),
-  hrUnit: HrUnitSchema,
-});
-
-export const UserHrUnitsResponseSchema = z.object({
-  success: z.boolean(),
-  hrUnits: z.array(HrUnitSchema),
 });
 
 export const EmployeesResponseSchema = z.object({

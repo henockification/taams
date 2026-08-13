@@ -12,7 +12,6 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
-  CreateHrUnitInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
@@ -31,7 +30,6 @@ import type {
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
-  UpdateHrUnitInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
@@ -57,8 +55,6 @@ export const coreQueryKeys = {
   hrDashboardSummary: (date: string) => [...coreQueryKeys.all, 'hr-dashboard', 'summary', date] as const,
   departmentHeadDashboardSummary: (date: string) => [...coreQueryKeys.all, 'department-head-dashboard', 'summary', date] as const,
   departments: () => [...coreQueryKeys.all, 'departments'] as const,
-  hrUnits: () => [...coreQueryKeys.all, 'hr-units'] as const,
-  userHrUnits: (userId: string) => [...coreQueryKeys.all, 'users', userId, 'hr-units'] as const,
   positions: () => [...coreQueryKeys.all, 'positions'] as const,
   shifts: () => [...coreQueryKeys.all, 'shifts'] as const,
   shift: (id: string) => [...coreQueryKeys.shifts(), id] as const,
@@ -181,57 +177,6 @@ export function useUpdateDepartment() {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.departments() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
-    },
-  });
-}
-
-export function useHrUnits() {
-  return useQuery({
-    queryKey: coreQueryKeys.hrUnits(),
-    queryFn: () => coreApi.getHrUnits(),
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-export function useCreateHrUnit() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: CreateHrUnitInput) => coreApi.createHrUnit(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrUnits() });
-    },
-  });
-}
-
-export function useUpdateHrUnit() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: UpdateHrUnitInput) => coreApi.updateHrUnit(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrUnits() });
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
-    },
-  });
-}
-
-export function useUserHrUnits(userId: string) {
-  return useQuery({
-    queryKey: coreQueryKeys.userHrUnits(userId),
-    queryFn: () => coreApi.getUserHrUnits(userId),
-    enabled: Boolean(userId),
-    staleTime: 5 * 60 * 1000,
-  });
-}
-
-export function useAssignUserHrUnits() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: { userId: string; hrUnitIds: string[] }) => coreApi.assignUserHrUnits(input),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.userHrUnits(variables.userId) });
     },
   });
 }
@@ -480,7 +425,7 @@ export function useImportPermanentEmployees() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { file: File; hrUnitId: string }) => coreApi.importPermanentEmployees(input),
+    mutationFn: (input: { file: File }) => coreApi.importPermanentEmployees(input),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
@@ -495,7 +440,7 @@ export function useImportContractEmployees() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { file: File; hrUnitId: string }) => coreApi.importContractEmployees(input),
+    mutationFn: (input: { file: File }) => coreApi.importContractEmployees(input),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });

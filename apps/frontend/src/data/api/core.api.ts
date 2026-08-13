@@ -21,7 +21,6 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
-  CreateHrUnitInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
@@ -44,8 +43,6 @@ import type {
   EmployeesPaginatedResponse,
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
-  HrUnitResponse,
-  HrUnitsResponse,
   GenerateAttendanceDailyRecordsResponse,
   PermanentEmployeeImportResponse,
   LeaveBalanceResponse,
@@ -77,7 +74,6 @@ import type {
   UpdateBiometricExemptionInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
-  UpdateHrUnitInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
@@ -87,7 +83,6 @@ import type {
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
   UpsertLeaveBalanceInput,
-  UserHrUnitsResponse,
   WorkScheduleDayResponse,
   WorkScheduleDaysResponse,
   WorkScheduleResponse,
@@ -182,23 +177,6 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  getHrUnits: () => coreFetch<HrUnitsResponse>('/hr-units'),
-  createHrUnit: (input: CreateHrUnitInput) =>
-    coreFetch<HrUnitResponse>('/hr-units', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  updateHrUnit: ({ hrUnitId, ...input }: UpdateHrUnitInput) =>
-    coreFetch<HrUnitResponse>(`/hr-units/${hrUnitId}`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    }),
-  getUserHrUnits: (userId: string) => coreFetch<UserHrUnitsResponse>(`/users/${userId}/hr-units`),
-  assignUserHrUnits: ({ userId, hrUnitIds }: { userId: string; hrUnitIds: string[] }) =>
-    coreFetch<UserHrUnitsResponse>(`/users/${userId}/hr-units`, {
-      method: 'PUT',
-      body: JSON.stringify({ hrUnitIds }),
-    }),
   getPositions: () => coreFetch<PositionsResponse>('/positions'),
   createPosition: (input: CreatePositionInput) =>
     coreFetch<PositionResponse>('/positions', {
@@ -289,20 +267,18 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  importPermanentEmployees: ({ file, hrUnitId }: { file: File; hrUnitId: string }) => {
+  importPermanentEmployees: ({ file }: { file: File }) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('hrUnitId', hrUnitId);
 
     return coreFetch<PermanentEmployeeImportResponse>('/employees/permanent/import', {
       method: 'POST',
       body: formData,
     });
   },
-  importContractEmployees: ({ file, hrUnitId }: { file: File; hrUnitId: string }) => {
+  importContractEmployees: ({ file }: { file: File }) => {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('hrUnitId', hrUnitId);
 
     return coreFetch<PermanentEmployeeImportResponse>('/employees/contract/import', {
       method: 'POST',

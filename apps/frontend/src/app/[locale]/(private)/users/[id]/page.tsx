@@ -14,7 +14,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
 import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
-import { useAssignUserHrUnits, useHrUnits, useUserHrUnits } from '@/data/hooks/core.hooks';
 
 interface User {
   id: string;
@@ -41,14 +40,9 @@ export default function UserDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
-  const [selectedHrUnitIds, setSelectedHrUnitIds] = useState<string[]>([]);
   const { data: rolesResponse, isLoading: rolesLoading } = useRoles();
-  const { data: hrUnitsResponse, isLoading: hrUnitsLoading } = useHrUnits();
-  const { data: userHrUnitsResponse } = useUserHrUnits(userId);
   const assignUserRoles = useAssignUserRoles();
-  const assignUserHrUnits = useAssignUserHrUnits();
   const roles = rolesResponse?.roles ?? [];
-  const hrUnits = hrUnitsResponse?.hrUnits ?? [];
 
   const fetchUser = useCallback(async () => {
     setLoading(true);
@@ -108,10 +102,6 @@ export default function UserDetailPage() {
     );
   }, [roles, user]);
 
-  useEffect(() => {
-    setSelectedHrUnitIds(userHrUnitsResponse?.hrUnits.map((hrUnit) => hrUnit.id) ?? []);
-  }, [userHrUnitsResponse?.hrUnits]);
-
   const handleRefresh = () => {
     fetchUser();
   };
@@ -127,16 +117,6 @@ export default function UserDetailPage() {
       }
 
       return current.filter((id) => id !== roleId);
-    });
-  };
-
-  const handleHrUnitToggle = (hrUnitId: string, checked: boolean) => {
-    setSelectedHrUnitIds((current) => {
-      if (checked) {
-        return current.includes(hrUnitId) ? current : [...current, hrUnitId];
-      }
-
-      return current.filter((id) => id !== hrUnitId);
     });
   };
 
@@ -158,28 +138,6 @@ export default function UserDetailPage() {
       notifications.show({
         title: 'Error',
         message: err instanceof Error ? err.message : 'Failed to update user roles',
-        color: 'red',
-      });
-    }
-  };
-
-  const handleSaveHrUnits = async () => {
-    if (!user) return;
-
-    try {
-      await assignUserHrUnits.mutateAsync({
-        userId: user.id,
-        hrUnitIds: selectedHrUnitIds,
-      });
-      notifications.show({
-        title: 'Success',
-        message: 'User HR units updated successfully',
-        color: 'green',
-      });
-    } catch (err) {
-      notifications.show({
-        title: 'Error',
-        message: err instanceof Error ? err.message : 'Failed to update user HR units',
         color: 'red',
       });
     }
@@ -388,57 +346,6 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>HR Units</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Assign the HR ownership groups this user can manage.
-            </p>
-
-            {hrUnitsLoading ? (
-              <div className="space-y-2">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-              </div>
-            ) : hrUnits.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Create HR units before assigning HR access.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  {hrUnits.map((hrUnit) => (
-                    <Label
-                      key={hrUnit.id}
-                      className="flex min-h-20 cursor-pointer items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-accent"
-                    >
-                      <Checkbox
-                        checked={selectedHrUnitIds.includes(hrUnit.id)}
-                        onCheckedChange={(checked) => handleHrUnitToggle(hrUnit.id, checked === true)}
-                        className="mt-0.5"
-                      />
-                      <span className="min-w-0 space-y-1">
-                        <span className="block text-sm font-medium text-foreground">
-                          {hrUnit.nameEn}
-                        </span>
-                        <span className="line-clamp-2 block text-xs text-muted-foreground">
-                          {hrUnit.code || hrUnit.nameAm || 'No code'}
-                        </span>
-                      </span>
-                    </Label>
-                  ))}
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={handleSaveHrUnits} disabled={assignUserHrUnits.isPending}>
-                    {assignUserHrUnits.isPending ? 'Saving...' : 'Save HR units'}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

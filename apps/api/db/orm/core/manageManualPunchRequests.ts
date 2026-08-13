@@ -6,7 +6,7 @@ import type {
   CreateManualPunchRequestInput,
 } from '../../../types/core.types';
 import { createAttendancePunch } from './manageBiometricDevices';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 
@@ -40,7 +40,6 @@ export async function getManualPunchRequests(scope?: EmployeeVisibilityScope) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -48,10 +47,7 @@ export async function getManualPunchRequests(scope?: EmployeeVisibilityScope) {
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  if (!scope || scope.type === 'unrestricted') return requests;
-  if (scope.type === 'hr_units') {
-    return requests.filter((request) => request.employee?.hrUnitId && scope.hrUnitIds.includes(request.employee.hrUnitId));
-  }
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return requests;
   return requests.filter((request) => request.employee?.userId === scope.userId);
 }
 
@@ -164,7 +160,6 @@ export async function getManualPunchRequestById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },

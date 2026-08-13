@@ -34,7 +34,6 @@ import {
   useBiometricDevices,
   useDepartments,
   useEmployees,
-  useHrUnits,
   useLeaveFiscalYears,
   useLeaveTypes,
   useReport,
@@ -67,31 +66,31 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
     key: 'attendance-daily',
     title: 'Attendance Daily Summary',
     description: 'Daily payroll-ready attendance status by employee.',
-    filterKeys: ['dateFrom', 'dateTo', 'hrUnitId', 'departmentId', 'employeeId', 'attendanceStatus'],
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus'],
   },
   'attendance-punches': {
     key: 'attendance-punches',
     title: 'Attendance Punches',
     description: 'Raw device, import, web, mobile, and manual punch records.',
-    filterKeys: ['dateFrom', 'dateTo', 'timeFrom', 'timeTo', 'hrUnitId', 'departmentId', 'employeeId', 'deviceId', 'punchStatus'],
+    filterKeys: ['dateFrom', 'dateTo', 'timeFrom', 'timeTo', 'departmentId', 'employeeId', 'deviceId', 'punchStatus'],
   },
   'leave-balances': {
     key: 'leave-balances',
     title: 'Leave Balances',
     description: 'Employee leave balances for the selected fiscal year.',
-    filterKeys: ['fiscalYearId', 'hrUnitId', 'departmentId', 'employeeId', 'lowBalance'],
+    filterKeys: ['fiscalYearId', 'departmentId', 'employeeId', 'lowBalance'],
   },
   'leave-requests': {
     key: 'leave-requests',
     title: 'Leave Requests',
     description: 'Submitted leave requests by period and status.',
-    filterKeys: ['dateFrom', 'dateTo', 'hrUnitId', 'departmentId', 'employeeId', 'leaveTypeId', 'leaveStatus'],
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'leaveTypeId', 'leaveStatus'],
   },
   employees: {
     key: 'employees',
     title: 'Employee Roster',
-    description: 'Employee directory snapshot by HR Unit, department, and employment type.',
-    filterKeys: ['hrUnitId', 'departmentId', 'employeeId', 'employmentType', 'employmentStatus', 'search'],
+    description: 'Employee directory snapshot by department and employment type.',
+    filterKeys: ['departmentId', 'employeeId', 'employmentType', 'employmentStatus', 'search'],
   },
   'device-sync': {
     key: 'device-sync',
@@ -106,7 +105,6 @@ export function ReportPage({ reportKey }: ReportPageProps) {
   const configBase = reportConfigs[reportKey];
   const [filters, setFilters] = useState<Record<string, string>>(() => defaultFilters(configBase.filterKeys));
   const departmentsQuery = useDepartments();
-  const hrUnitsQuery = useHrUnits();
   const employeesQuery = useEmployees();
   const devicesQuery = useBiometricDevices();
   const fiscalYearsQuery = useLeaveFiscalYears();
@@ -117,7 +115,6 @@ export function ReportPage({ reportKey }: ReportPageProps) {
   const reportFilters = useMemo(() => buildFilters({
     keys: configBase.filterKeys,
     departments: departmentsQuery.data?.departments ?? [],
-    hrUnits: hrUnitsQuery.data?.hrUnits ?? [],
     employees: employeesQuery.data?.employees ?? [],
     devices: devicesQuery.data?.biometricDevices ?? [],
     fiscalYears: fiscalYearsQuery.data?.leaveFiscalYears ?? [],
@@ -125,7 +122,6 @@ export function ReportPage({ reportKey }: ReportPageProps) {
   }), [
     configBase.filterKeys,
     departmentsQuery.data,
-    hrUnitsQuery.data,
     employeesQuery.data,
     devicesQuery.data,
     fiscalYearsQuery.data,
@@ -429,14 +425,12 @@ function filterWidthClass(filter: FilterConfig) {
 function buildFilters(input: {
   keys: string[];
   departments: any[];
-  hrUnits: any[];
   employees: any[];
   devices: any[];
   fiscalYears: any[];
   leaveTypes: any[];
 }) {
   const options = {
-    hrUnitId: input.hrUnits.map((hrUnit) => ({ value: hrUnit.id, label: hrUnit.nameEn })),
     departmentId: input.departments.map((department) => ({ value: department.id, label: department.nameEn })),
     employeeId: input.employees.map((employee) => ({ value: employee.id, label: `${employee.employeeCode} - ${employee.firstNameEn} ${employee.lastNameEn}` })),
     deviceId: input.devices.map((device) => ({ value: device.id, label: device.deviceName })),
@@ -448,7 +442,6 @@ function buildFilters(input: {
     dateTo: { key: 'dateTo', label: 'End date', type: 'date' },
     timeFrom: { key: 'timeFrom', label: 'Start time', type: 'time' },
     timeTo: { key: 'timeTo', label: 'End time', type: 'time' },
-    hrUnitId: { key: 'hrUnitId', label: 'HR Unit', type: 'select', options: options.hrUnitId },
     departmentId: { key: 'departmentId', label: 'Department', type: 'select', options: options.departmentId },
     employeeId: { key: 'employeeId', label: 'Employee', type: 'select', options: options.employeeId },
     deviceId: { key: 'deviceId', label: 'Device', type: 'select', options: options.deviceId },

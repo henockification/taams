@@ -20,7 +20,7 @@ import {
   resolveEmployeeVisibilityScope,
   scopedEmployeeWhere,
   type EmployeeVisibilityScope,
-} from '../../db/orm/core/manageHrUnits';
+} from '../../db/orm/core/manageEmployeeVisibility';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 
 type ReportKey =
@@ -58,7 +58,6 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'attendanceDate', label: 'Date' },
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
-      { key: 'hrUnit', label: 'HR Unit' },
       { key: 'department', label: 'Department' },
       { key: 'checkInAt', label: 'Check in' },
       { key: 'checkOutAt', label: 'Check out' },
@@ -79,7 +78,6 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'punchTime', label: 'Punch time' },
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
-      { key: 'hrUnit', label: 'HR Unit' },
       { key: 'department', label: 'Department' },
       { key: 'biometricId', label: 'Biometric ID' },
       { key: 'deviceName', label: 'Device' },
@@ -95,7 +93,6 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
     columns: [
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
-      { key: 'hrUnit', label: 'HR Unit' },
       { key: 'department', label: 'Department' },
       { key: 'fiscalYear', label: 'Fiscal year' },
       { key: 'employmentType', label: 'Employment type' },
@@ -113,7 +110,6 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'createdAt', label: 'Requested at' },
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
-      { key: 'hrUnit', label: 'HR Unit' },
       { key: 'department', label: 'Department' },
       { key: 'leaveType', label: 'Leave type' },
       { key: 'startDate', label: 'Start date' },
@@ -129,7 +125,6 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
     columns: [
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
-      { key: 'hrUnit', label: 'HR Unit' },
       { key: 'department', label: 'Department' },
       { key: 'position', label: 'Position' },
       { key: 'employmentType', label: 'Employment type' },
@@ -245,7 +240,7 @@ async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
       query.get('status') ? eq(attendanceDailyRecords.status, query.get('status')!) : undefined,
     ),
     with: {
-      employee: { with: { department: true, hrUnit: true, position: true } },
+      employee: { with: { department: true, position: true } },
     },
     orderBy: (table, { desc }) => [desc(table.attendanceDate)],
   });
@@ -256,7 +251,6 @@ async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
       attendanceDate: record.attendanceDate,
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      hrUnit: record.employee?.hrUnit?.nameEn ?? '',
       department: record.employee?.department?.nameEn ?? '',
       checkInAt: formatDateTime(record.checkInAt),
       checkOutAt: formatDateTime(record.checkOutAt),
@@ -280,7 +274,7 @@ async function buildAttendancePunchRows({ query, scope }: ReportInput) {
       query.get('status') === 'unprocessed' ? eq(attendancePunches.isProcessed, false) : undefined,
     ),
     with: {
-      employee: { with: { department: true, hrUnit: true, position: true } },
+      employee: { with: { department: true, position: true } },
       device: true,
     },
     orderBy: (table, { desc }) => [desc(table.punchTime)],
@@ -292,7 +286,6 @@ async function buildAttendancePunchRows({ query, scope }: ReportInput) {
       punchTime: formatDateTime(record.punchTime),
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      hrUnit: record.employee?.hrUnit?.nameEn ?? '',
       department: record.employee?.department?.nameEn ?? '',
       biometricId: record.biometricId,
       deviceName: record.device?.deviceName ?? '',
@@ -309,7 +302,7 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
       query.get('lowBalance') === 'true' ? lte(leaveBalances.available, '5') : undefined,
     ),
     with: {
-      employee: { with: { department: true, hrUnit: true, position: true } },
+      employee: { with: { department: true, position: true } },
       fiscalYear: true,
     },
     orderBy: (table, { desc }) => [desc(table.updatedAt)],
@@ -320,7 +313,6 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
     .map((record) => ({
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      hrUnit: record.employee?.hrUnit?.nameEn ?? '',
       department: record.employee?.department?.nameEn ?? '',
       fiscalYear: record.fiscalYear?.name ?? '',
       employmentType: record.employmentTypeSnapshot,
@@ -336,12 +328,12 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
     where: and(
       dateFrom(query) ? gte(leaveRequests.startDate, dateFrom(query)!) : undefined,
       dateTo(query) ? lte(leaveRequests.startDate, dateTo(query)!) : undefined,
-      scope.type === 'hr_units' ? eq(leaveRequests.status, 'APPROVED') : undefined,
+      scope.type === 'hr' ? eq(leaveRequests.status, 'APPROVED') : undefined,
       query.get('status') ? eq(leaveRequests.status, query.get('status')!) : undefined,
       query.get('leaveTypeId') ? eq(leaveRequests.leaveTypeId, query.get('leaveTypeId')!) : undefined,
     ),
     with: {
-      employee: { with: { department: true, hrUnit: true, position: true } },
+      employee: { with: { department: true, position: true } },
       leaveType: true,
       fiscalYear: true,
     },
@@ -354,7 +346,6 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       createdAt: formatDateTime(record.createdAt),
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      hrUnit: record.employee?.hrUnit?.nameEn ?? '',
       department: record.employee?.department?.nameEn ?? '',
       leaveType: record.leaveType?.nameEn ?? '',
       startDate: record.startDate,
@@ -368,7 +359,6 @@ async function buildEmployeeRows({ query, scope }: ReportInput) {
   const records = await db.query.employees.findMany({
     where: and(
       scopedEmployeeWhere(scope),
-      query.get('hrUnitId') ? eq(employees.hrUnitId, query.get('hrUnitId')!) : undefined,
       query.get('departmentId') ? eq(employees.departmentId, query.get('departmentId')!) : undefined,
       query.get('employmentType') ? eq(employees.employmentType, query.get('employmentType')!) : undefined,
       query.get('employmentStatus') ? eq(employees.employmentStatus, query.get('employmentStatus')!) : undefined,
@@ -379,14 +369,13 @@ async function buildEmployeeRows({ query, scope }: ReportInput) {
         ilike(employees.lastNameEn, `%${query.get('search')}%`),
       ) : undefined,
     ),
-    with: { department: true, hrUnit: true, position: true },
+    with: { department: true, position: true },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
   });
 
   return records.map((employee) => ({
     employeeCode: employee.employeeCode,
     employeeName: employeeName(employee),
-    hrUnit: employee.hrUnit?.nameEn ?? '',
     department: employee.department?.nameEn ?? '',
     position: employee.position?.nameEn ?? employee.positionName ?? '',
     employmentType: employee.employmentType,
@@ -426,8 +415,6 @@ async function buildDeviceSyncRows({ query }: ReportInput) {
 function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: EmployeeVisibilityScope) {
   if (!employee) return false;
   if (scope.type === 'self' && employee.userId !== scope.userId) return false;
-  if (scope.type === 'hr_units' && (!employee.hrUnitId || !scope.hrUnitIds.includes(employee.hrUnitId))) return false;
-  if (query.get('hrUnitId') && employee.hrUnitId !== query.get('hrUnitId')) return false;
   if (query.get('departmentId') && employee.departmentId !== query.get('departmentId')) return false;
   if (query.get('employeeId') && employee.id !== query.get('employeeId')) return false;
   return true;

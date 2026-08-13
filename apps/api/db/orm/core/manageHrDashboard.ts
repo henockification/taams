@@ -14,7 +14,7 @@ import {
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
-import { scopedEmployeeWhere, type EmployeeVisibilityScope } from './manageHrUnits';
+import { scopedEmployeeWhere, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 const DEFAULT_SHIFT_START = '08:30:00';
 const DEFAULT_SHIFT_END = '17:30:00';
@@ -54,11 +54,11 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   ] = await Promise.all([
     db.query.employees.findMany({
       where: and(eq(employees.isActive, true), params.scope ? scopedEmployeeWhere(params.scope) : undefined),
-      with: { department: true, hrUnit: true, position: true },
+      with: { department: true, position: true },
     }),
     db.query.attendancePunches.findMany({
       where: and(gte(attendancePunches.punchTime, dayRange.start), lte(attendancePunches.punchTime, dayRange.end)),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, device: true },
+      with: { employee: { with: { department: true, position: true } }, device: true },
       orderBy: (table, { asc }) => [asc(table.punchTime)],
     }),
     db.query.leaveRequests.findMany({
@@ -67,7 +67,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
       ),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
+      with: { employee: { with: { department: true, position: true } }, leaveType: true },
     }),
     db.query.leaveRequests.findMany({
       where: and(
@@ -75,7 +75,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         gte(leaveRequests.startDate, selectedDate),
         lte(leaveRequests.startDate, upcomingLeaveEnd),
       ),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
+      with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.startDate)],
       limit: 20,
     }),
@@ -103,7 +103,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     }),
     db.query.manualPunchRequests.findMany({
       where: eq(manualPunchRequests.status, 'PENDING'),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } } },
+      with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
     }),
@@ -113,13 +113,13 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         gte(manualPunchRequests.createdAt, monthRange.start),
         lte(manualPunchRequests.createdAt, monthRange.end),
       ),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } } },
+      with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { desc }) => [desc(table.rejectedAt), desc(table.createdAt)],
       limit: 20,
     }),
     db.query.attendancePunches.findMany({
       where: eq(attendancePunches.isProcessed, false),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, device: true },
+      with: { employee: { with: { department: true, position: true } }, device: true },
       orderBy: (table, { desc }) => [desc(table.punchTime)],
       limit: 20,
     }),
@@ -142,7 +142,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     params.userId
       ? db.query.employees.findFirst({
         where: eq(employees.userId, params.userId),
-        with: { department: true, hrUnit: true, position: true },
+        with: { department: true, position: true },
       })
       : Promise.resolve(null),
   ]);
@@ -188,7 +188,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
         gte(leaveBalances.available, '0.01'),
       ),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, fiscalYear: true },
+      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
       limit: 20,
     })
     : [];
@@ -199,7 +199,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         eq(leaveBalances.employeeId, currentEmployee.id),
         eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
       ),
-      with: { employee: { with: { department: true, hrUnit: true, position: true } }, fiscalYear: true },
+      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
     })
     : null;
 

@@ -6,7 +6,6 @@ import {
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   CreateEmployeeWorkScheduleRequestSchema,
-  CreateHrUnitRequestSchema,
   CreatePositionRequestSchema,
   DepartmentResponseSchema,
   DepartmentsResponseSchema,
@@ -17,15 +16,12 @@ import {
   EmployeeWorkSchedulesResponseSchema,
   EmployeesResponseSchema,
   EmployeesPaginatedResponseSchema,
-  HrUnitResponseSchema,
-  HrUnitsResponseSchema,
   PermanentEmployeeImportResponseSchema,
   PositionResponseSchema,
   PositionsResponseSchema,
   UpdateDepartmentRequestSchema,
   UpdateEmployeeRequestSchema,
   UpdateEmployeeWorkScheduleRequestSchema,
-  UpdateHrUnitRequestSchema,
   UpdatePositionRequestSchema,
 } from '../../schemas/core.schema';
 import { openApiApp } from '../../lib/openapi';
@@ -44,11 +40,6 @@ import {
   getDepartmentsHandler,
   updateDepartmentHandler,
 } from './handlers/departments';
-import {
-  createHrUnitHandler,
-  getHrUnitsHandler,
-  updateHrUnitHandler,
-} from './handlers/hrUnits';
 import {
   createPositionHandler,
   getPositionsHandler,
@@ -139,72 +130,6 @@ export const updateDepartmentRoute = createRoute({
     404: {
       content: { 'application/json': { schema: ErrorResponseSchema } },
       description: 'Department not found',
-    },
-  },
-});
-
-export const createHrUnitRoute = createRoute({
-  method: 'post',
-  path: '/hr-units',
-  tags: ['Core', 'HR Units'],
-  summary: 'Create HR Unit',
-  request: {
-    body: {
-      content: {
-        'application/json': {
-          schema: CreateHrUnitRequestSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    201: {
-      content: { 'application/json': { schema: HrUnitResponseSchema } },
-      description: 'Created HR unit',
-    },
-    400: {
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-      description: 'Invalid request',
-    },
-  },
-});
-
-export const getHrUnitsRoute = createRoute({
-  method: 'get',
-  path: '/hr-units',
-  tags: ['Core', 'HR Units'],
-  summary: 'Get HR Units',
-  responses: {
-    200: {
-      content: { 'application/json': { schema: HrUnitsResponseSchema } },
-      description: 'HR unit list',
-    },
-  },
-});
-
-export const updateHrUnitRoute = createRoute({
-  method: 'put',
-  path: '/hr-units/{id}',
-  tags: ['Core', 'HR Units'],
-  summary: 'Update HR Unit',
-  request: {
-    params: uuidParam,
-    body: {
-      content: {
-        'application/json': {
-          schema: UpdateHrUnitRequestSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      content: { 'application/json': { schema: HrUnitResponseSchema } },
-      description: 'Updated HR unit',
-    },
-    404: {
-      content: { 'application/json': { schema: ErrorResponseSchema } },
-      description: 'HR unit not found',
     },
   },
 });
@@ -365,7 +290,6 @@ export const importPermanentEmployeesRoute = createRoute({
         'multipart/form-data': {
           schema: z.object({
             file: z.any().openapi({ type: 'string', format: 'binary' }),
-            hrUnitId: z.string().uuid(),
           }),
         },
       },
@@ -394,7 +318,6 @@ export const importContractEmployeesRoute = createRoute({
         'multipart/form-data': {
           schema: z.object({
             file: z.any().openapi({ type: 'string', format: 'binary' }),
-            hrUnitId: z.string().uuid(),
           }),
         },
       },
@@ -588,9 +511,6 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
 coreApp.post('/departments', createDepartmentHandler);
 coreApp.get('/departments', getDepartmentsHandler);
 coreApp.put('/departments/:id', updateDepartmentHandler);
-coreApp.post('/hr-units', createHrUnitHandler);
-coreApp.get('/hr-units', getHrUnitsHandler);
-coreApp.put('/hr-units/:id', updateHrUnitHandler);
 coreApp.post('/positions', createPositionHandler);
 coreApp.get('/positions', getPositionsHandler);
 coreApp.put('/positions/:id', updatePositionHandler);
@@ -623,9 +543,6 @@ openApiApp
   .openapi(createDepartmentRoute, createDepartmentHandler as any)
   .openapi(getDepartmentsRoute, getDepartmentsHandler as any)
   .openapi(updateDepartmentRoute, updateDepartmentHandler as any)
-  .openapi(createHrUnitRoute, createHrUnitHandler as any)
-  .openapi(getHrUnitsRoute, getHrUnitsHandler as any)
-  .openapi(updateHrUnitRoute, updateHrUnitHandler as any)
   .openapi(createPositionRoute, createPositionHandler as any)
   .openapi(getPositionsRoute, getPositionsHandler as any)
   .openapi(updatePositionRoute, updatePositionHandler as any)

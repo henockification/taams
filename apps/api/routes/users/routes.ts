@@ -8,7 +8,6 @@ import {
   UserResponseSchema,
 } from '../../schemas/users.schema';
 import { AssignUserRolesRequestSchema } from '../../schemas/rbac.schema';
-import { AssignUserHrUnitsRequestSchema, UserHrUnitsResponseSchema } from '../../schemas/core.schema';
 import { ErrorResponseSchema } from '../../schemas/shared';
 import { openApiApp } from '../../lib/openapi';
 import { getUsersHandler } from './handlers/getUsersHandler';
@@ -16,7 +15,6 @@ import { getUserHandler } from './handlers/getUserHandler';
 import { createUserHandler } from './handlers/createUserHandler';
 import { updateUserHandler } from './handlers/updateUserHandler';
 import { assignUserRolesHandler } from '../rbac/handlers/assignUserRolesHandler';
-import { assignUserHrUnitsHandler, getUserHrUnitsHandler } from '../core/handlers/hrUnits';
 import { disabledSignupHandler } from './handlers/disabledSignupHandler';
 
 // Create the users app
@@ -193,52 +191,6 @@ export const assignUserRolesRoute = createRoute({
   },
 });
 
-export const userHrUnitsRoute = createRoute({
-  method: 'get',
-  path: '/users/{id}/hr-units',
-  tags: ['Users', 'HR Units'],
-  summary: 'Get User HR Units',
-  responses: {
-    200: {
-      content: {
-        'application/json': {
-          schema: UserHrUnitsResponseSchema,
-        },
-      },
-      description: 'User HR unit memberships',
-    },
-  },
-});
-
-export const assignUserHrUnitsRoute = createRoute({
-  method: 'put',
-  path: '/users/{id}/hr-units',
-  tags: ['Users', 'HR Units'],
-  summary: 'Assign HR Units to User',
-  request: {
-    params: z.object({
-      id: z.string().openapi({ example: 'user_123' }),
-    }),
-    body: {
-      content: {
-        'application/json': {
-          schema: AssignUserHrUnitsRequestSchema,
-        },
-      },
-    },
-  },
-  responses: {
-    200: {
-      content: {
-        'application/json': {
-          schema: UserHrUnitsResponseSchema,
-        },
-      },
-      description: 'Updated user HR unit memberships',
-    },
-  },
-});
-    
 // Register the actual route
 usersApp.get('/users', getUsersHandler);
 usersApp.post('/users/signup', disabledSignupHandler);
@@ -246,16 +198,12 @@ usersApp.get('/users/:id', getUserHandler);
 usersApp.post('/users', createUserHandler);
 usersApp.patch('/users/:id', updateUserHandler);
 usersApp.post('/users/:id/roles', assignUserRolesHandler);
-usersApp.get('/users/:id/hr-units', getUserHrUnitsHandler);
-usersApp.put('/users/:id/hr-units', assignUserHrUnitsHandler);
 
 // Register the OpenAPI definition
 openApiApp.openapi(usersRoute, getUsersHandler)
           .openapi(userRoute, getUserHandler)
           .openapi(createUserRoute, createUserHandler)
           .openapi(updateUserRoute, updateUserHandler)
-          .openapi(assignUserRolesRoute, assignUserRolesHandler)
-          .openapi(userHrUnitsRoute, getUserHrUnitsHandler as any)
-          .openapi(assignUserHrUnitsRoute, assignUserHrUnitsHandler as any);
+          .openapi(assignUserRolesRoute, assignUserRolesHandler);
 
 export default usersApp;

@@ -7,7 +7,7 @@ import type {
   CreateBiometricDeviceSyncInput,
   UpdateBiometricDeviceInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 
@@ -231,7 +231,6 @@ export async function getAttendancePunches(scope?: EmployeeVisibilityScope) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -294,7 +293,6 @@ export async function getAttendancePunchesPaginated({
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -339,7 +337,6 @@ export async function getAttendancePunchesByEmployeeId(employeeId: string, scope
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -367,7 +364,6 @@ export async function getUnprocessedAttendancePunches(scope?: EmployeeVisibility
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -395,7 +391,6 @@ async function getAttendancePunchById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -434,7 +429,6 @@ async function hydratePunchEmployeesByBiometricId<T extends { biometricId: strin
     where: inArray(employees.biometricId, biometricIds),
     with: {
       department: true,
-      hrUnit: true,
       position: true,
     },
   });
@@ -452,10 +446,7 @@ async function hydratePunchEmployeesByBiometricId<T extends { biometricId: strin
 }
 
 function filterPunchesByScope<T extends { employee?: any | null }>(punches: T[], scope?: EmployeeVisibilityScope) {
-  if (!scope || scope.type === 'unrestricted') return punches;
-  if (scope.type === 'hr_units') {
-    return punches.filter((punch) => punch.employee?.hrUnitId && scope.hrUnitIds.includes(punch.employee.hrUnitId));
-  }
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return punches;
   return punches.filter((punch) => punch.employee?.userId === scope.userId);
 }
 

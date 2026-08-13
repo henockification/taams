@@ -7,7 +7,7 @@ import type {
   UpdateBiometricExemptionInput,
 } from '../../../types/core.types';
 import { resolveEmployeeBiometricExemptions } from '../../../lib/biometric-exemptions';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 
@@ -17,7 +17,6 @@ export async function getBiometricExemptions(scope?: EmployeeVisibilityScope) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -26,10 +25,7 @@ export async function getBiometricExemptions(scope?: EmployeeVisibilityScope) {
     orderBy: (table, { desc }) => [desc(table.isActive), desc(table.createdAt)],
   });
 
-  if (!scope || scope.type === 'unrestricted') return exemptions;
-  if (scope.type === 'hr_units') {
-    return exemptions.filter((exemption) => exemption.employee?.hrUnitId && scope.hrUnitIds.includes(exemption.employee.hrUnitId));
-  }
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return exemptions;
   return exemptions.filter((exemption) => exemption.employee?.userId === scope.userId);
 }
 
@@ -40,7 +36,6 @@ export async function getBiometricExemptionById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -200,7 +195,6 @@ export async function getBiometricExemptionsForEmployee(employeeId: string, tx: 
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },

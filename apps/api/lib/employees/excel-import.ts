@@ -3,7 +3,7 @@ import type { CreateEmployeeInput, EmploymentStatus } from '../../types/core.typ
 
 export type ExcelEmployeeRow = Record<string, unknown>;
 
-export type PermanentEmployeeImportInput = Omit<CreateEmployeeInput, 'hrUnitId'> & {
+export type PermanentEmployeeImportInput = CreateEmployeeInput & {
   sourceDepartmentName: string;
   sourcePositionName?: string | null;
   sourcePositionCode?: string | null;

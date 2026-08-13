@@ -4,11 +4,9 @@ import { db } from '../../db';
 import { departments, employeeSupervisors, employees, positions, roles, user, userRoles } from '../../schema';
 import {
   assertCanAccessEmployee,
-  assertCanUseHrUnit,
-  assertHrUnitExists,
   scopedEmployeeWhere,
   type EmployeeVisibilityScope,
-} from './manageHrUnits';
+} from './manageEmployeeVisibility';
 import type {
   CreateDepartmentInput,
   CreateEmployeeInput,
@@ -107,8 +105,6 @@ export async function createEmployee(input: CreateEmployeeInput) {
 }
 
 export async function createEmployeeScoped(input: CreateEmployeeInput, scope: EmployeeVisibilityScope) {
-  if (!input.hrUnitId) throw new Error('HR unit is required');
-  assertCanUseHrUnit(input.hrUnitId, scope);
   return createEmployee(input);
 }
 
@@ -117,7 +113,6 @@ export async function getEmployees(scope?: EmployeeVisibilityScope) {
     where: scope ? scopedEmployeeWhere(scope) : undefined,
     with: {
       department: true,
-      hrUnit: true,
       position: true,
     },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
@@ -154,7 +149,6 @@ export async function getEmployeesPaginated({
     where: whereClause,
     with: {
       department: true,
-      hrUnit: true,
       position: true,
     },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
@@ -180,7 +174,6 @@ export async function getEmployeeById(id: string, tx: DbClient = db) {
     where: eq(employees.id, id),
     with: {
       department: true,
-      hrUnit: true,
       position: true,
     },
   });
@@ -211,10 +204,6 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
 
 export async function updateEmployeeScoped(id: string, input: UpdateEmployeeInput, scope: EmployeeVisibilityScope) {
   await assertCanAccessEmployee(id, scope);
-  if (input.hrUnitId !== undefined) {
-    if (!input.hrUnitId) throw new Error('HR unit is required');
-    assertCanUseHrUnit(input.hrUnitId, scope);
-  }
   return updateEmployee(id, input);
 }
 
@@ -227,14 +216,11 @@ export type PermanentEmployeeImportResult = {
 
 export async function upsertPermanentEmployees(
   inputs: PermanentEmployeeImportInput[],
-  options: { hrUnitId?: string; scope?: EmployeeVisibilityScope; employmentType?: 'PERMANENT' | 'CONTRACT' } = {},
+  options: { scope?: EmployeeVisibilityScope; employmentType?: 'PERMANENT' | 'CONTRACT' } = {},
 ): Promise<PermanentEmployeeImportResult> {
   if (inputs.length === 0) {
     return { created: 0, updated: 0, skipped: 0, employees: [] };
   }
-  if (!options.hrUnitId) throw new Error('HR unit is required');
-  await assertHrUnitExists(options.hrUnitId);
-  if (options.scope) assertCanUseHrUnit(options.hrUnitId, options.scope);
 
   const departmentCache = await buildDepartmentImportCache();
   const existingEmployees = await db
@@ -255,7 +241,6 @@ export async function upsertPermanentEmployees(
 
     const employeeInput = normalizeEmployeeInput({
       ...input,
-      hrUnitId: options.hrUnitId,
       userId: userIdByEmployeeCode.get(input.employeeCode) ?? input.userId ?? null,
       departmentId: department.id,
       positionId: null,
@@ -299,7 +284,6 @@ export async function upsertPermanentEmployees(
         gender: sql`excluded.gender`,
         phoneNumber: sql`excluded.phone_number`,
         email: sql`excluded.email`,
-        hrUnitId: sql`excluded.hr_unit_id`,
         departmentId: sql`excluded.department_id`,
         positionId: null,
         positionName: sql`excluded.position_name`,
@@ -362,7 +346,6 @@ export async function getEmployeeSupervisors(employeeId: string) {
       supervisor: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -402,7 +385,6 @@ async function getEmployeeByCode(employeeCode: string, tx: DbClient = db) {
     where: eq(employees.employeeCode, employeeCode),
     with: {
       department: true,
-      hrUnit: true,
       position: true,
     },
   });
@@ -571,7 +553,6 @@ async function assertUserExists(userId: string, tx: DbClient = db) {
 
 async function assertEmployeeReferences(input: Partial<CreateEmployeeInput>) {
   if (input.userId) await assertUserExists(input.userId);
-  if (input.hrUnitId) await assertHrUnitExists(input.hrUnitId);
   if (input.departmentId) await assertDepartmentExists(input.departmentId);
   if (input.positionId) await assertPositionExists(input.positionId);
 }
@@ -619,7 +600,6 @@ function normalizeEmployeeInput(input: UpdateEmployeeInput) {
     gender: input.gender,
     phoneNumber: input.phoneNumber,
     email: input.email,
-    hrUnitId: input.hrUnitId,
     departmentId: input.departmentId,
     positionId: input.positionId,
     positionName: input.positionName,
@@ -657,7 +637,6 @@ function employeeMatchesImport(
     nullableString(employee.gender) === nullableString(input.gender) &&
     nullableString(employee.phoneNumber) === nullableString(input.phoneNumber) &&
     nullableString(employee.email) === nullableString(input.email) &&
-    nullableString(employee.hrUnitId) === nullableString(input.hrUnitId) &&
     nullableString(employee.departmentId) === nullableString(input.departmentId) &&
     nullableString(employee.positionId) === nullableString(input.positionId) &&
     nullableString(employee.positionName) === nullableString(input.positionName) &&

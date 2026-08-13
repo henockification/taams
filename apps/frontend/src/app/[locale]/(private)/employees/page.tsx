@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/select';
 import {
   useEmployees,
-  useHrUnits,
   useImportContractEmployees,
 } from '@/data/hooks/core.hooks';
 import type { PermanentEmployeeImportResponse } from '@/data/types/core.types';
@@ -46,17 +45,14 @@ export default function ContractEmployeesPage() {
   const common = useTranslations('common');
   const router = useRouter();
   const { data: employeesResponse, isLoading } = useEmployees();
-  const { data: hrUnitsResponse } = useHrUnits();
   const importContractEmployees = useImportContractEmployees();
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedHrUnitId, setSelectedHrUnitId] = useState('');
   const [result, setResult] = useState<PermanentEmployeeImportResponse | null>(null);
   const [search, setSearch] = useState('');
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState<EmploymentStatusFilter>('ALL');
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
-  const hrUnits = hrUnitsResponse?.hrUnits ?? [];
 
   const contractEmployees = useMemo(() => (
     (employeesResponse?.employees ?? []).filter((employee) => employee.employmentType === 'CONTRACT')
@@ -83,7 +79,6 @@ export default function ContractEmployeesPage() {
         employee.employeeCode,
         employee.sourceIdNo,
         employee.phoneNumber,
-        employee.hrUnit?.nameEn,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
         employee.positionName,
@@ -117,10 +112,10 @@ export default function ContractEmployeesPage() {
 
   const importFile = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedFile || !selectedHrUnitId) return;
+    if (!selectedFile ) return;
 
     try {
-      const response = await importContractEmployees.mutateAsync({ file: selectedFile, hrUnitId: selectedHrUnitId });
+      const response = await importContractEmployees.mutateAsync({ file: selectedFile });
       setResult(response);
       setSelectedFile(null);
       setImportDialogOpen(false);
@@ -224,11 +219,10 @@ export default function ContractEmployeesPage() {
       ) : (
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-md border border-border">
-            <div className="min-w-[1080px]">
-              <div className="grid grid-cols-[260px_130px_180px_220px_220px_100px_180px] gap-3 border-b border-border bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground">
+            <div className="min-w-[820px]">
+              <div className="grid grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground">
                 <span>{t('employee')}</span>
                 <span>{t('idNo')}</span>
-                <span>{t('hrUnit')}</span>
                 <span>{t('department')}</span>
                 <span>{t('position')}</span>
                 <span>{t('gender')}</span>
@@ -252,7 +246,7 @@ export default function ContractEmployeesPage() {
                         router.push(`/employees/${employee.id}`);
                       }
                     }}
-                    className="grid cursor-pointer grid-cols-[260px_130px_180px_220px_220px_100px_180px] gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="grid cursor-pointer grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{employee.firstNameEn} {employee.middleNameEn} {employee.lastNameEn}</p>
@@ -261,7 +255,6 @@ export default function ContractEmployeesPage() {
                     <div className="flex items-center">
                       <Badge variant="secondary">{employee.sourceIdNo ?? employee.employeeCode}</Badge>
                     </div>
-                    <p className="truncate">{employee.hrUnit?.nameEn ?? '-'}</p>
                     <p className="truncate">{employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'}</p>
                     <div className="min-w-0">
                       <p className="truncate">{employee.positionName ?? employee.position?.nameEn ?? employee.sourcePositionName ?? t('noPosition')}</p>
@@ -324,18 +317,6 @@ export default function ContractEmployeesPage() {
           </DialogHeader>
           <form className="space-y-4" onSubmit={importFile}>
             <div className="space-y-2">
-              <Label>{t('hrUnit')}</Label>
-              <Select value={selectedHrUnitId} onValueChange={setSelectedHrUnitId}>
-                <SelectTrigger><SelectValue placeholder={t('hrUnitRequired')} /></SelectTrigger>
-                <SelectContent>
-                  {hrUnits.map((hrUnit) => (
-                    <SelectItem key={hrUnit.id} value={hrUnit.id}>{hrUnit.nameEn}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="contract-employee-file">{t('excelFile')}</Label>
               <Input
                 id="contract-employee-file"
@@ -356,7 +337,7 @@ export default function ContractEmployeesPage() {
               <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
                 {common('cancel')}
               </Button>
-              <Button type="submit" disabled={!selectedFile || !selectedHrUnitId || importContractEmployees.isPending}>
+              <Button type="submit" disabled={!selectedFile || importContractEmployees.isPending}>
                 <UploadCloud className="size-4" />
                 {importContractEmployees.isPending ? t('importingContractEmployees') : t('importContractEmployees')}
               </Button>

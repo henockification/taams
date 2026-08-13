@@ -15,7 +15,7 @@ import type {
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
 
@@ -230,7 +230,6 @@ export async function getAllEmployeeWorkSchedules() {
       employee: {
         with: {
           department: true,
-          hrUnit: true,
           position: true,
         },
       },
@@ -243,10 +242,7 @@ export async function getAllEmployeeWorkSchedules() {
 
 export async function getAllEmployeeWorkSchedulesScoped(scope: EmployeeVisibilityScope) {
   const schedules = await getAllEmployeeWorkSchedules();
-  if (scope.type === 'unrestricted') return schedules;
-  if (scope.type === 'hr_units') {
-    return schedules.filter((schedule) => schedule.employee?.hrUnitId && scope.hrUnitIds.includes(schedule.employee.hrUnitId));
-  }
+  if (scope.type === 'unrestricted' || scope.type === 'hr') return schedules;
   return schedules.filter((schedule) => schedule.employee?.userId === scope.userId);
 }
 
@@ -254,7 +250,7 @@ export async function getEmployeeWorkScheduleById(id: string, tx: DbClient = db)
   return tx.query.employeeWorkSchedules.findFirst({
     where: eq(employeeWorkSchedules.id, id),
     with: {
-      employee: { with: { department: true, hrUnit: true, position: true } },
+      employee: { with: { department: true, position: true } },
       workSchedule: true,
     },
   });

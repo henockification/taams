@@ -10,7 +10,7 @@ import {
 } from '../../../../db/orm/core/manageManualPunchRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
-import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendancePunch, formatManualPunchRequest } from '../../helpers/formatters';

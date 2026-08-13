@@ -19,7 +19,7 @@ export default function SignInPage() {
             t('coverageEmployees'),
             t('coverageAttendance'),
             t('coverageLeave'),
-            t('coverageHrUnits'),
+            t('coverageRoleAccess'),
             t('coverageReports'),
             t('coverageDeviceSync'),
           ].map((item) => (

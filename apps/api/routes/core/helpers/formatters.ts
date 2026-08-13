@@ -23,18 +23,6 @@ export function formatDepartment(department: any) {
   };
 }
 
-export function formatHrUnit(hrUnit: any) {
-  return {
-    id: hrUnit.id,
-    nameEn: hrUnit.nameEn,
-    nameAm: hrUnit.nameAm ?? null,
-    code: hrUnit.code ?? null,
-    isActive: hrUnit.isActive,
-    createdAt: formatTimestamp(hrUnit.createdAt),
-    updatedAt: formatTimestamp(hrUnit.updatedAt),
-  };
-}
-
 export function formatPosition(position: any) {
   return {
     id: position.id,
@@ -134,7 +122,6 @@ export function formatEmployee(employee: any) {
     gender: employee.gender ?? null,
     phoneNumber: employee.phoneNumber ?? null,
     email: employee.email ?? null,
-    hrUnitId: employee.hrUnitId ?? null,
     departmentId: employee.departmentId,
     positionId: employee.positionId ?? null,
     positionName: employee.positionName ?? null,
@@ -156,7 +143,6 @@ export function formatEmployee(employee: any) {
     createdAt: formatTimestamp(employee.createdAt),
     updatedAt: formatTimestamp(employee.updatedAt),
     department: employee.department ? formatDepartment(employee.department) : undefined,
-    hrUnit: employee.hrUnit ? formatHrUnit(employee.hrUnit) : null,
     position: employee.position ? formatPosition(employee.position) : null,
   };
 }

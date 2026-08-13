@@ -85,6 +85,13 @@
       "when": 1786622400000,
       "tag": "0015_leave_type_allowed_days",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786636800000,
+      "tag": "0016_drop_hr_units",
+      "breakpoints": true
     }
   ]
 }
