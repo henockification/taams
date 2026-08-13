@@ -11,12 +11,14 @@ import {
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
 type ApprovalScope = {
   userId: string;
   date?: string | null;
+  scope?: EmployeeVisibilityScope;
 };
 
 export async function generateAttendanceDailyRecords(date?: string | null) {
@@ -124,6 +126,22 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
   const attendanceDate = normalizeDateParam(input.date);
   await generateAttendanceDailyRecords(attendanceDate);
+
+  if (input.scope?.type === 'unrestricted') {
+    return db.query.attendanceDailyRecords.findMany({
+      where: and(
+        eq(attendanceDailyRecords.attendanceDate, attendanceDate),
+        inArray(attendanceDailyRecords.status, [
+          'PENDING_SUPERVISOR',
+          'RETURNED',
+          'SUPERVISOR_APPROVED',
+        ]),
+      ),
+      with: recordRelations,
+      orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
+    });
+  }
+
   const directReportIds = await getDirectReportIds(input.userId, attendanceDate);
 
   if (directReportIds.length === 0) return [];
@@ -135,11 +153,11 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
   ]);
 }
 
-export async function getHrAttendanceDailyRecords(date?: string | null) {
+export async function getHrAttendanceDailyRecords(date?: string | null, scope?: EmployeeVisibilityScope) {
   const attendanceDate = normalizeDateParam(date);
   await generateAttendanceDailyRecords(attendanceDate);
 
-  return db.query.attendanceDailyRecords.findMany({
+  const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       eq(attendanceDailyRecords.attendanceDate, attendanceDate),
       eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
@@ -147,14 +165,22 @@ export async function getHrAttendanceDailyRecords(date?: string | null) {
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
+
+  if (!scope || scope.type === 'unrestricted') return records;
+  if (scope.type === 'hr_units') {
+    return records.filter((record) => record.employee?.hrUnitId && scope.hrUnitIds.includes(record.employee.hrUnitId));
+  }
+  return records.filter((record) => record.employee?.userId === scope.userId);
 }
 
-export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string }) {
+export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; scope?: EmployeeVisibilityScope }) {
   return db.transaction(async (tx) => {
     const record = await getAttendanceDailyRecordById(id, tx);
     if (!record) throw new Error('Attendance daily record not found');
 
-    await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
+    if (input.scope?.type !== 'unrestricted') {
+      await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
+    }
 
     if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
       throw new Error('Only pending or returned attendance records can be supervisor approved');
@@ -189,13 +215,16 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
     leaveDays?: string | number;
     payableDays?: string | number;
     payrollNote?: string | null;
+    scope?: EmployeeVisibilityScope;
   },
 ) {
   return db.transaction(async (tx) => {
     const record = await getAttendanceDailyRecordById(id, tx);
     if (!record) throw new Error('Attendance daily record not found');
 
-    await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
+    if (input.scope?.type !== 'unrestricted') {
+      await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
+    }
 
     if (record.status === 'HR_APPROVED') {
       throw new Error('Payroll-ready attendance records cannot be edited');
@@ -242,9 +271,10 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
   });
 }
 
-export async function hrApproveAttendanceDailyRecord(id: string, input: { userId: string }) {
+export async function hrApproveAttendanceDailyRecord(id: string, input: { userId: string; scope?: EmployeeVisibilityScope }) {
   const record = await getAttendanceDailyRecordById(id);
   if (!record) throw new Error('Attendance daily record not found');
+  if (input.scope) await assertCanAccessEmployee(record.employeeId, input.scope);
   if (record.status !== 'SUPERVISOR_APPROVED') {
     throw new Error('Only supervisor-approved attendance records can be HR approved');
   }
@@ -267,7 +297,7 @@ export async function hrApproveAttendanceDailyRecord(id: string, input: { userId
   return getAttendanceDailyRecordById(id);
 }
 
-export async function returnAttendanceDailyRecord(id: string, input: { userId: string; reason: string; canHrReturn?: boolean }) {
+export async function returnAttendanceDailyRecord(id: string, input: { userId: string; reason: string; canHrReturn?: boolean; scope?: EmployeeVisibilityScope }) {
   const record = await getAttendanceDailyRecordById(id);
   if (!record) throw new Error('Attendance daily record not found');
 
@@ -280,6 +310,10 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
 
   if (!isSupervisorReturn && !input.canHrReturn) {
     throw new Error('You do not have permission to return this attendance record');
+  }
+
+  if (!isSupervisorReturn && input.scope) {
+    await assertCanAccessEmployee(record.employeeId, input.scope);
   }
 
   if (!isSupervisorReturn && record.status !== 'SUPERVISOR_APPROVED') {
@@ -425,7 +459,7 @@ function parseDayInput(value: string | number, fieldName: string) {
 }
 
 const recordRelations = {
-  employee: { with: { department: true, position: true } },
+  employee: { with: { department: true, hrUnit: true, position: true } },
   firstPunch: true,
   lastPunch: true,
 } as const;

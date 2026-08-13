@@ -3,7 +3,8 @@ import { getDashboardSummaryForUser } from '../../../../db/orm/core/manageDashbo
 import { getDepartmentHeadDashboardSummary } from '../../../../db/orm/core/manageDepartmentHeadDashboard';
 import { getExecutiveDashboardSummary } from '../../../../db/orm/core/manageExecutiveDashboard';
 import { getHrDashboardSummary } from '../../../../db/orm/core/manageHrDashboard';
-import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse } from '../../helpers/errors';
@@ -106,7 +107,13 @@ export async function getHrDashboardSummaryHandler(c: Context) {
     }
 
     const date = c.req.query('date');
-    const hrDashboard = await getHrDashboardSummary({ date, userId: session.user.id });
+    const permissions = await getUserPermissionNames(session.user.id);
+    const scope = await resolveEmployeeVisibilityScope({
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+      permissions,
+    });
+    const hrDashboard = await getHrDashboardSummary({ date, userId: session.user.id, scope });
 
     return c.json({
       success: true,

@@ -15,6 +15,7 @@ import type {
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
 } from '../../../types/core.types';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
@@ -148,6 +149,11 @@ export async function createEmployeeWorkSchedule(input: CreateEmployeeWorkSchedu
   return getEmployeeWorkScheduleById(employeeWorkSchedule.id);
 }
 
+export async function createEmployeeWorkScheduleScoped(input: CreateEmployeeWorkScheduleInput, scope: EmployeeVisibilityScope) {
+  await assertCanAccessEmployee(input.employeeId, scope);
+  return createEmployeeWorkSchedule(input);
+}
+
 export async function updateEmployeeWorkSchedule(id: string, input: UpdateEmployeeWorkScheduleInput) {
   await assertEmployeeWorkScheduleExists(id);
 
@@ -173,6 +179,14 @@ export async function updateEmployeeWorkSchedule(id: string, input: UpdateEmploy
   return getEmployeeWorkScheduleById(employeeWorkSchedule.id);
 }
 
+export async function updateEmployeeWorkScheduleScoped(id: string, input: UpdateEmployeeWorkScheduleInput, scope: EmployeeVisibilityScope) {
+  const existing = await getEmployeeWorkScheduleById(id);
+  if (!existing) throw new Error('Employee work schedule assignment not found');
+  await assertCanAccessEmployee(existing.employeeId, scope);
+  if (input.employeeId) await assertCanAccessEmployee(input.employeeId, scope);
+  return updateEmployeeWorkSchedule(id, input);
+}
+
 export async function deleteEmployeeWorkSchedule(id: string) {
   await assertEmployeeWorkScheduleExists(id);
 
@@ -182,6 +196,13 @@ export async function deleteEmployeeWorkSchedule(id: string) {
     .returning();
 
   return employeeWorkSchedule;
+}
+
+export async function deleteEmployeeWorkScheduleScoped(id: string, scope: EmployeeVisibilityScope) {
+  const existing = await getEmployeeWorkScheduleById(id);
+  if (!existing) throw new Error('Employee work schedule assignment not found');
+  await assertCanAccessEmployee(existing.employeeId, scope);
+  return deleteEmployeeWorkSchedule(id);
 }
 
 export async function getEmployeeWorkSchedules(employeeId: string) {
@@ -198,12 +219,18 @@ export async function getEmployeeWorkSchedules(employeeId: string) {
   return schedules.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom));
 }
 
+export async function getEmployeeWorkSchedulesScoped(employeeId: string, scope: EmployeeVisibilityScope) {
+  await assertCanAccessEmployee(employeeId, scope);
+  return getEmployeeWorkSchedules(employeeId);
+}
+
 export async function getAllEmployeeWorkSchedules() {
   const schedules = await db.query.employeeWorkSchedules.findMany({
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -214,11 +241,20 @@ export async function getAllEmployeeWorkSchedules() {
   return schedules.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom));
 }
 
+export async function getAllEmployeeWorkSchedulesScoped(scope: EmployeeVisibilityScope) {
+  const schedules = await getAllEmployeeWorkSchedules();
+  if (scope.type === 'unrestricted') return schedules;
+  if (scope.type === 'hr_units') {
+    return schedules.filter((schedule) => schedule.employee?.hrUnitId && scope.hrUnitIds.includes(schedule.employee.hrUnitId));
+  }
+  return schedules.filter((schedule) => schedule.employee?.userId === scope.userId);
+}
+
 export async function getEmployeeWorkScheduleById(id: string, tx: DbClient = db) {
   return tx.query.employeeWorkSchedules.findFirst({
     where: eq(employeeWorkSchedules.id, id),
     with: {
-      employee: true,
+      employee: { with: { department: true, hrUnit: true, position: true } },
       workSchedule: true,
     },
   });

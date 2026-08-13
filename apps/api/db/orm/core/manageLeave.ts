@@ -23,6 +23,7 @@ import type {
   UpdateLeaveTypeInput,
   UpsertLeaveBalanceInput,
 } from '../../../types/core.types';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
@@ -127,13 +128,14 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
   return leaveType;
 }
 
-export async function getLeaveBalances(fiscalYearId?: string) {
-  return db.query.leaveBalances.findMany({
+export async function getLeaveBalances(fiscalYearId?: string, scope?: EmployeeVisibilityScope) {
+  const balances = await db.query.leaveBalances.findMany({
     where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -141,6 +143,12 @@ export async function getLeaveBalances(fiscalYearId?: string) {
     },
     orderBy: (table, { asc }) => [asc(table.createdAt)],
   });
+
+  if (!scope || scope.type === 'unrestricted') return balances;
+  if (scope.type === 'hr_units') {
+    return balances.filter((balance) => balance.employee?.hrUnitId && scope.hrUnitIds.includes(balance.employee.hrUnitId));
+  }
+  return balances.filter((balance) => balance.employee?.userId === scope.userId);
 }
 
 export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbClient = db) {
@@ -206,6 +214,23 @@ export async function bulkUpsertLeaveBalances(input: BulkUpsertLeaveBalancesInpu
     }
     return balances;
   });
+}
+
+export async function upsertLeaveBalanceScoped(input: UpsertLeaveBalanceInput, scope: EmployeeVisibilityScope) {
+  await assertCanAccessEmployee(input.employeeId, scope);
+  return upsertLeaveBalance(input);
+}
+
+export async function bulkUpsertLeaveBalancesScoped(input: BulkUpsertLeaveBalancesInput, scope: EmployeeVisibilityScope) {
+  for (const balance of input.balances) {
+    await assertCanAccessEmployee(balance.employeeId, scope);
+  }
+  return bulkUpsertLeaveBalances(input);
+}
+
+export async function transferLeaveBalanceScoped(input: TransferLeaveBalanceInput, scope: EmployeeVisibilityScope) {
+  await assertCanAccessEmployee(input.employeeId, scope);
+  return transferLeaveBalance(input);
 }
 
 export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
@@ -280,13 +305,14 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
   });
 }
 
-export async function getLeaveRequests(kind?: 'annual' | 'other') {
+export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: EmployeeVisibilityScope) {
   await ensureAnnualLeaveType();
   const requests = await db.query.leaveRequests.findMany({
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -296,8 +322,14 @@ export async function getLeaveRequests(kind?: 'annual' | 'other') {
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  if (!kind) return requests;
-  return requests.filter((request) => isAnnualLeaveType(request.leaveType) === (kind === 'annual'));
+  const scopedRequests = !scope || scope.type === 'unrestricted'
+    ? requests
+    : scope.type === 'hr_units'
+      ? requests.filter((request) => request.employee?.hrUnitId && scope.hrUnitIds.includes(request.employee.hrUnitId))
+      : requests.filter((request) => request.employee?.userId === scope.userId);
+
+  if (!kind) return scopedRequests;
+  return scopedRequests.filter((request) => isAnnualLeaveType(request.leaveType) === (kind === 'annual'));
 }
 
 export async function createLeaveRequest(input: CreateLeaveRequestInput) {
@@ -390,6 +422,13 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
 
     return getLeaveRequestById(updated.id, tx);
   });
+}
+
+export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, scope: EmployeeVisibilityScope) {
+  const request = await getLeaveRequestById(id);
+  if (!request) throw new Error('Leave request not found');
+  await assertCanAccessEmployee(request.employeeId, scope);
+  return changeLeaveRequestStatus(id, input);
 }
 
 async function ensureAnnualLeaveType() {

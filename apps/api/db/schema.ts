@@ -105,6 +105,26 @@ export const userRoles = pgTable('user_roles', {
   pk: primaryKey({ columns: [table.userId, table.roleId] }),
 }));
 
+export const hrUnits = pgTable('hr_units', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  nameEn: varchar('name_en', { length: 150 }).notNull().unique(),
+  nameAm: varchar('name_am', { length: 150 }),
+  code: varchar('code', { length: 50 }).unique(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+});
+
+export const userHrUnits = pgTable('user_hr_units', {
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  hrUnitId: uuid('hr_unit_id').notNull().references(() => hrUnits.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.userId, table.hrUnitId] }),
+  userIdx: index('user_hr_units_user_id_idx').on(table.userId),
+  hrUnitIdx: index('user_hr_units_hr_unit_id_idx').on(table.hrUnitId),
+}));
+
 export const departments = pgTable('departments', {
   id: uuid('id').primaryKey().defaultRandom(),
   nameEn: varchar('name_en', { length: 150 }).notNull(),
@@ -227,6 +247,7 @@ export const employees = pgTable('employees', {
   gender: varchar('gender', { length: 20 }),
   phoneNumber: varchar('phone_number', { length: 50 }),
   email: varchar('email', { length: 150 }),
+  hrUnitId: uuid('hr_unit_id').references(() => hrUnits.id),
   departmentId: uuid('department_id').notNull().references(() => departments.id),
   positionId: uuid('position_id').references(() => positions.id),
   positionName: varchar('position_name', { length: 200 }),
@@ -540,6 +561,7 @@ export const userRelations = relations(user, ({ one, many }) => ({
   credential: one(authCredentials),
   sessions: many(authSessions),
   userRoles: many(userRoles),
+  userHrUnits: many(userHrUnits),
   employees: many(employees),
 }));
 
@@ -574,6 +596,22 @@ export const userRolesRelations = relations(userRoles, ({ one }) => ({
   role: one(roles, {
     fields: [userRoles.roleId],
     references: [roles.id],
+  }),
+}));
+
+export const hrUnitsRelations = relations(hrUnits, ({ many }) => ({
+  employees: many(employees),
+  userHrUnits: many(userHrUnits),
+}));
+
+export const userHrUnitsRelations = relations(userHrUnits, ({ one }) => ({
+  user: one(user, {
+    fields: [userHrUnits.userId],
+    references: [user.id],
+  }),
+  hrUnit: one(hrUnits, {
+    fields: [userHrUnits.hrUnitId],
+    references: [hrUnits.id],
   }),
 }));
 
@@ -658,6 +696,10 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   department: one(departments, {
     fields: [employees.departmentId],
     references: [departments.id],
+  }),
+  hrUnit: one(hrUnits, {
+    fields: [employees.hrUnitId],
+    references: [hrUnits.id],
   }),
   position: one(positions, {
     fields: [employees.positionId],
@@ -889,6 +931,8 @@ export const allTables = {
   permissions,
   rolePermissions,
   userRoles,
+  hrUnits,
+  userHrUnits,
   departments,
   positions,
   shifts,

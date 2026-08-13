@@ -7,16 +7,26 @@ import {
   getAttendancePunchesPaginated,
   getUnprocessedAttendancePunches,
 } from '../../../../db/orm/core/manageBiometricDevices';
+import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
+import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendancePunch } from '../../helpers/formatters';
 
 export async function createAttendancePunchHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const body = await c.req.json();
     const parsed = CreateAttendancePunchRequestSchema.safeParse(body);
 
     if (!parsed.success) {
       return validationErrorResponse(c, parsed.error.message);
+    }
+
+    if (parsed.data.employeeId) {
+      await assertCanAccessEmployee(parsed.data.employeeId, scope);
     }
 
     const attendancePunch = await createAttendancePunch(parsed.data);
@@ -32,7 +42,9 @@ export async function createAttendancePunchHandler(c: Context) {
 
 export async function getAttendancePunchesHandler(c: Context) {
   try {
-    const attendancePunches = await getAttendancePunches();
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const attendancePunches = await getAttendancePunches(scope);
 
     return c.json({
       success: true,
@@ -45,6 +57,8 @@ export async function getAttendancePunchesHandler(c: Context) {
 
 export async function getAttendancePunchesPaginatedHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const page = Number(c.req.query('page') || 1);
     const pageSize = Number(c.req.query('pageSize') || 50);
     const employeeId = c.req.query('employeeId') || null;
@@ -65,6 +79,7 @@ export async function getAttendancePunchesPaginatedHandler(c: Context) {
       dateTo,
       timeFrom,
       timeTo,
+      scope,
     });
 
     return c.json({
@@ -83,8 +98,10 @@ export async function getAttendancePunchesPaginatedHandler(c: Context) {
 
 export async function getAttendancePunchesByEmployeeHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const employeeId = c.req.param('employeeId');
-    const attendancePunches = await getAttendancePunchesByEmployeeId(employeeId);
+    const attendancePunches = await getAttendancePunchesByEmployeeId(employeeId, scope);
 
     return c.json({
       success: true,
@@ -97,7 +114,9 @@ export async function getAttendancePunchesByEmployeeHandler(c: Context) {
 
 export async function getUnprocessedAttendancePunchesHandler(c: Context) {
   try {
-    const attendancePunches = await getUnprocessedAttendancePunches();
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const attendancePunches = await getUnprocessedAttendancePunches(scope);
 
     return c.json({
       success: true,
@@ -106,4 +125,22 @@ export async function getUnprocessedAttendancePunchesHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch unprocessed attendance punches');
   }
+}
+
+async function resolveSession(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  return session;
+}
+
+async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }

@@ -7,6 +7,7 @@ import type {
   CreateBiometricDeviceSyncInput,
   UpdateBiometricDeviceInput,
 } from '../../../types/core.types';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
@@ -224,12 +225,13 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
   return getAttendancePunchById(punch.id, tx);
 }
 
-export async function getAttendancePunches() {
+export async function getAttendancePunches(scope?: EmployeeVisibilityScope) {
   const punches = await db.query.attendancePunches.findMany({
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -247,7 +249,7 @@ export async function getAttendancePunches() {
     orderBy: (table, { desc }) => [desc(table.punchTime)],
   });
 
-  return hydratePunchEmployeesByBiometricId(punches);
+  return filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
 }
 
 export async function getAttendancePunchesPaginated({
@@ -260,6 +262,7 @@ export async function getAttendancePunchesPaginated({
   dateTo,
   timeFrom,
   timeTo,
+  scope,
 }: {
   page?: number;
   pageSize?: number;
@@ -270,6 +273,7 @@ export async function getAttendancePunchesPaginated({
   dateTo?: string | null;
   timeFrom?: string | null;
   timeTo?: string | null;
+  scope?: EmployeeVisibilityScope;
 }) {
   const safePage = Math.max(1, page);
   const safePageSize = Math.min(200, Math.max(1, pageSize));
@@ -290,6 +294,7 @@ export async function getAttendancePunchesPaginated({
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -314,16 +319,19 @@ export async function getAttendancePunchesPaginated({
     punchQuery,
   ]);
 
+  const scopedPunches = filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
+
   return {
-    attendancePunches: await hydratePunchEmployeesByBiometricId(punches),
-    total: Number(totalResult[0]?.value ?? 0),
+    attendancePunches: scopedPunches,
+    total: scope && scope.type !== 'unrestricted' ? scopedPunches.length : Number(totalResult[0]?.value ?? 0),
     page: safePage,
     pageSize: safePageSize,
   };
 }
 
-export async function getAttendancePunchesByEmployeeId(employeeId: string) {
+export async function getAttendancePunchesByEmployeeId(employeeId: string, scope?: EmployeeVisibilityScope) {
   await assertEmployeeExists(employeeId);
+  if (scope) await assertCanAccessEmployee(employeeId, scope);
 
   const punches = await db.query.attendancePunches.findMany({
     where: eq(attendancePunches.employeeId, employeeId),
@@ -331,6 +339,7 @@ export async function getAttendancePunchesByEmployeeId(employeeId: string) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -351,13 +360,14 @@ export async function getAttendancePunchesByEmployeeId(employeeId: string) {
   return hydratePunchEmployeesByBiometricId(punches);
 }
 
-export async function getUnprocessedAttendancePunches() {
+export async function getUnprocessedAttendancePunches(scope?: EmployeeVisibilityScope) {
   const punches = await db.query.attendancePunches.findMany({
     where: eq(attendancePunches.isProcessed, false),
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -375,7 +385,7 @@ export async function getUnprocessedAttendancePunches() {
     orderBy: (table, { asc }) => [asc(table.punchTime)],
   });
 
-  return hydratePunchEmployeesByBiometricId(punches);
+  return filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
 }
 
 async function getAttendancePunchById(id: string, tx: DbClient = db) {
@@ -385,6 +395,7 @@ async function getAttendancePunchById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -423,6 +434,7 @@ async function hydratePunchEmployeesByBiometricId<T extends { biometricId: strin
     where: inArray(employees.biometricId, biometricIds),
     with: {
       department: true,
+      hrUnit: true,
       position: true,
     },
   });
@@ -437,6 +449,14 @@ async function hydratePunchEmployeesByBiometricId<T extends { biometricId: strin
     ...punch,
     employee: punch.employee ?? employeeByBiometricId.get(punch.biometricId) ?? null,
   }));
+}
+
+function filterPunchesByScope<T extends { employee?: any | null }>(punches: T[], scope?: EmployeeVisibilityScope) {
+  if (!scope || scope.type === 'unrestricted') return punches;
+  if (scope.type === 'hr_units') {
+    return punches.filter((punch) => punch.employee?.hrUnitId && scope.hrUnitIds.includes(punch.employee.hrUnitId));
+  }
+  return punches.filter((punch) => punch.employee?.userId === scope.userId);
 }
 
 function buildPunchTimeConditions({

@@ -6,11 +6,13 @@ import type {
   CreateManualPunchRequestInput,
 } from '../../../types/core.types';
 import { createAttendancePunch } from './manageBiometricDevices';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
-export async function createManualPunchRequest(input: CreateManualPunchRequestInput) {
+export async function createManualPunchRequest(input: CreateManualPunchRequestInput, scope?: EmployeeVisibilityScope) {
   await assertEmployeeExists(input.employeeId);
+  if (scope) await assertCanAccessEmployee(input.employeeId, scope);
 
   if (!input.requestedBy) {
     throw new Error('requestedBy is required');
@@ -32,23 +34,31 @@ export async function createManualPunchRequest(input: CreateManualPunchRequestIn
   return getManualPunchRequestById(request.id);
 }
 
-export async function getManualPunchRequests() {
-  return db.query.manualPunchRequests.findMany({
+export async function getManualPunchRequests(scope?: EmployeeVisibilityScope) {
+  const requests = await db.query.manualPunchRequests.findMany({
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
     },
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
+
+  if (!scope || scope.type === 'unrestricted') return requests;
+  if (scope.type === 'hr_units') {
+    return requests.filter((request) => request.employee?.hrUnitId && scope.hrUnitIds.includes(request.employee.hrUnitId));
+  }
+  return requests.filter((request) => request.employee?.userId === scope.userId);
 }
 
 export async function changeManualPunchRequestStatus(
   id: string,
   input: ChangeManualPunchRequestStatusInput,
+  scope?: EmployeeVisibilityScope,
 ) {
   return db.transaction(async (tx) => {
     const request = await getManualPunchRequestById(id, tx);
@@ -56,6 +66,7 @@ export async function changeManualPunchRequestStatus(
     if (!request) {
       throw new Error('Manual punch request not found');
     }
+    if (scope) await assertCanAccessEmployee(request.employeeId, scope, tx);
 
     if (request.status !== 'PENDING') {
       throw new Error('Manual punch request is already processed');
@@ -153,6 +164,7 @@ export async function getManualPunchRequestById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },

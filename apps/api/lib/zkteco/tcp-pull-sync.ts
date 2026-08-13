@@ -1,5 +1,5 @@
 import ZKLib from "node-zklib";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "../../db/db";
 import { attendancePunches, employees } from "../../db/schema";
 import {
@@ -73,7 +73,10 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
         }
 
         const employee = await db.query.employees.findFirst({
-          where: eq(employees.employeeCode, parsed.biometricId),
+          where: or(
+            eq(employees.biometricId, parsed.biometricId),
+            eq(employees.employeeCode, parsed.biometricId),
+          ),
           columns: { id: true },
         });
 

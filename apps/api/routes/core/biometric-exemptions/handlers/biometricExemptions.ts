@@ -4,17 +4,23 @@ import {
   UpdateBiometricExemptionRequestSchema,
 } from '../../../../schemas/core.schema';
 import {
-  createBiometricExemption,
-  deactivateBiometricExemption,
+  createBiometricExemptionScoped,
+  deactivateBiometricExemptionScoped,
   getBiometricExemptions,
-  updateBiometricExemption,
+  updateBiometricExemptionScoped,
 } from '../../../../db/orm/core/manageBiometricExemptions';
+import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
+import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatBiometricExemption } from '../../helpers/formatters';
 
 export async function getBiometricExemptionsHandler(c: Context) {
   try {
-    const biometricExemptions = await getBiometricExemptions();
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const biometricExemptions = await getBiometricExemptions(scope);
     return c.json({
       success: true,
       biometricExemptions: biometricExemptions.map(formatBiometricExemption),
@@ -26,14 +32,16 @@ export async function getBiometricExemptionsHandler(c: Context) {
 
 export async function createBiometricExemptionHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = CreateBiometricExemptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
 
-    const biometricExemption = await createBiometricExemption({
+    const biometricExemption = await createBiometricExemptionScoped({
       ...parsed.data,
-      createdBy: c.user?.id ?? parsed.data.createdBy,
-      updatedBy: c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    });
+      createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
+      updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
+    }, scope);
 
     return c.json({
       success: true,
@@ -46,15 +54,17 @@ export async function createBiometricExemptionHandler(c: Context) {
 
 export async function updateBiometricExemptionHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const id = c.req.param('id');
     const parsed = UpdateBiometricExemptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
 
-    const biometricExemption = await updateBiometricExemption(id, {
+    const biometricExemption = await updateBiometricExemptionScoped(id, {
       ...parsed.data,
       biometricExemptionId: id,
-      updatedBy: c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    });
+      updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
+    }, scope);
 
     if (!biometricExemption) {
       return c.json({ success: false, error: 'Biometric exemption not found' }, 404);
@@ -71,8 +81,10 @@ export async function updateBiometricExemptionHandler(c: Context) {
 
 export async function deleteBiometricExemptionHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const id = c.req.param('id');
-    const biometricExemption = await deactivateBiometricExemption(id, c.user?.id ?? null);
+    const biometricExemption = await deactivateBiometricExemptionScoped(id, scope, session.user.id ?? c.user?.id ?? null);
 
     if (!biometricExemption) {
       return c.json({ success: false, error: 'Biometric exemption not found' }, 404);
@@ -85,4 +97,22 @@ export async function deleteBiometricExemptionHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to remove biometric exemption');
   }
+}
+
+async function resolveSession(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  return session;
+}
+
+async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }

@@ -9,6 +9,8 @@ import {
   updateSupervisorAttendanceDailyRecordPayroll,
 } from '../../../../db/orm/core/manageAttendanceApprovals';
 import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import {
@@ -38,9 +40,11 @@ export async function getSupervisorAttendanceDailyRecordsHandler(c: Context) {
   try {
     const session = await requireAuthenticatedUser(c);
     const date = c.req.query('date');
+    const scope = await resolveScope(session);
     const records = await getSupervisorAttendanceDailyRecords({
       userId: session.user.id,
       date,
+      scope,
     });
 
     return c.json({
@@ -62,7 +66,8 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     }
 
     const date = c.req.query('date');
-    const records = await getHrAttendanceDailyRecords(date);
+    const scope = await resolveScope(session);
+    const records = await getHrAttendanceDailyRecords(date, scope);
 
     return c.json({
       success: true,
@@ -77,7 +82,8 @@ export async function supervisorApproveAttendanceDailyRecordHandler(c: Context) 
   try {
     const session = await requireAuthenticatedUser(c);
     const id = c.req.param('id');
-    const record = await supervisorApproveAttendanceDailyRecord(id, { userId: session.user.id });
+    const scope = await resolveScope(session);
+    const record = await supervisorApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
 
     return c.json({
       success: true,
@@ -101,6 +107,7 @@ export async function updateSupervisorAttendanceDailyRecordPayrollHandler(c: Con
 
     const record = await updateSupervisorAttendanceDailyRecordPayroll(id, {
       userId: session.user.id,
+      scope: await resolveScope(session),
       ...parsed.data,
     });
 
@@ -123,7 +130,8 @@ export async function hrApproveAttendanceDailyRecordHandler(c: Context) {
     }
 
     const id = c.req.param('id');
-    const record = await hrApproveAttendanceDailyRecord(id, { userId: session.user.id });
+    const scope = await resolveScope(session);
+    const record = await hrApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
 
     return c.json({
       success: true,
@@ -146,10 +154,12 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
     }
 
     const canHrReturn = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    const scope = canHrReturn ? await resolveScope(session) : undefined;
     const record = await returnAttendanceDailyRecord(id, {
       userId: session.user.id,
       reason: parsed.data.reason,
       canHrReturn,
+      scope,
     });
 
     return c.json({
@@ -159,6 +169,16 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to return attendance');
   }
+}
+
+async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }
 
 async function requireAuthenticatedUser(c: Context) {
@@ -181,7 +201,12 @@ async function requireAuthenticatedUser(c: Context) {
 async function canUseHrApproval(userId: string, roles: string[]) {
   const normalizedRoles = roles.map((role) => role.toLowerCase());
 
-  if (normalizedRoles.includes('super_admin') || normalizedRoles.includes('human_resource') || normalizedRoles.includes('hr')) {
+  if (
+    normalizedRoles.includes('super_admin')
+    || normalizedRoles.includes('superadmin')
+    || normalizedRoles.includes('human_resource')
+    || normalizedRoles.includes('hr')
+  ) {
     return true;
   }
 

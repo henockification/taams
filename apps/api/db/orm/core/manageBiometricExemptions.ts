@@ -7,15 +7,17 @@ import type {
   UpdateBiometricExemptionInput,
 } from '../../../types/core.types';
 import { resolveEmployeeBiometricExemptions } from '../../../lib/biometric-exemptions';
+import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageHrUnits';
 
 type DbClient = typeof db | any;
 
-export async function getBiometricExemptions() {
-  return db.query.biometricExemptions.findMany({
+export async function getBiometricExemptions(scope?: EmployeeVisibilityScope) {
+  const exemptions = await db.query.biometricExemptions.findMany({
     with: {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -23,6 +25,12 @@ export async function getBiometricExemptions() {
     },
     orderBy: (table, { desc }) => [desc(table.isActive), desc(table.createdAt)],
   });
+
+  if (!scope || scope.type === 'unrestricted') return exemptions;
+  if (scope.type === 'hr_units') {
+    return exemptions.filter((exemption) => exemption.employee?.hrUnitId && scope.hrUnitIds.includes(exemption.employee.hrUnitId));
+  }
+  return exemptions.filter((exemption) => exemption.employee?.userId === scope.userId);
 }
 
 export async function getBiometricExemptionById(id: string, tx: DbClient = db) {
@@ -32,6 +40,7 @@ export async function getBiometricExemptionById(id: string, tx: DbClient = db) {
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },
@@ -59,6 +68,15 @@ export async function createBiometricExemption(input: CreateBiometricExemptionIn
     .returning();
 
   return getBiometricExemptionById(created.id, tx);
+}
+
+export async function createBiometricExemptionScoped(input: CreateBiometricExemptionInput, scope: EmployeeVisibilityScope, tx: DbClient = db) {
+  if (input.targetType !== 'EMPLOYEE') {
+    if (scope.type !== 'unrestricted') throw new Error('Only unrestricted users can manage position biometric exemptions');
+    return createBiometricExemption(input, tx);
+  }
+  await assertCanAccessEmployee(input.targetId, scope, tx);
+  return createBiometricExemption(input, tx);
 }
 
 export async function updateBiometricExemption(
@@ -96,6 +114,25 @@ export async function updateBiometricExemption(
   return getBiometricExemptionById(id, tx);
 }
 
+export async function updateBiometricExemptionScoped(
+  id: string,
+  input: UpdateBiometricExemptionInput,
+  scope: EmployeeVisibilityScope,
+  tx: DbClient = db,
+) {
+  const existing = await getBiometricExemptionById(id, tx);
+  if (!existing) throw new Error('Biometric exemption not found');
+  if (existing.employeeId) await assertCanAccessEmployee(existing.employeeId, scope, tx);
+  if (!existing.employeeId && scope.type !== 'unrestricted') {
+    throw new Error('Only unrestricted users can manage position biometric exemptions');
+  }
+  if (input.targetType === 'EMPLOYEE' && input.targetId) await assertCanAccessEmployee(input.targetId, scope, tx);
+  if (input.targetType === 'POSITION' && scope.type !== 'unrestricted') {
+    throw new Error('Only unrestricted users can manage position biometric exemptions');
+  }
+  return updateBiometricExemption(id, input, tx);
+}
+
 export async function deactivateBiometricExemption(id: string, updatedBy?: string | null, tx: DbClient = db) {
   await assertBiometricExemptionExists(id, tx);
 
@@ -109,6 +146,21 @@ export async function deactivateBiometricExemption(id: string, updatedBy?: strin
     .where(eq(biometricExemptions.id, id));
 
   return getBiometricExemptionById(id, tx);
+}
+
+export async function deactivateBiometricExemptionScoped(
+  id: string,
+  scope: EmployeeVisibilityScope,
+  updatedBy?: string | null,
+  tx: DbClient = db,
+) {
+  const existing = await getBiometricExemptionById(id, tx);
+  if (!existing) throw new Error('Biometric exemption not found');
+  if (existing.employeeId) await assertCanAccessEmployee(existing.employeeId, scope, tx);
+  if (!existing.employeeId && scope.type !== 'unrestricted') {
+    throw new Error('Only unrestricted users can manage position biometric exemptions');
+  }
+  return deactivateBiometricExemption(id, updatedBy, tx);
 }
 
 export async function getActiveBiometricExemptionsForEmployee(employeeId: string, tx: DbClient = db) {
@@ -148,6 +200,7 @@ export async function getBiometricExemptionsForEmployee(employeeId: string, tx: 
       employee: {
         with: {
           department: true,
+          hrUnit: true,
           position: true,
         },
       },

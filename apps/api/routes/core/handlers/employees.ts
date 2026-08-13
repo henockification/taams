@@ -7,25 +7,29 @@ import {
   UpdateEmployeeWorkScheduleRequestSchema,
 } from '../../../schemas/core.schema';
 import {
-  createEmployee,
+  createEmployeeScoped,
   createEmployeeSupervisor,
-  getEmployeeById,
+  getEmployeeByIdScoped,
   getEmployees,
   getEmployeesPaginated,
   getEmployeeSupervisors,
   upsertPermanentEmployees,
-  updateEmployee,
+  updateEmployeeScoped,
 } from '../../../db/orm/core/manageCore';
+import { getSessionByToken } from '../../../db/orm/auth/manageAuth';
+import { getUserPermissionNames } from '../../../db/orm/rbac/manageRbac';
+import { getSessionCookie } from '../../auth/handlers/helpers';
+import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../db/orm/core/manageHrUnits';
 import {
   mapExcelRowToEmployeeInput,
   parseEmployeeWorkbook,
 } from '../../../lib/employees/excel-import';
 import {
-  createEmployeeWorkSchedule as createEmployeeWorkScheduleRecord,
-  deleteEmployeeWorkSchedule,
-  getAllEmployeeWorkSchedules,
-  getEmployeeWorkSchedules as getEmployeeWorkScheduleRecords,
-  updateEmployeeWorkSchedule,
+  createEmployeeWorkScheduleScoped,
+  deleteEmployeeWorkScheduleScoped,
+  getAllEmployeeWorkSchedulesScoped,
+  getEmployeeWorkSchedulesScoped,
+  updateEmployeeWorkScheduleScoped,
 } from '../../../db/orm/core/manageWorkSchedules';
 import { coreErrorResponse, validationErrorResponse } from '../helpers/errors';
 import {
@@ -36,6 +40,7 @@ import {
 
 export async function createEmployeeHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const body = await c.req.json();
     const parsed = CreateEmployeeRequestSchema.safeParse(body);
 
@@ -43,7 +48,7 @@ export async function createEmployeeHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const employee = await createEmployee(parsed.data);
+    const employee = await createEmployeeScoped(parsed.data, scope);
 
     return c.json({
       success: true,
@@ -56,7 +61,8 @@ export async function createEmployeeHandler(c: Context) {
 
 export async function getEmployeesHandler(c: Context) {
   try {
-    const result = await getEmployees();
+    const scope = await resolveScope(c);
+    const result = await getEmployees(scope);
 
     return c.json({
       success: true,
@@ -69,10 +75,11 @@ export async function getEmployeesHandler(c: Context) {
 
 export async function getEmployeesPaginatedHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const page = Number(c.req.query('page') || 1);
     const pageSize = Number(c.req.query('pageSize') || 50);
     const search = c.req.query('search') || '';
-    const result = await getEmployeesPaginated({ page, pageSize, search });
+    const result = await getEmployeesPaginated({ page, pageSize, search, scope });
 
     return c.json({
       success: true,
@@ -90,8 +97,9 @@ export async function getEmployeesPaginatedHandler(c: Context) {
 
 export async function getEmployeeHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
-    const employee = await getEmployeeById(id);
+    const employee = await getEmployeeByIdScoped(id, scope);
 
     if (!employee) {
       return c.json({
@@ -111,6 +119,7 @@ export async function getEmployeeHandler(c: Context) {
 
 export async function updateEmployeeHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
     const body = await c.req.json();
     const parsed = UpdateEmployeeRequestSchema.safeParse(body);
@@ -119,7 +128,7 @@ export async function updateEmployeeHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const employee = await updateEmployee(id, parsed.data);
+    const employee = await updateEmployeeScoped(id, parsed.data, scope);
 
     return c.json({
       success: true,
@@ -131,9 +140,19 @@ export async function updateEmployeeHandler(c: Context) {
 }
 
 export async function importPermanentEmployeesHandler(c: Context) {
+  return importEmployeesFromWorkbook(c, 'PERMANENT');
+}
+
+export async function importContractEmployeesHandler(c: Context) {
+  return importEmployeesFromWorkbook(c, 'CONTRACT');
+}
+
+async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANENT' | 'CONTRACT') {
   try {
+    const scope = await resolveScope(c);
     const formData = await c.req.formData();
     const file = formData.get('file');
+    const hrUnitId = formData.get('hrUnitId');
 
     if (!file || typeof file === 'string' || typeof (file as any).arrayBuffer !== 'function') {
       return validationErrorResponse(c, 'An .xls or .xlsx file is required');
@@ -171,8 +190,12 @@ export async function importPermanentEmployeesHandler(c: Context) {
       validInputs.push(mapped.input);
     }
 
+    if (!hrUnitId || typeof hrUnitId !== 'string') {
+      return validationErrorResponse(c, 'HR unit is required');
+    }
+
     const result = validInputs.length > 0
-      ? await upsertPermanentEmployees(validInputs)
+      ? await upsertPermanentEmployees(validInputs, { hrUnitId, scope, employmentType })
       : { created: 0, updated: 0, skipped: 0, employees: [] };
 
     return c.json({
@@ -186,12 +209,26 @@ export async function importPermanentEmployeesHandler(c: Context) {
       employees: result.employees.map(formatEmployee),
     });
   } catch (error) {
-    return coreErrorResponse(c, error, 'Failed to import permanent employees');
+    return coreErrorResponse(c, error, `Failed to import ${employmentType.toLowerCase()} employees`);
   }
+}
+
+async function resolveScope(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }
 
 export async function createEmployeeSupervisorHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
     const body = await c.req.json();
     const parsed = CreateEmployeeSupervisorRequestSchema.safeParse(body);
@@ -200,6 +237,8 @@ export async function createEmployeeSupervisorHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
+    await assertCanAccessEmployee(id, scope);
+    await assertCanAccessEmployee(parsed.data.supervisorId, scope);
     const supervisor = await createEmployeeSupervisor(id, parsed.data);
 
     return c.json({
@@ -213,7 +252,9 @@ export async function createEmployeeSupervisorHandler(c: Context) {
 
 export async function getEmployeeSupervisorsHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
+    await assertCanAccessEmployee(id, scope);
     const supervisors = await getEmployeeSupervisors(id);
 
     return c.json({
@@ -227,6 +268,7 @@ export async function getEmployeeSupervisorsHandler(c: Context) {
 
 export async function createEmployeeWorkScheduleHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const employeeId = c.req.param('id');
     const body = await c.req.json();
     const parsed = CreateEmployeeWorkScheduleRequestSchema.safeParse({
@@ -238,7 +280,7 @@ export async function createEmployeeWorkScheduleHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const employeeWorkSchedule = await createEmployeeWorkScheduleRecord(parsed.data);
+    const employeeWorkSchedule = await createEmployeeWorkScheduleScoped(parsed.data, scope);
 
     return c.json({
       success: true,
@@ -251,8 +293,9 @@ export async function createEmployeeWorkScheduleHandler(c: Context) {
 
 export async function getEmployeeWorkSchedulesHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const employeeId = c.req.param('id');
-    const schedules = await getEmployeeWorkScheduleRecords(employeeId);
+    const schedules = await getEmployeeWorkSchedulesScoped(employeeId, scope);
 
     return c.json({
       success: true,
@@ -265,7 +308,8 @@ export async function getEmployeeWorkSchedulesHandler(c: Context) {
 
 export async function getAllEmployeeWorkSchedulesHandler(c: Context) {
   try {
-    const schedules = await getAllEmployeeWorkSchedules();
+    const scope = await resolveScope(c);
+    const schedules = await getAllEmployeeWorkSchedulesScoped(scope);
 
     return c.json({
       success: true,
@@ -278,6 +322,7 @@ export async function getAllEmployeeWorkSchedulesHandler(c: Context) {
 
 export async function updateEmployeeWorkScheduleHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
     const body = await c.req.json();
     const parsed = UpdateEmployeeWorkScheduleRequestSchema.safeParse(body);
@@ -286,7 +331,7 @@ export async function updateEmployeeWorkScheduleHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const employeeWorkSchedule = await updateEmployeeWorkSchedule(id, parsed.data);
+    const employeeWorkSchedule = await updateEmployeeWorkScheduleScoped(id, parsed.data, scope);
 
     return c.json({
       success: true,
@@ -299,8 +344,9 @@ export async function updateEmployeeWorkScheduleHandler(c: Context) {
 
 export async function deleteEmployeeWorkScheduleHandler(c: Context) {
   try {
+    const scope = await resolveScope(c);
     const id = c.req.param('id');
-    await deleteEmployeeWorkSchedule(id);
+    await deleteEmployeeWorkScheduleScoped(id, scope);
 
     return c.json({ success: true });
   } catch (error) {

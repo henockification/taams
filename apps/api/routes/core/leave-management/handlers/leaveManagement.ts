@@ -11,8 +11,8 @@ import {
   UpsertLeaveBalanceRequestSchema,
 } from '../../../../schemas/core.schema';
 import {
-  bulkUpsertLeaveBalances,
-  changeLeaveRequestStatus,
+  bulkUpsertLeaveBalancesScoped,
+  changeLeaveRequestStatusScoped,
   createLeaveFiscalYear,
   createLeaveRequest,
   createLeaveType,
@@ -21,11 +21,15 @@ import {
   getLeaveRequests,
   getLeaveTypes,
   setActiveLeaveFiscalYear,
-  transferLeaveBalance,
+  transferLeaveBalanceScoped,
   updateLeaveFiscalYear,
   updateLeaveType,
-  upsertLeaveBalance,
+  upsertLeaveBalanceScoped,
 } from '../../../../db/orm/core/manageLeave';
+import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
+import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import {
   formatLeaveBalance,
@@ -114,8 +118,10 @@ export async function updateLeaveTypeHandler(c: Context) {
 
 export async function getLeaveBalancesHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const fiscalYearId = c.req.query('fiscalYearId') || undefined;
-    const leaveBalances = await getLeaveBalances(fiscalYearId);
+    const leaveBalances = await getLeaveBalances(fiscalYearId, scope);
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch leave balances');
@@ -124,13 +130,15 @@ export async function getLeaveBalancesHandler(c: Context) {
 
 export async function upsertLeaveBalanceHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = UpsertLeaveBalanceRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const leaveBalance = await upsertLeaveBalance({
+    const leaveBalance = await upsertLeaveBalanceScoped({
       ...parsed.data,
-      createdBy: c.user?.id ?? parsed.data.createdBy,
-      updatedBy: c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    });
+      createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
+      updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
+    }, scope);
     return c.json({ success: true, leaveBalance: formatLeaveBalance(leaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to save leave balance');
@@ -139,13 +147,15 @@ export async function upsertLeaveBalanceHandler(c: Context) {
 
 export async function bulkUpsertLeaveBalancesHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = BulkUpsertLeaveBalancesRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const leaveBalances = await bulkUpsertLeaveBalances({
+    const leaveBalances = await bulkUpsertLeaveBalancesScoped({
       ...parsed.data,
-      createdBy: c.user?.id ?? parsed.data.createdBy,
-      updatedBy: c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    });
+      createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
+      updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
+    }, scope);
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to bulk save leave balances');
@@ -154,12 +164,14 @@ export async function bulkUpsertLeaveBalancesHandler(c: Context) {
 
 export async function transferLeaveBalanceHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = TransferLeaveBalanceRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const result = await transferLeaveBalance({
+    const result = await transferLeaveBalanceScoped({
       ...parsed.data,
-      approvedBy: c.user?.id ?? parsed.data.approvedBy,
-    });
+      approvedBy: session.user.id ?? c.user?.id ?? parsed.data.approvedBy,
+    }, scope);
     return c.json({
       success: true,
       fromBalance: formatLeaveBalance(result.fromBalance),
@@ -173,12 +185,14 @@ export async function transferLeaveBalanceHandler(c: Context) {
 
 export async function getLeaveRequestsHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const kind = c.req.query('kind') === 'annual'
       ? 'annual'
       : c.req.query('kind') === 'other'
         ? 'other'
         : undefined;
-    const leaveRequests = await getLeaveRequests(kind);
+    const leaveRequests = await getLeaveRequests(kind, scope);
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch leave requests');
@@ -187,10 +201,15 @@ export async function getLeaveRequestsHandler(c: Context) {
 
 export async function createLeaveRequestHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = CreateLeaveRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const requestedBy = c.user?.id ?? parsed.data.requestedBy;
+    const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
+    if (scope.type !== 'unrestricted') {
+      await assertCanAccessEmployee(parsed.data.employeeId, scope);
+    }
     const leaveRequest = await createLeaveRequest({ ...parsed.data, requestedBy });
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
   } catch (error) {
@@ -200,21 +219,41 @@ export async function createLeaveRequestHandler(c: Context) {
 
 export async function changeLeaveRequestStatusHandler(c: Context) {
   try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const parsed = ChangeLeaveRequestStatusRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const payload = { ...parsed.data };
 
     if (payload.status === 'APPROVED') {
-      payload.approvedBy = c.user?.id ?? payload.approvedBy;
+      payload.approvedBy = session.user.id ?? c.user?.id ?? payload.approvedBy;
       if (!payload.approvedBy) return validationErrorResponse(c, 'approvedBy is required when approving a leave request');
     } else {
-      payload.rejectedBy = c.user?.id ?? payload.rejectedBy;
+      payload.rejectedBy = session.user.id ?? c.user?.id ?? payload.rejectedBy;
       if (!payload.rejectedBy) return validationErrorResponse(c, 'rejectedBy is required when rejecting a leave request');
     }
 
-    const leaveRequest = await changeLeaveRequestStatus(c.req.param('id'), payload);
+    const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload, scope);
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request status');
   }
+}
+
+async function resolveSession(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  return session;
+}
+
+async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }

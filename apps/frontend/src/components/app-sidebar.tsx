@@ -21,7 +21,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { getAccessibleNavGroups, getFirstAccessiblePath } from "@/config/app-navigation"
 import { useDashboardSummary, useTimeOperationsSummary } from "@/data/hooks/core.hooks"
@@ -72,15 +71,23 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     () => getActiveGroupKey(navGroups, pathname),
     [navGroups, pathname],
   )
-  const [openGroupKey, setOpenGroupKey] = React.useState<string | null>(activeGroupKey)
+  const [openGroupKeys, setOpenGroupKeys] = React.useState<Set<string>>(
+    () => new Set(activeGroupKey ? [activeGroupKey] : []),
+  )
   const { data: timeOperationsResponse, isLoading, isError } = useTimeOperationsSummary()
   const timeOperations = timeOperationsResponse?.timeOperations
   const topOperation = timeOperations?.items[0]
 
   React.useEffect(() => {
-    setOpenGroupKey((currentGroupKey) => (
-      currentGroupKey === activeGroupKey ? currentGroupKey : activeGroupKey
-    ))
+    if (!activeGroupKey) return
+
+    setOpenGroupKeys((currentGroupKeys) => {
+      if (currentGroupKeys.has(activeGroupKey)) return currentGroupKeys
+
+      const nextGroupKeys = new Set(currentGroupKeys)
+      nextGroupKeys.add(activeGroupKey)
+      return nextGroupKeys
+    })
   }, [activeGroupKey])
 
   return (
@@ -109,46 +116,63 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="gap-0 overflow-hidden px-2 py-3">
+      <SidebarContent className="gap-0 overflow-hidden px-2 py-2">
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1 group-data-[collapsible=icon]:pr-0">
-          {navGroups.map((group, index) => (
+          {navGroups.map((group) => (
             <React.Fragment key={group.labelKey}>
-              {index > 0 ? <SidebarSeparator className="my-1 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:w-6" /> : null}
               <Collapsible
-                open={openGroupKey === group.labelKey}
-                onOpenChange={(open) => setOpenGroupKey(open ? group.labelKey : null)}
+                open={openGroupKeys.has(group.labelKey)}
+                onOpenChange={(open) => {
+                  setOpenGroupKeys((currentGroupKeys) => {
+                    const nextGroupKeys = new Set(currentGroupKeys)
+
+                    if (open) {
+                      nextGroupKeys.add(group.labelKey)
+                    } else {
+                      nextGroupKeys.delete(group.labelKey)
+                    }
+
+                    return nextGroupKeys
+                  })
+                }}
                 className="group/collapsible"
               >
-                <SidebarGroup className="py-1">
-                  <SidebarGroupLabel asChild className="text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                    <CollapsibleTrigger className="w-full cursor-pointer">
-                      <span className="min-w-0 flex-1 truncate text-left">{t(group.labelKey)}</span>
-                      <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
+                <SidebarGroup className="py-0.5">
+                  <SidebarGroupLabel
+                    asChild
+                    className="h-9 rounded-md px-2.5 text-[12.5px] font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent/70 data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+                  >
+                    <CollapsibleTrigger className="w-full cursor-pointer gap-2.5">
+                      <group.icon className="size-4 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate text-left group-data-[collapsible=icon]:hidden">{t(group.labelKey)}</span>
+                      <ChevronRight className="ml-auto size-4 shrink-0 transition-transform group-data-[state=open]/collapsible:rotate-90 group-data-[collapsible=icon]:hidden" />
                     </CollapsibleTrigger>
                   </SidebarGroupLabel>
                   <CollapsibleContent>
-                    <SidebarGroupContent>
-                      <SidebarMenu>
-                        {group.items.map((item) => {
-                          const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
+                    <SidebarGroupContent className="group-data-[collapsible=icon]:hidden">
+                      <div className="relative ml-4 mt-1 pl-4 before:absolute before:left-0 before:top-1 before:h-[calc(100%-0.5rem)] before:w-px before:bg-sidebar-foreground/20">
+                        <SidebarMenu className="gap-1">
+                          {group.items.map((item) => {
+                            const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
 
-                          return (
-                            <SidebarMenuItem key={item.url}>
-                              <SidebarMenuButton
-                                asChild
-                                isActive={isActive}
-                                tooltip={t(item.titleKey)}
-                                className="h-10 gap-3 rounded-md data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                              >
-                                <Link href={item.url}>
-                                  <item.icon />
-                                  <span>{t(item.titleKey)}</span>
-                                </Link>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          )
-                        })}
-                      </SidebarMenu>
+                            return (
+                              <SidebarMenuItem key={item.url}>
+                                <SidebarMenuButton
+                                  asChild
+                                  isActive={isActive}
+                                  tooltip={t(item.titleKey)}
+                                  className="h-8 gap-2.5 rounded-md px-2.5 text-[12.5px] font-normal data-[active=true]:bg-primary data-[active=true]:font-medium data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&>svg]:size-4"
+                                >
+                                  <Link href={item.url}>
+                                    <item.icon />
+                                    <span>{t(item.titleKey)}</span>
+                                  </Link>
+                                </SidebarMenuButton>
+                              </SidebarMenuItem>
+                            )
+                          })}
+                        </SidebarMenu>
+                      </div>
                     </SidebarGroupContent>
                   </CollapsibleContent>
                 </SidebarGroup>

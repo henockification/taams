@@ -13,6 +13,7 @@ import {
   manualPunchRequests,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { scopedEmployeeWhere, type EmployeeVisibilityScope } from './manageHrUnits';
 
 const DEFAULT_SHIFT_START = '08:30:00';
 const DEFAULT_SHIFT_END = '17:30:00';
@@ -22,6 +23,7 @@ const LEAVE_EXPIRY_DAYS = 30;
 export type HrDashboardSummaryParams = {
   userId?: string;
   date?: string;
+  scope?: EmployeeVisibilityScope;
 };
 
 type Punch = typeof attendancePunches.$inferSelect;
@@ -51,12 +53,12 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     currentEmployee,
   ] = await Promise.all([
     db.query.employees.findMany({
-      where: eq(employees.isActive, true),
-      with: { department: true, position: true },
+      where: and(eq(employees.isActive, true), params.scope ? scopedEmployeeWhere(params.scope) : undefined),
+      with: { department: true, hrUnit: true, position: true },
     }),
     db.query.attendancePunches.findMany({
       where: and(gte(attendancePunches.punchTime, dayRange.start), lte(attendancePunches.punchTime, dayRange.end)),
-      with: { employee: { with: { department: true, position: true } }, device: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, device: true },
       orderBy: (table, { asc }) => [asc(table.punchTime)],
     }),
     db.query.leaveRequests.findMany({
@@ -65,7 +67,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
       ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
     }),
     db.query.leaveRequests.findMany({
       where: and(
@@ -73,7 +75,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         gte(leaveRequests.startDate, selectedDate),
         lte(leaveRequests.startDate, upcomingLeaveEnd),
       ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.startDate)],
       limit: 20,
     }),
@@ -101,13 +103,13 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     }),
     db.query.manualPunchRequests.findMany({
       where: eq(manualPunchRequests.status, 'PENDING'),
-      with: { employee: { with: { department: true, position: true } } },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
     }),
     db.query.leaveRequests.findMany({
       where: eq(leaveRequests.status, 'PENDING'),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
     }),
@@ -117,13 +119,13 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         gte(manualPunchRequests.createdAt, monthRange.start),
         lte(manualPunchRequests.createdAt, monthRange.end),
       ),
-      with: { employee: { with: { department: true, position: true } } },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } } },
       orderBy: (table, { desc }) => [desc(table.rejectedAt), desc(table.createdAt)],
       limit: 20,
     }),
     db.query.attendancePunches.findMany({
       where: eq(attendancePunches.isProcessed, false),
-      with: { employee: { with: { department: true, position: true } }, device: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, device: true },
       orderBy: (table, { desc }) => [desc(table.punchTime)],
       limit: 20,
     }),
@@ -146,24 +148,33 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     params.userId
       ? db.query.employees.findFirst({
         where: eq(employees.userId, params.userId),
-        with: { department: true, position: true },
+        with: { department: true, hrUnit: true, position: true },
       })
       : Promise.resolve(null),
   ]);
 
   const activeEmployeeIds = new Set(activeEmployees.map((employee) => employee.id));
+  const isVisibleEmployee = (employeeId: string | null | undefined) => Boolean(employeeId && activeEmployeeIds.has(employeeId));
+  const scopedDayPunches = dayPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
+  const scopedApprovedLeavesToday = approvedLeavesToday.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedUpcomingLeaveRequests = upcomingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedWorkScheduleAssignments = workScheduleAssignments.filter((assignment) => isVisibleEmployee(assignment.employeeId));
+  const scopedPendingManualRequests = pendingManualRequests.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedPendingLeaveRequests = pendingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedReturnedCorrections = returnedCorrections.filter((request) => isVisibleEmployee(request.employeeId));
+  const scopedUnprocessedPunches = unprocessedPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
   const exemptEmployeeIds = new Set(
     activeEmployees
       .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
       .map((employee) => employee.id),
   );
-  const punchesByEmployee = groupPunchesByEmployee(dayPunches);
+  const punchesByEmployee = groupPunchesByEmployee(scopedDayPunches);
   const leaveEmployeeIds = new Set(
-    approvedLeavesToday
+    scopedApprovedLeavesToday
       .filter((request) => activeEmployeeIds.has(request.employeeId))
       .map((request) => request.employeeId),
   );
-  const scheduleByEmployee = getScheduleByEmployee(workScheduleAssignments, selectedDate);
+  const scheduleByEmployee = getScheduleByEmployee(scopedWorkScheduleAssignments, selectedDate);
   const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
   const employeesWithoutPunch = activeEmployees.filter((employee) => (
     !punchesByEmployee.has(employee.id)
@@ -182,17 +193,18 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
         gte(leaveBalances.available, '0.01'),
       ),
-      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, fiscalYear: true },
       limit: 20,
     })
     : [];
+  const scopedLeaveBalancesNearExpiry = leaveBalancesNearExpiry.filter((balance) => isVisibleEmployee(balance.employeeId));
   const currentAnnualLeaveBalance = activeFiscalYear && currentEmployee
     ? await db.query.leaveBalances.findFirst({
       where: and(
         eq(leaveBalances.employeeId, currentEmployee.id),
         eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
       ),
-      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
+      with: { employee: { with: { department: true, hrUnit: true, position: true } }, fiscalYear: true },
     })
     : null;
 
@@ -202,7 +214,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     employeesWithoutPunch: employeesWithoutPunch.length,
     missingCheckout: missingCheckoutEmployees.length,
     lateEmployees: lateEmployeeIds.size,
-    unprocessedPunches: unprocessedPunches.length,
+    unprocessedPunches: scopedUnprocessedPunches.length,
   });
 
   return {
@@ -213,19 +225,19 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       pendingApprovals: createWidget(
         'pending-approvals',
         'Pending Approvals',
-        pendingManualRequests.length + pendingLeaveRequests.length,
+        scopedPendingManualRequests.length + scopedPendingLeaveRequests.length,
         '/leave-request-approvals',
       ),
       correctionsReturned: createWidget(
         'corrections-returned',
         'Corrections Returned',
-        returnedCorrections.length,
+        scopedReturnedCorrections.length,
         '/manual-punch-requests',
       ),
       manualAttendanceRequests: createWidget(
         'manual-attendance-requests',
         'Manual Attendance Requests',
-        pendingManualRequests.length,
+        scopedPendingManualRequests.length,
         '/manual-punch-requests',
       ),
       employeesOnLeave: createWidget(
@@ -261,13 +273,13 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       upcomingLeave: createWidget(
         'upcoming-leave',
         'Upcoming Leave',
-        upcomingLeaveRequests.length,
+        scopedUpcomingLeaveRequests.length,
         '/leave-request-approvals',
       ),
       employeesNearLeaveExpiry: createWidget(
         'employees-near-leave-expiry',
         'Employees Near Leave Expiry',
-        leaveBalancesNearExpiry.length,
+        scopedLeaveBalancesNearExpiry.length,
         '/leave-management/balances',
       ),
       devicesOffline: createWidget(
@@ -284,19 +296,19 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       ),
     },
     details: {
-      pendingManualRequests,
-      pendingLeaveRequests,
-      returnedCorrections,
-      employeesOnLeave: approvedLeavesToday,
+      pendingManualRequests: scopedPendingManualRequests,
+      pendingLeaveRequests: scopedPendingLeaveRequests,
+      returnedCorrections: scopedReturnedCorrections,
+      employeesOnLeave: scopedApprovedLeavesToday,
       employeesWithoutPunch,
       missingCheckoutEmployees,
       lateEmployees: activeEmployees.filter((employee) => lateEmployeeIds.has(employee.id)),
       attendanceExceptions: attendanceExceptions.items,
-      upcomingLeave: upcomingLeaveRequests,
-      employeesNearLeaveExpiry: leaveBalancesNearExpiry,
+      upcomingLeave: scopedUpcomingLeaveRequests,
+      employeesNearLeaveExpiry: scopedLeaveBalancesNearExpiry,
       devicesOffline: offlineDevices,
       synchronizationStatus: syncStatus,
-      unprocessedPunches,
+      unprocessedPunches: scopedUnprocessedPunches,
     },
   };
 }

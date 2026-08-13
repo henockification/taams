@@ -28,6 +28,16 @@ export type Department = {
   updatedAt: string;
 };
 
+export type HrUnit = {
+  id: string;
+  nameEn: string;
+  nameAm: string | null;
+  code: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Position = {
   id: string;
   nameEn: string;
@@ -129,6 +139,7 @@ export type CreateEmployeeInput = {
   gender?: string | null;
   phoneNumber?: string | null;
   email?: string | null;
+  hrUnitId: string;
   departmentId: string;
   positionId?: string | null;
   positionName?: string | null;

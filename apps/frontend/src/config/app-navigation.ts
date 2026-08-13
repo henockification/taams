@@ -8,6 +8,7 @@ import {
   FileCheck2,
   Fingerprint,
   HeartPulse,
+  IdCard,
   KeyRound,
   LayoutDashboard,
   ListChecks,
@@ -25,7 +26,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'hrUnits' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -35,12 +36,14 @@ export type AppNavItem = {
 
 export type AppNavGroup = {
   labelKey: 'workspace' | 'core' | 'leaveManagement' | 'employeeServices' | 'workScheduleShift' | 'biometric' | 'security';
+  icon: LucideIcon;
   items: AppNavItem[];
 };
 
 export const appNavGroups: AppNavGroup[] = [
   {
     labelKey: 'workspace',
+    icon: LayoutDashboard,
     items: [
       {
         titleKey: 'dashboard',
@@ -74,28 +77,31 @@ export const appNavGroups: AppNavGroup[] = [
   },
   {
     labelKey: 'core',
+    icon: Building2,
     items: [
+      // Temporarily hidden: organization structure should not appear in navigation or be directly accessible.
+      // {
+      //   titleKey: 'organizationStructure',
+      //   url: '/organization-structure',
+      //   permissionResource: 'organization-structure',
+      //   requiredPermission: 'organization-structure:read',
+      //   icon: Building2,
+      // },
       {
-        titleKey: 'organizationStructure',
-        url: '/organization-structure',
-        permissionResource: 'organization-structure',
-        requiredPermission: 'organization-structure:read',
-        icon: Building2,
+        titleKey: 'hrUnits',
+        url: '/hr-units',
+        permissionResource: 'hr-units',
+        requiredPermission: 'hr-units:read',
+        icon: IdCard,
       },
-      {
-        titleKey: 'positions',
-        url: '/positions',
-        permissionResource: 'positions',
-        requiredPermission: 'positions:read',
-        icon: PanelsTopLeft,
-      },
-      {
-        titleKey: 'employees',
-        url: '/employees',
-        permissionResource: 'employees',
-        requiredPermission: 'employees:read',
-        icon: UserRoundCog,
-      },
+      // Temporarily hidden: positions should not appear in navigation or be directly accessible.
+      // {
+      //   titleKey: 'positions',
+      //   url: '/positions',
+      //   permissionResource: 'positions',
+      //   requiredPermission: 'positions:read',
+      //   icon: PanelsTopLeft,
+      // },
       {
         titleKey: 'permanentEmployees',
         url: '/permanent-employees',
@@ -104,10 +110,18 @@ export const appNavGroups: AppNavGroup[] = [
         legacyPermissions: ['employees:read'],
         icon: FileSpreadsheet,
       },
+      {
+        titleKey: 'employees',
+        url: '/employees',
+        permissionResource: 'employees',
+        requiredPermission: 'employees:read',
+        icon: FileSpreadsheet,
+      },
     ],
   },
   {
     labelKey: 'leaveManagement',
+    icon: PlaneTakeoff,
     items: [
       {
         titleKey: 'fiscalYears',
@@ -153,6 +167,7 @@ export const appNavGroups: AppNavGroup[] = [
   },
   {
     labelKey: 'employeeServices',
+    icon: Users,
     items: [
       {
         titleKey: 'annualLeaveRequests',
@@ -174,6 +189,7 @@ export const appNavGroups: AppNavGroup[] = [
   },
   {
     labelKey: 'workScheduleShift',
+    icon: CalendarClock,
     items: [
       {
         titleKey: 'workSchedules',
@@ -202,6 +218,7 @@ export const appNavGroups: AppNavGroup[] = [
   },
   {
     labelKey: 'biometric',
+    icon: Fingerprint,
     items: [
       {
         titleKey: 'biometricDevices',
@@ -249,6 +266,7 @@ export const appNavGroups: AppNavGroup[] = [
   },
   {
     labelKey: 'security',
+    icon: ShieldCheck,
     items: [
       {
         titleKey: 'users',
@@ -318,6 +336,8 @@ export function hasHrRole(user: AuthzUser) {
   return roles.some((role) => (
     role === 'super_admin'
     || role === 'human_resource'
+    || role === 'hr_manager'
+    || role === 'hr_clerk'
   ));
 }
 
@@ -358,6 +378,8 @@ export function getNavItemForPath(pathname: string) {
 }
 
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
+  if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
+  if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals') return Boolean(user);
   if (pathname === '/department-head-dashboard') return Boolean(user);
   if (pathname === '/attendance-approvals/supervisor') return hasDepartmentHeadRole(user);

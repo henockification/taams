@@ -8,6 +8,10 @@ import {
   createManualPunchRequest,
   getManualPunchRequests,
 } from '../../../../db/orm/core/manageManualPunchRequests';
+import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
+import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageHrUnits';
+import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendancePunch, formatManualPunchRequest } from '../../helpers/formatters';
 
@@ -20,7 +24,9 @@ export async function createManualPunchRequestHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const requestedBy = c.user?.id ?? parsed.data.requestedBy;
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
 
     if (!requestedBy) {
       return validationErrorResponse(c, 'requestedBy is required');
@@ -29,7 +35,7 @@ export async function createManualPunchRequestHandler(c: Context) {
     const manualPunchRequest = await createManualPunchRequest({
       ...parsed.data,
       requestedBy,
-    });
+    }, scope);
 
     return c.json({
       success: true,
@@ -42,7 +48,9 @@ export async function createManualPunchRequestHandler(c: Context) {
 
 export async function getManualPunchRequestsHandler(c: Context) {
   try {
-    const manualPunchRequests = await getManualPunchRequests();
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const manualPunchRequests = await getManualPunchRequests(scope);
 
     return c.json({
       success: true,
@@ -56,6 +64,8 @@ export async function getManualPunchRequestsHandler(c: Context) {
 export async function changeManualPunchRequestStatusHandler(c: Context) {
   try {
     const id = c.req.param('id');
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const body = await c.req.json().catch(() => ({}));
     const parsed = ChangeManualPunchRequestStatusRequestSchema.safeParse(body);
 
@@ -66,20 +76,20 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
     const payload = { ...parsed.data };
 
     if (payload.status === 'APPROVED') {
-      payload.approvedBy = c.user?.id ?? payload.approvedBy;
+      payload.approvedBy = session.user.id ?? c.user?.id ?? payload.approvedBy;
 
       if (!payload.approvedBy) {
         return validationErrorResponse(c, 'approvedBy is required when approving a manual punch request');
       }
     } else {
-      payload.rejectedBy = c.user?.id ?? payload.rejectedBy;
+      payload.rejectedBy = session.user.id ?? c.user?.id ?? payload.rejectedBy;
 
       if (!payload.rejectedBy) {
         return validationErrorResponse(c, 'rejectedBy is required when rejecting a manual punch request');
       }
     }
 
-    const result = await changeManualPunchRequestStatus(id, payload);
+    const result = await changeManualPunchRequestStatus(id, payload, scope);
 
     if (!result.manualPunchRequest) {
       return c.json({
@@ -96,4 +106,22 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update manual punch request status');
   }
+}
+
+async function resolveSession(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  return session;
+}
+
+async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const permissions = await getUserPermissionNames(session.user.id);
+  return resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions,
+  });
 }
