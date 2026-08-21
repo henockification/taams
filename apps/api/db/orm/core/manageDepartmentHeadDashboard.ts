@@ -109,7 +109,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     db.query.manualPunchRequests.findMany({
       where: and(
         inArray(manualPunchRequests.employeeId, departmentEmployeeIds),
-        eq(manualPunchRequests.status, 'PENDING'),
+        eq(manualPunchRequests.status, 'HR_REVIEWED'),
       ),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],

@@ -38,6 +38,7 @@ import {
   formatLeaveRequest,
   formatLeaveType,
 } from '../../helpers/formatters';
+// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function getLeaveFiscalYearsHandler(c: Context) {
   try {
@@ -211,6 +212,13 @@ export async function createLeaveRequestHandler(c: Context) {
       await assertCanAccessEmployee(parsed.data.employeeId, scope);
     }
     const leaveRequest = await createLeaveRequest({ ...parsed.data, requestedBy });
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification('LEAVE_REQUEST_SUBMITTED', {
+    //   entityId: leaveRequest.id,
+    //   employeeId: leaveRequest.employeeId,
+    //   date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+    //   reason: leaveRequest.reason,
+    // });
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create leave request');
@@ -234,6 +242,16 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
     }
 
     const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload, scope);
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification(
+    //   leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_APPROVED' : 'LEAVE_REQUEST_REJECTED',
+    //   {
+    //     entityId: leaveRequest.id,
+    //     employeeId: leaveRequest.employeeId,
+    //     date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+    //     reason: leaveRequest.rejectionReason ?? null,
+    //   },
+    // );
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request status');

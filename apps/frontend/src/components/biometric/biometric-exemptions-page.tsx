@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
+import { Check, ChevronsUpDown, FileText, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -28,10 +28,10 @@ import {
 } from '@/components/ui/command';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   useBiometricExemptions,
+  useChangeBiometricExemptionStatus,
   useCreateBiometricExemption,
   useDeleteBiometricExemption,
   useEmployees,
@@ -49,14 +49,20 @@ type FormState = {
   targetType: BiometricExemptionTargetType;
   targetId: string;
   reason: string;
-  isActive: boolean;
+  supportingEvidenceName: string;
+  supportingEvidenceUrl: string;
+  supportingEvidenceMimeType: string;
+  supportingEvidenceSize: number;
 };
 
 const initialForm: FormState = {
   targetType: 'EMPLOYEE',
   targetId: '',
   reason: '',
-  isActive: true,
+  supportingEvidenceName: '',
+  supportingEvidenceUrl: '',
+  supportingEvidenceMimeType: '',
+  supportingEvidenceSize: 0,
 };
 
 function fullName(employee: Pick<Employee, 'firstNameEn' | 'middleNameEn' | 'lastNameEn'>) {
@@ -67,6 +73,13 @@ function targetLabel(targetType: BiometricExemptionTargetType) {
   return targetType === 'EMPLOYEE' ? 'employee' : 'position';
 }
 
+function statusLabel(status: BiometricExemption['status'], t: (key: string) => string) {
+  if (status === 'PENDING_SUPERVISOR') return t('pendingSupervisorApproval');
+  if (status === 'APPROVED') return t('approved');
+  if (status === 'REJECTED') return t('rejected');
+  return t('inactive');
+}
+
 export default function BiometricExemptionsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
@@ -75,6 +88,7 @@ export default function BiometricExemptionsPage() {
   const { data: positionsResponse } = usePositions();
   const createExemption = useCreateBiometricExemption();
   const updateExemption = useUpdateBiometricExemption();
+  const changeExemptionStatus = useChangeBiometricExemptionStatus();
   const deleteExemption = useDeleteBiometricExemption();
 
   const exemptions = exemptionsResponse?.biometricExemptions ?? [];
@@ -82,7 +96,7 @@ export default function BiometricExemptionsPage() {
   const positions = positionsResponse?.positions ?? [];
   const [search, setSearch] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState<'all' | BiometricExemptionTargetType>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExemption, setEditingExemption] = useState<BiometricExemption | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -98,11 +112,7 @@ export default function BiometricExemptionsPage() {
   const filteredExemptions = useMemo(() => {
     return exemptions.filter((exemption) => {
       const matchesTargetType = targetTypeFilter === 'all' || exemption.targetType === targetTypeFilter;
-      const matchesStatus = statusFilter === 'all'
-        ? true
-        : statusFilter === 'active'
-          ? exemption.isActive
-          : !exemption.isActive;
+      const matchesStatus = statusFilter === 'all' || exemption.status === statusFilter;
       const haystack = [
         exemption.reason,
         exemption.employee?.employeeCode,
@@ -128,7 +138,10 @@ export default function BiometricExemptionsPage() {
       targetType: exemption.targetType,
       targetId: exemption.targetType === 'EMPLOYEE' ? exemption.employeeId ?? '' : exemption.positionId ?? '',
       reason: exemption.reason,
-      isActive: exemption.isActive,
+      supportingEvidenceName: exemption.supportingEvidenceName ?? '',
+      supportingEvidenceUrl: exemption.supportingEvidenceUrl ?? '',
+      supportingEvidenceMimeType: exemption.supportingEvidenceMimeType ?? '',
+      supportingEvidenceSize: exemption.supportingEvidenceSize ?? 0,
     });
     setDialogOpen(true);
   };
@@ -141,7 +154,10 @@ export default function BiometricExemptionsPage() {
         targetType: form.targetType,
         targetId: form.targetId,
         reason: form.reason.trim(),
-        isActive: form.isActive,
+        supportingEvidenceName: form.supportingEvidenceName || null,
+        supportingEvidenceUrl: form.supportingEvidenceUrl || null,
+        supportingEvidenceMimeType: form.supportingEvidenceMimeType || null,
+        supportingEvidenceSize: form.supportingEvidenceSize || null,
       };
 
       if (editingExemption) {
@@ -154,6 +170,48 @@ export default function BiometricExemptionsPage() {
       notifications.show({
         title: common('success'),
         message: editingExemption ? t('biometricExemptionUpdated') : t('biometricExemptionCreated'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const handleEvidenceChange = (file: File | null) => {
+    if (!file) {
+      setForm((current) => ({
+        ...current,
+        supportingEvidenceName: '',
+        supportingEvidenceUrl: '',
+        supportingEvidenceMimeType: '',
+        supportingEvidenceSize: 0,
+      }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({
+        ...current,
+        supportingEvidenceName: file.name,
+        supportingEvidenceUrl: String(reader.result ?? ''),
+        supportingEvidenceMimeType: file.type,
+        supportingEvidenceSize: file.size,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const changeStatus = async (exemption: BiometricExemption, status: 'APPROVED' | 'REJECTED') => {
+    try {
+      await changeExemptionStatus.mutateAsync({ biometricExemptionId: exemption.id, status });
+      notifications.show({
+        title: common('success'),
+        message: status === 'APPROVED' ? t('biometricExemptionApproved') : t('biometricExemptionRejected'),
         color: 'green',
       });
     } catch (error) {
@@ -206,20 +264,22 @@ export default function BiometricExemptionsPage() {
               <SelectItem value="POSITION">{t('position')}</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'active' | 'inactive')}>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
             <SelectTrigger className="w-full md:w-40">
               <SelectValue placeholder={t('status')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('allStatuses')}</SelectItem>
-              <SelectItem value="active">{t('active')}</SelectItem>
-              <SelectItem value="inactive">{t('inactive')}</SelectItem>
+              <SelectItem value="PENDING_SUPERVISOR">{t('pendingSupervisorApproval')}</SelectItem>
+              <SelectItem value="APPROVED">{t('approved')}</SelectItem>
+              <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
+              <SelectItem value="INACTIVE">{t('inactive')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <Button onClick={openCreateDialog} className="w-full lg:w-auto">
           <Plus className="size-4" />
-          {t('addBiometricExemption')}
+          {t('requestBiometricExemption')}
         </Button>
       </div>
 
@@ -238,6 +298,7 @@ export default function BiometricExemptionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>{t('target')}</TableHead>
+                <TableHead>{t('supportingEvidence')}</TableHead>
                 <TableHead>{t('reason')}</TableHead>
                 <TableHead>{t('status')}</TableHead>
                 <TableHead>{t('updatedAt')}</TableHead>
@@ -266,12 +327,22 @@ export default function BiometricExemptionsPage() {
                         </p>
                       </div>
                     </TableCell>
+                    <TableCell className="max-w-[16rem]">
+                      {exemption.supportingEvidenceUrl ? (
+                        <a href={exemption.supportingEvidenceUrl} download={exemption.supportingEvidenceName ?? undefined} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                          <FileText className="size-3.5" />
+                          {exemption.supportingEvidenceName ?? t('supportingEvidence')}
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="max-w-[24rem]">
                       <p className="truncate">{exemption.reason}</p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={exemption.isActive ? 'default' : 'secondary'}>
-                        {exemption.isActive ? t('active') : t('inactive')}
+                      <Badge variant={exemption.status === 'APPROVED' ? 'default' : exemption.status === 'REJECTED' ? 'destructive' : 'secondary'}>
+                        {statusLabel(exemption.status, t)}
                       </Badge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
@@ -279,6 +350,16 @@ export default function BiometricExemptionsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
+                        {exemption.status === 'PENDING_SUPERVISOR' ? (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => changeStatus(exemption, 'APPROVED')} disabled={changeExemptionStatus.isPending}>
+                              <Check className="size-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => changeStatus(exemption, 'REJECTED')} disabled={changeExemptionStatus.isPending}>
+                              <X className="size-4" />
+                            </Button>
+                          </>
+                        ) : null}
                         <Button variant="ghost" size="icon" onClick={() => openEditDialog(exemption)}>
                           <Pencil className="size-4" />
                         </Button>
@@ -299,7 +380,7 @@ export default function BiometricExemptionsPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {editingExemption ? t('editBiometricExemption') : t('addBiometricExemption')}
+              {editingExemption ? t('editBiometricExemption') : t('requestBiometricExemption')}
             </DialogTitle>
             <DialogDescription>{t('biometricExemptionsDescription')}</DialogDescription>
           </DialogHeader>
@@ -347,12 +428,12 @@ export default function BiometricExemptionsPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between rounded-md border border-border p-3">
-              <div className="space-y-1">
-                <Label>{t('active')}</Label>
-                <p className="text-xs text-muted-foreground">{t('biometricExemptionActiveDescription')}</p>
-              </div>
-              <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
+            <div className="space-y-2">
+              <Label>{t('supportingEvidence')}</Label>
+              <Input type="file" onChange={(event) => handleEvidenceChange(event.target.files?.[0] ?? null)} />
+              {form.supportingEvidenceName ? (
+                <p className="text-xs text-muted-foreground">{form.supportingEvidenceName}</p>
+              ) : null}
             </div>
 
             <DialogFooter>

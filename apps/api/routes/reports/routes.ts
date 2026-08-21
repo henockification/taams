@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import * as XLSX from 'xlsx';
-import { and, asc, desc, eq, gte, ilike, inArray, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db/db';
 import {
   attendanceDailyRecords,
@@ -8,11 +8,13 @@ import {
   attendanceSyncBatches,
   biometricDevices,
   departments,
+  employeeWorkSchedules,
   employees,
   leaveBalances,
   leaveFiscalYears,
   leaveRequests,
   leaveTypes,
+  overtimeRequests,
 } from '../../db/schema';
 import { getSessionByToken } from '../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../db/orm/rbac/manageRbac';
@@ -26,6 +28,8 @@ import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 type ReportKey =
   | 'attendance-daily'
   | 'attendance-punches'
+  | 'late-attendance'
+  | 'overtime'
   | 'leave-balances'
   | 'leave-requests'
   | 'employees'
@@ -49,6 +53,7 @@ type ReportInput = {
 };
 
 const reportsApp = new Hono();
+const DEFAULT_SHIFT_START = '08:30:00';
 
 const reportDefinitions: Record<ReportKey, ReportDefinition> = {
   'attendance-daily': {
@@ -64,8 +69,14 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'totalPunches', label: 'Punches' },
       { key: 'attendanceDays', label: 'Attendance days' },
       { key: 'leaveDays', label: 'Leave days' },
+      { key: 'holidayDays', label: 'Holiday/off-day days' },
+      { key: 'holidayName', label: 'Holiday/off-day' },
+      { key: 'holidayType', label: 'Holiday/off-day type' },
       { key: 'payableDays', label: 'Payable days' },
       { key: 'absenceDays', label: 'Absence days' },
+      { key: 'overtimeMinutes', label: 'Approved overtime minutes' },
+      { key: 'overtimeHours', label: 'Approved overtime hours' },
+      { key: 'overtimeDays', label: 'Overtime days' },
       { key: 'payrollNote', label: 'Payroll note' },
       { key: 'status', label: 'Status' },
     ],
@@ -86,6 +97,43 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'processed', label: 'Processed' },
     ],
     buildRows: buildAttendancePunchRows,
+  },
+  'late-attendance': {
+    title: 'Late Attendance',
+    permission: 'reports-late-attendance:read',
+    columns: [
+      { key: 'attendanceDate', label: 'Date' },
+      { key: 'employeeCode', label: 'Employee ID' },
+      { key: 'employeeName', label: 'Employee name' },
+      { key: 'department', label: 'Department' },
+      { key: 'shiftName', label: 'Shift' },
+      { key: 'scheduledStart', label: 'Scheduled start' },
+      { key: 'lateThreshold', label: 'Late threshold' },
+      { key: 'checkInAt', label: 'Actual check in' },
+      { key: 'arrivalDelayMinutes', label: 'Delay from start (min)' },
+      { key: 'lateMinutes', label: 'Late after grace (min)' },
+      { key: 'status', label: 'Status' },
+    ],
+    buildRows: buildLateAttendanceRows,
+  },
+  overtime: {
+    title: 'Overtime',
+    permission: 'reports-overtime:read',
+    columns: [
+      { key: 'attendanceDate', label: 'Date' },
+      { key: 'employeeCode', label: 'Employee ID' },
+      { key: 'employeeName', label: 'Employee name' },
+      { key: 'department', label: 'Department' },
+      { key: 'startAt', label: 'Approved start' },
+      { key: 'endAt', label: 'Approved end' },
+      { key: 'approvedMinutes', label: 'Approved minutes' },
+      { key: 'approvedHours', label: 'Approved hours' },
+      { key: 'overtimeDays', label: 'Overtime days' },
+      { key: 'reason', label: 'Reason' },
+      { key: 'payrollNote', label: 'Payroll note' },
+      { key: 'status', label: 'Status' },
+    ],
+    buildRows: buildOvertimeRows,
   },
   'leave-balances': {
     title: 'Leave Balances',
@@ -241,6 +289,7 @@ async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
     ),
     with: {
       employee: { with: { department: true, position: true } },
+      holiday: true,
     },
     orderBy: (table, { desc }) => [desc(table.attendanceDate)],
   });
@@ -257,8 +306,14 @@ async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
       totalPunches: record.totalPunches,
       attendanceDays: record.attendanceDays,
       leaveDays: record.leaveDays,
+      holidayDays: record.holidayDays ?? '0.00',
+      holidayName: record.holiday?.nameEn ?? '',
+      holidayType: record.holiday?.type ?? '',
       payableDays: record.payableDays,
       absenceDays: record.absenceDays,
+      overtimeMinutes: record.overtimeMinutes ?? 0,
+      overtimeHours: record.overtimeHours ?? '0.00',
+      overtimeDays: record.overtimeDays ?? '0.00',
       payrollNote: record.payrollNote ?? '',
       status: record.status,
     }));
@@ -293,6 +348,75 @@ async function buildAttendancePunchRows({ query, scope }: ReportInput) {
       source: record.source,
       processed: record.isProcessed ? 'Yes' : 'No',
     }));
+}
+
+async function buildLateAttendanceRows({ query, scope }: ReportInput) {
+  const records = await getScheduleBasedAttendanceRecords(query);
+  const schedules = await getScheduleAssignmentsForRecords(records);
+  const minLateMinutes = numberFilter(query, 'minLateMinutes');
+
+  return records
+    .filter((record) => matchesEmployeeFilters(record.employee, query, scope))
+    .map((record) => {
+      if (!record.checkInAt) return null;
+      const schedule = resolveScheduleWindow(record, schedules);
+      if (!schedule) return null;
+      const checkInAt = new Date(record.checkInAt);
+      const lateMinutes = minutesBetween(schedule.lateThreshold, checkInAt);
+      if (lateMinutes <= 0 || lateMinutes < minLateMinutes) return null;
+
+      return {
+        attendanceDate: record.attendanceDate,
+        employeeCode: record.employee?.employeeCode ?? '',
+        employeeName: employeeName(record.employee),
+        department: record.employee?.department?.nameEn ?? '',
+        shiftName: schedule.shiftName,
+        scheduledStart: formatDateTime(schedule.scheduledStart),
+        lateThreshold: formatDateTime(schedule.lateThreshold),
+        checkInAt: formatDateTime(checkInAt),
+        arrivalDelayMinutes: Math.max(0, minutesBetween(schedule.scheduledStart, checkInAt)),
+        lateMinutes,
+        status: record.status,
+      };
+    })
+    .filter(Boolean) as Record<string, unknown>[];
+}
+
+async function buildOvertimeRows({ query, scope }: ReportInput) {
+  const requests = await db.query.overtimeRequests.findMany({
+    where: and(
+      eq(overtimeRequests.status, 'APPROVED'),
+      dateFrom(query) ? gte(overtimeRequests.overtimeDate, dateFrom(query)!) : undefined,
+      dateTo(query) ? lte(overtimeRequests.overtimeDate, dateTo(query)!) : undefined,
+    ),
+    with: {
+      employee: { with: { department: true, position: true } },
+    },
+    orderBy: (table, { desc }) => [desc(table.overtimeDate)],
+  });
+  const minOvertimeMinutes = numberFilter(query, 'minOvertimeMinutes');
+
+  return requests
+    .filter((request) => matchesEmployeeFilters(request.employee, query, scope))
+    .map((request) => {
+      if (request.approvedMinutes < minOvertimeMinutes) return null;
+
+      return {
+        attendanceDate: request.overtimeDate,
+        employeeCode: request.employee?.employeeCode ?? '',
+        employeeName: employeeName(request.employee),
+        department: request.employee?.department?.nameEn ?? '',
+        startAt: formatDateTime(request.startAt),
+        endAt: formatDateTime(request.endAt),
+        approvedMinutes: request.approvedMinutes,
+        approvedHours: Math.round((request.approvedMinutes / 60) * 100) / 100,
+        overtimeDays: request.overtimeDays,
+        reason: request.reason,
+        payrollNote: request.payrollNote ?? '',
+        status: request.status,
+      };
+    })
+    .filter(Boolean) as Record<string, unknown>[];
 }
 
 async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
@@ -412,6 +536,114 @@ async function buildDeviceSyncRows({ query }: ReportInput) {
   }));
 }
 
+async function getScheduleBasedAttendanceRecords(query: URLSearchParams) {
+  return db.query.attendanceDailyRecords.findMany({
+    where: and(
+      dateFrom(query) ? gte(attendanceDailyRecords.attendanceDate, dateFrom(query)!) : undefined,
+      dateTo(query) ? lte(attendanceDailyRecords.attendanceDate, dateTo(query)!) : undefined,
+      query.get('status') ? eq(attendanceDailyRecords.status, query.get('status')!) : undefined,
+      query.get('employeeId') ? eq(attendanceDailyRecords.employeeId, query.get('employeeId')!) : undefined,
+    ),
+    with: {
+      employee: { with: { department: true, position: true } },
+    },
+    orderBy: (table, { desc }) => [desc(table.attendanceDate)],
+  });
+}
+
+async function getScheduleAssignmentsForRecords(records: any[]) {
+  if (records.length === 0) return new Map<string, any[]>();
+
+  const employeeIds = [...new Set(records.map((record) => record.employeeId).filter(Boolean))];
+  const dates = records.map((record) => String(record.attendanceDate));
+  const minDate = dates.reduce((min, date) => date < min ? date : min, dates[0]);
+  const maxDate = dates.reduce((max, date) => date > max ? date : max, dates[0]);
+
+  const assignments = await db.query.employeeWorkSchedules.findMany({
+    where: and(
+      inArray(employeeWorkSchedules.employeeId, employeeIds),
+      eq(employeeWorkSchedules.isActive, true),
+      lte(employeeWorkSchedules.effectiveFrom, maxDate),
+      or(
+        isNull(employeeWorkSchedules.effectiveTo),
+        gte(employeeWorkSchedules.effectiveTo, minDate),
+      ),
+    ),
+    with: {
+      workSchedule: {
+        with: {
+          days: {
+            with: {
+              shift: {
+                with: {
+                  segments: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
+  });
+
+  const grouped = new Map<string, any[]>();
+  for (const assignment of assignments) {
+    grouped.set(assignment.employeeId, [...(grouped.get(assignment.employeeId) ?? []), assignment]);
+  }
+  return grouped;
+}
+
+function resolveScheduleWindow(record: any, schedulesByEmployee: Map<string, any[]>) {
+  const date = String(record.attendanceDate);
+  const assignment = (schedulesByEmployee.get(record.employeeId) ?? []).find((item) => (
+    item.effectiveFrom <= date && (!item.effectiveTo || item.effectiveTo >= date)
+  ));
+  const dayOfWeek = getDayOfWeek(date);
+  const day = assignment?.workSchedule?.days?.find((item: any) => item.dayOfWeek === dayOfWeek && item.isActive && !item.isOffDay);
+  const shift = day?.shift;
+  if (!shift) return null;
+
+  const segments = [...(shift.segments ?? [])].filter((segment: any) => segment.isActive).sort((left: any, right: any) => {
+    const sortOrder = Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0);
+    return sortOrder || String(left.startTime).localeCompare(String(right.startTime));
+  });
+  const firstSegment = segments[0];
+  const lastSegment = segments[segments.length - 1];
+  const startTime = firstSegment?.startTime ?? DEFAULT_SHIFT_START;
+  const endTime = lastSegment?.endTime ?? shiftEndFallback(startTime);
+  const scheduledStart = new Date(`${date}T${startTime}`);
+  const scheduledEnd = new Date(`${date}T${endTime}`);
+
+  if (shift.isOvernight || scheduledEnd <= scheduledStart) {
+    scheduledEnd.setDate(scheduledEnd.getDate() + 1);
+  }
+
+  const lateThreshold = new Date(scheduledStart);
+  lateThreshold.setMinutes(lateThreshold.getMinutes() + Number(shift.gracePeriodMinutes ?? 0) + Number(shift.lateAfterMinutes ?? 0));
+
+  return {
+    shiftName: shift.nameEn ?? '',
+    scheduledStart,
+    lateThreshold,
+    scheduledEnd,
+  };
+}
+
+function getDayOfWeek(date: string) {
+  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T00:00:00`).getDay()];
+}
+
+function shiftEndFallback(startTime: string) {
+  const start = new Date(`2000-01-01T${startTime}`);
+  start.setHours(start.getHours() + 8);
+  return start.toTimeString().slice(0, 8);
+}
+
+function minutesBetween(start: Date, end: Date) {
+  return Math.floor((end.getTime() - start.getTime()) / 60_000);
+}
+
 function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: EmployeeVisibilityScope) {
   if (!employee) return false;
   if (scope.type === 'self' && employee.userId !== scope.userId) return false;
@@ -443,6 +675,11 @@ function dateTimeTo(query: URLSearchParams, key = 'dateTo') {
   const date = query.get(key);
   const time = key === 'dateTo' ? query.get('timeTo') : null;
   return date ? new Date(`${date}T${time || '23:59'}:59.999`) : null;
+}
+
+function numberFilter(query: URLSearchParams, key: string) {
+  const value = Number(query.get(key) ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 function formatDateTime(value: Date | string | null | undefined) {

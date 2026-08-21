@@ -1,8 +1,10 @@
 import {
   Building2,
   ArrowRightLeft,
+  BellRing,
   CalendarClock,
   CalendarDays,
+  Clock3,
   ClipboardPlus,
   ClipboardList,
   FileSpreadsheet,
@@ -27,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'overtimeRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -179,6 +181,20 @@ export const appNavGroups: AppNavGroup[] = [
         legacyPermissions: ['leave-requests:read'],
         icon: FileCheck2,
       },
+      {
+        titleKey: 'overtimeRequests',
+        url: '/overtime-requests',
+        permissionResource: 'overtime-requests',
+        requiredPermission: 'overtime-requests:read',
+        icon: Timer,
+      },
+      {
+        titleKey: 'manualPunchRequests',
+        url: '/manual-punch-requests',
+        permissionResource: 'manual-punch-requests',
+        requiredPermission: 'manual-punch-requests:read',
+        icon: ClipboardPlus,
+      },
     ],
   },
   {
@@ -191,6 +207,14 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'work-schedules',
         requiredPermission: 'work-schedules:read',
         icon: CalendarClock,
+      },
+      {
+        titleKey: 'holidays',
+        url: '/holidays',
+        permissionResource: 'holidays',
+        requiredPermission: 'holidays:read',
+        legacyPermissions: ['work-schedules:read'],
+        icon: CalendarDays,
       },
       {
         titleKey: 'shifts',
@@ -249,13 +273,6 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'hr-attendance-approvals:approve',
         icon: ShieldCheck,
       },
-      {
-        titleKey: 'manualPunchRequests',
-        url: '/manual-punch-requests',
-        permissionResource: 'manual-punch-requests',
-        requiredPermission: 'manual-punch-requests:read',
-        icon: ClipboardPlus,
-      },
     ],
   },
   {
@@ -275,6 +292,20 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'reports-attendance-punches',
         requiredPermission: 'reports-attendance-punches:read',
         icon: ScanLine,
+      },
+      {
+        titleKey: 'lateAttendanceReport',
+        url: '/reports/late-attendance',
+        permissionResource: 'reports-late-attendance',
+        requiredPermission: 'reports-late-attendance:read',
+        icon: Clock3,
+      },
+      {
+        titleKey: 'overtimeReport',
+        url: '/reports/overtime',
+        permissionResource: 'reports-overtime',
+        requiredPermission: 'reports-overtime:read',
+        icon: Timer,
       },
       {
         titleKey: 'leaveBalancesReport',
@@ -331,6 +362,13 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'permissions:read',
         icon: KeyRound,
       },
+      {
+        titleKey: 'notificationLogs',
+        url: '/notification-logs',
+        permissionResource: 'notification-logs',
+        requiredPermission: 'notification-logs:read',
+        icon: BellRing,
+      },
     ],
   },
 ] as const;
@@ -361,7 +399,8 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/department-head-dashboard' && hasDepartmentHeadRole(user)) return true;
   if (item.url === '/attendance-approvals/supervisor' && hasDepartmentHeadRole(user)) return true;
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
-  if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return Boolean(user);
+  if (item.url === '/notification-logs' && hasHrRole(user)) return true;
+  if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
 }
@@ -427,6 +466,7 @@ function isHrCapabilityPermission(permission: string) {
     'hr-dashboard',
     'hr-attendance-approvals',
     'manual-punch-requests',
+    'overtime-requests',
     'leave-balances',
     'leave-transfer',
     'leave-fiscal-years',
@@ -435,6 +475,7 @@ function isHrCapabilityPermission(permission: string) {
     'biometric-exemptions',
     'attendance-punches',
     'work-schedules',
+    'holidays',
     'shifts',
     'schedule-assignments',
   ].includes(resource);
@@ -463,6 +504,9 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals') return Boolean(user);
+  if (pathname === '/overtime-requests') return Boolean(user);
+  if (pathname === '/manual-punch-requests') return Boolean(user);
+  if (pathname === '/notification-logs' && hasHrRole(user)) return true;
   if (pathname === '/department-head-dashboard') return Boolean(user);
   if (pathname === '/attendance-approvals/supervisor') return hasDepartmentHeadRole(user);
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);

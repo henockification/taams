@@ -75,7 +75,7 @@ async function buildSuperAdminDashboard(user: DashboardUser, employee: any, gene
     getCount(biometricDevices, and(eq(biometricDevices.isActive, true), eq(biometricDevices.healthStatus, 'OFFLINE'))),
     getCount(biometricDevices, and(eq(biometricDevices.isActive, true), eq(biometricDevices.healthStatus, 'ERROR'))),
     getCount(biometricDevices, and(eq(biometricDevices.isActive, true), eq(biometricDevices.healthStatus, 'UNKNOWN'))),
-    getCount(manualPunchRequests, eq(manualPunchRequests.status, 'PENDING')),
+    getCount(manualPunchRequests, eq(manualPunchRequests.status, 'PENDING_HR_REVIEW')),
     getCount(leaveRequests, eq(leaveRequests.status, 'PENDING')),
     getCount(attendancePunches, eq(attendancePunches.isProcessed, false)),
     getTimeOperationsSummary(),
@@ -135,7 +135,7 @@ async function buildManagerDashboard(
       db.query.manualPunchRequests.findMany({
         where: and(
           inArray(manualPunchRequests.employeeId, directReportIds),
-          eq(manualPunchRequests.status, 'PENDING'),
+          eq(manualPunchRequests.status, 'HR_REVIEWED'),
         ),
         with: { employee: { with: { department: true, position: true } } },
         orderBy: (table, { asc }) => [asc(table.createdAt)],

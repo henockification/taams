@@ -95,7 +95,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
       limit: 50,
     }),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING'),
+      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
     }),
     db.query.manualPunchRequests.findMany({
       where: and(gte(manualPunchRequests.createdAt, monthRange.start), lte(manualPunchRequests.createdAt, monthRange.end)),
@@ -462,7 +462,7 @@ function buildHrPerformance(input: {
   activeEmployeeCount: number;
 }) {
   const resolvedRequests = [...input.monthManualRequests, ...input.monthLeaveRequests]
-    .filter((request) => request.status === 'APPROVED' || request.status === 'REJECTED');
+    .filter((request) => ['APPROVED', 'REJECTED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED'].includes(request.status));
   const averageApprovalTimeHours = average(
     resolvedRequests
       .map((request) => {
@@ -472,7 +472,7 @@ function buildHrPerformance(input: {
       })
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0),
   );
-  const correctionsReturned = input.monthManualRequests.filter((request) => request.status === 'REJECTED').length;
+  const correctionsReturned = input.monthManualRequests.filter((request) => request.status === 'HR_REJECTED' || request.status === 'SUPERVISOR_REJECTED').length;
   const totalPending = input.pendingManualRequests + input.pendingLeaveRequests;
 
   return {

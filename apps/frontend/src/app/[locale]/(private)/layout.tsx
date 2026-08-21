@@ -129,6 +129,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('manualPunchRequestsDescription');
       case 'workSchedules':
         return coreT('workSchedulesDescription');
+      case 'holidays':
+        return coreT('holidaysDescription');
       case 'shifts':
         return coreT('shiftsDescription');
       case 'scheduleAssignments':
@@ -145,6 +147,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return rbacT('rolesDescription');
       case 'permissions':
         return rbacT('permissionsDescription');
+      case 'notificationLogs':
+        return coreT('notificationLogsDescription');
       default:
         return '';
     }

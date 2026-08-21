@@ -92,6 +92,48 @@
       "when": 1786636800000,
       "tag": "0016_drop_hr_units",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787184000000,
+      "tag": "0017_holidays",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787184001000,
+      "tag": "0018_holiday_duration_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787184002000,
+      "tag": "0019_overtime_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787184003000,
+      "tag": "0020_attendance_correction_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787184004000,
+      "tag": "0021_biometric_exemption_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787184005000,
+      "tag": "0022_notification_logs",
+      "breakpoints": true
     }
   ]
 }

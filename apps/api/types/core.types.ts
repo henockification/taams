@@ -265,6 +265,8 @@ export type Employee = {
 };
 
 export type BiometricExemptionTargetType = 'EMPLOYEE' | 'POSITION';
+export type BiometricExemptionStatus = 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE';
+export type HolidayType = 'PUBLIC_HOLIDAY' | 'INSTITUTION_OFF_DAY';
 
 export type BiometricExemption = {
   id: string;
@@ -272,13 +274,40 @@ export type BiometricExemption = {
   positionId: string | null;
   targetType: BiometricExemptionTargetType;
   reason: string;
+  supportingEvidenceName: string | null;
+  supportingEvidenceUrl: string | null;
+  supportingEvidenceMimeType: string | null;
+  supportingEvidenceSize: number | null;
+  status: BiometricExemptionStatus;
   isActive: boolean;
+  requestedBy: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;
   position?: Position | null;
+};
+
+export type Holiday = {
+  id: string;
+  nameEn: string;
+  nameAm: string | null;
+  type: HolidayType;
+  durationDays: string;
+  startDate: string;
+  endDate: string;
+  description: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type BiometricDeviceType = 'BIOMETRIC' | 'RFID' | 'FACE_RECOGNITION' | 'MOBILE' | 'WEB';
@@ -378,8 +407,14 @@ export type AttendanceDailyRecord = {
   totalPunches: number;
   attendanceDays: string;
   leaveDays: string;
+  holidayId: string | null;
+  holidayDays: string;
+  isHoliday: boolean;
   payableDays: string;
   absenceDays: string;
+  overtimeMinutes: number;
+  overtimeHours: string;
+  overtimeDays: string;
   isBiometricExempt: boolean;
   payrollNote: string | null;
   status: AttendanceDailyRecordStatus;
@@ -396,13 +431,46 @@ export type AttendanceDailyRecord = {
   employee?: Employee | null;
   firstPunch?: AttendancePunch | null;
   lastPunch?: AttendancePunch | null;
+  holiday?: Holiday | null;
+};
+
+export type OvertimeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export type OvertimeRequest = {
+  id: string;
+  employeeId: string;
+  attendanceDailyRecordId: string | null;
+  overtimeDate: string;
+  startAt: string;
+  endAt: string;
+  requestedMinutes: number;
+  approvedMinutes: number;
+  overtimeDays: string;
+  reason: string;
+  status: OvertimeRequestStatus;
+  requestedBy: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  payrollNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee?: Employee | null;
+  attendanceDailyRecord?: AttendanceDailyRecord | null;
 };
 
 export type CreateBiometricExemptionInput = {
   targetType: BiometricExemptionTargetType;
   targetId: string;
   reason: string;
+  supportingEvidenceName?: string | null;
+  supportingEvidenceUrl?: string | null;
+  supportingEvidenceMimeType?: string | null;
+  supportingEvidenceSize?: number | null;
   isActive?: boolean;
+  requestedBy?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
 };
@@ -411,7 +479,38 @@ export type UpdateBiometricExemptionInput = Partial<CreateBiometricExemptionInpu
   biometricExemptionId: string;
 };
 
-export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ChangeBiometricExemptionStatusInput = {
+  biometricExemptionId: string;
+  status: Extract<BiometricExemptionStatus, 'APPROVED' | 'REJECTED'>;
+  rejectionReason?: string | null;
+};
+
+export type CreateHolidayInput = {
+  nameEn: string;
+  nameAm?: string | null;
+  type: HolidayType;
+  durationDays?: string | number;
+  startDate: string;
+  endDate: string;
+  description?: string | null;
+  isActive?: boolean;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
+export type UpdateHolidayInput = Partial<CreateHolidayInput> & {
+  holidayId: string;
+};
+
+export type ManualPunchRequestStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PENDING_HR_REVIEW'
+  | 'HR_REVIEWED'
+  | 'HR_REJECTED'
+  | 'SUPERVISOR_APPROVED'
+  | 'SUPERVISOR_REJECTED';
 
 export type ManualPunchRequest = {
   id: string;
@@ -419,8 +518,15 @@ export type ManualPunchRequest = {
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;
+  supportingDocumentName: string | null;
+  supportingDocumentUrl: string | null;
+  supportingDocumentMimeType: string | null;
+  supportingDocumentSize: number | null;
   status: ManualPunchRequestStatus;
   requestedBy: string;
+  hrReviewedBy: string | null;
+  hrReviewedAt: string | null;
+  hrReviewNote: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
   rejectedBy: string | null;
@@ -500,22 +606,50 @@ export type CreateManualPunchRequestInput = {
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;
+  supportingDocumentName?: string | null;
+  supportingDocumentUrl?: string | null;
+  supportingDocumentMimeType?: string | null;
+  supportingDocumentSize?: number | null;
   requestedBy?: string | null;
 };
 
 export type ChangeManualPunchRequestStatusInput = {
-  status: Exclude<ManualPunchRequestStatus, 'PENDING'>;
+  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_HR_REVIEW'>;
   approvedBy?: string | null;
   approvedAt?: string | null;
+  hrReviewedBy?: string | null;
+  hrReviewedAt?: string | null;
+  hrReviewNote?: string | null;
   rejectedBy?: string | null;
   rejectedAt?: string | null;
   rejectionReason?: string | null;
+};
+
+export type CreateOvertimeRequestInput = {
+  employeeId: string;
+  overtimeDate?: string | null;
+  startAt: string;
+  endAt: string;
+  reason: string;
+  requestedBy?: string | null;
+};
+
+export type ChangeOvertimeRequestStatusInput = {
+  status: Exclude<OvertimeRequestStatus, 'PENDING'>;
+  approvedMinutes?: number | null;
+  overtimeDays?: number | null;
+  approvedAt?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+  payrollNote?: string | null;
 };
 
 export type BiometricDevicesResponse = { success: boolean; biometricDevices: BiometricDevice[] };
 export type BiometricDeviceResponse = { success: boolean; biometricDevice: BiometricDevice };
 export type BiometricExemptionsResponse = { success: boolean; biometricExemptions: BiometricExemption[] };
 export type BiometricExemptionResponse = { success: boolean; biometricExemption: BiometricExemption };
+export type HolidaysResponse = { success: boolean; holidays: Holiday[] };
+export type HolidayResponse = { success: boolean; holiday: Holiday };
 export type AttendanceSyncBatchesResponse = { success: boolean; attendanceSyncBatches: AttendanceSyncBatch[] };
 export type AttendanceSyncBatchResponse = { success: boolean; attendanceSyncBatch: AttendanceSyncBatch };
 export type AttendancePunchesResponse = {
@@ -535,6 +669,8 @@ export type ManualPunchRequestActionResponse = {
   manualPunchRequest: ManualPunchRequest;
   attendancePunch: AttendancePunch | null;
 };
+export type OvertimeRequestResponse = { success: boolean; overtimeRequest: OvertimeRequest };
+export type OvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
 export type AttendanceDailyRecordsResponse = { success: boolean; attendanceDailyRecords: AttendanceDailyRecord[] };
 export type AttendanceDailyRecordResponse = { success: boolean; attendanceDailyRecord: AttendanceDailyRecord };
 export type GenerateAttendanceDailyRecordsResponse = {

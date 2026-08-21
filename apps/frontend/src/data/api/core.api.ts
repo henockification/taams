@@ -12,6 +12,8 @@ import type {
   BiometricExemptionsResponse,
   BulkUpsertLeaveBalancesInput,
   ChangeManualPunchRequestStatusInput,
+  ChangeBiometricExemptionStatusInput,
+  ChangeOvertimeRequestStatusInput,
   ChangeLeaveRequestStatusInput,
   CreateAttendancePunchInput,
   CreateBiometricDeviceInput,
@@ -21,6 +23,7 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
+  CreateHolidayInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
@@ -28,6 +31,7 @@ import type {
   CreateWorkScheduleDayInput,
   CreateWorkScheduleInput,
   CreateManualPunchRequestInput,
+  CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
@@ -44,6 +48,10 @@ import type {
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
   GenerateAttendanceDailyRecordsResponse,
+  HolidayResponse,
+  HolidaysResponse,
+  NotificationLogFilters,
+  NotificationLogsResponse,
   PermanentEmployeeImportResponse,
   LeaveBalanceResponse,
   LeaveBalancesResponse,
@@ -57,6 +65,8 @@ import type {
   ManualPunchRequestActionResponse,
   ManualPunchRequestResponse,
   ManualPunchRequestsResponse,
+  OvertimeRequestResponse,
+  OvertimeRequestsResponse,
   PositionResponse,
   PositionsResponse,
   ReportKey,
@@ -74,6 +84,7 @@ import type {
   UpdateBiometricExemptionInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
+  UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
@@ -246,6 +257,30 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+  getHolidays: () => coreFetch<HolidaysResponse>('/holidays'),
+  createHoliday: (input: CreateHolidayInput) =>
+    coreFetch<HolidayResponse>('/holidays', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateHoliday: ({ holidayId, ...input }: UpdateHolidayInput) =>
+    coreFetch<HolidayResponse>(`/holidays/${holidayId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  getNotificationLogs: (params: NotificationLogFilters = {}) => {
+    const query = new URLSearchParams();
+    if (params.channel) query.set('channel', params.channel);
+    if (params.status) query.set('status', params.status);
+    if (params.eventType) query.set('eventType', params.eventType);
+    if (params.recipient) query.set('recipient', params.recipient);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+    if (params.limit) query.set('limit', String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<NotificationLogsResponse>(`/notification-logs${suffix}`);
+  },
   getEmployees: () => coreFetch<EmployeesResponse>('/employees'),
   getEmployeesPaginated: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
     const query = new URLSearchParams();
@@ -320,6 +355,11 @@ export const coreApi = {
   updateBiometricExemption: ({ biometricExemptionId, ...input }: UpdateBiometricExemptionInput) =>
     coreFetch<BiometricExemptionResponse>(`/biometric-exemptions/${biometricExemptionId}`, {
       method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  changeBiometricExemptionStatus: ({ biometricExemptionId, ...input }: ChangeBiometricExemptionStatusInput) =>
+    coreFetch<BiometricExemptionResponse>(`/biometric-exemptions/${biometricExemptionId}/status`, {
+      method: 'POST',
       body: JSON.stringify(input),
     }),
   deleteBiometricExemption: (biometricExemptionId: string) =>
@@ -443,6 +483,25 @@ export const coreApi = {
     }),
   changeManualPunchRequestStatus: ({ manualPunchRequestId, ...input }: ChangeManualPunchRequestStatusInput) =>
     coreFetch<ManualPunchRequestActionResponse>(`/manual-punch-requests/${manualPunchRequestId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getOvertimeRequests: (params: { dateFrom?: string; dateTo?: string; status?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+    if (params.status) query.set('status', params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<OvertimeRequestsResponse>(`/overtime-requests${suffix}`);
+  },
+  createOvertimeRequest: (input: CreateOvertimeRequestInput) =>
+    coreFetch<OvertimeRequestResponse>('/overtime-requests', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  changeOvertimeRequestStatus: ({ overtimeRequestId, ...input }: ChangeOvertimeRequestStatusInput) =>
+    coreFetch<OvertimeRequestResponse>(`/overtime-requests/${overtimeRequestId}/status`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

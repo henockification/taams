@@ -19,6 +19,7 @@ import {
 } from '../../../../schemas/core.schema';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceDailyRecord } from '../../helpers/formatters';
+// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function generateAttendanceDailyRecordsHandler(c: Context) {
   try {
@@ -84,6 +85,12 @@ export async function supervisorApproveAttendanceDailyRecordHandler(c: Context) 
     const id = c.req.param('id');
     const scope = await resolveScope(session);
     const record = await supervisorApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification('ATTENDANCE_SUPERVISOR_APPROVED', {
+    //   entityId: record.id,
+    //   employeeId: record.employeeId,
+    //   date: record.attendanceDate,
+    // });
 
     return c.json({
       success: true,
@@ -132,6 +139,12 @@ export async function hrApproveAttendanceDailyRecordHandler(c: Context) {
     const id = c.req.param('id');
     const scope = await resolveScope(session);
     const record = await hrApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification('ATTENDANCE_HR_APPROVED', {
+    //   entityId: record.id,
+    //   employeeId: record.employeeId,
+    //   date: record.attendanceDate,
+    // });
 
     return c.json({
       success: true,
@@ -161,6 +174,13 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
       canHrReturn,
       scope,
     });
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification('ATTENDANCE_RETURNED', {
+    //   entityId: record.id,
+    //   employeeId: record.employeeId,
+    //   date: record.attendanceDate,
+    //   reason: record.returnReason ?? parsed.data.reason,
+    // });
 
     return c.json({
       success: true,

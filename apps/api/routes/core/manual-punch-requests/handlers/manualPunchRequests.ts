@@ -14,6 +14,7 @@ import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEm
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendancePunch, formatManualPunchRequest } from '../../helpers/formatters';
+// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function createManualPunchRequestHandler(c: Context) {
   try {
@@ -36,6 +37,13 @@ export async function createManualPunchRequestHandler(c: Context) {
       ...parsed.data,
       requestedBy,
     }, scope);
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // await safeEnqueueWorkflowNotification('ATTENDANCE_CORRECTION_SUBMITTED', {
+    //   entityId: manualPunchRequest.id,
+    //   employeeId: manualPunchRequest.employeeId,
+    //   date: manualPunchRequest.requestedPunchTime,
+    //   reason: manualPunchRequest.reason,
+    // });
 
     return c.json({
       success: true,
@@ -50,7 +58,11 @@ export async function getManualPunchRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
-    const manualPunchRequests = await getManualPunchRequests(scope);
+    const manualPunchRequests = await getManualPunchRequests({
+      scope,
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+    });
 
     return c.json({
       success: true,
@@ -73,23 +85,11 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const payload = { ...parsed.data };
-
-    if (payload.status === 'APPROVED') {
-      payload.approvedBy = session.user.id ?? c.user?.id ?? payload.approvedBy;
-
-      if (!payload.approvedBy) {
-        return validationErrorResponse(c, 'approvedBy is required when approving a manual punch request');
-      }
-    } else {
-      payload.rejectedBy = session.user.id ?? c.user?.id ?? payload.rejectedBy;
-
-      if (!payload.rejectedBy) {
-        return validationErrorResponse(c, 'rejectedBy is required when rejecting a manual punch request');
-      }
-    }
-
-    const result = await changeManualPunchRequestStatus(id, payload, scope);
+    const result = await changeManualPunchRequestStatus(id, parsed.data, {
+      scope,
+      reviewerUserId: session.user.id,
+      roles: session.user.role ?? [],
+    });
 
     if (!result.manualPunchRequest) {
       return c.json({
@@ -97,6 +97,16 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
         error: 'Manual punch request not found',
       }, 404);
     }
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // const eventType = resolveManualPunchNotificationEvent(result.manualPunchRequest.status);
+    // if (eventType) {
+    //   await safeEnqueueWorkflowNotification(eventType, {
+    //     entityId: result.manualPunchRequest.id,
+    //     employeeId: result.manualPunchRequest.employeeId,
+    //     date: result.manualPunchRequest.requestedPunchTime,
+    //     reason: result.manualPunchRequest.rejectionReason ?? result.manualPunchRequest.hrReviewNote ?? null,
+    //   });
+    // }
 
     return c.json({
       success: true,
@@ -107,6 +117,14 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
     return coreErrorResponse(c, error, 'Failed to update manual punch request status');
   }
 }
+
+// function resolveManualPunchNotificationEvent(status: string) {
+//   if (status === 'HR_REVIEWED') return 'ATTENDANCE_CORRECTION_HR_REVIEWED';
+//   if (status === 'HR_REJECTED') return 'ATTENDANCE_CORRECTION_HR_REJECTED';
+//   if (status === 'SUPERVISOR_APPROVED' || status === 'APPROVED') return 'ATTENDANCE_CORRECTION_SUPERVISOR_APPROVED';
+//   if (status === 'SUPERVISOR_REJECTED' || status === 'REJECTED') return 'ATTENDANCE_CORRECTION_SUPERVISOR_REJECTED';
+//   return null;
+// }
 
 async function resolveSession(c: Context) {
   const token = getSessionCookie(c);

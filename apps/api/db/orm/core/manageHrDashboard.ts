@@ -1,4 +1,4 @@
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -102,14 +102,14 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
     }),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING'),
+      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
     }),
     db.query.manualPunchRequests.findMany({
       where: and(
-        eq(manualPunchRequests.status, 'REJECTED'),
+        or(eq(manualPunchRequests.status, 'HR_REJECTED'), eq(manualPunchRequests.status, 'SUPERVISOR_REJECTED')),
         gte(manualPunchRequests.createdAt, monthRange.start),
         lte(manualPunchRequests.createdAt, monthRange.end),
       ),

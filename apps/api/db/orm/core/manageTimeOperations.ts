@@ -94,7 +94,7 @@ async function getSuperAdminTimeOperationsSummary() {
     syncFailures,
     setupDevices,
   ] = await Promise.all([
-    getCount(manualPunchRequests, eq(manualPunchRequests.status, 'PENDING')),
+    getCount(manualPunchRequests, eq(manualPunchRequests.status, 'PENDING_HR_REVIEW')),
     getCount(leaveRequests, eq(leaveRequests.status, 'PENDING')),
     getCount(attendancePunches, eq(attendancePunches.isProcessed, false)),
     getCount(
@@ -122,7 +122,7 @@ async function getSuperAdminTimeOperationsSummary() {
       ),
     ),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING'),
+      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
       with: {
         employee: {
           with: {
@@ -211,7 +211,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
       manualPunchRequests,
       and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        eq(manualPunchRequests.status, 'PENDING'),
+        eq(manualPunchRequests.status, 'HR_REVIEWED'),
       ),
     ),
     getCount(
@@ -231,7 +231,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
     db.query.manualPunchRequests.findMany({
       where: and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        eq(manualPunchRequests.status, 'PENDING'),
+        eq(manualPunchRequests.status, 'HR_REVIEWED'),
       ),
       with: {
         employee: {
@@ -291,7 +291,7 @@ async function getEmployeeTimeOperationsSummary(employeeId: string) {
       manualPunchRequests,
       and(
         eq(manualPunchRequests.employeeId, employeeId),
-        eq(manualPunchRequests.status, 'PENDING'),
+        or(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), eq(manualPunchRequests.status, 'HR_REVIEWED')),
       ),
     ),
     getCount(
@@ -304,7 +304,7 @@ async function getEmployeeTimeOperationsSummary(employeeId: string) {
     db.query.manualPunchRequests.findMany({
       where: and(
         eq(manualPunchRequests.employeeId, employeeId),
-        eq(manualPunchRequests.status, 'PENDING'),
+        or(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), eq(manualPunchRequests.status, 'HR_REVIEWED')),
       ),
       with: {
         employee: true,

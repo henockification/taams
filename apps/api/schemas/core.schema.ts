@@ -18,6 +18,10 @@ export const DayOfWeekSchema = z.enum([
 export const EmploymentStatusSchema = z.enum(['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED']);
 export const EmploymentTypeSchema = z.enum(['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY']);
 export const BiometricExemptionTargetTypeSchema = z.enum(['EMPLOYEE', 'POSITION']);
+export const BiometricExemptionStatusSchema = z.enum(['PENDING_SUPERVISOR', 'APPROVED', 'REJECTED', 'INACTIVE']);
+export const HolidayTypeSchema = z.enum(['PUBLIC_HOLIDAY', 'INSTITUTION_OFF_DAY']);
+export const NotificationChannelSchema = z.enum(['EMAIL', 'SMS']);
+export const NotificationStatusSchema = z.enum(['PENDING', 'SENT', 'FAILED', 'SKIPPED']);
 
 export const DepartmentSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -101,6 +105,54 @@ export const WorkScheduleDaySchema = z.object({
   updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
 });
 
+export const HolidaySchema = z.object({
+  id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
+  nameEn: z.string().openapi({ example: 'Meskel' }),
+  nameAm: z.string().nullable().openapi({ example: 'መስቀል' }),
+  type: HolidayTypeSchema.openapi({ example: 'PUBLIC_HOLIDAY' }),
+  durationDays: z.string().openapi({ example: '1.00' }),
+  startDate: z.string().openapi({ example: '2026-09-27' }),
+  endDate: z.string().openapi({ example: '2026-09-27' }),
+  description: z.string().nullable().openapi({ example: 'Public holiday' }),
+  isActive: z.boolean().openapi({ example: true }),
+  createdBy: z.string().nullable().openapi({ example: 'user_123' }),
+  updatedBy: z.string().nullable().openapi({ example: 'user_123' }),
+  createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
+  updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
+});
+
+export const NotificationLogSchema = z.object({
+  id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
+  eventType: z.string().openapi({ example: 'LEAVE_REQUEST_APPROVED' }),
+  channel: NotificationChannelSchema.openapi({ example: 'EMAIL' }),
+  status: NotificationStatusSchema.openapi({ example: 'SENT' }),
+  recipientUserId: z.string().nullable().openapi({ example: 'user_123' }),
+  recipientEmployeeId: z.string().uuid().nullable().openapi({ example: null }),
+  recipientName: z.string().nullable().openapi({ example: 'Abebe Tadesse' }),
+  destination: z.string().nullable().openapi({ example: 'abebe@example.com' }),
+  subject: z.string().nullable().openapi({ example: 'Leave request approved' }),
+  message: z.string().openapi({ example: 'Your leave request has been approved.' }),
+  locale: z.string().openapi({ example: 'en' }),
+  relatedEntityType: z.string().nullable().openapi({ example: 'leave_request' }),
+  relatedEntityId: z.string().uuid().nullable().openapi({ example: null }),
+  metadata: z.record(z.any()).nullable().openapi({ example: null }),
+  attempts: z.number().int().openapi({ example: 1 }),
+  lastAttemptAt: z.string().nullable().openapi({ example: '2026-07-09T00:00:00.000Z' }),
+  nextAttemptAt: z.string().nullable().openapi({ example: null }),
+  providerMessageId: z.string().nullable().openapi({ example: null }),
+  providerResponse: z.record(z.any()).nullable().openapi({ example: { status: 202 } }),
+  errorMessage: z.string().nullable().openapi({ example: null }),
+  sentAt: z.string().nullable().openapi({ example: '2026-07-09T00:00:00.000Z' }),
+  createdAt: z.string().openapi({ example: '2026-07-09T00:00:00.000Z' }),
+  updatedAt: z.string().openapi({ example: '2026-07-09T00:00:00.000Z' }),
+  recipientEmployee: z.any().nullable().optional(),
+  recipientUser: z.object({
+    id: z.string(),
+    name: z.string(),
+    email: z.string(),
+  }).nullable().optional(),
+});
+
 export const EmployeeWorkScheduleSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
   employeeId: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -166,12 +218,22 @@ export const CreateBiometricExemptionRequestSchema = z.object({
   targetType: BiometricExemptionTargetTypeSchema,
   targetId: UuidSchema,
   reason: z.string().min(1),
+  supportingEvidenceName: z.string().nullable().optional(),
+  supportingEvidenceUrl: z.string().nullable().optional(),
+  supportingEvidenceMimeType: z.string().nullable().optional(),
+  supportingEvidenceSize: z.number().int().nonnegative().nullable().optional(),
   isActive: z.boolean().optional(),
+  requestedBy: z.string().min(1).nullable().optional(),
   createdBy: z.string().min(1).nullable().optional(),
   updatedBy: z.string().min(1).nullable().optional(),
 });
 
 export const UpdateBiometricExemptionRequestSchema = CreateBiometricExemptionRequestSchema.partial();
+
+export const ChangeBiometricExemptionStatusRequestSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED']),
+  rejectionReason: z.string().nullable().optional(),
+});
 
 export const BiometricExemptionSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -179,7 +241,18 @@ export const BiometricExemptionSchema = z.object({
   positionId: z.string().uuid().nullable().openapi({ example: null }),
   targetType: BiometricExemptionTargetTypeSchema.openapi({ example: 'EMPLOYEE' }),
   reason: z.string().openapi({ example: 'Approved field assignment' }),
+  supportingEvidenceName: z.string().nullable().openapi({ example: 'medical-note.pdf' }),
+  supportingEvidenceUrl: z.string().nullable().openapi({ example: null }),
+  supportingEvidenceMimeType: z.string().nullable().openapi({ example: 'application/pdf' }),
+  supportingEvidenceSize: z.number().int().nullable().openapi({ example: 124000 }),
+  status: BiometricExemptionStatusSchema.openapi({ example: 'PENDING_SUPERVISOR' }),
   isActive: z.boolean().openapi({ example: true }),
+  requestedBy: z.string().nullable().openapi({ example: 'user_123' }),
+  approvedBy: z.string().nullable().openapi({ example: null }),
+  approvedAt: z.string().nullable().openapi({ example: null }),
+  rejectedBy: z.string().nullable().openapi({ example: null }),
+  rejectedAt: z.string().nullable().openapi({ example: null }),
+  rejectionReason: z.string().nullable().openapi({ example: null }),
   createdBy: z.string().nullable().openapi({ example: 'user_123' }),
   updatedBy: z.string().nullable().openapi({ example: 'user_123' }),
   createdAt: z.string().openapi({ example: '2026-07-09T00:00:00.000Z' }),
@@ -285,8 +358,14 @@ export const AttendanceDailyRecordSchema = z.object({
   totalPunches: z.number().int().nonnegative().openapi({ example: 2 }),
   attendanceDays: z.string().openapi({ example: '0.50' }),
   leaveDays: z.string().openapi({ example: '0.50' }),
+  holidayId: z.string().uuid().nullable(),
+  holidayDays: z.string().openapi({ example: '1.00' }),
+  isHoliday: z.boolean().openapi({ example: false }),
   payableDays: z.string().openapi({ example: '1.00' }),
   absenceDays: z.string().openapi({ example: '0.00' }),
+  overtimeMinutes: z.number().int().nonnegative().openapi({ example: 120 }),
+  overtimeHours: z.string().openapi({ example: '2.00' }),
+  overtimeDays: z.string().openapi({ example: '0.25' }),
   isBiometricExempt: z.boolean().openapi({ example: false }),
   payrollNote: z.string().nullable().openapi({ example: 'Half-day attendance from a single punch; Approved leave 0.50 day(s)' }),
   status: AttendanceDailyRecordStatusSchema,
@@ -303,6 +382,34 @@ export const AttendanceDailyRecordSchema = z.object({
   employee: EmployeeSchema.nullable().optional(),
   firstPunch: AttendancePunchSchema.nullable().optional(),
   lastPunch: AttendancePunchSchema.nullable().optional(),
+  holiday: HolidaySchema.nullable().optional(),
+});
+
+export const OvertimeRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+
+export const OvertimeRequestSchema = z.object({
+  id: UuidSchema,
+  employeeId: UuidSchema,
+  attendanceDailyRecordId: z.string().uuid().nullable(),
+  overtimeDate: z.string().openapi({ example: '2026-08-20' }),
+  startAt: z.string().openapi({ example: '2026-08-20T17:00:00.000Z' }),
+  endAt: z.string().openapi({ example: '2026-08-20T19:00:00.000Z' }),
+  requestedMinutes: z.number().int().positive().openapi({ example: 120 }),
+  approvedMinutes: z.number().int().nonnegative().openapi({ example: 120 }),
+  overtimeDays: z.string().openapi({ example: '0.25' }),
+  reason: z.string(),
+  status: OvertimeRequestStatusSchema,
+  requestedBy: z.string(),
+  approvedBy: z.string().nullable(),
+  approvedAt: z.string().nullable(),
+  rejectedBy: z.string().nullable(),
+  rejectedAt: z.string().nullable(),
+  rejectionReason: z.string().nullable(),
+  payrollNote: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  employee: EmployeeSchema.nullable().optional(),
+  attendanceDailyRecord: AttendanceDailyRecordSchema.nullable().optional(),
 });
 
 export const CreateDepartmentRequestSchema = z.object({
@@ -380,6 +487,21 @@ export const CreateWorkScheduleDayRequestSchema = z.object({
 export const UpdateWorkScheduleDayRequestSchema = CreateWorkScheduleDayRequestSchema.extend({
   workScheduleId: UuidSchema.optional(),
 }).partial();
+
+export const CreateHolidayRequestSchema = z.object({
+  nameEn: z.string().min(1).max(150),
+  nameAm: z.string().max(150).nullable().optional(),
+  type: HolidayTypeSchema,
+  durationDays: z.union([z.literal('1.00'), z.literal('1'), z.literal('0.50'), z.literal('0.5'), z.literal(1), z.literal(0.5)]).optional(),
+  startDate: RequiredDateSchema,
+  endDate: RequiredDateSchema,
+  description: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+  createdBy: z.string().min(1).nullable().optional(),
+  updatedBy: z.string().min(1).nullable().optional(),
+});
+
+export const UpdateHolidayRequestSchema = CreateHolidayRequestSchema.partial();
 
 export const CreateEmployeeWorkScheduleRequestSchema = z.object({
   employeeId: UuidSchema,
@@ -494,7 +616,16 @@ export const CreateAttendancePunchRequestSchema = z.object({
 
 export const UpdateAttendancePunchRequestSchema = CreateAttendancePunchRequestSchema.partial();
 
-export const ManualPunchRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+export const ManualPunchRequestStatusSchema = z.enum([
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+  'PENDING_HR_REVIEW',
+  'HR_REVIEWED',
+  'HR_REJECTED',
+  'SUPERVISOR_APPROVED',
+  'SUPERVISOR_REJECTED',
+]);
 
 export const ManualPunchRequestSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
@@ -502,8 +633,15 @@ export const ManualPunchRequestSchema = z.object({
   requestedPunchTime: z.string().openapi({ example: '2026-06-09T08:15:00.000Z' }),
   requestedPunchType: PunchTypeSchema.openapi({ example: 'IN' }),
   reason: z.string().openapi({ example: 'Missed punch due to device outage' }),
+  supportingDocumentName: z.string().nullable().openapi({ example: 'clinic-note.pdf' }),
+  supportingDocumentUrl: z.string().nullable().openapi({ example: null }),
+  supportingDocumentMimeType: z.string().nullable().openapi({ example: 'application/pdf' }),
+  supportingDocumentSize: z.number().int().nullable().openapi({ example: 124000 }),
   status: ManualPunchRequestStatusSchema.openapi({ example: 'PENDING' }),
   requestedBy: z.string().openapi({ example: 'user_123' }),
+  hrReviewedBy: z.string().nullable().openapi({ example: null }),
+  hrReviewedAt: z.string().nullable().openapi({ example: null }),
+  hrReviewNote: z.string().nullable().openapi({ example: null }),
   approvedBy: z.string().nullable().openapi({ example: null }),
   approvedAt: z.string().nullable().openapi({ example: null }),
   rejectedBy: z.string().nullable().openapi({ example: null }),
@@ -519,16 +657,42 @@ export const CreateManualPunchRequestRequestSchema = z.object({
   requestedPunchTime: z.string().datetime(),
   requestedPunchType: PunchTypeSchema,
   reason: z.string().min(1),
+  supportingDocumentName: z.string().nullable().optional(),
+  supportingDocumentUrl: z.string().nullable().optional(),
+  supportingDocumentMimeType: z.string().nullable().optional(),
+  supportingDocumentSize: z.number().int().nonnegative().nullable().optional(),
   requestedBy: z.string().min(1).optional(),
 });
 
 export const ChangeManualPunchRequestStatusRequestSchema = z.object({
-  status: z.enum(['APPROVED', 'REJECTED']),
+  status: z.enum(['HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED', 'APPROVED', 'REJECTED']),
   approvedBy: z.string().min(1).optional(),
   approvedAt: z.string().datetime().optional(),
+  hrReviewedBy: z.string().min(1).optional(),
+  hrReviewedAt: z.string().datetime().optional(),
+  hrReviewNote: z.string().nullable().optional(),
   rejectedBy: z.string().min(1).optional(),
   rejectedAt: z.string().datetime().optional(),
   rejectionReason: z.string().nullable().optional(),
+});
+
+export const CreateOvertimeRequestRequestSchema = z.object({
+  employeeId: UuidSchema,
+  overtimeDate: RequiredDateSchema.optional(),
+  startAt: z.string().datetime(),
+  endAt: z.string().datetime(),
+  reason: z.string().min(1),
+  requestedBy: z.string().min(1).optional(),
+});
+
+export const ChangeOvertimeRequestStatusRequestSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED']),
+  approvedMinutes: z.number().int().positive().optional(),
+  overtimeDays: z.number().nonnegative().optional(),
+  approvedAt: z.string().datetime().optional(),
+  rejectedAt: z.string().datetime().optional(),
+  rejectionReason: z.string().nullable().optional(),
+  payrollNote: z.string().nullable().optional(),
 });
 
 export const ReturnAttendanceDailyRecordRequestSchema = z.object({
@@ -761,6 +925,21 @@ export const WorkScheduleDayResponseSchema = z.object({
   day: WorkScheduleDaySchema,
 });
 
+export const HolidaysResponseSchema = z.object({
+  success: z.boolean(),
+  holidays: z.array(HolidaySchema),
+});
+
+export const HolidayResponseSchema = z.object({
+  success: z.boolean(),
+  holiday: HolidaySchema,
+});
+
+export const NotificationLogsResponseSchema = z.object({
+  success: z.boolean(),
+  notificationLogs: z.array(NotificationLogSchema),
+});
+
 export const EmployeeWorkSchedulesResponseSchema = z.object({
   success: z.boolean(),
   employeeWorkSchedules: z.array(EmployeeWorkScheduleSchema),
@@ -896,6 +1075,16 @@ export const ManualPunchRequestActionResponseSchema = z.object({
   success: z.boolean(),
   manualPunchRequest: ManualPunchRequestSchema,
   attendancePunch: AttendancePunchSchema.nullable(),
+});
+
+export const OvertimeRequestResponseSchema = z.object({
+  success: z.boolean(),
+  overtimeRequest: OvertimeRequestSchema,
+});
+
+export const OvertimeRequestsResponseSchema = z.object({
+  success: z.boolean(),
+  overtimeRequests: z.array(OvertimeRequestSchema),
 });
 
 export const BiometricExemptionsResponseSchema = z.object({

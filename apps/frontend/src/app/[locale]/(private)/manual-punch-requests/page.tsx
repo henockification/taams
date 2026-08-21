@@ -1,7 +1,7 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
-import { Check, ClipboardPlus, X } from 'lucide-react';
+import { FormEvent, useState } from 'react';
+import { Check, ClipboardPlus, FileText, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -46,10 +46,9 @@ import {
   useEmployees,
   useManualPunchRequests,
 } from '@/data/hooks/core.hooks';
-import { useUsers } from '@/data/hooks/users.hooks';
 import type { Employee, ManualPunchRequest, PunchType } from '@/data/types/core.types';
-import type { User } from '@/data/types/api';
 import { notifications } from '@/lib/notifications';
+import { useSession } from '@/lib/auth-client';
 
 const punchTypes: PunchType[] = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN'];
 const allEmployeesValue = '__all';
@@ -57,10 +56,13 @@ const noUserValue = '__none';
 
 const initialRequestForm = {
   employeeId: '',
-  requestedBy: '',
   requestedPunchTime: '',
   requestedPunchType: 'UNKNOWN' as PunchType,
   reason: '',
+  supportingDocumentName: '',
+  supportingDocumentUrl: '',
+  supportingDocumentMimeType: '',
+  supportingDocumentSize: 0,
 };
 
 function toDateTimeLocal(date = new Date()) {
@@ -82,14 +84,9 @@ function employeeName(employee?: Employee | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
-function userName(user?: User | null) {
-  if (!user) return '';
-  return user.name || user.email;
-}
-
 function requestStatusVariant(status: ManualPunchRequest['status']) {
-  if (status === 'APPROVED') return 'default';
-  if (status === 'REJECTED') return 'destructive';
+  if (status === 'SUPERVISOR_APPROVED' || status === 'APPROVED') return 'default';
+  if (status === 'HR_REJECTED' || status === 'SUPERVISOR_REJECTED' || status === 'REJECTED') return 'destructive';
   return 'secondary';
 }
 
@@ -97,21 +94,17 @@ export default function ManualPunchRequestsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [reviewerUserId, setReviewerUserId] = useState('');
   const [form, setForm] = useState({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
 
   const manualRequests = useManualPunchRequests();
   const { data: employeesResponse } = useEmployees();
-  const { data: usersResponse } = useUsers({}, { pageSize: 100 });
   const createManualRequest = useCreateManualPunchRequest();
   const changeManualRequestStatus = useChangeManualPunchRequestStatus();
+  const session = useSession();
 
   const employees = employeesResponse?.employees ?? [];
-  const users = usersResponse?.users ?? [];
   const requests = manualRequests.data?.manualPunchRequests ?? [];
-  const pendingRequests = useMemo(() => requests.filter((request) => request.status === 'PENDING'), [requests]);
-  const approvedRequests = useMemo(() => requests.filter((request) => request.status === 'APPROVED'), [requests]);
-  const rejectedRequests = useMemo(() => requests.filter((request) => request.status === 'REJECTED'), [requests]);
+  const isHrReviewer = hasHrReviewAccess(session.data?.user);
 
   const openManualRequestDialog = () => {
     setForm({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
@@ -119,12 +112,35 @@ export default function ManualPunchRequestsPage() {
   };
 
   const handleRequestEmployeeChange = (nextEmployeeId: string) => {
-    const employee = employees.find((item) => item.id === nextEmployeeId);
     setForm((current) => ({
       ...current,
       employeeId: nextEmployeeId,
-      requestedBy: employee?.userId ?? current.requestedBy,
     }));
+  };
+
+  const handleDocumentChange = (file: File | null) => {
+    if (!file) {
+      setForm((current) => ({
+        ...current,
+        supportingDocumentName: '',
+        supportingDocumentUrl: '',
+        supportingDocumentMimeType: '',
+        supportingDocumentSize: 0,
+      }));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((current) => ({
+        ...current,
+        supportingDocumentName: file.name,
+        supportingDocumentUrl: String(reader.result ?? ''),
+        supportingDocumentMimeType: file.type,
+        supportingDocumentSize: file.size,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const saveManualRequest = async (event: FormEvent<HTMLFormElement>) => {
@@ -136,7 +152,10 @@ export default function ManualPunchRequestsPage() {
         requestedPunchTime: toIso(form.requestedPunchTime),
         requestedPunchType: form.requestedPunchType,
         reason: form.reason.trim(),
-        requestedBy: form.requestedBy,
+        supportingDocumentName: form.supportingDocumentName || null,
+        supportingDocumentUrl: form.supportingDocumentUrl || null,
+        supportingDocumentMimeType: form.supportingDocumentMimeType || null,
+        supportingDocumentSize: form.supportingDocumentSize || null,
       });
 
       setDialogOpen(false);
@@ -154,28 +173,24 @@ export default function ManualPunchRequestsPage() {
     }
   };
 
-  const changeRequestStatus = async (request: ManualPunchRequest, status: 'APPROVED' | 'REJECTED') => {
-    if (!reviewerUserId) {
-      notifications.show({
-        title: common('error'),
-        message: t('selectReviewer'),
-        color: 'red',
-      });
-      return;
-    }
-
+  const changeRequestStatus = async (
+    request: ManualPunchRequest,
+    status: 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED',
+  ) => {
     try {
       await changeManualRequestStatus.mutateAsync({
         manualPunchRequestId: request.id,
         status,
-        approvedBy: status === 'APPROVED' ? reviewerUserId : undefined,
-        rejectedBy: status === 'REJECTED' ? reviewerUserId : undefined,
-        rejectedAt: status === 'REJECTED' ? new Date().toISOString() : undefined,
+        rejectedAt: status === 'HR_REJECTED' || status === 'SUPERVISOR_REJECTED' ? new Date().toISOString() : undefined,
       });
 
       notifications.show({
         title: common('success'),
-        message: status === 'APPROVED' ? t('manualPunchRequestApproved') : t('manualPunchRequestRejected'),
+        message: status === 'HR_REVIEWED'
+          ? t('attendanceCorrectionHrReviewed')
+          : status === 'SUPERVISOR_APPROVED'
+            ? t('manualPunchRequestApproved')
+            : t('manualPunchRequestRejected'),
         color: 'green',
       });
     } catch (error) {
@@ -189,15 +204,10 @@ export default function ManualPunchRequestsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Summary label={t('pendingRequests')} value={pendingRequests.length} />
-          <Summary label={t('approved')} value={approvedRequests.length} />
-          <Summary label={t('rejected')} value={rejectedRequests.length} />
-        </div>
+      <div className="flex justify-end">
         <Button onClick={openManualRequestDialog}>
           <ClipboardPlus className="size-4" />
-          {t('requestManualPunch')}
+          {t('requestAttendanceCorrection')}
         </Button>
       </div>
 
@@ -207,19 +217,6 @@ export default function ManualPunchRequestsPage() {
             <CardTitle>{t('manualPunchRequests')}</CardTitle>
             <CardDescription>{t('manualPunchRequestsDescription')}</CardDescription>
           </div>
-          <Select value={reviewerUserId || noUserValue} onValueChange={(value) => setReviewerUserId(value === noUserValue ? '' : value)}>
-            <SelectTrigger className="w-full sm:w-72">
-              <SelectValue placeholder={t('selectReviewer')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={noUserValue}>{t('selectReviewer')}</SelectItem>
-              {users.map((user) => (
-                <SelectItem key={user.id} value={user.id}>
-                  {userName(user)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </CardHeader>
         <CardContent>
           {manualRequests.isLoading ? (
@@ -234,6 +231,7 @@ export default function ManualPunchRequestsPage() {
                     <TableHead>{t('employee')}</TableHead>
                     <TableHead>{t('punchTime')}</TableHead>
                     <TableHead>{t('punchType')}</TableHead>
+                    <TableHead>{t('supportingDocument')}</TableHead>
                     <TableHead>{t('reason')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
@@ -250,23 +248,44 @@ export default function ManualPunchRequestsPage() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(request.requestedPunchTime)}</TableCell>
                       <TableCell><Badge variant="secondary">{request.requestedPunchType}</Badge></TableCell>
+                      <TableCell>
+                        {request.supportingDocumentUrl ? (
+                          <a href={request.supportingDocumentUrl} download={request.supportingDocumentName ?? undefined} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                            <FileText className="size-3.5" />
+                            {request.supportingDocumentName ?? t('supportingDocument')}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                       <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge></TableCell>
                       <TableCell>
-                        {request.status === 'PENDING' ? (
+                        {request.status === 'PENDING_HR_REVIEW' && isHrReviewer ? (
                           <div className="flex justify-end gap-2">
-                            <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'APPROVED')} disabled={changeManualRequestStatus.isPending}>
+                            <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'HR_REVIEWED')} disabled={changeManualRequestStatus.isPending}>
+                              <Check className="size-4" />
+                              {t('hrReview')}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'HR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
+                              <X className="size-4" />
+                              {t('reject')}
+                            </Button>
+                          </div>
+                        ) : request.status === 'HR_REVIEWED' ? (
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'SUPERVISOR_APPROVED')} disabled={changeManualRequestStatus.isPending}>
                               <Check className="size-4" />
                               {t('approve')}
                             </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'REJECTED')} disabled={changeManualRequestStatus.isPending}>
+                            <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'SUPERVISOR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
                               <X className="size-4" />
                               {t('reject')}
                             </Button>
                           </div>
                         ) : (
                           <span className="block text-right text-xs text-muted-foreground">
-                            {request.status === 'APPROVED' ? formatDateTime(request.approvedAt) : formatDateTime(request.rejectedAt)}
+                            {request.status === 'SUPERVISOR_APPROVED' ? formatDateTime(request.approvedAt) : formatDateTime(request.rejectedAt)}
                           </span>
                         )}
                       </TableCell>
@@ -282,7 +301,7 @@ export default function ManualPunchRequestsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t('requestManualPunch')}</DialogTitle>
+            <DialogTitle>{t('requestAttendanceCorrection')}</DialogTitle>
             <DialogDescription>{t('manualPunchRequestFormDescription')}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveManualRequest}>
@@ -300,17 +319,6 @@ export default function ManualPunchRequestsPage() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label={t('requestedBy')} id="request-user">
-                <Select value={form.requestedBy || noUserValue} onValueChange={(value) => setForm((current) => ({ ...current, requestedBy: value === noUserValue ? '' : value }))}>
-                  <SelectTrigger id="request-user"><SelectValue placeholder={t('requestedBy')} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={noUserValue}>{t('requestedBy')}</SelectItem>
-                    {users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>{userName(user)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
               <Field label={t('punchTime')} id="request-time">
                 <Input id="request-time" type="datetime-local" value={form.requestedPunchTime} onChange={(event) => setForm((current) => ({ ...current, requestedPunchTime: event.target.value }))} required />
               </Field>
@@ -324,24 +332,21 @@ export default function ManualPunchRequestsPage() {
             <Field label={t('reason')} id="request-reason">
               <Textarea id="request-reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} required />
             </Field>
+            <Field label={t('supportingDocument')} id="request-document">
+              <Input id="request-document" type="file" onChange={(event) => handleDocumentChange(event.target.files?.[0] ?? null)} />
+              {form.supportingDocumentName ? (
+                <p className="text-xs text-muted-foreground">{form.supportingDocumentName}</p>
+              ) : null}
+            </Field>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
-              <Button type="submit" disabled={createManualRequest.isPending || !form.employeeId || !form.requestedBy || !form.requestedPunchTime || !form.reason.trim()}>
+              <Button type="submit" disabled={createManualRequest.isPending || !form.employeeId || !form.requestedPunchTime || !form.reason.trim()}>
                 {createManualRequest.isPending ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function Summary({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border border-border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-2xl font-semibold">{value}</p>
     </div>
   );
 }
@@ -353,4 +358,10 @@ function Field({ label, id, children }: { label: string; id: string; children: R
       {children}
     </div>
   );
+}
+
+function hasHrReviewAccess(user: { role?: string[]; permissions?: string[] } | null | undefined) {
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  if (roles.some((role) => ['super_admin', 'superadmin', 'admin', 'executive', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'].includes(role))) return true;
+  return Boolean(user?.permissions?.some((permission) => permission.startsWith('hr-') || permission.startsWith('manual-punch-requests:')));
 }

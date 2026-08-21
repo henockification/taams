@@ -1,9 +1,11 @@
 import { Context } from 'hono';
 import {
+  ChangeBiometricExemptionStatusRequestSchema,
   CreateBiometricExemptionRequestSchema,
   UpdateBiometricExemptionRequestSchema,
 } from '../../../../schemas/core.schema';
 import {
+  changeBiometricExemptionStatus,
   createBiometricExemptionScoped,
   deactivateBiometricExemptionScoped,
   getBiometricExemptions,
@@ -15,12 +17,17 @@ import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEm
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatBiometricExemption } from '../../helpers/formatters';
+// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function getBiometricExemptionsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
-    const biometricExemptions = await getBiometricExemptions(scope);
+    const biometricExemptions = await getBiometricExemptions({
+      scope,
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+    });
     return c.json({
       success: true,
       biometricExemptions: biometricExemptions.map(formatBiometricExemption),
@@ -39,9 +46,18 @@ export async function createBiometricExemptionHandler(c: Context) {
 
     const biometricExemption = await createBiometricExemptionScoped({
       ...parsed.data,
+      requestedBy: session.user.id ?? c.user?.id ?? parsed.data.requestedBy,
       createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
       updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
     }, scope);
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // if (biometricExemption.employeeId) {
+    //   await safeEnqueueWorkflowNotification('BIOMETRIC_EXEMPTION_SUBMITTED', {
+    //     entityId: biometricExemption.id,
+    //     employeeId: biometricExemption.employeeId,
+    //     reason: biometricExemption.reason,
+    //   });
+    // }
 
     return c.json({
       success: true,
@@ -49,6 +65,41 @@ export async function createBiometricExemptionHandler(c: Context) {
     }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create biometric exemption');
+  }
+}
+
+export async function changeBiometricExemptionStatusHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const id = c.req.param('id');
+    const parsed = ChangeBiometricExemptionStatusRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+
+    const biometricExemption = await changeBiometricExemptionStatus(id, {
+      ...parsed.data,
+      reviewerUserId: session.user.id,
+      roles: session.user.role ?? [],
+      scope,
+    });
+    // Notification trigger disabled until SMS/email provider credentials are available.
+    // if (biometricExemption?.employeeId) {
+    //   await safeEnqueueWorkflowNotification(
+    //     biometricExemption.status === 'APPROVED' ? 'BIOMETRIC_EXEMPTION_APPROVED' : 'BIOMETRIC_EXEMPTION_REJECTED',
+    //     {
+    //       entityId: biometricExemption.id,
+    //       employeeId: biometricExemption.employeeId,
+    //       reason: biometricExemption.rejectionReason ?? null,
+    //     },
+    //   );
+    // }
+
+    return c.json({
+      success: true,
+      biometricExemption: formatBiometricExemption(biometricExemption),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to update biometric exemption status');
   }
 }
 

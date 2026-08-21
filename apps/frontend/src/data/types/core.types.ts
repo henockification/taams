@@ -133,6 +133,10 @@ export type Employee = {
 };
 
 export type BiometricExemptionTargetType = 'EMPLOYEE' | 'POSITION';
+export type BiometricExemptionStatus = 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE';
+export type HolidayType = 'PUBLIC_HOLIDAY' | 'INSTITUTION_OFF_DAY';
+export type NotificationChannel = 'EMAIL' | 'SMS';
+export type NotificationStatus = 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
 
 export type BiometricExemption = {
   id: string;
@@ -140,13 +144,78 @@ export type BiometricExemption = {
   positionId: string | null;
   targetType: BiometricExemptionTargetType;
   reason: string;
+  supportingEvidenceName: string | null;
+  supportingEvidenceUrl: string | null;
+  supportingEvidenceMimeType: string | null;
+  supportingEvidenceSize: number | null;
+  status: BiometricExemptionStatus;
   isActive: boolean;
+  requestedBy: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;
   position?: Position | null;
+};
+
+export type Holiday = {
+  id: string;
+  nameEn: string;
+  nameAm: string | null;
+  type: HolidayType;
+  durationDays: string;
+  startDate: string;
+  endDate: string;
+  description: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationLog = {
+  id: string;
+  eventType: string;
+  channel: NotificationChannel;
+  status: NotificationStatus;
+  recipientUserId: string | null;
+  recipientEmployeeId: string | null;
+  recipientName: string | null;
+  destination: string | null;
+  subject: string | null;
+  message: string;
+  locale: string;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  metadata: Record<string, unknown> | null;
+  attempts: number;
+  lastAttemptAt: string | null;
+  nextAttemptAt: string | null;
+  providerMessageId: string | null;
+  providerResponse: Record<string, unknown> | null;
+  errorMessage: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  recipientEmployee?: Employee | null;
+  recipientUser?: { id: string; name: string; email: string } | null;
+};
+
+export type NotificationLogFilters = {
+  channel?: NotificationChannel | '';
+  status?: NotificationStatus | '';
+  eventType?: string;
+  recipient?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
 };
 
 export type EmployeeSupervisor = {
@@ -185,7 +254,16 @@ export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
 export type AttendanceDailyRecordStatus = 'PENDING_SUPERVISOR' | 'RETURNED' | 'SUPERVISOR_APPROVED' | 'HR_APPROVED';
-export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ManualPunchRequestStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PENDING_HR_REVIEW'
+  | 'HR_REVIEWED'
+  | 'HR_REJECTED'
+  | 'SUPERVISOR_APPROVED'
+  | 'SUPERVISOR_REJECTED';
+export type OvertimeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type TimeOperationSeverity = 'critical' | 'warning' | 'info' | 'success';
 export type TimeOperationStatus = 'CLEAR' | 'WATCH' | 'ACTION_REQUIRED';
 export type TimeOperationType =
@@ -292,8 +370,14 @@ export type AttendanceDailyRecord = {
   totalPunches: number;
   attendanceDays: string;
   leaveDays: string;
+  holidayId: string | null;
+  holidayDays: string;
+  isHoliday: boolean;
   payableDays: string;
   absenceDays: string;
+  overtimeMinutes: number;
+  overtimeHours: string;
+  overtimeDays: string;
   isBiometricExempt: boolean;
   payrollNote: string | null;
   status: AttendanceDailyRecordStatus;
@@ -310,13 +394,19 @@ export type AttendanceDailyRecord = {
   employee?: Employee | null;
   firstPunch?: AttendancePunch | null;
   lastPunch?: AttendancePunch | null;
+  holiday?: Holiday | null;
 };
 
 export type CreateBiometricExemptionInput = {
   targetType: BiometricExemptionTargetType;
   targetId: string;
   reason: string;
+  supportingEvidenceName?: string | null;
+  supportingEvidenceUrl?: string | null;
+  supportingEvidenceMimeType?: string | null;
+  supportingEvidenceSize?: number | null;
   isActive?: boolean;
+  requestedBy?: string | null;
   createdBy?: string | null;
   updatedBy?: string | null;
 };
@@ -325,14 +415,44 @@ export type UpdateBiometricExemptionInput = Partial<CreateBiometricExemptionInpu
   biometricExemptionId: string;
 };
 
+export type ChangeBiometricExemptionStatusInput = {
+  biometricExemptionId: string;
+  status: Extract<BiometricExemptionStatus, 'APPROVED' | 'REJECTED'>;
+  rejectionReason?: string | null;
+};
+
+export type CreateHolidayInput = {
+  nameEn: string;
+  nameAm?: string | null;
+  type: HolidayType;
+  durationDays?: string | number;
+  startDate: string;
+  endDate: string;
+  description?: string | null;
+  isActive?: boolean;
+  createdBy?: string | null;
+  updatedBy?: string | null;
+};
+
+export type UpdateHolidayInput = Partial<CreateHolidayInput> & {
+  holidayId: string;
+};
+
 export type ManualPunchRequest = {
   id: string;
   employeeId: string;
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;
+  supportingDocumentName: string | null;
+  supportingDocumentUrl: string | null;
+  supportingDocumentMimeType: string | null;
+  supportingDocumentSize: number | null;
   status: ManualPunchRequestStatus;
   requestedBy: string;
+  hrReviewedBy: string | null;
+  hrReviewedAt: string | null;
+  hrReviewNote: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
   rejectedBy: string | null;
@@ -341,6 +461,31 @@ export type ManualPunchRequest = {
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;
+};
+
+export type OvertimeRequest = {
+  id: string;
+  employeeId: string;
+  attendanceDailyRecordId: string | null;
+  overtimeDate: string;
+  startAt: string;
+  endAt: string;
+  requestedMinutes: number;
+  approvedMinutes: number;
+  overtimeDays: string;
+  reason: string;
+  status: OvertimeRequestStatus;
+  requestedBy: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  payrollNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee?: Employee | null;
+  attendanceDailyRecord?: AttendanceDailyRecord | null;
 };
 
 export type TimeOperationItem = {
@@ -723,6 +868,9 @@ export type BiometricDevicesResponse = { success: boolean; biometricDevices: Bio
 export type BiometricDeviceResponse = { success: boolean; biometricDevice: BiometricDevice };
 export type BiometricExemptionsResponse = { success: boolean; biometricExemptions: BiometricExemption[] };
 export type BiometricExemptionResponse = { success: boolean; biometricExemption: BiometricExemption };
+export type HolidaysResponse = { success: boolean; holidays: Holiday[] };
+export type HolidayResponse = { success: boolean; holiday: Holiday };
+export type NotificationLogsResponse = { success: boolean; notificationLogs: NotificationLog[] };
 export type BiometricDeviceConnectionTestResponse = { success: boolean; connectionTest: BiometricDeviceConnectionTest; biometricDevice: BiometricDevice };
 export type AttendanceSyncBatchesResponse = { success: boolean; attendanceSyncBatches: AttendanceSyncBatch[] };
 export type AttendanceSyncBatchResponse = { success: boolean; attendanceSyncBatch: AttendanceSyncBatch };
@@ -742,6 +890,8 @@ export type GenerateAttendanceDailyRecordsResponse = { success: boolean; generat
 export type ManualPunchRequestsResponse = { success: boolean; manualPunchRequests: ManualPunchRequest[] };
 export type ManualPunchRequestResponse = { success: boolean; manualPunchRequest: ManualPunchRequest };
 export type ManualPunchRequestActionResponse = { success: boolean; manualPunchRequest: ManualPunchRequest; attendancePunch: AttendancePunch | null };
+export type OvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
+export type OvertimeRequestResponse = { success: boolean; overtimeRequest: OvertimeRequest };
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'REVERSAL' | 'ADJUSTMENT';
 export type LeaveFiscalYear = {
@@ -835,6 +985,8 @@ export type DepartmentHeadDashboardSummaryResponse = { success: boolean; departm
 export type ReportKey =
   | 'attendance-daily'
   | 'attendance-punches'
+  | 'late-attendance'
+  | 'overtime'
   | 'leave-balances'
   | 'leave-requests'
   | 'employees'
@@ -1054,17 +1206,44 @@ export type CreateManualPunchRequestInput = {
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;
+  supportingDocumentName?: string | null;
+  supportingDocumentUrl?: string | null;
+  supportingDocumentMimeType?: string | null;
+  supportingDocumentSize?: number | null;
   requestedBy?: string;
 };
 
 export type ChangeManualPunchRequestStatusInput = {
   manualPunchRequestId: string;
-  status: Exclude<ManualPunchRequestStatus, 'PENDING'>;
+  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_HR_REVIEW'>;
   approvedBy?: string;
   approvedAt?: string;
+  hrReviewedBy?: string;
+  hrReviewedAt?: string;
+  hrReviewNote?: string | null;
   rejectedBy?: string;
   rejectedAt?: string;
   rejectionReason?: string | null;
+};
+
+export type CreateOvertimeRequestInput = {
+  employeeId: string;
+  overtimeDate?: string;
+  startAt: string;
+  endAt: string;
+  reason: string;
+  requestedBy?: string;
+};
+
+export type ChangeOvertimeRequestStatusInput = {
+  overtimeRequestId: string;
+  status: Exclude<OvertimeRequestStatus, 'PENDING'>;
+  approvedMinutes?: number;
+  overtimeDays?: number;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string | null;
+  payrollNote?: string | null;
 };
 
 export type CreateLeaveFiscalYearInput = {

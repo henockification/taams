@@ -5,6 +5,8 @@ import type {
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
   ChangeManualPunchRequestStatusInput,
+  ChangeBiometricExemptionStatusInput,
+  ChangeOvertimeRequestStatusInput,
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
@@ -12,6 +14,7 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
+  CreateHolidayInput,
   CreatePositionInput,
   CreateShiftBreakInput,
   CreateShiftInput,
@@ -19,10 +22,12 @@ import type {
   CreateWorkScheduleDayInput,
   CreateWorkScheduleInput,
   CreateManualPunchRequestInput,
+  CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
   CreateLeaveRequestInput,
   LeaveRequest,
   CreateLeaveTypeInput,
+  NotificationLogFilters,
   ReportKey,
   TransferLeaveBalanceInput,
   UpdateBiometricDeviceInput,
@@ -30,6 +35,7 @@ import type {
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
+  UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
@@ -63,6 +69,8 @@ export const coreQueryKeys = {
   workSchedules: () => [...coreQueryKeys.all, 'work-schedules'] as const,
   workSchedule: (id: string) => [...coreQueryKeys.workSchedules(), id] as const,
   workScheduleDays: (id: string) => [...coreQueryKeys.workSchedule(id), 'days'] as const,
+  holidays: () => [...coreQueryKeys.all, 'holidays'] as const,
+  notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
   employeesPaginated: (page: number, pageSize: number, search: string) => [...coreQueryKeys.all, 'employees', 'paginated', page, pageSize, search] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
@@ -91,6 +99,7 @@ export const coreQueryKeys = {
   supervisorAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', date] as const,
   hrAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'hr', date] as const,
   manualPunchRequests: () => [...coreQueryKeys.all, 'manual-punch-requests'] as const,
+  overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
   leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
@@ -369,12 +378,50 @@ export function useUpdateWorkScheduleDay() {
   });
 }
 
+export function useHolidays() {
+  return useQuery({
+    queryKey: coreQueryKeys.holidays(),
+    queryFn: () => coreApi.getHolidays(),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateHoliday() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateHolidayInput) => coreApi.createHoliday(input),
+    onSuccess: () => {
+      invalidateHolidayDependentQueries(queryClient);
+    },
+  });
+}
+
+export function useUpdateHoliday() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateHolidayInput) => coreApi.updateHoliday(input),
+    onSuccess: () => {
+      invalidateHolidayDependentQueries(queryClient);
+    },
+  });
+}
+
 export function useEmployees() {
   return useQuery({
     queryKey: coreQueryKeys.employees(),
     queryFn: () => coreApi.getEmployees(),
     staleTime: 5 * 60 * 1000,
   });
+}
+
+function invalidateHolidayDependentQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.holidays() });
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+  queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'attendance-approvals'] });
+  queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'reports'] });
 }
 
 export function useEmployeesPaginated(page: number, pageSize: number, search = '') {
@@ -611,6 +658,15 @@ export function useBiometricDeviceSyncHistory(biometricDeviceId: string) {
   });
 }
 
+export function useNotificationLogs(params: NotificationLogFilters = {}) {
+  return useQuery({
+    queryKey: coreQueryKeys.notificationLogs(params),
+    queryFn: () => coreApi.getNotificationLogs(params),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+  });
+}
+
 export function useBiometricExemptions() {
   return useQuery({
     queryKey: coreQueryKeys.biometricExemptions(),
@@ -642,6 +698,19 @@ export function useUpdateBiometricExemption() {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemption(data.biometricExemption.id) });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+    },
+  });
+}
+
+export function useChangeBiometricExemptionStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChangeBiometricExemptionStatusInput) => coreApi.changeBiometricExemptionStatus(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricExemptions() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorAttendanceDailyRecords('') });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrAttendanceDailyRecords('') });
     },
   });
 }
@@ -873,6 +942,36 @@ export function useChangeManualPunchRequestStatus() {
       if (data.attendancePunch?.employeeId) {
         queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeAttendancePunches(data.attendancePunch.employeeId) });
       }
+    },
+  });
+}
+
+export function useOvertimeRequests(params: { dateFrom?: string; dateTo?: string; status?: string } = {}) {
+  return useQuery({
+    queryKey: coreQueryKeys.overtimeRequests(params),
+    queryFn: () => coreApi.getOvertimeRequests(params),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useCreateOvertimeRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateOvertimeRequestInput) => coreApi.createOvertimeRequest(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
+export function useChangeOvertimeRequestStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ChangeOvertimeRequestStatusInput) => coreApi.changeOvertimeRequestStatus(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
     },
   });
 }

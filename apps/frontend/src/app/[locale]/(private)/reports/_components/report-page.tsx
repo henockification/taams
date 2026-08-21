@@ -41,7 +41,7 @@ import {
 import type { ReportKey } from '@/data/types/core.types';
 import { cn } from '@/lib/utils';
 
-type FilterType = 'date' | 'time' | 'select' | 'search' | 'checkbox';
+type FilterType = 'date' | 'time' | 'select' | 'search' | 'checkbox' | 'number';
 
 type FilterConfig = {
   key: string;
@@ -73,6 +73,18 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
     title: 'Attendance Punches',
     description: 'Raw device, import, web, mobile, and manual punch records.',
     filterKeys: ['dateFrom', 'dateTo', 'timeFrom', 'timeTo', 'departmentId', 'employeeId', 'deviceId', 'punchStatus'],
+  },
+  'late-attendance': {
+    key: 'late-attendance',
+    title: 'Late Attendance',
+    description: 'Employees whose first punch is later than their assigned shift threshold.',
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus', 'minLateMinutes'],
+  },
+  overtime: {
+    key: 'overtime',
+    title: 'Overtime',
+    description: 'Employees whose checkout is later than their assigned shift end time.',
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus', 'minOvertimeMinutes'],
   },
   'leave-balances': {
     key: 'leave-balances',
@@ -418,6 +430,7 @@ function filterWidthClass(filter: FilterConfig) {
   if (filter.type === 'search') return 'w-full min-w-[13rem] sm:w-[15rem]';
   if (filter.type === 'date') return 'w-[9.5rem] min-w-[9.5rem]';
   if (filter.type === 'time') return 'w-[8rem] min-w-[8rem]';
+  if (filter.type === 'number') return 'w-[10rem] min-w-[9rem]';
   if (filter.type === 'checkbox') return 'w-[9rem] min-w-[9rem]';
   return 'w-[11rem] min-w-[10rem]';
 }
@@ -453,6 +466,8 @@ function buildFilters(input: {
     syncStatus: { key: 'status', label: 'Status', type: 'select', options: syncStatuses },
     employmentType: { key: 'employmentType', label: 'Employment type', type: 'select', options: employmentTypes },
     employmentStatus: { key: 'employmentStatus', label: 'Employment status', type: 'select', options: employmentStatuses },
+    minLateMinutes: { key: 'minLateMinutes', label: 'Min late minutes', type: 'number' },
+    minOvertimeMinutes: { key: 'minOvertimeMinutes', label: 'Min overtime minutes', type: 'number' },
     lowBalance: { key: 'lowBalance', label: 'Low balance only', type: 'checkbox' },
     search: { key: 'search', label: 'Search', type: 'search' },
   };

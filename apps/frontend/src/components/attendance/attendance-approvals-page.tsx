@@ -269,6 +269,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('checkOut')}</TableHead>
                     <TableHead>{t('attendanceDays')}</TableHead>
                     <TableHead>{t('leaveDays')}</TableHead>
+                    <TableHead>{t('holidayDays')}</TableHead>
                     <TableHead>{t('payableDays')}</TableHead>
                     <TableHead>{t('absenceDays')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
@@ -290,6 +291,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
                       <TableCell>{record.leaveDays}</TableCell>
+                      <TableCell>{record.holidayDays}</TableCell>
                       <TableCell className="font-medium">{record.payableDays}</TableCell>
                       <TableCell>{record.absenceDays}</TableCell>
                       <TableCell>
@@ -297,6 +299,9 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           <Badge variant={statusVariant(record.status)}>{statusLabel(record.status, t)}</Badge>
                           {record.isBiometricExempt ? (
                             <Badge variant="outline">{t('biometricExempt')}</Badge>
+                          ) : null}
+                          {record.isHoliday ? (
+                            <Badge variant="secondary">{record.holiday?.nameEn ?? t('holidayOffDay')}</Badge>
                           ) : null}
                           {record.returnReason ? (
                             <span className="max-w-56 truncate text-xs text-muted-foreground">{record.returnReason}</span>

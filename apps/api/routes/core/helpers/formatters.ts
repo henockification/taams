@@ -106,6 +106,58 @@ export function formatWorkScheduleDay(day: any) {
   };
 }
 
+export function formatHoliday(holiday: any) {
+  return {
+    id: holiday.id,
+    nameEn: holiday.nameEn,
+    nameAm: holiday.nameAm ?? null,
+    type: holiday.type,
+    durationDays: holiday.durationDays ?? '1.00',
+    startDate: formatDate(holiday.startDate),
+    endDate: formatDate(holiday.endDate),
+    description: holiday.description ?? null,
+    isActive: holiday.isActive,
+    createdBy: holiday.createdBy ?? null,
+    updatedBy: holiday.updatedBy ?? null,
+    createdAt: formatTimestamp(holiday.createdAt),
+    updatedAt: formatTimestamp(holiday.updatedAt),
+  };
+}
+
+export function formatNotificationLog(log: any) {
+  return {
+    id: log.id,
+    eventType: log.eventType,
+    channel: log.channel,
+    status: log.status,
+    recipientUserId: log.recipientUserId ?? null,
+    recipientEmployeeId: log.recipientEmployeeId ?? null,
+    recipientName: log.recipientName ?? null,
+    destination: log.destination ?? null,
+    subject: log.subject ?? null,
+    message: log.message,
+    locale: log.locale ?? 'en',
+    relatedEntityType: log.relatedEntityType ?? null,
+    relatedEntityId: log.relatedEntityId ?? null,
+    metadata: log.metadata ?? null,
+    attempts: log.attempts ?? 0,
+    lastAttemptAt: formatTimestamp(log.lastAttemptAt),
+    nextAttemptAt: formatTimestamp(log.nextAttemptAt),
+    providerMessageId: log.providerMessageId ?? null,
+    providerResponse: log.providerResponse ?? null,
+    errorMessage: log.errorMessage ?? null,
+    sentAt: formatTimestamp(log.sentAt),
+    createdAt: formatTimestamp(log.createdAt),
+    updatedAt: formatTimestamp(log.updatedAt),
+    recipientEmployee: log.recipientEmployee ? formatEmployee(log.recipientEmployee) : null,
+    recipientUser: log.recipientUser ? {
+      id: log.recipientUser.id,
+      name: log.recipientUser.name,
+      email: log.recipientUser.email,
+    } : null,
+  };
+}
+
 export function formatEmployee(employee: any) {
   return {
     id: employee.id,
@@ -167,7 +219,18 @@ export function formatBiometricExemption(exemption: any) {
     positionId: exemption.positionId ?? null,
     targetType: exemption.employeeId ? 'EMPLOYEE' : 'POSITION',
     reason: exemption.reason,
+    supportingEvidenceName: exemption.supportingEvidenceName ?? null,
+    supportingEvidenceUrl: exemption.supportingEvidenceUrl ?? null,
+    supportingEvidenceMimeType: exemption.supportingEvidenceMimeType ?? null,
+    supportingEvidenceSize: exemption.supportingEvidenceSize ?? null,
+    status: exemption.status ?? (exemption.isActive ? 'APPROVED' : 'INACTIVE'),
     isActive: exemption.isActive,
+    requestedBy: exemption.requestedBy ?? null,
+    approvedBy: exemption.approvedBy ?? null,
+    approvedAt: formatTimestamp(exemption.approvedAt),
+    rejectedBy: exemption.rejectedBy ?? null,
+    rejectedAt: formatTimestamp(exemption.rejectedAt),
+    rejectionReason: exemption.rejectionReason ?? null,
     createdBy: exemption.createdBy ?? null,
     updatedBy: exemption.updatedBy ?? null,
     createdAt: formatTimestamp(exemption.createdAt),
@@ -287,8 +350,14 @@ export function formatAttendanceDailyRecord(record: any) {
     totalPunches: record.totalPunches,
     attendanceDays: record.attendanceDays,
     leaveDays: record.leaveDays,
+    holidayId: record.holidayId ?? null,
+    holidayDays: record.holidayDays ?? '0.00',
+    isHoliday: record.isHoliday ?? false,
     payableDays: record.payableDays,
     absenceDays: record.absenceDays,
+    overtimeMinutes: record.overtimeMinutes ?? 0,
+    overtimeHours: record.overtimeHours ?? '0.00',
+    overtimeDays: record.overtimeDays ?? '0.00',
     isBiometricExempt: record.isBiometricExempt,
     payrollNote: record.payrollNote ?? null,
     status: record.status,
@@ -305,6 +374,7 @@ export function formatAttendanceDailyRecord(record: any) {
     employee: record.employee ? formatEmployee(record.employee) : null,
     firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
     lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
+    holiday: record.holiday ? formatHoliday(record.holiday) : null,
   };
 }
 
@@ -315,8 +385,15 @@ export function formatManualPunchRequest(request: any) {
     requestedPunchTime: formatTimestamp(request.requestedPunchTime),
     requestedPunchType: request.requestedPunchType,
     reason: request.reason,
+    supportingDocumentName: request.supportingDocumentName ?? null,
+    supportingDocumentUrl: request.supportingDocumentUrl ?? null,
+    supportingDocumentMimeType: request.supportingDocumentMimeType ?? null,
+    supportingDocumentSize: request.supportingDocumentSize ?? null,
     status: request.status,
     requestedBy: request.requestedBy,
+    hrReviewedBy: request.hrReviewedBy ?? null,
+    hrReviewedAt: formatTimestamp(request.hrReviewedAt),
+    hrReviewNote: request.hrReviewNote ?? null,
     approvedBy: request.approvedBy ?? null,
     approvedAt: formatTimestamp(request.approvedAt),
     rejectedBy: request.rejectedBy ?? null,
@@ -325,6 +402,33 @@ export function formatManualPunchRequest(request: any) {
     createdAt: formatTimestamp(request.createdAt),
     updatedAt: formatTimestamp(request.updatedAt),
     employee: request.employee ? formatEmployee(request.employee) : null,
+  };
+}
+
+export function formatOvertimeRequest(request: any) {
+  return {
+    id: request.id,
+    employeeId: request.employeeId,
+    attendanceDailyRecordId: request.attendanceDailyRecordId ?? null,
+    overtimeDate: formatDate(request.overtimeDate),
+    startAt: formatTimestamp(request.startAt),
+    endAt: formatTimestamp(request.endAt),
+    requestedMinutes: request.requestedMinutes,
+    approvedMinutes: request.approvedMinutes ?? 0,
+    overtimeDays: request.overtimeDays ?? '0.00',
+    reason: request.reason,
+    status: request.status,
+    requestedBy: request.requestedBy,
+    approvedBy: request.approvedBy ?? null,
+    approvedAt: formatTimestamp(request.approvedAt),
+    rejectedBy: request.rejectedBy ?? null,
+    rejectedAt: formatTimestamp(request.rejectedAt),
+    rejectionReason: request.rejectionReason ?? null,
+    payrollNote: request.payrollNote ?? null,
+    createdAt: formatTimestamp(request.createdAt),
+    updatedAt: formatTimestamp(request.updatedAt),
+    employee: request.employee ? formatEmployee(request.employee) : null,
+    attendanceDailyRecord: request.attendanceDailyRecord ? formatAttendanceDailyRecord(request.attendanceDailyRecord) : null,
   };
 }
 

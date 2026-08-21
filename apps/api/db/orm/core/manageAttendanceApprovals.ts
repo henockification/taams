@@ -7,6 +7,7 @@ import {
   biometricExemptions,
   employeeSupervisors,
   employees,
+  holidays,
   leaveRequests,
   leaveTypes,
 } from '../../schema';
@@ -26,7 +27,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
   const attendanceDate = normalizeDateParam(date);
   const dayRange = getDayRange(attendanceDate);
 
-  const [activeEmployees, punches, approvedLeaves, activeExemptions] = await Promise.all([
+  const [activeEmployees, punches, approvedLeaves, activeExemptions, activeHoliday] = await Promise.all([
     db.query.employees.findMany({
       where: eq(employees.isActive, true),
       columns: { id: true, positionId: true },
@@ -49,6 +50,14 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
     }),
     db.query.biometricExemptions.findMany({
       where: eq(biometricExemptions.isActive, true),
+    }),
+    db.query.holidays.findFirst({
+      where: and(
+        eq(holidays.isActive, true),
+        lte(holidays.startDate, attendanceDate),
+        gte(holidays.endDate, attendanceDate),
+      ),
+      orderBy: (table, { asc }) => [asc(table.startDate), asc(table.nameEn)],
     }),
   ]);
 
@@ -78,7 +87,15 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
     const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions);
-    const payroll = resolvePayrollDays({ attendanceDays, leaveDays, unpaidLeaveDays, isBiometricExempt });
+    const holidayDays = activeHoliday ? parseHolidayDays(activeHoliday.durationDays) : 0;
+    const payroll = resolvePayrollDays({
+      attendanceDays,
+      leaveDays,
+      unpaidLeaveDays,
+      holidayDays,
+      holidayName: activeHoliday?.nameEn ?? null,
+      isBiometricExempt,
+    });
 
     const [record] = await db
       .insert(attendanceDailyRecords)
@@ -92,6 +109,9 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
         totalPunches: employeePunches.length,
         attendanceDays: formatDayValue(attendanceDays),
         leaveDays: formatDayValue(leaveDays),
+        holidayId: activeHoliday?.id ?? null,
+        holidayDays: formatDayValue(holidayDays),
+        isHoliday: Boolean(activeHoliday),
         payableDays: formatDayValue(payroll.payableDays),
         absenceDays: formatDayValue(payroll.absenceDays),
         isBiometricExempt,
@@ -108,6 +128,9 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
           totalPunches: employeePunches.length,
           attendanceDays: formatDayValue(attendanceDays),
           leaveDays: formatDayValue(leaveDays),
+          holidayId: activeHoliday?.id ?? null,
+          holidayDays: formatDayValue(holidayDays),
+          isHoliday: Boolean(activeHoliday),
           payableDays: formatDayValue(payroll.payableDays),
           absenceDays: formatDayValue(payroll.absenceDays),
           isBiometricExempt,
@@ -416,9 +439,18 @@ function getLeaveDaysForDate(leave: { startDate: string; endDate: string; reques
   return roundDayValue(Math.min(1, requestedDays / durationDays));
 }
 
-function resolvePayrollDays(input: { attendanceDays: number; leaveDays: number; unpaidLeaveDays: number; isBiometricExempt: boolean }) {
+function resolvePayrollDays(input: {
+  attendanceDays: number;
+  leaveDays: number;
+  unpaidLeaveDays: number;
+  holidayDays: number;
+  holidayName?: string | null;
+  isBiometricExempt: boolean;
+}) {
   const coveredByAttendanceOrLeave = Math.min(1, input.attendanceDays + input.leaveDays);
-  const payableDays = input.isBiometricExempt ? Math.max(coveredByAttendanceOrLeave, 1) : coveredByAttendanceOrLeave;
+  const coveredByAttendanceLeaveOrHoliday = Math.min(1, coveredByAttendanceOrLeave + input.holidayDays);
+  const coveredByHoliday = input.holidayDays > 0;
+  const payableDays = input.isBiometricExempt ? Math.max(coveredByAttendanceLeaveOrHoliday, 1) : coveredByAttendanceLeaveOrHoliday;
   const absenceDays = Math.max(0, 1 - payableDays);
   const unpaidPayrollDays = Math.min(absenceDays, input.unpaidLeaveDays);
   const uncoveredAbsenceDays = Math.max(0, absenceDays - unpaidPayrollDays);
@@ -426,6 +458,7 @@ function resolvePayrollDays(input: { attendanceDays: number; leaveDays: number; 
 
   if (input.attendanceDays === 0.5) notes.push('Half-day attendance from a single punch');
   if (input.leaveDays > 0) notes.push(`Approved leave ${formatDayValue(input.leaveDays)} day(s)`);
+  if (coveredByHoliday) notes.push(`Holiday/off day ${formatDayValue(input.holidayDays)} day(s): ${input.holidayName ?? 'Institution off day'}`);
   if (unpaidPayrollDays > 0) notes.push(`Approved unpaid leave ${formatDayValue(unpaidPayrollDays)} day(s) for payroll`);
   if (input.isBiometricExempt) notes.push('Biometric exempt');
   if (uncoveredAbsenceDays > 0) notes.push(`Uncovered absence ${formatDayValue(uncoveredAbsenceDays)} day(s)`);
@@ -465,8 +498,14 @@ function parseDayInput(value: string | number, fieldName: string) {
   return roundDayValue(parsed);
 }
 
+function parseHolidayDays(value: string | number | null | undefined) {
+  const parsed = Number(value ?? 1);
+  return parsed === 0.5 ? 0.5 : 1;
+}
+
 const recordRelations = {
   employee: { with: { department: true, position: true } },
   firstPunch: true,
   lastPunch: true,
+  holiday: true,
 } as const;
