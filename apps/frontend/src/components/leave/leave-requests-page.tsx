@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { CalendarCheck, Plus } from 'lucide-react';
+import { CalendarCheck, Check, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  useChangeLeaveRequestStatus,
   useCreateLeaveRequest,
   useDashboardSummary,
   useLeaveBalances,
@@ -47,6 +48,7 @@ import {
   useLeaveTypes,
 } from '@/data/hooks/core.hooks';
 import type { Employee, LeaveRequest } from '@/data/types/core.types';
+import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
@@ -81,6 +83,8 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const common = useTranslations('common');
   const session = useSession();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
   const [form, setForm] = useState({
     leaveTypeId: '',
     fiscalYearId: '',
@@ -94,12 +98,14 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const fiscalYearsQuery = useLeaveFiscalYears();
   const leaveTypesQuery = useLeaveTypes();
   const createRequest = useCreateLeaveRequest(kind);
+  const changeStatus = useChangeLeaveRequestStatus();
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
   const leaveTypes = leaveTypesQuery.data?.leaveTypes ?? [];
   const currentEmployee = dashboardQuery.data?.dashboard.employee ?? null;
   const selectedYearBalancesQuery = useLeaveBalances(form.fiscalYearId, { enabled: Boolean(form.fiscalYearId && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
+  const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'leave-request-approvals:approve');
   const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
   const annualType = leaveTypes.find((type) => type.code.toUpperCase() === 'ANNUAL');
   const selectableTypes = kind === 'annual'
@@ -151,6 +157,63 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     }
   };
 
+  const approveRequest = async (request: LeaveRequest) => {
+    try {
+      await changeStatus.mutateAsync({
+        leaveRequestId: request.id,
+        status: 'APPROVED',
+        approvedBy: session.data?.user?.id ?? undefined,
+        approvedAt: new Date().toISOString(),
+      });
+
+      notifications.show({
+        title: common('success'),
+        message: t('leaveRequestApproved'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const openRejectDialog = (request: LeaveRequest) => {
+    setRejectTarget(request);
+    setRejectionReason('');
+  };
+
+  const submitRejection = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!rejectTarget) return;
+
+    try {
+      await changeStatus.mutateAsync({
+        leaveRequestId: rejectTarget.id,
+        status: 'REJECTED',
+        rejectedBy: session.data?.user?.id ?? undefined,
+        rejectedAt: new Date().toISOString(),
+        rejectionReason: rejectionReason.trim() || null,
+      });
+
+      setRejectTarget(null);
+      setRejectionReason('');
+      notifications.show({
+        title: common('success'),
+        message: t('leaveRequestRejected'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
   const isLoading = session.isPending || (session.data?.user?.id ? dashboardQuery.isLoading : false);
 
   return (
@@ -190,24 +253,58 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     <TableHead>{t('endDate')}</TableHead>
                     <TableHead>{t('requestedDays')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {requests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
-                          <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
-                      <TableCell>{formatDate(request.startDate)}</TableCell>
-                      <TableCell>{formatDate(request.endDate)}</TableCell>
-                      <TableCell>{request.requestedDays}</TableCell>
-                      <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
-                    </TableRow>
-                  ))}
+                  {requests.map((request) => {
+                    const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+
+                    return (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
+                            <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
+                        <TableCell>{formatDate(request.startDate)}</TableCell>
+                        <TableCell>{formatDate(request.endDate)}</TableCell>
+                        <TableCell>{request.requestedDays}</TableCell>
+                        <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                        <TableCell>
+                          {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => approveRequest(request)}
+                                disabled={changeStatus.isPending}
+                              >
+                                <Check className="size-4" />
+                                {t('approve')}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openRejectDialog(request)}
+                                disabled={changeStatus.isPending}
+                              >
+                                <X className="size-4" />
+                                {t('reject')}
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="block text-right text-xs text-muted-foreground">
+                              {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -285,6 +382,31 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                 }
               >
                 {createRequest.isPending ? t('saving') : common('save')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => !open && setRejectTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('reject')}</DialogTitle>
+            <DialogDescription>{t('rejectionReason')}</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={submitRejection}>
+            <Textarea
+              value={rejectionReason}
+              onChange={(event) => setRejectionReason(event.target.value)}
+              placeholder={t('rejectionReason')}
+              rows={4}
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>
+                {common('cancel')}
+              </Button>
+              <Button type="submit" disabled={changeStatus.isPending}>
+                {changeStatus.isPending ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
           </form>

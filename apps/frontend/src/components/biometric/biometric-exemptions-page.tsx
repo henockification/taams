@@ -43,6 +43,8 @@ import type {
   BiometricExemptionTargetType,
   Employee,
 } from '@/data/types/core.types';
+import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
+import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
 type FormState = {
@@ -90,10 +92,12 @@ export default function BiometricExemptionsPage() {
   const updateExemption = useUpdateBiometricExemption();
   const changeExemptionStatus = useChangeBiometricExemptionStatus();
   const deleteExemption = useDeleteBiometricExemption();
+  const session = useSession();
 
   const exemptions = exemptionsResponse?.biometricExemptions ?? [];
   const employees = employeesResponse?.employees ?? [];
   const positions = positionsResponse?.positions ?? [];
+  const canSupervisorReview = hasSupervisorApprovalAccess(session.data?.user, 'biometric-exemptions:approve');
   const [search, setSearch] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState<'all' | BiometricExemptionTargetType>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE'>('all');
@@ -350,7 +354,7 @@ export default function BiometricExemptionsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        {exemption.status === 'PENDING_SUPERVISOR' ? (
+                        {exemption.status === 'PENDING_SUPERVISOR' && canSupervisorReview ? (
                           <>
                             <Button variant="ghost" size="icon" onClick={() => changeStatus(exemption, 'APPROVED')} disabled={changeExemptionStatus.isPending}>
                               <Check className="size-4" />

@@ -43,7 +43,7 @@ import {
 } from '@/data/hooks/rbac.hooks';
 import type { Permission, Role } from '@/data/types/rbac.types';
 
-const reservedRoleNames = new Set(['super_admin', 'employee', 'executive']);
+const reservedRoleNames = new Set(['super_admin', 'admin', 'executive', 'human_resource', 'supervisor', 'employee']);
 
 export default function RolesPage() {
   const t = useTranslations('rbac');

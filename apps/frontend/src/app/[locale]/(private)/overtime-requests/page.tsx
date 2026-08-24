@@ -21,6 +21,7 @@ import {
   useOvertimeRequests,
 } from '@/data/hooks/core.hooks';
 import type { Employee, OvertimeRequest, OvertimeRequestStatus } from '@/data/types/core.types';
+import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 
@@ -81,6 +82,7 @@ export default function OvertimeRequestsPage() {
 
   const employees = employeesQuery.data?.employees ?? [];
   const requests = overtimeRequests.data?.overtimeRequests ?? [];
+  const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'overtime-requests:approve');
 
   const saveRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -185,7 +187,7 @@ export default function OvertimeRequestsPage() {
                         <TableCell>{request.approvedMinutes} min / {request.overtimeDays} days</TableCell>
                         <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge></TableCell>
                         <TableCell>
-                          {request.status === 'PENDING' && !isOwnRequest ? (
+                          {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
                             <div className="flex justify-end gap-2">
                               <Button type="button" size="sm" onClick={() => reviewRequest(request, 'APPROVED')} disabled={changeOvertimeRequestStatus.isPending}>
                                 <Check className="size-4" />

@@ -3,7 +3,7 @@ import { db } from '../../db';
 import { employees } from '../../schema';
 
 type DbClient = typeof db | any;
-const LEGACY_HR_ROLE_NAMES = new Set(['human_resource', 'hr', 'hr_manager', 'hr_clerk']);
+const HR_ROLE_NAMES = new Set(['human_resource']);
 const HR_PERMISSION_RESOURCES = new Set([
   'employees',
   'permanent-employees',
@@ -41,7 +41,7 @@ export async function resolveEmployeeVisibilityScope(input: {
     return { type: 'unrestricted' };
   }
 
-  const hasHrAccess = roles.some((role) => LEGACY_HR_ROLE_NAMES.has(role))
+  const hasHrAccess = roles.some((role) => HR_ROLE_NAMES.has(role))
     || permissions.some(isHrCapabilityPermission);
 
   return hasHrAccess ? { type: 'hr' } : { type: 'self', userId: input.userId };

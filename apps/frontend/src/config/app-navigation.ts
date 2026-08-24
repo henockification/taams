@@ -396,8 +396,8 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
-  if (item.url === '/department-head-dashboard' && hasDepartmentHeadRole(user)) return true;
-  if (item.url === '/attendance-approvals/supervisor') return Boolean(user);
+  if (item.url === '/department-head-dashboard' && hasSupervisorRole(user)) return true;
+  if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/notification-logs' && hasHrRole(user)) return true;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
@@ -421,21 +421,18 @@ export function hasHrRole(user: AuthzUser) {
     || role === 'admin'
     || role === 'executive'
     || role === 'human_resource'
-    || role === 'hr'
-    || role === 'hr_manager'
-    || role === 'hr_clerk'
   )) || Boolean(user?.permissions?.some(isHrCapabilityPermission));
 }
 
 export function hasHrDashboardAccess(user: AuthzUser) {
   return hasUnrestrictedRole(user)
-    || hasLegacyHrRole(user)
+    || hasHumanResourceRole(user)
     || userHasPermission(user, 'hr-dashboard:read');
 }
 
 export function hasHrAttendanceApprovalAccess(user: AuthzUser) {
   return hasUnrestrictedRole(user)
-    || hasLegacyHrRole(user)
+    || hasHumanResourceRole(user)
     || userHasPermission(user, 'hr-attendance-approvals:approve');
 }
 
@@ -449,10 +446,6 @@ export function hasEmployeeDashboardRole(user: AuthzUser) {
     || role === 'admin'
     || role === 'executive'
     || role === 'human_resource'
-    || role === 'hr_manager'
-    || role === 'manager'
-    || role === 'department_manager'
-    || role === 'department_head'
     || role === 'supervisor'
   ));
 }
@@ -481,16 +474,18 @@ function isHrCapabilityPermission(permission: string) {
   ].includes(resource);
 }
 
-export function hasDepartmentHeadRole(user: AuthzUser) {
+export function hasSupervisorRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => (
     role === 'super_admin'
+    || role === 'superadmin'
     || role === 'admin'
-    || role === 'manager'
-    || role === 'department_manager'
-    || role === 'department_head'
     || role === 'supervisor'
   ));
+}
+
+export function hasSupervisorApprovalAccess(user: AuthzUser, permission?: string) {
+  return hasSupervisorRole(user) || Boolean(permission && userHasPermission(user, permission));
 }
 
 export function getNavItemForPath(pathname: string) {
@@ -503,12 +498,12 @@ export function getNavItemForPath(pathname: string) {
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
-  if (pathname === '/leave-request-approvals') return Boolean(user);
+  if (pathname === '/leave-request-approvals') return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);
   if (pathname === '/notification-logs' && hasHrRole(user)) return true;
-  if (pathname === '/department-head-dashboard') return Boolean(user);
-  if (pathname === '/attendance-approvals/supervisor') return Boolean(user);
+  if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');
+  if (pathname === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
@@ -526,7 +521,7 @@ export function getAccessibleNavGroups(user: AuthzUser) {
 export function getFirstAccessiblePath(user: AuthzUser) {
   if (hasExecutiveRole(user)) return '/executive-dashboard';
   if (hasHrDashboardAccess(user)) return '/hr-dashboard';
-  if (hasDepartmentHeadRole(user)) return '/department-head-dashboard';
+  if (hasSupervisorRole(user)) return '/department-head-dashboard';
   return getAccessibleNavGroups(user)[0]?.items[0]?.url ?? null;
 }
 
@@ -540,12 +535,9 @@ function hasUnrestrictedRole(user: AuthzUser) {
   ));
 }
 
-function hasLegacyHrRole(user: AuthzUser) {
+function hasHumanResourceRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => (
     role === 'human_resource'
-    || role === 'hr'
-    || role === 'hr_manager'
-    || role === 'hr_clerk'
   ));
 }

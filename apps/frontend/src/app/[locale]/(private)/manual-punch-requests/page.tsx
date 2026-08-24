@@ -47,6 +47,7 @@ import {
   useManualPunchRequests,
 } from '@/data/hooks/core.hooks';
 import type { Employee, ManualPunchRequest, PunchType } from '@/data/types/core.types';
+import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 
@@ -105,6 +106,7 @@ export default function ManualPunchRequestsPage() {
   const employees = employeesResponse?.employees ?? [];
   const requests = manualRequests.data?.manualPunchRequests ?? [];
   const isHrReviewer = hasHrReviewAccess(session.data?.user);
+  const canSupervisorReview = hasSupervisorApprovalAccess(session.data?.user, 'manual-punch-requests:approve');
 
   const openManualRequestDialog = () => {
     setForm({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
@@ -275,7 +277,7 @@ export default function ManualPunchRequestsPage() {
                                 {t('reject')}
                               </Button>
                             </div>
-                          ) : request.status === 'HR_REVIEWED' && !isOwnRequest ? (
+                          ) : request.status === 'HR_REVIEWED' && !isOwnRequest && canSupervisorReview ? (
                             <div className="flex justify-end gap-2">
                               <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'SUPERVISOR_APPROVED')} disabled={changeManualRequestStatus.isPending}>
                                 <Check className="size-4" />
@@ -366,6 +368,6 @@ function Field({ label, id, children }: { label: string; id: string; children: R
 
 function hasHrReviewAccess(user: { role?: string[]; permissions?: string[] } | null | undefined) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
-  if (roles.some((role) => ['super_admin', 'superadmin', 'admin', 'executive', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'].includes(role))) return true;
+  if (roles.some((role) => ['super_admin', 'superadmin', 'admin', 'executive', 'human_resource'].includes(role))) return true;
   return Boolean(user?.permissions?.some((permission) => permission.startsWith('hr-') || permission.startsWith('manual-punch-requests:')));
 }

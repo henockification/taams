@@ -1222,7 +1222,7 @@ export const DashboardSummarySchema = z.object({
     id: z.string().openapi({ example: 'user_123' }),
     name: z.string().nullable().openapi({ example: 'Abebe Kebede' }),
     email: z.string().nullable().openapi({ example: 'abebe@example.com' }),
-    roles: z.array(z.string()).openapi({ example: ['manager'] }),
+    roles: z.array(z.string()).openapi({ example: ['supervisor'] }),
   }),
   employee: EmployeeSchema.nullable(),
   currentAnnualLeaveBalance: LeaveBalanceSchema.nullable(),

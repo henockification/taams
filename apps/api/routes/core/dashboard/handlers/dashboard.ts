@@ -98,9 +98,6 @@ export async function getHrDashboardSummaryHandler(c: Context) {
     const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
     const hasHrRole = roles.some((role) => (
       role === 'human_resource'
-      || role === 'hr'
-      || role === 'hr_manager'
-      || role === 'hr_clerk'
       || role === 'super_admin'
       || role === 'superadmin'
       || role === 'admin'
@@ -148,10 +145,8 @@ export async function getDepartmentHeadDashboardSummaryHandler(c: Context) {
     const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
     const hasRole = roles.some((role) => (
       role === 'super_admin'
+      || role === 'superadmin'
       || role === 'admin'
-      || role === 'manager'
-      || role === 'department_manager'
-      || role === 'department_head'
       || role === 'supervisor'
     ));
     const hasPermission = await userHasPermission(session.user.id, 'department-head-dashboard:read');

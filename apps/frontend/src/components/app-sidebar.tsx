@@ -23,7 +23,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 import { getAccessibleNavGroups, getFirstAccessiblePath } from "@/config/app-navigation"
-import { useDashboardSummary, useTimeOperationsSummary } from "@/data/hooks/core.hooks"
+import { useTimeOperationsSummary } from "@/data/hooks/core.hooks"
 import { Link, usePathname } from "@/i18n"
 import { cn } from "@/lib/utils"
 
@@ -40,33 +40,11 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
   const t = useTranslations("navigation")
   const roleKey = user?.role?.join("|") ?? ""
   const permissionKey = user?.permissions?.join("|") ?? ""
-  const dashboardResponse = useDashboardSummary(user?.id)
-  const roles = React.useMemo(
-    () => user?.role?.map((role) => role.toLowerCase()) ?? [],
-    [roleKey, user?.role],
-  )
-  const isExplicitSupervisor = roles.some((role) => (
-    role === "supervisor"
-    || role === "department_head"
-    || role === "department_manager"
-    || role === "manager"
-  ))
-  const canOpenSupervisorDashboard = isExplicitSupervisor
-    || dashboardResponse.data?.dashboard.role === "MANAGER"
-    || Boolean(user?.permissions?.includes("department-head-dashboard:read"))
-  const navUser = React.useMemo(() => {
-    if (!user || !canOpenSupervisorDashboard) return user
-
-    return {
-      ...user,
-      role: Array.from(new Set([...(user.role ?? []), "supervisor"])),
-    }
-  }, [user, canOpenSupervisorDashboard])
   const navGroups = React.useMemo(
-    () => getAccessibleNavGroups(navUser),
-    [navUser, roleKey, permissionKey, canOpenSupervisorDashboard],
+    () => getAccessibleNavGroups(user),
+    [user, roleKey, permissionKey],
   )
-  const homeHref = getFirstAccessiblePath(navUser) ?? "/dashboard"
+  const homeHref = getFirstAccessiblePath(user) ?? "/dashboard"
   const activeGroupKey = React.useMemo(
     () => getActiveGroupKey(navGroups, pathname),
     [navGroups, pathname],

@@ -55,7 +55,7 @@ type DashboardUser = {
   role?: string[] | null;
 };
 
-const MANAGER_ROLE_NAMES = ['manager', 'admin', 'hr_manager', 'department_manager'];
+const MANAGER_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 
 export async function getTimeOperationsSummary(scope: TimeOperationsScope = { role: 'SUPER_ADMIN' }) {
   if (scope.role === 'MANAGER') {
@@ -405,7 +405,7 @@ function buildEmployeeManualPunchItem(countValue: number, requests: any[]): Time
     type: 'MANUAL_PUNCH_APPROVAL',
     severity: 'info',
     title: `${countValue} manual punch ${pluralize(countValue, 'request')} awaiting review`,
-    description: 'Your correction request is waiting for manager approval.',
+    description: 'Your correction request is waiting for supervisor approval.',
     count: countValue,
     actionLabel: 'View my requests',
     actionHref: '/manual-punch-requests',

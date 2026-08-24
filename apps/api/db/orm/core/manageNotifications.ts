@@ -191,7 +191,7 @@ export async function getHrNotificationRecipients(): Promise<NotificationRecipie
     .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
     .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
     .where(or(
-      sql`lower(${roles.name}) IN ('super_admin', 'superadmin', 'admin', 'executive', 'human_resource', 'hr', 'hr_manager', 'hr_clerk')`,
+      sql`lower(${roles.name}) IN ('super_admin', 'superadmin', 'admin', 'executive', 'human_resource')`,
       eq(permissions.name, 'hr-attendance-approvals:approve'),
       sql`${permissions.name} LIKE 'hr-%'`,
     ));

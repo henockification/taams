@@ -40,9 +40,6 @@ async function canReadNotificationLogs(userId: string, userRoles: string[]) {
     'admin',
     'executive',
     'human_resource',
-    'hr',
-    'hr_manager',
-    'hr_clerk',
   ].includes(role))) {
     return true;
   }

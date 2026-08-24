@@ -9,7 +9,7 @@ import { createAttendancePunch } from './manageBiometricDevices';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
-const SUPERVISOR_ROLE_NAMES = ['manager', 'department_manager', 'supervisor', 'department_head', 'admin', 'super_admin'];
+const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 
 export async function createManualPunchRequest(input: CreateManualPunchRequestInput, scope?: EmployeeVisibilityScope) {
   await assertEmployeeExists(input.employeeId);
@@ -244,7 +244,7 @@ async function assertCanSupervisorReview(employeeId: string, context: { scope?: 
   if (!context.reviewerUserId) throw new Error('Reviewer is required');
   const managedEmployeeIds = await getManagedEmployeeIdsForUser(context.reviewerUserId, context.roles, tx);
   if (managedEmployeeIds.includes(employeeId)) return;
-  throw new Error('Only the assigned supervisor or department manager can approve this correction request');
+  throw new Error('Only the assigned supervisor can approve this correction request');
 }
 
 async function getManagedEmployeeIdsForUser(userId: string, roles?: string[] | null, tx: DbClient = db) {

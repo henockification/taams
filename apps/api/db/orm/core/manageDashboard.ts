@@ -15,7 +15,7 @@ import {
 } from '../../schema';
 import { getTimeOperationsSummary } from './manageTimeOperations';
 
-const MANAGER_ROLE_NAMES = ['manager', 'admin', 'hr_manager', 'department_manager', 'department_head', 'supervisor'];
+const MANAGER_ROLE_NAMES = ['admin', 'supervisor'];
 
 export type DashboardRole = 'SUPER_ADMIN' | 'MANAGER' | 'EMPLOYEE' | 'SETUP_REQUIRED';
 
@@ -172,7 +172,7 @@ async function buildManagerDashboard(
     currentAnnualLeaveBalance,
     metrics: [
       createMetric('direct-reports', 'Direct reports', directReports.length, 'Employees assigned to your supervision', '/employees'),
-      createMetric('pending-requests', 'Pending requests', pendingManualPunchRequests.length, 'Manual punch requests awaiting manager action', '/manual-punch-requests'),
+      createMetric('pending-requests', 'Pending requests', pendingManualPunchRequests.length, 'Manual punch requests awaiting supervisor action', '/manual-punch-requests'),
       createMetric('pending-leave-requests', 'Pending leave requests', pendingLeaveRequests.length, 'Leave requests awaiting supervisor action', '/leave-request-approvals'),
       createMetric('recent-team-punches', 'Recent team punches', recentTeamPunches.length, 'Latest punch records from your team', '/attendance-punches'),
     ],

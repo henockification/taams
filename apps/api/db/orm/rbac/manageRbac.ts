@@ -3,7 +3,7 @@ import { db } from '../../db';
 import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
 
 type DbClient = typeof db | any;
-const RESERVED_ROLE_NAMES = new Set(['super_admin', 'employee', 'executive']);
+const RESERVED_ROLE_NAMES = new Set(['super_admin', 'admin', 'executive', 'human_resource', 'supervisor', 'employee']);
 const RESERVED_ROLE_MESSAGE = 'This role name is reserved by the system and cannot be created or assigned to a custom role.';
 
 export type CreateRoleInput = {

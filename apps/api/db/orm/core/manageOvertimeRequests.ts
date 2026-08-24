@@ -14,7 +14,7 @@ import type {
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
 type DbClient = typeof db | any;
-const SUPERVISOR_ROLE_NAMES = ['manager', 'department_manager', 'supervisor', 'department_head', 'admin', 'super_admin'];
+const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 
 export async function createOvertimeRequest(input: CreateOvertimeRequestInput, scope?: EmployeeVisibilityScope) {
   await assertEmployeeExists(input.employeeId);

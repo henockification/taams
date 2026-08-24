@@ -41,6 +41,7 @@ import {
   useLeaveBalances,
   useLeaveRequests,
 } from '@/data/hooks/core.hooks';
+import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import type { LeaveBalance, LeaveRequest } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
@@ -77,6 +78,7 @@ export function LeaveRequestApprovalsPage() {
 
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
   const balances = leaveBalancesQuery.data?.leaveBalances ?? [];
+  const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'leave-request-approvals:approve');
   const balanceByEmployeeYear = useMemo(
     () => new Map(balances.map((balance) => [`${balance.employeeId}:${balance.fiscalYearId}`, balance])),
     [balances],
@@ -225,7 +227,7 @@ export function LeaveRequestApprovalsPage() {
                         </TableCell>
                         <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
                         <TableCell>
-                          {request.status === 'PENDING' && !isOwnRequest ? (
+                          {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
                             <div className="flex justify-end gap-2">
                               <Button
                                 type="button"
