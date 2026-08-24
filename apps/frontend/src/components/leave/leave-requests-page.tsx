@@ -106,13 +106,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     ? leaveTypes.filter((type) => type.code.toUpperCase() === 'ANNUAL')
     : leaveTypes.filter((type) => type.code.toUpperCase() !== 'ANNUAL');
 
-  const myRequests = useMemo(() => {
-    if (!currentEmployee?.id) return [];
-    return requests.filter((request) => request.employeeId === currentEmployee.id);
-  }, [currentEmployee?.id, requests]);
-  const pendingRequests = useMemo(() => myRequests.filter((request) => request.status === 'PENDING'), [myRequests]);
-  const approvedRequests = useMemo(() => myRequests.filter((request) => request.status === 'APPROVED'), [myRequests]);
-  const rejectedRequests = useMemo(() => myRequests.filter((request) => request.status === 'REJECTED'), [myRequests]);
   const selectedYearBalance = useMemo(() => {
     if (!currentEmployee?.id) return null;
     return (selectedYearBalancesQuery.data?.leaveBalances ?? []).find((balance) => balance.employeeId === currentEmployee.id) ?? null;
@@ -184,7 +177,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               title={t('employeeProfileRequired')}
               description={t('currentEmployeeRequired')}
             />
-          ) : myRequests.length === 0 ? (
+          ) : requests.length === 0 ? (
             <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsDescription')} />
           ) : (
             <div className="overflow-hidden rounded-md border border-border">
@@ -200,7 +193,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {myRequests.map((request) => (
+                  {requests.map((request) => (
                     <TableRow key={request.id}>
                       <TableCell>
                         <div className="min-w-0">

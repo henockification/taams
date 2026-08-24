@@ -1,0 +1,108 @@
+# SeaweedFS - S3-compatible object storage for TAAMS.
+#
+# Single-node "all-in-one" topology: one container runs the master, volume
+# server, filer and S3 gateway against one persistent volume. This is the right
+# shape for a single Dokploy host; scale out to separate services only if you
+# later move to multiple machines.
+#
+# Deploy this file as its own Dokploy "Compose" application.
+# See ./README.md for the full walkthrough.
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.44
+    restart: unless-stopped
+
+    environment:
+      SEAWEEDFS_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
+      SEAWEEDFS_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}
+      SEAWEEDFS_VOLUME_SIZE_LIMIT_MB: ${SEAWEEDFS_VOLUME_SIZE_LIMIT_MB:-1024}
+      SEAWEEDFS_MAX_FILE_SIZE_MB: ${SEAWEEDFS_MAX_FILE_SIZE_MB:-256}
+      SEAWEEDFS_ALLOWED_ORIGINS: ${SEAWEEDFS_ALLOWED_ORIGINS:-*}
+      # Set to the public https URL when the S3 port is exposed through a
+      # Dokploy domain, so presigned URLs signed by the browser still verify.
+      SEAWEEDFS_EXTERNAL_URL: ${SEAWEEDFS_EXTERNAL_URL:-}
+
+    # The credentials file cannot be templated by SeaweedFS itself, so it is
+    # rendered from the environment at boot and never committed to git.
+    # `$$` keeps the variable for the shell instead of Compose interpolation.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        : "$${SEAWEEDFS_ACCESS_KEY:?SEAWEEDFS_ACCESS_KEY must be set}"
+        : "$${SEAWEEDFS_SECRET_KEY:?SEAWEEDFS_SECRET_KEY must be set}"
+
+        mkdir -p /etc/seaweedfs
+        cat > /etc/seaweedfs/s3.json <<JSON
+        {
+          "identities": [
+            {
+              "name": "taams-app",
+              "credentials": [
+                {
+                  "accessKey": "$${SEAWEEDFS_ACCESS_KEY}",
+                  "secretKey": "$${SEAWEEDFS_SECRET_KEY}"
+                }
+              ],
+              "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+            }
+          ]
+        }
+        JSON
+        chown -R seaweed:seaweed /etc/seaweedfs 2>/dev/null || true
+        chmod 640 /etc/seaweedfs/s3.json
+
+        # Delegates to the image entrypoint, which fixes /data ownership and
+        # drops privileges to the unprivileged `seaweed` user.
+        exec /entrypoint.sh server \
+          -dir=/data \
+          -ip=seaweedfs \
+          -ip.bind=0.0.0.0 \
+          -volume.max=0 \
+          -volume.fileSizeLimitMB="$${SEAWEEDFS_MAX_FILE_SIZE_MB}" \
+          -master.volumeSizeLimitMB="$${SEAWEEDFS_VOLUME_SIZE_LIMIT_MB}" \
+          -master.telemetry=false \
+          -s3 \
+          -s3.port=8333 \
+          -s3.config=/etc/seaweedfs/s3.json \
+          -s3.allowedOrigins="$${SEAWEEDFS_ALLOWED_ORIGINS}" \
+          -s3.externalUrl="$${SEAWEEDFS_EXTERNAL_URL}" \
+          -s3.iam=false
+
+    volumes:
+      - seaweedfs_data:/data
+
+    # Reachable on the shared Dokploy network as `seaweedfs`; no host ports are
+    # published. Attach a Dokploy domain to port 8333 only if the browser needs
+    # to talk to S3 directly (presigned uploads/downloads).
+    expose:
+      - "8333"   # S3 API
+      - "8888"   # Filer HTTP
+      - "9333"   # Master UI / API
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9333/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    networks:
+      dokploy-network:
+        aliases:
+          - seaweedfs
+
+volumes:
+  seaweedfs_data:
+
+networks:
+  dokploy-network:
+    external: true

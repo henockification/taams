@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Check, CalendarCheck, FileCheck2, X } from 'lucide-react';
+import { Check, CalendarCheck, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +38,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import {
   useChangeLeaveRequestStatus,
-  useDashboardSummary,
   useLeaveBalances,
   useLeaveRequests,
 } from '@/data/hooks/core.hooks';
@@ -72,37 +71,25 @@ export function LeaveRequestApprovalsPage() {
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
-  const dashboardQuery = useDashboardSummary(session.data?.user?.id);
   const leaveBalancesQuery = useLeaveBalances();
   const leaveRequestsQuery = useLeaveRequests();
   const changeStatus = useChangeLeaveRequestStatus();
 
-  const dashboard = dashboardQuery.data?.dashboard;
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
   const balances = leaveBalancesQuery.data?.leaveBalances ?? [];
   const balanceByEmployeeYear = useMemo(
     () => new Map(balances.map((balance) => [`${balance.employeeId}:${balance.fiscalYearId}`, balance])),
     [balances],
   );
-  const directReportIds = useMemo(() => new Set(dashboard?.sections.manager?.directReports.map((employee) => employee.id) ?? []), [dashboard?.sections.manager?.directReports]);
-
-  const visibleRequests = useMemo(() => {
-    if (!dashboard) return [];
-    if (dashboard.role === 'SUPER_ADMIN') return requests;
-    if (dashboard.role === 'MANAGER') {
-      return requests.filter((request) => directReportIds.has(request.employeeId));
-    }
-    return [];
-  }, [dashboard, directReportIds, requests]);
 
   const filteredRequests = useMemo(() => {
-    if (statusFilter === 'ALL') return visibleRequests;
-    return visibleRequests.filter((request) => request.status === statusFilter);
-  }, [statusFilter, visibleRequests]);
+    if (statusFilter === 'ALL') return requests;
+    return requests.filter((request) => request.status === statusFilter);
+  }, [statusFilter, requests]);
 
-  const pendingCount = useMemo(() => visibleRequests.filter((request) => request.status === 'PENDING').length, [visibleRequests]);
-  const approvedCount = useMemo(() => visibleRequests.filter((request) => request.status === 'APPROVED').length, [visibleRequests]);
-  const rejectedCount = useMemo(() => visibleRequests.filter((request) => request.status === 'REJECTED').length, [visibleRequests]);
+  const pendingCount = useMemo(() => requests.filter((request) => request.status === 'PENDING').length, [requests]);
+  const approvedCount = useMemo(() => requests.filter((request) => request.status === 'APPROVED').length, [requests]);
+  const rejectedCount = useMemo(() => requests.filter((request) => request.status === 'REJECTED').length, [requests]);
 
   const approveRequest = async (request: LeaveRequest) => {
     try {
@@ -162,7 +149,7 @@ export function LeaveRequestApprovalsPage() {
     }
   };
 
-  const isLoading = session.isPending || dashboardQuery.isLoading || leaveRequestsQuery.isLoading || leaveBalancesQuery.isLoading;
+  const isLoading = session.isPending || leaveRequestsQuery.isLoading || leaveBalancesQuery.isLoading;
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -192,12 +179,6 @@ export function LeaveRequestApprovalsPage() {
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
-          ) : !dashboard || (dashboard.role === 'MANAGER' && directReportIds.size === 0) ? (
-            <EmptyState
-              icon={FileCheck2}
-              title={t('noLeaveRequests')}
-              description={t('noLeaveRequestsDescription')}
-            />
           ) : filteredRequests.length === 0 ? (
             <EmptyState
               icon={CalendarCheck}
@@ -220,57 +201,61 @@ export function LeaveRequestApprovalsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRequests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
-                          <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
-                      <TableCell>{formatDate(request.startDate)}</TableCell>
-                      <TableCell>{formatDate(request.endDate)}</TableCell>
-                      <TableCell>{request.requestedDays}</TableCell>
-                      <TableCell>
-                        {request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL' ? (
-                          <BalanceCell balance={request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) ?? null : null} />
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
-                      <TableCell>
-                        {request.status === 'PENDING' ? (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() => approveRequest(request)}
-                              disabled={changeStatus.isPending}
-                            >
-                              <Check className="size-4" />
-                              {t('approve')}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openRejectDialog(request)}
-                              disabled={changeStatus.isPending}
-                            >
-                              <X className="size-4" />
-                              {t('reject')}
-                            </Button>
+                  {filteredRequests.map((request) => {
+                    const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+
+                    return (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
+                            <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
                           </div>
-                        ) : (
-                          <span className="block text-right text-xs text-muted-foreground">
-                            {request.status === 'APPROVED' ? formatDate(request.approvedAt) : formatDate(request.rejectedAt)}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
+                        <TableCell>{formatDate(request.startDate)}</TableCell>
+                        <TableCell>{formatDate(request.endDate)}</TableCell>
+                        <TableCell>{request.requestedDays}</TableCell>
+                        <TableCell>
+                          {request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL' ? (
+                            <BalanceCell balance={request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) ?? null : null} />
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                        <TableCell>
+                          {request.status === 'PENDING' && !isOwnRequest ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => approveRequest(request)}
+                                disabled={changeStatus.isPending}
+                              >
+                                <Check className="size-4" />
+                                {t('approve')}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openRejectDialog(request)}
+                                disabled={changeStatus.isPending}
+                              >
+                                <X className="size-4" />
+                                {t('reject')}
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="block text-right text-xs text-muted-foreground">
+                              {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

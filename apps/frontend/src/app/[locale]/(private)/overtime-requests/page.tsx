@@ -69,8 +69,8 @@ export default function OvertimeRequestsPage() {
   const common = useTranslations('common');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [status, setStatus] = useState('');
-  const [dateFrom, setDateFrom] = useState(new Date().toISOString().slice(0, 10));
-  const [dateTo, setDateTo] = useState(new Date().toISOString().slice(0, 10));
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [form, setForm] = useState(initialForm);
 
   const overtimeRequests = useOvertimeRequests({ dateFrom, dateTo, status });
@@ -171,7 +171,7 @@ export default function OvertimeRequestsPage() {
                 </TableHeader>
                 <TableBody>
                   {requests.map((request) => {
-                    const isOwnRequest = request.employee?.userId === session.data?.user?.id;
+                    const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
 
                     return (
                       <TableRow key={request.id}>

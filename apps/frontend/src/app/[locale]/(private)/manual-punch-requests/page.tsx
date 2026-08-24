@@ -238,59 +238,63 @@ export default function ManualPunchRequestsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {requests.map((request) => (
-                    <TableRow key={request.id}>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
-                          <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap">{formatDateTime(request.requestedPunchTime)}</TableCell>
-                      <TableCell><Badge variant="secondary">{request.requestedPunchType}</Badge></TableCell>
-                      <TableCell>
-                        {request.supportingDocumentUrl ? (
-                          <a href={request.supportingDocumentUrl} download={request.supportingDocumentName ?? undefined} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                            <FileText className="size-3.5" />
-                            {request.supportingDocumentName ?? t('supportingDocument')}
-                          </a>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
-                      <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge></TableCell>
-                      <TableCell>
-                        {request.status === 'PENDING_HR_REVIEW' && isHrReviewer ? (
-                          <div className="flex justify-end gap-2">
-                            <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'HR_REVIEWED')} disabled={changeManualRequestStatus.isPending}>
-                              <Check className="size-4" />
-                              {t('hrReview')}
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'HR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
-                              <X className="size-4" />
-                              {t('reject')}
-                            </Button>
+                  {requests.map((request) => {
+                    const isOwnRequest = request.employee?.userId === session.data?.user?.id;
+
+                    return (
+                      <TableRow key={request.id}>
+                        <TableCell>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
+                            <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
                           </div>
-                        ) : request.status === 'HR_REVIEWED' ? (
-                          <div className="flex justify-end gap-2">
-                            <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'SUPERVISOR_APPROVED')} disabled={changeManualRequestStatus.isPending}>
-                              <Check className="size-4" />
-                              {t('approve')}
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'SUPERVISOR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
-                              <X className="size-4" />
-                              {t('reject')}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="block text-right text-xs text-muted-foreground">
-                            {request.status === 'SUPERVISOR_APPROVED' ? formatDateTime(request.approvedAt) : formatDateTime(request.rejectedAt)}
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{formatDateTime(request.requestedPunchTime)}</TableCell>
+                        <TableCell><Badge variant="secondary">{request.requestedPunchType}</Badge></TableCell>
+                        <TableCell>
+                          {request.supportingDocumentUrl ? (
+                            <a href={request.supportingDocumentUrl} download={request.supportingDocumentName ?? undefined} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+                              <FileText className="size-3.5" />
+                              {request.supportingDocumentName ?? t('supportingDocument')}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
+                        <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                        <TableCell>
+                          {request.status === 'PENDING_HR_REVIEW' && isHrReviewer ? (
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'HR_REVIEWED')} disabled={changeManualRequestStatus.isPending}>
+                                <Check className="size-4" />
+                                {t('hrReview')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'HR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
+                                <X className="size-4" />
+                                {t('reject')}
+                              </Button>
+                            </div>
+                          ) : request.status === 'HR_REVIEWED' && !isOwnRequest ? (
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'SUPERVISOR_APPROVED')} disabled={changeManualRequestStatus.isPending}>
+                                <Check className="size-4" />
+                                {t('approve')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'SUPERVISOR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
+                                <X className="size-4" />
+                                {t('reject')}
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="block text-right text-xs text-muted-foreground">
+                              {request.status === 'SUPERVISOR_APPROVED' ? formatDateTime(request.approvedAt) : request.status === 'SUPERVISOR_REJECTED' || request.status === 'HR_REJECTED' ? formatDateTime(request.rejectedAt) : '-'}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

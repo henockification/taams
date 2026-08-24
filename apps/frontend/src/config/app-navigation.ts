@@ -397,7 +397,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
   if (item.url === '/department-head-dashboard' && hasDepartmentHeadRole(user)) return true;
-  if (item.url === '/attendance-approvals/supervisor' && hasDepartmentHeadRole(user)) return true;
+  if (item.url === '/attendance-approvals/supervisor') return Boolean(user);
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/notification-logs' && hasHrRole(user)) return true;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
@@ -508,7 +508,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/manual-punch-requests') return Boolean(user);
   if (pathname === '/notification-logs' && hasHrRole(user)) return true;
   if (pathname === '/department-head-dashboard') return Boolean(user);
-  if (pathname === '/attendance-approvals/supervisor') return hasDepartmentHeadRole(user);
+  if (pathname === '/attendance-approvals/supervisor') return Boolean(user);
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
