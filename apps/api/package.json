@@ -17,6 +17,7 @@
     "drizzle:generate": "drizzle-kit generate",
     "drizzle:push": "drizzle-kit push",
     "drizzle:migrate": "drizzle-kit migrate",
+    "db:migrate:production": "node scripts/migrate-production.mjs",
     "db:migrate-order-status": "tsx scripts/migrate-order-status-enum.ts",
     "db:seed-super-admin": "tsx scripts/seed-super-admin.ts",
     "db:seed-system-roles": "tsx scripts/seed-system-roles.ts",

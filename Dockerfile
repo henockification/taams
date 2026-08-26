@@ -145,11 +145,26 @@ COPY --from=api-build --chown=node:node \
 COPY --from=api-build --chown=node:node \
     /app/apps/api/.next/static ./apps/api/.next/static
 
+# The standalone Next.js output does not include the migration files or the
+# Drizzle migrator package. Copy only those runtime migration dependencies so
+# the image can migrate before accepting traffic without shipping drizzle-kit.
+COPY --from=dependencies --chown=node:node \
+    /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
+
+COPY --from=source --chown=node:node \
+    /app/apps/api/drizzle ./apps/api/drizzle
+
+COPY --from=source --chown=node:node \
+    /app/apps/api/scripts/migrate-production.mjs ./apps/api/scripts/migrate-production.mjs
+
+COPY --from=source --chown=node:node --chmod=755 \
+    /app/apps/api/scripts/docker-api-entrypoint.sh ./apps/api/scripts/docker-api-entrypoint.sh
+
 # Uncomment only if apps/api/public exists.
 # COPY --from=api-build --chown=node:node \
 #     /app/apps/api/public ./apps/api/public
 
-CMD ["node", "apps/api/server.js"]
+CMD ["apps/api/scripts/docker-api-entrypoint.sh"]
 
 
 # =======================================================
