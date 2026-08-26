@@ -66,17 +66,18 @@ const allowedCorsOrigins = new Set(
   ].flatMap(expandAllowedOrigin),
 );
 
-// Middleware - MUST be applied after auth routes
-app.use('*', logger());
-app.use('*', prettyJSON());
-// Apply CORS middleware with conditional logic
-app.use('/api/*', cors({
+// Apply CORS before all routes so preflight works even if an adapter rewrites
+// the internal path seen by Hono.
+app.use('*', cors({
   origin: (origin) => {
     const requestOrigin = origin ? normalizeOrigin(origin) : '';
     return allowedCorsOrigins.has(requestOrigin) ? origin : null;
   },
   credentials: true,
 }));
+
+app.use('*', logger());
+app.use('*', prettyJSON());
 
 // Mount auth app FIRST - before middleware to avoid interference
 app.route('/api/auth', authApp);
