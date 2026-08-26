@@ -21,22 +21,40 @@ dotenv.config();
 
 const app = new OpenAPIHono();
 
+function splitOrigins(value?: string) {
+  return (value ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function normalizeOrigin(origin: string) {
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return origin.replace(/\/+$/, '');
+  }
+}
+
+const allowedCorsOrigins = new Set(
+  [
+    'http://localhost:3011',
+    'https://www.taams.com',
+    ...splitOrigins(process.env.FRONT_END_URL),
+    ...splitOrigins(process.env.FRONTEND_URL),
+    ...splitOrigins(process.env.APP_BASE_URL),
+    ...splitOrigins(process.env.CORS_ALLOWED_ORIGINS),
+  ].map(normalizeOrigin),
+);
+
 // Middleware - MUST be applied after auth routes
 app.use('*', logger());
 app.use('*', prettyJSON());
 // Apply CORS middleware with conditional logic
 app.use('/api/*', cors({
-  origin: (origin, c) => {
-    // Apply CORS restrictions for other routes
-    const allowedOrigins = [
-      'http://localhost:3011',
-      'https://www.taams.com',
-      process.env.FRONT_END_URL,
-      process.env.FRONTEND_URL
-    ].filter(Boolean); // Remove any undefined values
-    
-    const isAllowed = allowedOrigins.includes(origin || '');
-    return isAllowed ? origin : null;
+  origin: (origin) => {
+    const requestOrigin = origin ? normalizeOrigin(origin) : '';
+    return allowedCorsOrigins.has(requestOrigin) ? origin : null;
   },
   credentials: true,
 }));
@@ -59,9 +77,9 @@ app.get(
 app.doc('/api/openapi.json', {
   openapi: '3.0.0',
   info: {
-    title: 'Taams API',
+    title: 'Tams API',
     version: 'v1',
-    description: 'Taams API Documentation',
+    description: 'Tams API Documentation',
   },
   servers: [
     {

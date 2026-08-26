@@ -10,8 +10,13 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'Taams',
-  description: 'Taams application',
+  title: 'Tams',
+  description: 'Tams application',
+  icons: {
+    icon: '/logo.png',
+    shortcut: '/logo.png',
+    apple: '/logo.png',
+  },
 };
 
 export default function RootLayout({

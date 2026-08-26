@@ -19,7 +19,7 @@ export default function LocaleLandingPage() {
     <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin text-primary" />
-        <span>Loading TAAMS...</span>
+        <span>Loading TAMS...</span>
       </div>
     </main>
   );

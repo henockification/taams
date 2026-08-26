@@ -35,7 +35,7 @@ export class EmailService {
       `;
 
       await resend.emails.send({
-        from: 'Taams <orders@taams.com>',
+        from: 'Tams <orders@taams.com>',
         to: email,
         subject: `Your order #${orderNumber} has been placed`,
         html: emailHtml,
@@ -63,7 +63,7 @@ export class EmailService {
       `;
 
       await resend.emails.send({
-        from: 'Taams <orders@taams.com>',
+        from: 'Tams <orders@taams.com>',
         to: adminEmail,
         subject: `New order #${orderNumber} - action required`,
         html: emailHtml,

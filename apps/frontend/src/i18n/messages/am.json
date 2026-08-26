@@ -77,7 +77,7 @@
   },
   "auth": {
     "brandEyebrow": "ደህንነቱ የተጠበቀ መግቢያ",
-    "shellDescription": "ለ Taams አስተዳዳሪዎች እና ሰራተኞች በሚና የተመሰረተ መዳረሻ።",
+    "shellDescription": "ለ Tams አስተዳዳሪዎች እና ሰራተኞች በሚና የተመሰረተ መዳረሻ።",
     "coverageEmployees": "የሰራተኛ መዝገቦች",
     "coverageAttendance": "የመገኘት ማጽደቂያዎች",
     "coverageLeave": "የፈቃድ ሂደቶች",
@@ -98,7 +98,7 @@
     "verificationCode": "የማረጋገጫ ኮድ",
     "signInTitle": "የፈቃድ፣ መገኘት እና የሰራተኛ ቁጥጥር",
     "signInDescription": "የሰራተኛ መዝገቦችን፣ የመገኘት ማጽደቂያዎችን፣ የፈቃድ ሂደቶችን፣ በሚና የተመሰረተ መዳረሻን፣ ሪፖርቶችን እና የመሳሪያ ማመሳሰልን ለማስተዳደር ይግቡ።",
-    "signInFooter": "መዳረሻ በ Taams አስተዳዳሪዎ ይፈጠራል እና ይተዳደራል።",
+    "signInFooter": "መዳረሻ በ Tams አስተዳዳሪዎ ይፈጠራል እና ይተዳደራል።",
     "signInPanelTitle": "የተካተቱ ሞጁሎች",
     "signInPanelDescription": "የሰራተኛ መዝገቦች፣ የመገኘት ማጽደቂያዎች፣ የፈቃድ ሂደቶች፣ በሚና የተመሰረተ መዳረሻ፣ ሪፖርቶች እና የመሳሪያ ማመሳሰል።",
     "emailPlaceholder": "name@example.com",
@@ -132,8 +132,8 @@
     "resetPasswordFailed": "የይለፍ ቃል መቀየር አልተሳካም። እባክዎ እንደገና ይሞክሩ።",
     "emailAndOtpRequired": "ኢሜይል እና የማረጋገጫ ኮድ ያስፈልጋሉ።",
     "signupDisabledTitle": "መለያ መፍጠር በአስተዳዳሪ ይተዳደራል",
-    "signupDisabledDescription": "የ Taams አስተዳዳሪ የተጠቃሚ መለያዎን ይፈጥራል። መለያዎ ከተፈጠረ በኋላ የይለፍ ቃል ማዘጋጀትን ይጠቀሙ።",
-    "signupDisabledHelp": "መዳረሻ ካስፈለገዎት የ Taams አስተዳዳሪዎን ያነጋግሩ።",
+    "signupDisabledDescription": "የ Tams አስተዳዳሪ የተጠቃሚ መለያዎን ይፈጥራል። መለያዎ ከተፈጠረ በኋላ የይለፍ ቃል ማዘጋጀትን ይጠቀሙ።",
+    "signupDisabledHelp": "መዳረሻ ካስፈለገዎት የ Tams አስተዳዳሪዎን ያነጋግሩ።",
     "validation": {
       "emailRequired": "ኢሜይል ያስፈልጋል",
       "invalidEmail": "ትክክለኛ ኢሜይል ያስገቡ",
@@ -1092,8 +1092,8 @@
     "profileUpdated": "መገለጫ በተሳካ ሁኔታ ተዘምኗል"
   },
   "home": {
-    "title": "ወደ Taams እንኳን በደህና መጡ",
-    "subtitle": "የ Taams የስራ ቦታዎ ዝግጁ ነው።",
+    "title": "ወደ Tams እንኳን በደህና መጡ",
+    "subtitle": "የ Tams የስራ ቦታዎ ዝግጁ ነው።",
     "testNotification": "ማሳወቂያ ሞክር",
     "getStarted": "ጀምር",
     "dashboard": "ዳሽቦርድ",

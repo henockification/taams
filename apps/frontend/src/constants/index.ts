@@ -1,5 +1,5 @@
 // App constants
-export const APP_NAME = 'Taams';
+export const APP_NAME = 'Tams';
 export const APP_VERSION = '1.0.0';
 
 // API constants

@@ -236,10 +236,10 @@ export function ReportPage({ reportKey }: ReportPageProps) {
         <CardHeader className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Image src="/logo.png" alt="Taams" width={42} height={42} className="size-10 object-contain" />
+              <Image src="/logo.png" alt="Tams" width={42} height={42} className="size-10 object-contain" />
               <div>
                 <CardTitle className="text-lg">{configBase.title}</CardTitle>
-                <p className="text-xs text-muted-foreground">Taams Attendance Management System</p>
+                <p className="text-xs text-muted-foreground">Tams Attendance Management System</p>
               </div>
             </div>
             <div className="text-right text-xs text-muted-foreground">

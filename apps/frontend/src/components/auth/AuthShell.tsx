@@ -42,7 +42,7 @@ export function AuthShell({
               <span className="flex size-24 items-center justify-center rounded-xl bg-white shadow-sm">
                 <Image
                   src="/logo.png"
-                  alt="Taams"
+                  alt="Tams"
                   width={82}
                   height={82}
                   priority
@@ -51,7 +51,7 @@ export function AuthShell({
               </span>
               <span className="flex min-w-0 flex-col">
                 <span className="text-5xl font-black leading-none tracking-normal text-white">
-                  TAAMS
+                  TAMS
                 </span>
                 <span className="mt-2 max-w-72 text-base font-semibold leading-5 text-white/80">
                   Time and Attendance Management System
@@ -97,7 +97,7 @@ export function AuthShell({
                 <span className="flex size-14 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-border">
                   <Image
                     src="/logo.png"
-                    alt="Taams"
+                    alt="Tams"
                     width={42}
                     height={42}
                     priority
@@ -105,7 +105,7 @@ export function AuthShell({
                   />
                 </span>
                 <span className="flex flex-col">
-                  <span className="text-2xl font-black leading-none text-primary">TAAMS</span>
+                  <span className="text-2xl font-black leading-none text-primary">TAMS</span>
                   <span className="max-w-64 text-xs font-semibold leading-tight text-primary/75 sm:text-sm">
                     Time and Attendance Management System
                   </span>

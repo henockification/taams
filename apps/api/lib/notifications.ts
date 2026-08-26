@@ -77,7 +77,7 @@ class GraphEmailProvider implements NotificationProvider {
       },
       body: JSON.stringify({
         message: {
-          subject: input.subject ?? 'TAAMS notification',
+          subject: input.subject ?? 'TAMS notification',
           body: {
             contentType: 'Text',
             content: input.message,

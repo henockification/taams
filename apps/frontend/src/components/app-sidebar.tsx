@@ -78,7 +78,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
           <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground ring-1 ring-sidebar-border">
             <Image
               src="/logo.png"
-              alt="Taams"
+              alt="Tams"
               width={28}
               height={28}
               priority
@@ -86,7 +86,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
             />
           </span>
           <span className="grid leading-tight group-data-[collapsible=icon]:hidden">
-            <span className="text-base font-semibold text-sidebar-foreground">Taams</span>
+            <span className="text-base font-semibold text-sidebar-foreground">Tams</span>
             <span className="text-xs text-sidebar-foreground/70">
               {t("attendanceManagement")}
             </span>
