@@ -36,6 +36,25 @@ function normalizeOrigin(origin: string) {
   }
 }
 
+function expandAllowedOrigin(origin: string) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  const origins = [normalizedOrigin];
+
+  try {
+    const parsedOrigin = new URL(normalizedOrigin);
+    const isWebOrigin = parsedOrigin.protocol === 'http:' || parsedOrigin.protocol === 'https:';
+    const isLocalOrigin = parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1';
+
+    if (isWebOrigin && !isLocalOrigin && parsedOrigin.protocol === 'http:') {
+      origins.push(`https://${parsedOrigin.host}`);
+    }
+  } catch {
+    // Keep the normalized value for non-URL origin entries.
+  }
+
+  return origins;
+}
+
 const allowedCorsOrigins = new Set(
   [
     'http://localhost:3011',
@@ -44,7 +63,7 @@ const allowedCorsOrigins = new Set(
     ...splitOrigins(process.env.FRONTEND_URL),
     ...splitOrigins(process.env.APP_BASE_URL),
     ...splitOrigins(process.env.CORS_ALLOWED_ORIGINS),
-  ].map(normalizeOrigin),
+  ].flatMap(expandAllowedOrigin),
 );
 
 // Middleware - MUST be applied after auth routes
