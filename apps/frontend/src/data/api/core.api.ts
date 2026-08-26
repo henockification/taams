@@ -33,6 +33,7 @@ import type {
   CreateManualPunchRequestInput,
   CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
+  CreateLeaveInterruptionInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
   DepartmentResponse,
@@ -71,6 +72,7 @@ import type {
   PositionsResponse,
   ReportKey,
   ReportResponse,
+  ReviewLeaveInterruptionInput,
   ShiftBreakResponse,
   ShiftBreaksResponse,
   ShiftResponse,
@@ -557,6 +559,16 @@ export const coreApi = {
     }),
   changeLeaveRequestStatus: ({ leaveRequestId, ...input }: ChangeLeaveRequestStatusInput) =>
     coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  createLeaveInterruption: ({ leaveRequestId, ...input }: CreateLeaveInterruptionInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}/interruptions`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  reviewLeaveInterruption: ({ leaveInterruptionId, ...input }: ReviewLeaveInterruptionInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/interruptions/${leaveInterruptionId}/review`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

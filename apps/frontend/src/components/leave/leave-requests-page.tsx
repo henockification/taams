@@ -38,21 +38,27 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { AnnualLeaveApprovalDialog } from '@/components/leave/annual-leave-approval-dialog';
+import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
 import {
   useChangeLeaveRequestStatus,
   useCreateLeaveRequest,
+  useCreateLeaveInterruption,
   useDashboardSummary,
+  useEmployeeWorkSchedules,
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
   useLeaveTypes,
+  useWorkScheduleDays,
 } from '@/data/hooks/core.hooks';
-import type { Employee, LeaveRequest } from '@/data/types/core.types';
+import type { Employee, LeaveBalance, LeaveRequest } from '@/data/types/core.types';
 import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
 const noneValue = '__none';
+const dayValueOptions = ['1.00', '0.50'] as const;
 
 type LeaveRequestsPageProps = {
   kind: 'annual' | 'other';
@@ -78,13 +84,25 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString();
 }
 
+type AnnualDateSelection = {
+  date: string;
+  dayValue: string;
+};
+
 export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const session = useSession();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
+  const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
+  const [interruptionTarget, setInterruptionTarget] = useState<LeaveRequest | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [annualDates, setAnnualDates] = useState<AnnualDateSelection[]>([]);
+  const [annualDateInput, setAnnualDateInput] = useState(today());
+  const [annualRange, setAnnualRange] = useState({ startDate: today(), endDate: today() });
+  const [requestDateFilters, setRequestDateFilters] = useState({ fromDate: '', toDate: '' });
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState(noneValue);
   const [form, setForm] = useState({
     leaveTypeId: '',
     fiscalYearId: '',
@@ -99,12 +117,28 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const leaveTypesQuery = useLeaveTypes();
   const createRequest = useCreateLeaveRequest(kind);
   const changeStatus = useChangeLeaveRequestStatus();
+  const createInterruption = useCreateLeaveInterruption();
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
   const leaveTypes = leaveTypesQuery.data?.leaveTypes ?? [];
   const currentEmployee = dashboardQuery.data?.dashboard.employee ?? null;
-  const selectedYearBalancesQuery = useLeaveBalances(form.fiscalYearId, { enabled: Boolean(form.fiscalYearId && currentEmployee?.id) });
+  const employeeSchedulesQuery = useEmployeeWorkSchedules(currentEmployee?.id ?? '');
+  const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
+  const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
+  const scheduledWorkingDays = useMemo(() => new Set(
+    (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
+  ), [workScheduleDaysQuery.data?.days]);
+  const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(kind === 'annual' && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
+  const filteredRequests = useMemo(() => {
+    return requests.filter((request) => {
+      const requestDate = request.createdAt.slice(0, 10);
+      if (requestDateFilters.fromDate && requestDate < requestDateFilters.fromDate) return false;
+      if (requestDateFilters.toDate && requestDate > requestDateFilters.toDate) return false;
+      if (kind === 'other' && leaveTypeFilter !== noneValue && request.leaveTypeId !== leaveTypeFilter) return false;
+      return true;
+    });
+  }, [kind, leaveTypeFilter, requestDateFilters.fromDate, requestDateFilters.toDate, requests]);
   const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'leave-request-approvals:approve');
   const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
   const annualType = leaveTypes.find((type) => type.code.toUpperCase() === 'ANNUAL');
@@ -112,22 +146,42 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     ? leaveTypes.filter((type) => type.code.toUpperCase() === 'ANNUAL')
     : leaveTypes.filter((type) => type.code.toUpperCase() !== 'ANNUAL');
 
+  const annualBalances = leaveBalancesQuery.data?.leaveBalances ?? [];
+  const eligibleAnnualFiscalYears = useMemo(() => {
+    if (!currentEmployee) return [];
+    const balanceByFiscalYear = new Map(annualBalances.map((balance) => [balance.fiscalYearId, balance]));
+    if (currentEmployee.employmentType === 'PERMANENT') {
+      return fiscalYears.filter((fiscalYear) => {
+        const balance = balanceByFiscalYear.get(fiscalYear.id);
+        return !fiscalYear.isActive && balance && Number(balance.available) > 0;
+      });
+    }
+    return activeFiscalYear ? [activeFiscalYear] : [];
+  }, [activeFiscalYear, annualBalances, currentEmployee, fiscalYears]);
   const selectedYearBalance = useMemo(() => {
     if (!currentEmployee?.id) return null;
-    return (selectedYearBalancesQuery.data?.leaveBalances ?? []).find((balance) => balance.employeeId === currentEmployee.id) ?? null;
-  }, [currentEmployee?.id, selectedYearBalancesQuery.data?.leaveBalances]);
+    return annualBalances.find((balance) => balance.employeeId === currentEmployee.id && balance.fiscalYearId === form.fiscalYearId) ?? null;
+  }, [annualBalances, currentEmployee?.id, form.fiscalYearId]);
   const selectedLeaveTypeId = kind === 'annual' ? annualType?.id ?? form.leaveTypeId : form.leaveTypeId;
   const selectedLeaveType = leaveTypes.find((type) => type.id === selectedLeaveTypeId);
   const requiresFiscalYearBalance = selectedLeaveType?.code.trim().toUpperCase() === 'ANNUAL';
+  const annualRequestedTotal = useMemo(() => sumAnnualDates(annualDates), [annualDates]);
+  const annualBalanceAvailable = Number(selectedYearBalance?.available ?? 0);
 
   const openDialog = () => {
+    const defaultFiscalYearId = kind === 'annual'
+      ? eligibleAnnualFiscalYears[0]?.id ?? ''
+      : activeFiscalYear?.id ?? '';
     setForm({
       leaveTypeId: kind === 'annual' ? annualType?.id ?? '' : selectableTypes[0]?.id ?? '',
-      fiscalYearId: activeFiscalYear?.id ?? '',
+      fiscalYearId: defaultFiscalYearId,
       startDate: today(),
       endDate: today(),
       reason: '',
     });
+    setAnnualDates([]);
+    setAnnualDateInput(today());
+    setAnnualRange({ startDate: today(), endDate: today() });
     setDialogOpen(true);
   };
 
@@ -140,17 +194,22 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     }
 
     try {
+      const sortedAnnualDates = [...annualDates].sort((a, b) => a.date.localeCompare(b.date));
       await createRequest.mutateAsync({
         employeeId: currentEmployee.id,
         leaveTypeId: kind === 'annual' ? annualType?.id ?? form.leaveTypeId : form.leaveTypeId,
-        fiscalYearId: form.fiscalYearId || null,
-        startDate: form.startDate,
-        endDate: form.endDate,
+        fiscalYearId: kind === 'annual' ? form.fiscalYearId || null : activeFiscalYear?.id ?? null,
+        startDate: kind === 'annual' ? sortedAnnualDates[0]?.date : form.startDate,
+        endDate: kind === 'annual' ? sortedAnnualDates[sortedAnnualDates.length - 1]?.date : form.endDate,
+        annualLeaveDates: kind === 'annual'
+          ? sortedAnnualDates.map((date) => ({ date: date.date, dayValue: date.dayValue }))
+          : undefined,
         reason: form.reason.trim(),
         requestedBy: session.data?.user?.id ?? null,
       });
 
       setDialogOpen(false);
+      setAnnualDates([]);
       notifications.show({ title: common('success'), message: t('leaveRequestCreated'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
@@ -158,6 +217,11 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   };
 
   const approveRequest = async (request: LeaveRequest) => {
+    if (isAnnualRequest(request) && request.annualLeaveDates?.length) {
+      setApprovalTarget(request);
+      return;
+    }
+
     try {
       await changeStatus.mutateAsync({
         leaveRequestId: request.id,
@@ -166,6 +230,31 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
         approvedAt: new Date().toISOString(),
       });
 
+      notifications.show({
+        title: common('success'),
+        message: t('leaveRequestApproved'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const submitAnnualApproval = async (request: LeaveRequest, approvedDates: Array<{ date: string; dayValue: string }>) => {
+    try {
+      await changeStatus.mutateAsync({
+        leaveRequestId: request.id,
+        status: 'APPROVED',
+        approvedBy: session.data?.user?.id ?? undefined,
+        approvedAt: new Date().toISOString(),
+        approvedDates,
+      });
+
+      setApprovalTarget(null);
       notifications.show({
         title: common('success'),
         message: t('leaveRequestApproved'),
@@ -214,6 +303,48 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     }
   };
 
+  const addAnnualDate = (date: string, dayValue = '1.00') => {
+    if (!date) return;
+    setAnnualDates((current) => {
+      if (current.some((item) => item.date === date)) return current;
+      return [...current, { date, dayValue }].sort((a, b) => a.date.localeCompare(b.date));
+    });
+  };
+
+  const addAnnualRange = () => {
+    for (const date of workingDateRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays)) {
+      addAnnualDate(date);
+    }
+  };
+
+  const updateAnnualDateValue = (date: string, dayValue: string) => {
+    setAnnualDates((current) => current.map((item) => item.date === date ? { ...item, dayValue } : item));
+  };
+
+  const removeAnnualDate = (date: string) => {
+    setAnnualDates((current) => current.filter((item) => item.date !== date));
+  };
+
+  const submitInterruption = async (payload: {
+    interruptedDates: AnnualDateSelection[];
+    continuationDates: AnnualDateSelection[];
+    reason: string;
+    recallAuthority: string;
+  }) => {
+    if (!interruptionTarget) return;
+    try {
+      await createInterruption.mutateAsync({
+        leaveRequestId: interruptionTarget.id,
+        ...payload,
+        requestedBy: session.data?.user?.id ?? null,
+      });
+      setInterruptionTarget(null);
+      notifications.show({ title: common('success'), message: t('leaveInterruptionCreated'), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  };
+
   const isLoading = session.isPending || (session.data?.user?.id ? dashboardQuery.isLoading : false);
 
   return (
@@ -243,70 +374,142 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
           ) : requests.length === 0 ? (
             <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsDescription')} />
           ) : (
-            <div className="overflow-hidden rounded-md border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('employee')}</TableHead>
-                    <TableHead>{t('leaveType')}</TableHead>
-                    <TableHead>{t('startDate')}</TableHead>
-                    <TableHead>{t('endDate')}</TableHead>
-                    <TableHead>{t('requestedDays')}</TableHead>
-                    <TableHead>{t('status')}</TableHead>
-                    <TableHead className="text-right">{t('actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {requests.map((request) => {
-                    const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
-
-                    return (
-                      <TableRow key={request.id}>
-                        <TableCell>
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
-                            <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
-                        <TableCell>{formatDate(request.startDate)}</TableCell>
-                        <TableCell>{formatDate(request.endDate)}</TableCell>
-                        <TableCell>{request.requestedDays}</TableCell>
-                        <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
-                        <TableCell>
-                          {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => approveRequest(request)}
-                                disabled={changeStatus.isPending}
-                              >
-                                <Check className="size-4" />
-                                {t('approve')}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openRejectDialog(request)}
-                                disabled={changeStatus.isPending}
-                              >
-                                <X className="size-4" />
-                                {t('reject')}
-                              </Button>
-                            </div>
-                          ) : (
-                            <span className="block text-right text-xs text-muted-foreground">
-                              {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
-                            </span>
-                          )}
-                        </TableCell>
+            <div className="space-y-4">
+              <div className={kind === 'other' ? 'grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end' : 'grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end'}>
+                <Field label={t('requestDateFrom')} id="leave-request-date-from">
+                  <Input
+                    id="leave-request-date-from"
+                    type="date"
+                    value={requestDateFilters.fromDate}
+                    onChange={(event) => setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }))}
+                  />
+                </Field>
+                <Field label={t('requestDateTo')} id="leave-request-date-to">
+                  <Input
+                    id="leave-request-date-to"
+                    type="date"
+                    value={requestDateFilters.toDate}
+                    onChange={(event) => setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }))}
+                  />
+                </Field>
+                {kind === 'other' ? (
+                  <Field label={t('leaveType')} id="leave-type-filter">
+                    <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
+                      <SelectTrigger id="leave-type-filter">
+                        <SelectValue placeholder={t('allLeaveTypes')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={noneValue}>{t('allLeaveTypes')}</SelectItem>
+                        {selectableTypes.map((type) => (
+                          <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setRequestDateFilters({ fromDate: '', toDate: '' });
+                    setLeaveTypeFilter(noneValue);
+                  }}
+                  disabled={!requestDateFilters.fromDate && !requestDateFilters.toDate && leaveTypeFilter === noneValue}
+                >
+                  <X className="size-4" />
+                  {t('clearFilters')}
+                </Button>
+              </div>
+              {filteredRequests.length === 0 ? (
+                <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsForFilters')} />
+              ) : (
+                <div className="overflow-hidden rounded-md border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t('requestDate')}</TableHead>
+                        <TableHead>{t('employee')}</TableHead>
+                        <TableHead>{t('leaveType')}</TableHead>
+                        <TableHead>{t('startDate')}</TableHead>
+                        <TableHead>{t('endDate')}</TableHead>
+                        <TableHead>{t('requestedDays')}</TableHead>
+                        <TableHead>{t('status')}</TableHead>
+                        <TableHead className="text-right">{t('actions')}</TableHead>
                       </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRequests.map((request) => {
+                        const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+
+                        return (
+                          <TableRow key={request.id}>
+                            <TableCell>{formatDate(request.createdAt)}</TableCell>
+                            <TableCell>
+                              <div className="min-w-0">
+                                <p className="truncate font-medium">{employeeName(request.employee) || t('unknown')}</p>
+                                <p className="truncate text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
+                            <TableCell>{formatDate(request.startDate)}</TableCell>
+                            <TableCell>{formatDate(request.endDate)}</TableCell>
+                            <TableCell>
+                              <div>
+                                <p>{request.requestedDays}</p>
+                                {request.status === 'APPROVED' ? (
+                                  <div className="text-xs text-muted-foreground">
+                                    <p>{t('approvedDays')}: {request.approvedDays}{request.isPartialApproval ? ` · ${t('partialApproval')}` : ''}</p>
+                                    {isAnnualRequest(request) ? <p>{t('consumedDays')}: {request.consumedDays} · {t('remainingDays')}: {request.remainingDays}</p> : null}
+                                    {request.interruptions?.[0] ? <p>{t('interruption')}: {request.interruptions[0].status}</p> : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                            <TableCell>
+                              {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => approveRequest(request)}
+                                    disabled={changeStatus.isPending}
+                                  >
+                                    <Check className="size-4" />
+                                    {t('approve')}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openRejectDialog(request)}
+                                    disabled={changeStatus.isPending}
+                                  >
+                                    <X className="size-4" />
+                                    {t('reject')}
+                                  </Button>
+                                </div>
+                              ) : request.status === 'APPROVED'
+                                && isAnnualRequest(request)
+                                && isOwnRequest
+                                && Number(request.remainingDays) > 0
+                                && !request.interruptions?.some((interruption) => interruption.status === 'PENDING') ? (
+                                <Button type="button" size="sm" variant="outline" onClick={() => setInterruptionTarget(request)}>
+                                  {t('requestLeaveInterruption')}
+                                </Button>
+                              ) : (
+                                <span className="block text-right text-xs text-muted-foreground">
+                                  {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -335,35 +538,107 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label={t('selectFiscalYear')} id="leave-fiscal-year">
-                <Select value={form.fiscalYearId || noneValue} onValueChange={(value) => setForm((current) => ({ ...current, fiscalYearId: value === noneValue ? '' : value }))}>
-                  <SelectTrigger id="leave-fiscal-year"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-                    {fiscalYears.map((fiscalYear) => (
-                      <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {requiresFiscalYearBalance ? (
-                  <BalancePreview
-                    isLoading={selectedYearBalancesQuery.isLoading}
-                    balance={selectedYearBalance}
-                    emptyLabel={form.fiscalYearId ? t('leaveBalanceNotFound') : t('selectFiscalYearToViewBalance')}
-                    loadingLabel={common('loading')}
-                    openingLabel={t('openingBalance')}
-                    usedLabel={t('usedBalance')}
-                    availableLabel={t('availableBalance')}
-                  />
-                ) : null}
-              </Field>
-              <Field label={t('startDate')} id="leave-start">
-                <Input id="leave-start" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} required />
-              </Field>
-              <Field label={t('endDate')} id="leave-end">
-                <Input id="leave-end" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} required />
-              </Field>
+              {kind === 'annual' ? (
+                <Field label={t('selectFiscalYear')} id="leave-fiscal-year">
+                  <Select value={form.fiscalYearId || noneValue} onValueChange={(value) => setForm((current) => ({ ...current, fiscalYearId: value === noneValue ? '' : value }))}>
+                    <SelectTrigger id="leave-fiscal-year"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
+                      {eligibleAnnualFiscalYears.map((fiscalYear) => (
+                        <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {requiresFiscalYearBalance ? (
+                    <BalancePreview
+                      isLoading={leaveBalancesQuery.isLoading}
+                      balance={selectedYearBalance}
+                      emptyLabel={form.fiscalYearId ? t('leaveBalanceNotFound') : t('selectFiscalYearToViewBalance')}
+                      loadingLabel={common('loading')}
+                      availableLabel={t('availableBalance')}
+                    />
+                  ) : null}
+                </Field>
+              ) : null}
+              {kind !== 'annual' ? (
+                <>
+                  <Field label={t('startDate')} id="leave-start">
+                    <Input id="leave-start" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} required />
+                  </Field>
+                  <Field label={t('endDate')} id="leave-end">
+                    <Input id="leave-end" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} required />
+                  </Field>
+                </>
+              ) : null}
             </div>
+            {kind === 'annual' ? (
+              <div className="space-y-3 rounded-md border border-border p-3">
+                <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <Field label={t('startDate')} id="annual-range-start">
+                    <Input id="annual-range-start" type="date" value={annualRange.startDate} onChange={(event) => setAnnualRange((current) => ({ ...current, startDate: event.target.value }))} />
+                  </Field>
+                  <Field label={t('endDate')} id="annual-range-end">
+                    <Input id="annual-range-end" type="date" value={annualRange.endDate} onChange={(event) => setAnnualRange((current) => ({ ...current, endDate: event.target.value }))} />
+                  </Field>
+                  <Button type="button" className="self-end" variant="outline" onClick={addAnnualRange}>
+                    <Plus className="size-4" />
+                    {t('addWorkingDays')}
+                  </Button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <Field label={t('date')} id="annual-date">
+                    <Input id="annual-date" type="date" value={annualDateInput} onChange={(event) => setAnnualDateInput(event.target.value)} />
+                  </Field>
+                  <Button type="button" className="self-end" variant="outline" onClick={() => addAnnualDate(annualDateInput)}>
+                    <Plus className="size-4" />
+                    {t('addDate')}
+                  </Button>
+                </div>
+                <div className="overflow-hidden rounded-md border border-border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t('date')}</TableHead>
+                        <TableHead>{t('requestedDays')}</TableHead>
+                        <TableHead className="text-right">{t('actions')}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {annualDates.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="text-sm text-muted-foreground">{t('noAnnualLeaveDates')}</TableCell>
+                        </TableRow>
+                      ) : annualDates.map((date) => (
+                        <TableRow key={date.date}>
+                          <TableCell>{formatDate(date.date)}</TableCell>
+                          <TableCell>
+                            <Select value={date.dayValue} onValueChange={(value) => updateAnnualDateValue(date.date, value)}>
+                              <SelectTrigger className="h-9 w-28">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {dayValueOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button type="button" variant="ghost" size="sm" onClick={() => removeAnnualDate(date.date)}>
+                              <X className="size-4" />
+                              {t('remove')}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {t('requestedDays')}: <span className="font-medium text-foreground">{annualRequestedTotal.toFixed(2)}</span>
+                </p>
+              </div>
+            ) : null}
             <Field label={t('reason')} id="leave-reason">
               <Textarea id="leave-reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} required />
             </Field>
@@ -376,8 +651,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   || !currentEmployee?.id
                   || !selectedLeaveTypeId
                   || (requiresFiscalYearBalance && (!form.fiscalYearId || !selectedYearBalance))
-                  || !form.startDate
-                  || !form.endDate
+                  || (kind === 'annual' ? annualDates.length === 0 || annualRequestedTotal > annualBalanceAvailable : (!form.startDate || !form.endDate))
                   || !form.reason.trim()
                 }
               >
@@ -387,6 +661,22 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
           </form>
         </DialogContent>
       </Dialog>
+
+      <AnnualLeaveApprovalDialog
+        request={approvalTarget}
+        open={Boolean(approvalTarget)}
+        isSaving={changeStatus.isPending}
+        onOpenChange={(open) => !open && setApprovalTarget(null)}
+        onApprove={submitAnnualApproval}
+      />
+
+      <LeaveInterruptionDialog
+        request={interruptionTarget}
+        open={Boolean(interruptionTarget)}
+        isSaving={createInterruption.isPending}
+        onOpenChange={(open) => !open && setInterruptionTarget(null)}
+        onSubmit={submitInterruption}
+      />
 
       <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => !open && setRejectTarget(null)}>
         <DialogContent>
@@ -405,7 +695,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>
                 {common('cancel')}
               </Button>
-              <Button type="submit" disabled={changeStatus.isPending}>
+              <Button type="submit" disabled={changeStatus.isPending || !rejectionReason.trim()}>
                 {changeStatus.isPending ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
@@ -421,16 +711,12 @@ function BalancePreview({
   balance,
   emptyLabel,
   loadingLabel,
-  openingLabel,
-  usedLabel,
   availableLabel,
 }: {
   isLoading: boolean;
-  balance: { opening: string; used: string; available: string; fiscalYear?: { name?: string | null } | null } | null;
+  balance: Pick<LeaveBalance, 'available'> | null;
   emptyLabel: string;
   loadingLabel: string;
-  openingLabel: string;
-  usedLabel: string;
   availableLabel: string;
 }) {
   if (isLoading) {
@@ -442,9 +728,7 @@ function BalancePreview({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2 rounded-md border border-border bg-muted/30 p-2 text-xs">
-      <BalanceMetric label={openingLabel} value={balance.opening} />
-      <BalanceMetric label={usedLabel} value={balance.used} />
+    <div className="rounded-md border border-border bg-muted/30 p-2 text-xs">
       <BalanceMetric label={availableLabel} value={balance.available} strong />
     </div>
   );
@@ -466,4 +750,27 @@ function Field({ label, id, children }: { label: string; id: string; children: R
       {children}
     </div>
   );
+}
+
+function isAnnualRequest(request: LeaveRequest) {
+  return request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL';
+}
+
+function sumAnnualDates(dates: AnnualDateSelection[]) {
+  return dates.reduce((sum, date) => sum + Number(date.dayValue), 0);
+}
+
+function workingDateRange(startDate: string, endDate: string, workingDays: Set<string>) {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+  const dates: string[] = [];
+  const current = new Date(start);
+  while (current <= end) {
+    const day = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][current.getUTCDay()];
+    if (workingDays.has(day)) dates.push(current.toISOString().slice(0, 10));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return dates;
 }

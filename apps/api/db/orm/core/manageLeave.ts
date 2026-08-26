@@ -1,12 +1,16 @@
-import { and, asc, eq, gte, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
+  annualLeaveRequestDates,
+  attendanceDailyRecords,
   employeeSupervisors,
   employeeWorkSchedules,
   employees,
   leaveBalanceTransactions,
   leaveBalances,
   leaveFiscalYears,
+  leaveInterruptionDates,
+  leaveInterruptions,
   leaveRequests,
   leaveTypes,
   user,
@@ -15,6 +19,7 @@ import {
 import type {
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
+  CreateLeaveInterruptionInput,
   CreateLeaveFiscalYearInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
@@ -22,10 +27,13 @@ import type {
   UpdateLeaveFiscalYearInput,
   UpdateLeaveTypeInput,
   UpsertLeaveBalanceInput,
+  ReviewLeaveInterruptionInput,
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { userHasPermission } from '../rbac/manageRbac';
 
 type DbClient = typeof db | any;
+type AnnualLeaveDateSelection = { date: string; dayValue: number };
 const KNOWN_LEAVE_TYPES = [
   {
     code: 'ANNUAL',
@@ -227,7 +235,7 @@ export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbC
   });
 
   if (existing) {
-    const available = opening + numeric(existing.transferredIn) - numeric(existing.used);
+    const available = opening + numeric(existing.transferredIn) - numeric(existing.used) - numeric(existing.reserved);
     if (available < 0) throw new Error('Opening balance cannot be lower than already used leave');
 
     const [updated] = await tx.update(leaveBalances)
@@ -250,6 +258,7 @@ export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbC
     employmentTypeSnapshot: employee.employmentType,
     opening: fixed(opening),
     transferredIn: fixed(0),
+    reserved: fixed(0),
     used: fixed(0),
     available: fixed(opening),
     createdBy: input.createdBy ?? null,
@@ -315,17 +324,18 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 
     const [updatedFrom] = await tx.update(leaveBalances)
       .set({
-        available: fixed(numeric(fromBalance.available) - days),
+        available: sql`${leaveBalances.available} - ${days}`,
         updatedBy: input.approvedBy ?? null,
         updatedAt: new Date(),
       } as any)
-      .where(eq(leaveBalances.id, fromBalance.id))
+      .where(and(eq(leaveBalances.id, fromBalance.id), gte(leaveBalances.available, fixed(days))))
       .returning();
+    if (!updatedFrom) throw new Error('Transfer amount exceeds available source balance');
 
     const [updatedTo] = await tx.update(leaveBalances)
       .set({
-        transferredIn: fixed(numeric(toBalance.transferredIn) + days),
-        available: fixed(numeric(toBalance.available) + days),
+        transferredIn: sql`${leaveBalances.transferredIn} + ${days}`,
+        available: sql`${leaveBalances.available} + ${days}`,
         updatedBy: input.approvedBy ?? null,
         updatedAt: new Date(),
       } as any)
@@ -367,6 +377,7 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 
 export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: EmployeeVisibilityScope) {
   await ensureKnownLeaveTypes();
+  await reconcileAnnualLeaveConsumption();
   const requests = await db.query.leaveRequests.findMany({
     with: {
       employee: {
@@ -377,6 +388,13 @@ export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: Employ
       },
       leaveType: true,
       fiscalYear: true,
+      annualLeaveDates: {
+        orderBy: (table, { asc }) => [asc(table.leaveDate)],
+      },
+      interruptions: {
+        with: { dates: true },
+        orderBy: (table, { desc }) => [desc(table.createdAt)],
+      },
     },
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
@@ -385,6 +403,50 @@ export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: Employ
 
   if (!kind) return scopedRequests;
   return scopedRequests.filter((request) => isAnnualLeaveType(request.leaveType) === (kind === 'annual'));
+}
+
+export async function reconcileAnnualLeaveConsumption(cutoffDate = yesterday()) {
+  return db.transaction(async (tx) => {
+    const scheduledDates = await tx.query.annualLeaveRequestDates.findMany({
+      where: and(
+        eq(annualLeaveRequestDates.status, 'APPROVED'),
+        eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'),
+        lte(annualLeaveRequestDates.leaveDate, cutoffDate),
+      ),
+      with: { leaveRequest: true },
+      orderBy: (table: any, { asc }: any) => [asc(table.leaveDate)],
+    });
+
+    for (const annualDate of scheduledDates) {
+      const request = annualDate.leaveRequest;
+      if (!request || request.status !== 'APPROVED' || !request.fiscalYearId) continue;
+      const days = numeric(annualDate.approvedDayValue);
+      if (days <= 0) continue;
+      const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
+      if (!balance) throw new Error('Annual leave balance not found while consuming approved leave');
+      if (numeric(balance.reserved) < days) throw new Error('Reserved annual leave balance is inconsistent');
+
+      const [updatedDate] = await tx.update(annualLeaveRequestDates).set({
+        utilizationStatus: 'CONSUMED',
+        updatedAt: new Date(),
+      } as any).where(and(
+        eq(annualLeaveRequestDates.id, annualDate.id),
+        eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'),
+      )).returning();
+      if (!updatedDate) continue;
+
+      const [updatedBalance] = await tx.update(leaveBalances).set({
+        reserved: sql`${leaveBalances.reserved} - ${days}`,
+        used: sql`${leaveBalances.used} + ${days}`,
+        updatedAt: new Date(),
+      } as any).where(and(
+        eq(leaveBalances.id, balance.id),
+        gte(leaveBalances.reserved, fixed(days)),
+      )).returning();
+      if (!updatedBalance) throw new Error('Reserved annual leave balance is inconsistent');
+      await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', days, null, `Annual leave consumed on ${formatDateValue(annualDate.leaveDate)}`, request.id);
+    }
+  });
 }
 
 export async function createLeaveRequest(input: CreateLeaveRequestInput) {
@@ -396,20 +458,58 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
 
   const requiresBalance = isAnnualLeaveType(leaveType);
   if (requiresBalance && !input.fiscalYearId) throw new Error('Fiscal year is required for annual leave');
-  const fiscalYear = input.fiscalYearId
+  let fiscalYear = input.fiscalYearId
     ? await getLeaveFiscalYearById(input.fiscalYearId)
     : null;
   if (input.fiscalYearId && !fiscalYear) throw new Error('Leave fiscal year not found');
 
-  const requestedDays = requiresBalance
-    ? await calculateWorkingDays(input.employeeId, input.startDate, input.endDate)
-    : calculateCalendarDays(input.startDate, input.endDate);
-  assertWithinAllowedDays(leaveType, requestedDays);
   if (requiresBalance) {
+    await assertAnnualFiscalYearAllowed(employee, fiscalYear!);
+    const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
+    await assertAnnualLeaveDatesAreWorkingDays(input.employeeId, dateSelections.map((selection) => selection.date));
+    await assertNoActiveAnnualLeaveDateOverlap(input.employeeId, dateSelections.map((selection) => selection.date));
+    const requestedDays = sumDaySelections(dateSelections);
+    assertWithinAllowedDays(leaveType, requestedDays);
+
     const balance = await getEmployeeFiscalYearBalance(input.employeeId, fiscalYear!.id);
     if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
     if (numeric(balance.available) < requestedDays) throw new Error('Insufficient annual leave balance');
+
+    const dateValues = dateSelections.map((selection) => selection.date).sort();
+    return db.transaction(async (tx) => {
+      const [request] = await tx.insert(leaveRequests).values({
+        employeeId: input.employeeId,
+        leaveTypeId: input.leaveTypeId,
+        fiscalYearId: fiscalYear?.id ?? null,
+        startDate: dateValues[0],
+        endDate: dateValues[dateValues.length - 1],
+        requestedDays: fixed(requestedDays),
+        reason: input.reason,
+        requestedBy: input.requestedBy,
+      } as any).returning();
+
+      await tx.insert(annualLeaveRequestDates).values(
+        dateSelections.map((selection) => ({
+          leaveRequestId: request.id,
+          employeeId: input.employeeId,
+          leaveDate: selection.date,
+          requestedDayValue: fixed(selection.dayValue),
+          approvedDayValue: null,
+          status: 'PENDING',
+        }))
+      );
+
+      return getLeaveRequestById(request.id, tx);
+    });
   }
+
+  if (!input.startDate || !input.endDate) throw new Error('Start date and end date are required');
+
+  fiscalYear = await getActiveLeaveFiscalYear();
+  if (!fiscalYear) throw new Error('Active leave fiscal year is required');
+
+  const requestedDays = calculateCalendarDays(input.startDate, input.endDate);
+  assertWithinAllowedDays(leaveType, requestedDays);
 
   const [request] = await db.insert(leaveRequests).values({
     employeeId: input.employeeId,
@@ -434,8 +534,19 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
     if (input.status === 'REJECTED') {
       const rejectedBy = input.rejectedBy;
       if (!rejectedBy) throw new Error('Rejected by is required when rejecting a leave request');
+      if (!input.rejectionReason?.trim()) throw new Error('Rejection reason is required');
       await assertUserExists(rejectedBy, tx);
       await assertCanReviewRequest(request.employeeId, rejectedBy, tx);
+      if (request.requestedBy === rejectedBy) throw new Error('A requester cannot review their own leave request');
+
+      if (isAnnualLeaveType(request.leaveType)) {
+        await tx.update(annualLeaveRequestDates).set({
+          status: 'REJECTED',
+          approvedDayValue: fixed(0),
+          utilizationStatus: 'CANCELLED',
+          updatedAt: new Date(),
+        } as any).where(eq(annualLeaveRequestDates.leaveRequestId, request.id));
+      }
 
       const [updated] = await tx.update(leaveRequests).set({
         status: 'REJECTED',
@@ -443,9 +554,10 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
         approvedAt: null,
         rejectedBy,
         rejectedAt: input.rejectedAt ? new Date(input.rejectedAt) : new Date(),
-        rejectionReason: input.rejectionReason ?? null,
+        rejectionReason: input.rejectionReason.trim(),
         updatedAt: new Date(),
-      } as any).where(eq(leaveRequests.id, id)).returning();
+      } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
+      if (!updated) throw new Error('Leave request is already processed');
 
       return getLeaveRequestById(updated.id, tx);
     }
@@ -454,23 +566,55 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
     if (!approvedBy) throw new Error('Approved by is required when approving a leave request');
     await assertUserExists(approvedBy, tx);
     await assertCanReviewRequest(request.employeeId, approvedBy, tx);
+    if (request.requestedBy === approvedBy) throw new Error('A requester cannot review their own leave request');
 
     const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
     if (isAnnualLeaveType(leaveType)) {
       if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
       if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
-      const days = numeric(request.requestedDays);
+      const approvedSelections = resolveAnnualApprovalSelections(request, input.approvedDates);
+      const days = sumDaySelections(approvedSelections);
+      if (days <= 0) throw new Error('At least one annual leave date must be approved');
       if (numeric(balance.available) < days) throw new Error('Insufficient annual leave balance');
 
+      const consumedImmediately = approvedSelections
+        .filter((selection) => selection.date < today())
+        .reduce((sum, selection) => sum + selection.dayValue, 0);
+      const reservedDays = days - consumedImmediately;
       const [updatedBalance] = await tx.update(leaveBalances).set({
-        used: fixed(numeric(balance.used) + days),
-        available: fixed(numeric(balance.available) - days),
+        used: sql`${leaveBalances.used} + ${consumedImmediately}`,
+        reserved: sql`${leaveBalances.reserved} + ${reservedDays}`,
+        available: sql`${leaveBalances.available} - ${days}`,
         updatedBy: approvedBy,
         updatedAt: new Date(),
-      } as any).where(eq(leaveBalances.id, balance.id)).returning();
+      } as any).where(and(
+        eq(leaveBalances.id, balance.id),
+        gte(leaveBalances.available, fixed(days)),
+      )).returning();
+      if (!updatedBalance) throw new Error('Insufficient annual leave balance');
 
-      await createBalanceTransaction(tx, updatedBalance, 'DEDUCTION', days, approvedBy, 'Annual leave approved', request.id);
+      if (reservedDays > 0) {
+        await createBalanceTransaction(tx, updatedBalance, 'RESERVATION', reservedDays, approvedBy, 'Annual leave approved and reserved', request.id);
+      }
+      if (consumedImmediately > 0) {
+        await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', consumedImmediately, approvedBy, 'Past annual leave approved as consumed', request.id);
+      }
+
+      const approvedByDate = new Map(approvedSelections.map((selection) => [selection.date, selection.dayValue]));
+      const requestDates = request.annualLeaveDates ?? [];
+
+      if (requestDates.length > 0) {
+        for (const requestDate of requestDates) {
+          const approvedDayValue = approvedByDate.get(formatDateValue(requestDate.leaveDate));
+          await tx.update(annualLeaveRequestDates).set({
+            status: approvedDayValue ? 'APPROVED' : 'REJECTED',
+            approvedDayValue: fixed(approvedDayValue ?? 0),
+            utilizationStatus: approvedDayValue && formatDateValue(requestDate.leaveDate) < today() ? 'CONSUMED' : approvedDayValue ? 'SCHEDULED' : 'CANCELLED',
+            updatedAt: new Date(),
+          } as any).where(eq(annualLeaveRequestDates.id, requestDate.id));
+        }
+      }
     }
 
     const [updated] = await tx.update(leaveRequests).set({
@@ -481,7 +625,8 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
       rejectedAt: null,
       rejectionReason: null,
       updatedAt: new Date(),
-    } as any).where(eq(leaveRequests.id, id)).returning();
+    } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
+    if (!updated) throw new Error('Leave request is already processed');
 
     return getLeaveRequestById(updated.id, tx);
   });
@@ -491,6 +636,166 @@ export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLe
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
   return changeLeaveRequestStatus(id, input);
+}
+
+export async function createLeaveInterruptionScoped(input: CreateLeaveInterruptionInput, scope: EmployeeVisibilityScope) {
+  const request = await getLeaveRequestById(input.leaveRequestId);
+  if (!request) throw new Error('Leave request not found');
+  await assertCanAccessEmployee(request.employeeId, scope);
+  return createLeaveInterruption(input);
+}
+
+export async function createLeaveInterruption(input: CreateLeaveInterruptionInput) {
+  return db.transaction(async (tx) => {
+    const request = await getLeaveRequestById(input.leaveRequestId, tx);
+    if (!request) throw new Error('Leave request not found');
+    if (request.status !== 'APPROVED' || !isAnnualLeaveType(request.leaveType)) {
+      throw new Error('Only approved annual leave can be interrupted');
+    }
+    if (!input.requestedBy) throw new Error('Requested by is required');
+    await assertUserExists(input.requestedBy, tx);
+    if (input.authorityUserId) await assertUserExists(input.authorityUserId, tx);
+
+    const interrupted = normalizeAnnualLeaveDateSelections(input.interruptedDates);
+    const continuation = normalizeAnnualLeaveDateSelections(input.continuationDates);
+    await validateInterruptionPattern(request, interrupted, continuation, tx);
+
+    const dates = interrupted.map((selection) => selection.date).sort();
+    const [interruption] = await tx.insert(leaveInterruptions).values({
+      leaveRequestId: request.id,
+      reason: input.reason.trim(),
+      recallAuthority: input.recallAuthority.trim(),
+      authorityUserId: input.authorityUserId ?? null,
+      actualWorkStartDate: dates[0],
+      actualWorkEndDate: dates[dates.length - 1],
+      requestedBy: input.requestedBy,
+    } as any).returning();
+
+    await insertInterruptionDates(tx, interruption.id, 'INTERRUPTED_PROPOSED', interrupted);
+    await insertInterruptionDates(tx, interruption.id, 'CONTINUATION_PROPOSED', continuation);
+    return getLeaveRequestById(request.id, tx);
+  });
+}
+
+export async function reviewLeaveInterruptionScoped(input: ReviewLeaveInterruptionInput, _scope: EmployeeVisibilityScope) {
+  const interruption = await getLeaveInterruptionById(input.leaveInterruptionId);
+  if (!interruption) throw new Error('Leave interruption not found');
+  const request = await getLeaveRequestById(interruption.leaveRequestId);
+  if (!request) throw new Error('Leave request not found');
+  return reviewLeaveInterruption(input);
+}
+
+export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInput) {
+  return db.transaction(async (tx) => {
+    const interruption = await getLeaveInterruptionById(input.leaveInterruptionId, tx);
+    if (!interruption) throw new Error('Leave interruption not found');
+    if (interruption.status !== 'PENDING') throw new Error('Leave interruption is already processed');
+    if (!input.reviewedBy) throw new Error('Reviewed by is required');
+    await assertUserExists(input.reviewedBy, tx);
+
+    const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
+    if (!request) throw new Error('Leave request not found');
+    await assertCanReviewRequest(request.employeeId, input.reviewedBy, tx);
+    if (interruption.requestedBy === input.reviewedBy) {
+      throw new Error('A requester cannot review their own leave interruption');
+    }
+
+    if (input.status === 'REJECTED') {
+      if (!input.rejectionReason?.trim()) throw new Error('Rejection reason is required');
+      const [rejectedInterruption] = await tx.update(leaveInterruptions).set({
+        status: 'REJECTED',
+        reviewedBy: input.reviewedBy,
+        reviewedAt: new Date(),
+        rejectionReason: input.rejectionReason.trim(),
+        updatedAt: new Date(),
+      } as any).where(and(
+        eq(leaveInterruptions.id, interruption.id),
+        eq(leaveInterruptions.status, 'PENDING'),
+      )).returning();
+      if (!rejectedInterruption) throw new Error('Leave interruption is already processed');
+      return getLeaveRequestById(request.id, tx);
+    }
+
+    const proposedInterrupted = interruption.dates
+      .filter((date: any) => date.kind === 'INTERRUPTED_PROPOSED')
+      .map((date: any) => ({ date: formatDateValue(date.leaveDate), dayValue: numeric(date.dayValue) }));
+    const proposedContinuation = interruption.dates
+      .filter((date: any) => date.kind === 'CONTINUATION_PROPOSED')
+      .map((date: any) => ({ date: formatDateValue(date.leaveDate), dayValue: numeric(date.dayValue) }));
+    const interrupted: AnnualLeaveDateSelection[] = input.interruptedDates
+      ? normalizeAnnualLeaveDateSelections(input.interruptedDates)
+      : proposedInterrupted;
+    const continuation: AnnualLeaveDateSelection[] = input.continuationDates
+      ? normalizeAnnualLeaveDateSelections(input.continuationDates)
+      : proposedContinuation;
+    await validateInterruptionPattern(request, interrupted, continuation, tx);
+
+    await insertInterruptionDates(tx, interruption.id, 'INTERRUPTED_APPROVED', interrupted);
+    await insertInterruptionDates(tx, interruption.id, 'CONTINUATION_APPROVED', continuation);
+
+    const annualDatesByDate = new Map(
+      (request.annualLeaveDates ?? []).map((date: any) => [formatDateValue(date.leaveDate), date]),
+    );
+    let reversedConsumedDays = 0;
+    for (const selection of interrupted) {
+      const date: any = annualDatesByDate.get(selection.date);
+      if (date.utilizationStatus === 'CONSUMED') reversedConsumedDays += selection.dayValue;
+      await tx.update(annualLeaveRequestDates).set({
+        utilizationStatus: 'INTERRUPTED',
+        updatedAt: new Date(),
+      } as any).where(eq(annualLeaveRequestDates.id, date.id));
+    }
+
+    await tx.insert(annualLeaveRequestDates).values(continuation.map((selection) => ({
+      leaveRequestId: request.id,
+      employeeId: request.employeeId,
+      leaveDate: selection.date,
+      requestedDayValue: fixed(selection.dayValue),
+      approvedDayValue: fixed(selection.dayValue),
+      status: 'APPROVED',
+      source: 'CONTINUATION',
+      utilizationStatus: selection.date < today() ? 'CONSUMED' : 'SCHEDULED',
+    })) as any);
+
+    if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
+    const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
+    if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
+    if (reversedConsumedDays > 0) {
+      if (numeric(balance.used) < reversedConsumedDays) throw new Error('Consumed leave balance is inconsistent');
+      const [updatedBalance] = await tx.update(leaveBalances).set({
+        used: sql`${leaveBalances.used} - ${reversedConsumedDays}`,
+        reserved: sql`${leaveBalances.reserved} + ${reversedConsumedDays}`,
+        updatedBy: input.reviewedBy,
+        updatedAt: new Date(),
+      } as any).where(and(
+        eq(leaveBalances.id, balance.id),
+        gte(leaveBalances.used, fixed(reversedConsumedDays)),
+      )).returning();
+      if (!updatedBalance) throw new Error('Consumed leave balance is inconsistent');
+      await createBalanceTransaction(tx, updatedBalance, 'REVERSAL', reversedConsumedDays, input.reviewedBy, 'Consumed leave reversed due to approved recall', request.id);
+    }
+
+    const allDates = [...(request.annualLeaveDates ?? []).map((date: any) => formatDateValue(date.leaveDate)), ...continuation.map((date) => date.date)].sort();
+    await tx.update(leaveRequests).set({
+      startDate: allDates[0],
+      endDate: allDates[allDates.length - 1],
+      updatedAt: new Date(),
+    } as any).where(eq(leaveRequests.id, request.id));
+    const [reviewedInterruption] = await tx.update(leaveInterruptions).set({
+      status: 'APPROVED',
+      actualWorkStartDate: [...interrupted].sort((a, b) => a.date.localeCompare(b.date))[0].date,
+      actualWorkEndDate: [...interrupted].sort((a, b) => b.date.localeCompare(a.date))[0].date,
+      reviewedBy: input.reviewedBy,
+      reviewedAt: new Date(),
+      rejectionReason: null,
+      updatedAt: new Date(),
+    } as any).where(and(
+      eq(leaveInterruptions.id, interruption.id),
+      eq(leaveInterruptions.status, 'PENDING'),
+    )).returning();
+    if (!reviewedInterruption) throw new Error('Leave interruption is already processed');
+    return getLeaveRequestById(request.id, tx);
+  });
 }
 
 async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVisibilityScope) {
@@ -507,6 +812,187 @@ async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVis
   const directReportIds = await getDirectReportIds(viewerEmployee.id);
   const visibleEmployeeIds = new Set([viewerEmployee.id, ...directReportIds]);
   return requests.filter((request) => visibleEmployeeIds.has(request.employeeId));
+}
+
+async function validateInterruptionPattern(
+  request: any,
+  interrupted: AnnualLeaveDateSelection[],
+  continuation: AnnualLeaveDateSelection[],
+  tx: DbClient,
+) {
+  if (interrupted.length === 0 || continuation.length === 0) {
+    throw new Error('Interrupted and continuation dates are required');
+  }
+  const interruptedDays = sumDaySelections(interrupted);
+  const continuationDays = sumDaySelections(continuation);
+  if (interruptedDays !== continuationDays) {
+    throw new Error('Continuation days must exactly replace the interrupted leave days');
+  }
+
+  const annualDatesByDate = new Map(
+    (request.annualLeaveDates ?? []).map((date: any) => [formatDateValue(date.leaveDate), date]),
+  );
+  for (const selection of interrupted) {
+    const date: any = annualDatesByDate.get(selection.date);
+    if (!date || date.status !== 'APPROVED' || !['SCHEDULED', 'CONSUMED'].includes(date.utilizationStatus ?? 'SCHEDULED')) {
+      throw new Error(`Leave date ${selection.date} is not available for interruption`);
+    }
+    if (numeric(date.approvedDayValue) !== selection.dayValue) {
+      throw new Error(`Interrupted day value for ${selection.date} must match the approved day value`);
+    }
+    const payrollReadyRecord = await tx.query.attendanceDailyRecords.findFirst({
+      where: and(
+        eq(attendanceDailyRecords.employeeId, request.employeeId),
+        eq(attendanceDailyRecords.attendanceDate, selection.date),
+        eq(attendanceDailyRecords.status, 'HR_APPROVED'),
+      ),
+      columns: { id: true },
+    });
+    if (payrollReadyRecord) {
+      throw new Error(`Leave date ${selection.date} is already payroll-ready and must be corrected through the attendance adjustment workflow`);
+    }
+  }
+
+  const lastInterruptedDate = [...interrupted].sort((a, b) => b.date.localeCompare(a.date))[0].date;
+  const interruptedDateSet = new Set(interrupted.map((selection) => selection.date));
+  for (const selection of continuation) {
+    if (selection.date <= lastInterruptedDate) {
+      throw new Error('Continuation leave dates must be after the interrupted working period');
+    }
+    if (selection.date < today()) throw new Error('Continuation leave dates cannot be in the past');
+    if (annualDatesByDate.has(selection.date) && !interruptedDateSet.has(selection.date)) {
+      throw new Error(`Continuation date ${selection.date} already exists in the leave utilization pattern`);
+    }
+  }
+  await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, continuation.map((selection) => selection.date), tx);
+  await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, continuation.map((selection) => selection.date), tx);
+}
+
+async function assertNoActiveAnnualLeaveDateOverlap(employeeId: string, dates: string[], tx: DbClient = db) {
+  const overlap = await tx.query.annualLeaveRequestDates.findFirst({
+    where: and(
+      eq(annualLeaveRequestDates.employeeId, employeeId),
+      inArray(annualLeaveRequestDates.leaveDate, dates),
+      or(eq(annualLeaveRequestDates.status, 'PENDING'), eq(annualLeaveRequestDates.status, 'APPROVED')),
+      or(eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'), eq(annualLeaveRequestDates.utilizationStatus, 'CONSUMED')),
+    ),
+    columns: { leaveDate: true },
+  });
+  if (overlap) throw new Error(`Annual leave date ${formatDateValue(overlap.leaveDate)} is already part of another active request`);
+}
+
+function insertInterruptionDates(
+  tx: DbClient,
+  interruptionId: string,
+  kind: string,
+  selections: AnnualLeaveDateSelection[],
+) {
+  return tx.insert(leaveInterruptionDates).values(selections.map((selection) => ({
+    leaveInterruptionId: interruptionId,
+    kind,
+    leaveDate: selection.date,
+    dayValue: fixed(selection.dayValue),
+  })) as any);
+}
+
+async function assertAnnualFiscalYearAllowed(employee: any, fiscalYear: any, tx: DbClient = db) {
+  const activeFiscalYear = await tx.query.leaveFiscalYears.findFirst({
+    where: eq(leaveFiscalYears.isActive, true),
+    columns: { id: true },
+  });
+
+  if (!activeFiscalYear) throw new Error('Active leave fiscal year is required');
+
+  if (employee.employmentType === 'PERMANENT') {
+    if (fiscalYear.id === activeFiscalYear.id) {
+      throw new Error('Permanent employees can request annual leave only from previous fiscal-year balances');
+    }
+    return;
+  }
+
+  if (fiscalYear.id !== activeFiscalYear.id) {
+    throw new Error('Contract and non-permanent employees can request annual leave only from the current fiscal year');
+  }
+}
+
+function normalizeAnnualLeaveDateSelections(
+  selections: Array<{ date: string; dayValue: string | number }> | undefined,
+): AnnualLeaveDateSelection[] {
+  if (!selections?.length) throw new Error('Annual leave dates are required');
+
+  const byDate = new Map<string, { date: string; dayValue: number }>();
+  for (const selection of selections) {
+    assertValidDate(selection.date);
+    if (byDate.has(selection.date)) throw new Error('Annual leave dates must be unique');
+    byDate.set(selection.date, {
+      date: selection.date,
+      dayValue: parseAnnualLeaveDayValue(selection.dayValue, 'dayValue'),
+    });
+  }
+
+  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function resolveAnnualApprovalSelections(
+  request: any,
+  approvedDates: Array<{ date: string; dayValue: string | number }> | undefined,
+): AnnualLeaveDateSelection[] {
+  const requestDates = request.annualLeaveDates ?? [];
+  if (requestDates.length === 0) {
+    if (approvedDates?.length) throw new Error('This annual leave request does not have exact dates to partially approve');
+    return [{ date: request.startDate, dayValue: numeric(request.requestedDays) }];
+  }
+
+  const requestedByDate = new Map(
+    requestDates.map((requestDate: any) => [formatDateValue(requestDate.leaveDate), numeric(requestDate.requestedDayValue)]),
+  );
+
+  const selections = approvedDates?.length
+    ? normalizeAnnualLeaveDateSelections(approvedDates)
+    : requestDates.map((requestDate: any) => ({
+      date: formatDateValue(requestDate.leaveDate),
+      dayValue: numeric(requestDate.requestedDayValue),
+    }));
+
+  for (const selection of selections) {
+    const requestedDayValue = requestedByDate.get(selection.date);
+    if (!requestedDayValue) throw new Error('Approved annual leave dates must be part of the original request');
+    if (selection.dayValue > requestedDayValue) throw new Error('Approved day value cannot exceed requested day value');
+  }
+
+  return selections;
+}
+
+async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, dates: string[], tx: DbClient = db) {
+  if (dates.length === 0) throw new Error('Annual leave dates are required');
+  const sortedDates = [...dates].sort();
+  const workDaysBySchedule = new Map<string, Set<string>>();
+  for (const date of sortedDates) {
+    const assignment = await tx.query.employeeWorkSchedules.findFirst({
+      where: and(
+        eq(employeeWorkSchedules.employeeId, employeeId),
+        eq(employeeWorkSchedules.isActive, true),
+        lte(employeeWorkSchedules.effectiveFrom, date),
+        or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, date)),
+      ),
+      orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom)],
+    });
+    if (!assignment) throw new Error(`Employee work schedule is required for annual leave date ${date}`);
+
+    let workDays = workDaysBySchedule.get(assignment.workScheduleId);
+    if (!workDays) {
+      const days = await tx.select().from(workScheduleDays).where(and(
+        eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
+        eq(workScheduleDays.isActive, true),
+      ));
+      workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => day.dayOfWeek));
+      if (workDays.size === 0) throw new Error('Employee work schedule has no working days configured');
+      workDaysBySchedule.set(assignment.workScheduleId, workDays);
+    }
+    if (!workDays.has(dayOfWeek(new Date(`${date}T00:00:00Z`)))) {
+      throw new Error(`Annual leave date ${date} is not a scheduled working day`);
+    }
+  }
 }
 
 async function ensureKnownLeaveTypes() {
@@ -542,7 +1028,21 @@ async function getLeaveRequestById(id: string, tx: DbClient = db) {
       },
       leaveType: true,
       fiscalYear: true,
+      annualLeaveDates: {
+        orderBy: (table: any, { asc }: any) => [asc(table.leaveDate)],
+      },
+      interruptions: {
+        with: { dates: true },
+        orderBy: (table: any, { desc }: any) => [desc(table.createdAt)],
+      },
     },
+  });
+}
+
+async function getLeaveInterruptionById(id: string, tx: DbClient = db) {
+  return tx.query.leaveInterruptions.findFirst({
+    where: eq(leaveInterruptions.id, id),
+    with: { dates: true },
   });
 }
 
@@ -565,6 +1065,10 @@ async function getLeaveTypeById(id: string, tx: DbClient = db) {
 
 async function getLeaveFiscalYearById(id: string, tx: DbClient = db) {
   return tx.query.leaveFiscalYears.findFirst({ where: eq(leaveFiscalYears.id, id) });
+}
+
+async function getActiveLeaveFiscalYear(tx: DbClient = db) {
+  return tx.query.leaveFiscalYears.findFirst({ where: eq(leaveFiscalYears.isActive, true) });
 }
 
 async function getFiscalYearForDate(value: string, tx: DbClient = db) {
@@ -600,6 +1104,7 @@ async function assertCanReviewRequest(employeeId: string, reviewerUserId: string
     columns: { id: true, role: true },
   });
   if (reviewer?.role?.some((role: string) => ['super_admin', 'admin'].includes(role))) return;
+  if (await userHasPermission(reviewerUserId, 'leave-request-approvals:approve')) return;
 
   const reviewerEmployee = await tx.query.employees.findFirst({
     where: eq(employees.userId, reviewerUserId),
@@ -741,6 +1246,24 @@ function parseDays(value: string | number, fieldName: string) {
   return parsed;
 }
 
+function parseAnnualLeaveDayValue(value: string | number, fieldName: string) {
+  const parsed = parseDays(value, fieldName);
+  if (parsed !== 0.5 && parsed !== 1) throw new Error(`${fieldName} must be 0.50 or 1.00`);
+  return parsed;
+}
+
+function sumDaySelections(selections: AnnualLeaveDateSelection[]) {
+  return selections.reduce((sum, selection) => sum + selection.dayValue, 0);
+}
+
+function assertValidDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Annual leave dates must use YYYY-MM-DD format');
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error('Annual leave dates must be valid dates');
+  }
+}
+
 function numeric(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -752,6 +1275,12 @@ function fixed(value: number) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function yesterday() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }
 
 function formatDateValue(value: unknown) {

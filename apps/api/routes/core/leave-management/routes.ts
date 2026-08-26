@@ -4,6 +4,7 @@ import { ErrorResponseSchema } from '../../../schemas/shared';
 import {
   BulkUpsertLeaveBalancesRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
+  CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
   CreateLeaveRequestRequestSchema,
   CreateLeaveTypeRequestSchema,
@@ -17,6 +18,7 @@ import {
   LeaveTypeResponseSchema,
   LeaveTypesResponseSchema,
   TransferLeaveBalanceRequestSchema,
+  ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
   UpdateLeaveTypeRequestSchema,
   UpsertLeaveBalanceRequestSchema,
@@ -25,6 +27,7 @@ import { openApiApp } from '../../../lib/openapi';
 import {
   bulkUpsertLeaveBalancesHandler,
   changeLeaveRequestStatusHandler,
+  createLeaveInterruptionHandler,
   createLeaveFiscalYearHandler,
   createLeaveRequestHandler,
   createLeaveTypeHandler,
@@ -32,6 +35,7 @@ import {
   getLeaveFiscalYearsHandler,
   getLeaveRequestsHandler,
   getLeaveTypesHandler,
+  reviewLeaveInterruptionHandler,
   setActiveLeaveFiscalYearHandler,
   transferLeaveBalanceHandler,
   updateLeaveFiscalYearHandler,
@@ -170,6 +174,24 @@ export const changeLeaveRequestStatusRoute = createRoute({
   responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Updated leave request' } },
 });
 
+export const createLeaveInterruptionRoute = createRoute({
+  method: 'post',
+  path: '/leave/requests/{id}/interruptions',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Propose an interruption and continuation pattern for approved annual leave',
+  request: { params: uuidParam, body: { content: { 'application/json': { schema: CreateLeaveInterruptionRequestSchema } } } },
+  responses: { 201: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Created leave interruption proposal' } },
+});
+
+export const reviewLeaveInterruptionRoute = createRoute({
+  method: 'post',
+  path: '/leave/interruptions/{id}/review',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Approve, amend, or reject a leave interruption proposal',
+  request: { params: uuidParam, body: { content: { 'application/json': { schema: ReviewLeaveInterruptionRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Reviewed leave interruption' } },
+});
+
 leaveManagementApp.get('/leave/fiscal-years', getLeaveFiscalYearsHandler);
 leaveManagementApp.post('/leave/fiscal-years', createLeaveFiscalYearHandler);
 leaveManagementApp.put('/leave/fiscal-years/:id', updateLeaveFiscalYearHandler);
@@ -184,6 +206,8 @@ leaveManagementApp.post('/leave/balances/transfer', transferLeaveBalanceHandler)
 leaveManagementApp.get('/leave/requests', getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', createLeaveRequestHandler);
 leaveManagementApp.post('/leave/requests/:id/status', changeLeaveRequestStatusHandler);
+leaveManagementApp.post('/leave/requests/:id/interruptions', createLeaveInterruptionHandler);
+leaveManagementApp.post('/leave/interruptions/:id/review', reviewLeaveInterruptionHandler);
 
 openApiApp
   .openapi(getLeaveFiscalYearsRoute, getLeaveFiscalYearsHandler as any)
@@ -200,5 +224,8 @@ openApiApp
   .openapi(getLeaveRequestsRoute, getLeaveRequestsHandler as any)
   .openapi(createLeaveRequestRoute, createLeaveRequestHandler as any)
   .openapi(changeLeaveRequestStatusRoute, changeLeaveRequestStatusHandler as any);
+openApiApp
+  .openapi(createLeaveInterruptionRoute, createLeaveInterruptionHandler as any)
+  .openapi(reviewLeaveInterruptionRoute, reviewLeaveInterruptionHandler as any);
 
 export default leaveManagementApp;

@@ -36,13 +36,16 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { AnnualLeaveApprovalDialog } from '@/components/leave/annual-leave-approval-dialog';
+import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
 import {
   useChangeLeaveRequestStatus,
   useLeaveBalances,
   useLeaveRequests,
+  useReviewLeaveInterruption,
 } from '@/data/hooks/core.hooks';
 import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
-import type { LeaveBalance, LeaveRequest } from '@/data/types/core.types';
+import type { LeaveBalance, LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
@@ -70,11 +73,15 @@ export function LeaveRequestApprovalsPage() {
   const session = useSession();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
+  const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
+  const [interruptionReviewTarget, setInterruptionReviewTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
+  const [interruptionRejectTarget, setInterruptionRejectTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
   const leaveBalancesQuery = useLeaveBalances();
   const leaveRequestsQuery = useLeaveRequests();
   const changeStatus = useChangeLeaveRequestStatus();
+  const reviewInterruption = useReviewLeaveInterruption();
 
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
   const balances = leaveBalancesQuery.data?.leaveBalances ?? [];
@@ -86,14 +93,22 @@ export function LeaveRequestApprovalsPage() {
 
   const filteredRequests = useMemo(() => {
     if (statusFilter === 'ALL') return requests;
-    return requests.filter((request) => request.status === statusFilter);
+    return requests.filter((request) => request.status === statusFilter || (
+      statusFilter === 'PENDING' && request.interruptions?.some((interruption) => interruption.status === 'PENDING')
+    ));
   }, [statusFilter, requests]);
 
-  const pendingCount = useMemo(() => requests.filter((request) => request.status === 'PENDING').length, [requests]);
+  const pendingCount = useMemo(() => requests.filter((request) => request.status === 'PENDING').length
+    + requests.reduce((count, request) => count + (request.interruptions?.filter((interruption) => interruption.status === 'PENDING').length ?? 0), 0), [requests]);
   const approvedCount = useMemo(() => requests.filter((request) => request.status === 'APPROVED').length, [requests]);
   const rejectedCount = useMemo(() => requests.filter((request) => request.status === 'REJECTED').length, [requests]);
 
   const approveRequest = async (request: LeaveRequest) => {
+    if (isAnnualRequest(request) && request.annualLeaveDates?.length) {
+      setApprovalTarget(request);
+      return;
+    }
+
     try {
       await changeStatus.mutateAsync({
         leaveRequestId: request.id,
@@ -102,6 +117,31 @@ export function LeaveRequestApprovalsPage() {
         approvedAt: new Date().toISOString(),
       });
 
+      notifications.show({
+        title: common('success'),
+        message: t('leaveRequestApproved'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const submitAnnualApproval = async (request: LeaveRequest, approvedDates: Array<{ date: string; dayValue: string }>) => {
+    try {
+      await changeStatus.mutateAsync({
+        leaveRequestId: request.id,
+        status: 'APPROVED',
+        approvedBy: session.data?.user?.id ?? undefined,
+        approvedAt: new Date().toISOString(),
+        approvedDates,
+      });
+
+      setApprovalTarget(null);
       notifications.show({
         title: common('success'),
         message: t('leaveRequestApproved'),
@@ -148,6 +188,44 @@ export function LeaveRequestApprovalsPage() {
         message: error instanceof Error ? error.message : t('saveFailed'),
         color: 'red',
       });
+    }
+  };
+
+  const submitInterruptionApproval = async (payload: {
+    interruptedDates: Array<{ date: string; dayValue: string }>;
+    continuationDates: Array<{ date: string; dayValue: string }>;
+  }) => {
+    if (!interruptionReviewTarget) return;
+    try {
+      await reviewInterruption.mutateAsync({
+        leaveInterruptionId: interruptionReviewTarget.interruption.id,
+        status: 'APPROVED',
+        reviewedBy: session.data?.user?.id ?? null,
+        interruptedDates: payload.interruptedDates,
+        continuationDates: payload.continuationDates,
+      });
+      setInterruptionReviewTarget(null);
+      notifications.show({ title: common('success'), message: t('leaveInterruptionApproved'), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  };
+
+  const submitInterruptionRejection = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!interruptionRejectTarget) return;
+    try {
+      await reviewInterruption.mutateAsync({
+        leaveInterruptionId: interruptionRejectTarget.interruption.id,
+        status: 'REJECTED',
+        reviewedBy: session.data?.user?.id ?? null,
+        rejectionReason: rejectionReason.trim(),
+      });
+      setInterruptionRejectTarget(null);
+      setRejectionReason('');
+      notifications.show({ title: common('success'), message: t('leaveInterruptionRejected'), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
     }
   };
 
@@ -205,6 +283,7 @@ export function LeaveRequestApprovalsPage() {
                 <TableBody>
                   {filteredRequests.map((request) => {
                     const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+                    const pendingInterruption = request.interruptions?.find((interruption) => interruption.status === 'PENDING') ?? null;
 
                     return (
                       <TableRow key={request.id}>
@@ -217,7 +296,18 @@ export function LeaveRequestApprovalsPage() {
                         <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
                         <TableCell>{formatDate(request.startDate)}</TableCell>
                         <TableCell>{formatDate(request.endDate)}</TableCell>
-                        <TableCell>{request.requestedDays}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p>{request.requestedDays}</p>
+                            {request.status === 'APPROVED' ? (
+                              <div className="text-xs text-muted-foreground">
+                                <p>{t('approvedDays')}: {request.approvedDays}{request.isPartialApproval ? ` · ${t('partialApproval')}` : ''}</p>
+                                {isAnnualRequest(request) ? <p>{t('consumedDays')}: {request.consumedDays} · {t('remainingDays')}: {request.remainingDays}</p> : null}
+                                {pendingInterruption ? <p>{t('interruption')}: {t('pendingRequests')}</p> : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL' ? (
                             <BalanceCell balance={request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) ?? null : null} />
@@ -247,6 +337,15 @@ export function LeaveRequestApprovalsPage() {
                               >
                                 <X className="size-4" />
                                 {t('reject')}
+                              </Button>
+                            </div>
+                          ) : pendingInterruption && pendingInterruption.requestedBy !== session.data?.user?.id && canReviewRequests ? (
+                            <div className="flex justify-end gap-2">
+                              <Button type="button" size="sm" onClick={() => setInterruptionReviewTarget({ request, interruption: pendingInterruption })} disabled={reviewInterruption.isPending}>
+                                <Check className="size-4" />{t('reviewAmendment')}
+                              </Button>
+                              <Button type="button" size="sm" variant="outline" onClick={() => { setInterruptionRejectTarget({ request, interruption: pendingInterruption }); setRejectionReason(''); }} disabled={reviewInterruption.isPending}>
+                                <X className="size-4" />{t('reject')}
                               </Button>
                             </div>
                           ) : (
@@ -282,15 +381,49 @@ export function LeaveRequestApprovalsPage() {
               <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>
                 {common('cancel')}
               </Button>
-              <Button type="submit" disabled={changeStatus.isPending}>
+              <Button type="submit" disabled={changeStatus.isPending || !rejectionReason.trim()}>
                 {changeStatus.isPending ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <AnnualLeaveApprovalDialog
+        request={approvalTarget}
+        open={Boolean(approvalTarget)}
+        isSaving={changeStatus.isPending}
+        onOpenChange={(open) => !open && setApprovalTarget(null)}
+        onApprove={submitAnnualApproval}
+      />
+
+      <LeaveInterruptionDialog
+        request={interruptionReviewTarget?.request ?? null}
+        interruption={interruptionReviewTarget?.interruption ?? null}
+        open={Boolean(interruptionReviewTarget)}
+        isSaving={reviewInterruption.isPending}
+        onOpenChange={(open) => !open && setInterruptionReviewTarget(null)}
+        onSubmit={submitInterruptionApproval}
+      />
+
+      <Dialog open={Boolean(interruptionRejectTarget)} onOpenChange={(open) => !open && setInterruptionRejectTarget(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{t('rejectLeaveInterruption')}</DialogTitle><DialogDescription>{t('rejectionReason')}</DialogDescription></DialogHeader>
+          <form className="space-y-4" onSubmit={submitInterruptionRejection}>
+            <Textarea value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} placeholder={t('rejectionReason')} rows={4} />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setInterruptionRejectTarget(null)}>{common('cancel')}</Button>
+              <Button type="submit" disabled={reviewInterruption.isPending || !rejectionReason.trim()}>{reviewInterruption.isPending ? t('saving') : common('save')}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function isAnnualRequest(request: LeaveRequest) {
+  return request.leaveType?.code?.trim().toUpperCase() === 'ANNUAL';
 }
 
 function Summary({ label, value }: { label: string; value: number }) {

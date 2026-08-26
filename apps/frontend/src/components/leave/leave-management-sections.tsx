@@ -561,6 +561,7 @@ export function LeaveBalancesSection() {
                       <TableHead>{t('openingBalance')}</TableHead>
                       <TableHead>{t('transferredIn')}</TableHead>
                       <TableHead>{t('usedBalance')}</TableHead>
+                      <TableHead>{t('reservedBalance')}</TableHead>
                       <TableHead>{t('availableBalance')}</TableHead>
                       <TableHead className="text-right">{t('actions')}</TableHead>
                     </TableRow>
@@ -582,6 +583,7 @@ export function LeaveBalancesSection() {
                           <TableCell>{balance?.opening ?? '-'}</TableCell>
                           <TableCell>{balance?.transferredIn ?? '0'}</TableCell>
                           <TableCell>{balance?.used ?? '0'}</TableCell>
+                          <TableCell>{balance?.reserved ?? '0'}</TableCell>
                           <TableCell>{balance?.available ?? '-'}</TableCell>
                           <TableCell className="text-right">
                             <Button type="button" size="sm" variant="outline" onClick={() => openBalanceDialog(employee, balance)}>
@@ -770,6 +772,7 @@ export function CarryForwardSection() {
                     <TableHead>{t('fromFiscalYear')}</TableHead>
                     <TableHead>{t('openingBalance')}</TableHead>
                     <TableHead>{t('usedBalance')}</TableHead>
+                    <TableHead>{t('reservedBalance')}</TableHead>
                     <TableHead>{t('availableBalance')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
@@ -786,6 +789,7 @@ export function CarryForwardSection() {
                       <TableCell>{balance.fiscalYear?.name ?? '-'}</TableCell>
                       <TableCell>{balance.opening}</TableCell>
                       <TableCell>{balance.used}</TableCell>
+                      <TableCell>{balance.reserved}</TableCell>
                       <TableCell>{balance.available}</TableCell>
                       <TableCell className="text-right">
                         <Button type="button" size="sm" variant="outline" onClick={() => openTransferDialog(balance)}>

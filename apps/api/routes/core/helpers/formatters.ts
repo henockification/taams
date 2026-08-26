@@ -468,6 +468,7 @@ export function formatLeaveBalance(balance: any) {
     employmentTypeSnapshot: balance.employmentTypeSnapshot,
     opening: balance.opening ?? '0.00',
     transferredIn: balance.transferredIn ?? '0.00',
+    reserved: balance.reserved ?? '0.00',
     used: balance.used ?? '0.00',
     available: balance.available ?? '0.00',
     createdBy: balance.createdBy ?? null,
@@ -496,6 +497,14 @@ export function formatLeaveBalanceTransaction(transaction: any) {
 }
 
 export function formatLeaveRequest(request: any) {
+  const annualLeaveDates = (request.annualLeaveDates ?? []).map((date: any) => formatAnnualLeaveRequestDate(date));
+  const approvedDays = calculateApprovedLeaveDays(request, annualLeaveDates);
+  const consumedDays = sumUtilizationDays(annualLeaveDates, 'CONSUMED');
+  const scheduledDays = sumUtilizationDays(annualLeaveDates, 'SCHEDULED');
+  const interruptedDays = sumUtilizationDays(annualLeaveDates, 'INTERRUPTED');
+  const remainingDays = Math.max(0, Number(approvedDays) - Number(consumedDays)).toFixed(2);
+  const requestedDays = String(request.requestedDays);
+
   return {
     id: request.id,
     employeeId: request.employeeId,
@@ -503,7 +512,13 @@ export function formatLeaveRequest(request: any) {
     fiscalYearId: request.fiscalYearId ?? null,
     startDate: formatDate(request.startDate),
     endDate: formatDate(request.endDate),
-    requestedDays: request.requestedDays,
+    requestedDays,
+    approvedDays,
+    consumedDays,
+    scheduledDays,
+    interruptedDays,
+    remainingDays,
+    isPartialApproval: request.status === 'APPROVED' && Number(approvedDays) < Number(requestedDays),
     reason: request.reason,
     status: request.status,
     requestedBy: request.requestedBy,
@@ -517,6 +532,67 @@ export function formatLeaveRequest(request: any) {
     employee: request.employee ? formatEmployee(request.employee) : null,
     leaveType: request.leaveType ? formatLeaveType(request.leaveType) : null,
     fiscalYear: request.fiscalYear ? formatLeaveFiscalYear(request.fiscalYear) : null,
+    annualLeaveDates,
+    interruptions: (request.interruptions ?? []).map(formatLeaveInterruption),
+  };
+}
+
+function formatAnnualLeaveRequestDate(date: any) {
+  return {
+    id: date.id,
+    leaveRequestId: date.leaveRequestId,
+    date: formatDate(date.leaveDate),
+    requestedDayValue: date.requestedDayValue,
+    approvedDayValue: date.approvedDayValue ?? null,
+    status: date.status,
+    source: date.source ?? 'ORIGINAL',
+    utilizationStatus: date.utilizationStatus ?? 'SCHEDULED',
+    createdAt: formatTimestamp(date.createdAt),
+    updatedAt: formatTimestamp(date.updatedAt),
+  };
+}
+
+function calculateApprovedLeaveDays(request: any, annualLeaveDates: Array<{ approvedDayValue: string | null; source: string }>) {
+  if (request.status !== 'APPROVED') return '0.00';
+  if (annualLeaveDates.length === 0) return String(request.requestedDays);
+
+  const total = annualLeaveDates
+    .filter((date) => date.source === 'ORIGINAL')
+    .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
+  return total.toFixed(2);
+}
+
+function sumUtilizationDays(annualLeaveDates: Array<{ approvedDayValue: string | null; status: string; utilizationStatus: string }>, utilizationStatus: string) {
+  return annualLeaveDates
+    .filter((date) => date.status === 'APPROVED' && date.utilizationStatus === utilizationStatus)
+    .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0)
+    .toFixed(2);
+}
+
+function formatLeaveInterruption(interruption: any) {
+  return {
+    id: interruption.id,
+    leaveRequestId: interruption.leaveRequestId,
+    reason: interruption.reason,
+    recallAuthority: interruption.recallAuthority,
+    authorityUserId: interruption.authorityUserId ?? null,
+    actualWorkStartDate: formatDate(interruption.actualWorkStartDate),
+    actualWorkEndDate: formatDate(interruption.actualWorkEndDate),
+    status: interruption.status,
+    requestedBy: interruption.requestedBy,
+    reviewedBy: interruption.reviewedBy ?? null,
+    reviewedAt: formatTimestamp(interruption.reviewedAt),
+    rejectionReason: interruption.rejectionReason ?? null,
+    createdAt: formatTimestamp(interruption.createdAt),
+    updatedAt: formatTimestamp(interruption.updatedAt),
+    dates: (interruption.dates ?? []).map((date: any) => ({
+      id: date.id,
+      leaveInterruptionId: date.leaveInterruptionId,
+      kind: date.kind,
+      date: formatDate(date.leaveDate),
+      dayValue: date.dayValue,
+      createdAt: formatTimestamp(date.createdAt),
+    })),
   };
 }
 

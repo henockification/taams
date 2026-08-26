@@ -146,6 +146,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employmentType', label: 'Employment type' },
       { key: 'opening', label: 'Opening' },
       { key: 'transferredIn', label: 'Transferred in' },
+      { key: 'reserved', label: 'Reserved' },
       { key: 'used', label: 'Used' },
       { key: 'available', label: 'Available' },
     ],
@@ -163,6 +164,10 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'startDate', label: 'Start date' },
       { key: 'endDate', label: 'End date' },
       { key: 'requestedDays', label: 'Days' },
+      { key: 'approvedDays', label: 'Approved days' },
+      { key: 'consumedDays', label: 'Consumed days' },
+      { key: 'interruptedDays', label: 'Interrupted days' },
+      { key: 'remainingDays', label: 'Remaining days' },
       { key: 'status', label: 'Status' },
     ],
     buildRows: buildLeaveRequestRows,
@@ -442,6 +447,7 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
       employmentType: record.employmentTypeSnapshot,
       opening: record.opening,
       transferredIn: record.transferredIn,
+      reserved: record.reserved,
       used: record.used,
       available: record.available,
     }));
@@ -460,13 +466,24 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       employee: { with: { department: true, position: true } },
       leaveType: true,
       fiscalYear: true,
+      annualLeaveDates: true,
     },
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
   return records
     .filter((record) => matchesEmployeeFilters(record.employee, query, scope))
-    .map((record) => ({
+    .map((record) => {
+      const originalApproved = record.annualLeaveDates
+        .filter((date) => date.source === 'ORIGINAL' && date.status === 'APPROVED')
+        .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
+      const consumed = record.annualLeaveDates
+        .filter((date) => date.status === 'APPROVED' && date.utilizationStatus === 'CONSUMED')
+        .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
+      const interrupted = record.annualLeaveDates
+        .filter((date) => date.status === 'APPROVED' && date.utilizationStatus === 'INTERRUPTED')
+        .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
+      return {
       createdAt: formatDateTime(record.createdAt),
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
@@ -475,8 +492,13 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       startDate: record.startDate,
       endDate: record.endDate,
       requestedDays: record.requestedDays,
+      approvedDays: originalApproved.toFixed(2),
+      consumedDays: consumed.toFixed(2),
+      interruptedDays: interrupted.toFixed(2),
+      remainingDays: Math.max(0, originalApproved - consumed).toFixed(2),
       status: record.status,
-    }));
+      };
+    });
 }
 
 async function buildEmployeeRows({ query, scope }: ReportInput) {

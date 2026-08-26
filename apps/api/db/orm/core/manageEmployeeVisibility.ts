@@ -15,7 +15,6 @@ const HR_PERMISSION_RESOURCES = new Set([
   'leave-transfer',
   'leave-fiscal-years',
   'leave-types',
-  'leave-request-approvals',
   'biometric-exemptions',
   'attendance-punches',
   'work-schedules',

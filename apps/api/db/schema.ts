@@ -601,6 +601,7 @@ export const leaveBalances = pgTable('leave_balances', {
   employmentTypeSnapshot: varchar('employment_type_snapshot', { length: 30 }).notNull(),
   opening: numeric('opening', { precision: 8, scale: 2 }).notNull().default('0'),
   transferredIn: numeric('transferred_in', { precision: 8, scale: 2 }).notNull().default('0'),
+  reserved: numeric('reserved', { precision: 8, scale: 2 }).notNull().default('0'),
   used: numeric('used', { precision: 8, scale: 2 }).notNull().default('0'),
   available: numeric('available', { precision: 8, scale: 2 }).notNull().default('0'),
   createdBy: text('created_by').references(() => user.id),
@@ -612,6 +613,7 @@ export const leaveBalances = pgTable('leave_balances', {
   employmentTypeSnapshotCheck: check('chk_leave_balance_employment_type', sql`${table.employmentTypeSnapshot} IN ('PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY')`),
   nonNegativeOpeningCheck: check('chk_leave_balance_opening_nonnegative', sql`${table.opening} >= 0`),
   nonNegativeTransferredInCheck: check('chk_leave_balance_transferred_in_nonnegative', sql`${table.transferredIn} >= 0`),
+  nonNegativeReservedCheck: check('chk_leave_balance_reserved_nonnegative', sql`${table.reserved} >= 0`),
   nonNegativeUsedCheck: check('chk_leave_balance_used_nonnegative', sql`${table.used} >= 0`),
   nonNegativeAvailableCheck: check('chk_leave_balance_available_nonnegative', sql`${table.available} >= 0`),
 }));
@@ -629,7 +631,7 @@ export const leaveBalanceTransactions = pgTable('leave_balance_transactions', {
   createdBy: text('created_by').references(() => user.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
-  transactionTypeCheck: check('chk_leave_balance_transaction_type', sql`${table.type} IN ('INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'REVERSAL', 'ADJUSTMENT')`),
+  transactionTypeCheck: check('chk_leave_balance_transaction_type', sql`${table.type} IN ('INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'RESERVATION', 'CONSUMPTION', 'REVERSAL', 'ADJUSTMENT')`),
 }));
 
 export const leaveRequests = pgTable('leave_requests', {
@@ -654,6 +656,64 @@ export const leaveRequests = pgTable('leave_requests', {
   leaveRequestDateRangeCheck: check('chk_leave_request_date_range', sql`${table.startDate} <= ${table.endDate}`),
   leaveRequestStatusCheck: check('chk_leave_request_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
   leaveRequestedDaysPositiveCheck: check('chk_leave_request_days_positive', sql`${table.requestedDays} > 0`),
+}));
+
+export const annualLeaveRequestDates = pgTable('annual_leave_request_dates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leaveRequestId: uuid('leave_request_id').notNull().references(() => leaveRequests.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  leaveDate: date('leave_date').notNull(),
+  requestedDayValue: numeric('requested_day_value', { precision: 4, scale: 2 }).notNull(),
+  approvedDayValue: numeric('approved_day_value', { precision: 4, scale: 2 }),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  source: varchar('source', { length: 30 }).notNull().default('ORIGINAL'),
+  utilizationStatus: varchar('utilization_status', { length: 30 }).notNull().default('SCHEDULED'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  requestDateUnique: unique('annual_leave_request_dates_request_date_unique').on(table.leaveRequestId, table.leaveDate),
+  activeEmployeeDateUnique: uniqueIndex('annual_leave_request_dates_active_employee_date_unique')
+    .on(table.employeeId, table.leaveDate)
+    .where(sql`${table.status} IN ('PENDING', 'APPROVED') AND ${table.utilizationStatus} NOT IN ('INTERRUPTED', 'CANCELLED')`),
+  requestedDayValueCheck: check('chk_annual_leave_request_dates_requested_value', sql`${table.requestedDayValue} IN (0.50, 1.00)`),
+  approvedDayValueCheck: check('chk_annual_leave_request_dates_approved_value', sql`${table.approvedDayValue} IS NULL OR ${table.approvedDayValue} IN (0.00, 0.50, 1.00)`),
+  statusCheck: check('chk_annual_leave_request_dates_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  sourceCheck: check('chk_annual_leave_request_dates_source', sql`${table.source} IN ('ORIGINAL', 'CONTINUATION')`),
+  utilizationStatusCheck: check('chk_annual_leave_request_dates_utilization_status', sql`${table.utilizationStatus} IN ('SCHEDULED', 'CONSUMED', 'INTERRUPTED', 'CANCELLED')`),
+}));
+
+export const leaveInterruptions = pgTable('leave_interruptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leaveRequestId: uuid('leave_request_id').notNull().references(() => leaveRequests.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  recallAuthority: text('recall_authority').notNull(),
+  authorityUserId: text('authority_user_id').references(() => user.id),
+  actualWorkStartDate: date('actual_work_start_date').notNull(),
+  actualWorkEndDate: date('actual_work_end_date').notNull(),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  requestedBy: text('requested_by').notNull().references(() => user.id),
+  reviewedBy: text('reviewed_by').references(() => user.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: false }),
+  rejectionReason: text('rejection_reason'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  actualWorkDateRangeCheck: check('chk_leave_interruption_actual_work_range', sql`${table.actualWorkStartDate} <= ${table.actualWorkEndDate}`),
+  statusCheck: check('chk_leave_interruption_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  requestStatusIdx: index('idx_leave_interruptions_request_status').on(table.leaveRequestId, table.status),
+}));
+
+export const leaveInterruptionDates = pgTable('leave_interruption_dates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  leaveInterruptionId: uuid('leave_interruption_id').notNull().references(() => leaveInterruptions.id, { onDelete: 'cascade' }),
+  kind: varchar('kind', { length: 40 }).notNull(),
+  leaveDate: date('leave_date').notNull(),
+  dayValue: numeric('day_value', { precision: 4, scale: 2 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  interruptionKindDateUnique: unique('leave_interruption_dates_kind_date_unique').on(table.leaveInterruptionId, table.kind, table.leaveDate),
+  kindCheck: check('chk_leave_interruption_dates_kind', sql`${table.kind} IN ('INTERRUPTED_PROPOSED', 'CONTINUATION_PROPOSED', 'INTERRUPTED_APPROVED', 'CONTINUATION_APPROVED')`),
+  dayValueCheck: check('chk_leave_interruption_dates_day_value', sql`${table.dayValue} IN (0.50, 1.00)`),
 }));
 
 export const userRelations = relations(user, ({ one, many }) => ({
@@ -1026,7 +1086,7 @@ export const leaveBalanceTransactionsRelations = relations(leaveBalanceTransacti
   }),
 }));
 
-export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
+export const leaveRequestsRelations = relations(leaveRequests, ({ one, many }) => ({
   employee: one(employees, {
     fields: [leaveRequests.employeeId],
     references: [employees.id],
@@ -1053,6 +1113,34 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
     fields: [leaveRequests.rejectedBy],
     references: [user.id],
     relationName: 'leaveRequestRejecter',
+  }),
+  annualLeaveDates: many(annualLeaveRequestDates),
+  interruptions: many(leaveInterruptions),
+}));
+
+export const annualLeaveRequestDatesRelations = relations(annualLeaveRequestDates, ({ one }) => ({
+  leaveRequest: one(leaveRequests, {
+    fields: [annualLeaveRequestDates.leaveRequestId],
+    references: [leaveRequests.id],
+  }),
+  employee: one(employees, {
+    fields: [annualLeaveRequestDates.employeeId],
+    references: [employees.id],
+  }),
+}));
+
+export const leaveInterruptionsRelations = relations(leaveInterruptions, ({ one, many }) => ({
+  leaveRequest: one(leaveRequests, {
+    fields: [leaveInterruptions.leaveRequestId],
+    references: [leaveRequests.id],
+  }),
+  dates: many(leaveInterruptionDates),
+}));
+
+export const leaveInterruptionDatesRelations = relations(leaveInterruptionDates, ({ one }) => ({
+  interruption: one(leaveInterruptions, {
+    fields: [leaveInterruptionDates.leaveInterruptionId],
+    references: [leaveInterruptions.id],
   }),
 }));
 
@@ -1090,4 +1178,7 @@ export const allTables = {
   leaveBalances,
   leaveBalanceTransactions,
   leaveRequests,
+  annualLeaveRequestDates,
+  leaveInterruptions,
+  leaveInterruptionDates,
 };

@@ -893,7 +893,8 @@ export type ManualPunchRequestActionResponse = { success: boolean; manualPunchRe
 export type OvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
 export type OvertimeRequestResponse = { success: boolean; overtimeRequest: OvertimeRequest };
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
-export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'REVERSAL' | 'ADJUSTMENT';
+export type AnnualLeaveRequestDateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'RESERVATION' | 'CONSUMPTION' | 'REVERSAL' | 'ADJUSTMENT';
 export type LeaveFiscalYear = {
   id: string;
   name: string;
@@ -923,6 +924,7 @@ export type LeaveBalance = {
   employmentTypeSnapshot: EmploymentType;
   opening: string;
   transferredIn: string;
+  reserved: string;
   used: string;
   available: string;
   createdBy: string | null;
@@ -945,6 +947,43 @@ export type LeaveBalanceTransaction = {
   createdBy: string | null;
   createdAt: string;
 };
+export type AnnualLeaveRequestDate = {
+  id: string;
+  leaveRequestId: string;
+  date: string;
+  requestedDayValue: string;
+  approvedDayValue: string | null;
+  status: AnnualLeaveRequestDateStatus;
+  source: 'ORIGINAL' | 'CONTINUATION';
+  utilizationStatus: 'SCHEDULED' | 'CONSUMED' | 'INTERRUPTED' | 'CANCELLED';
+  createdAt: string;
+  updatedAt: string;
+};
+export type LeaveInterruptionDate = {
+  id: string;
+  leaveInterruptionId: string;
+  kind: 'INTERRUPTED_PROPOSED' | 'CONTINUATION_PROPOSED' | 'INTERRUPTED_APPROVED' | 'CONTINUATION_APPROVED';
+  date: string;
+  dayValue: string;
+  createdAt: string;
+};
+export type LeaveInterruption = {
+  id: string;
+  leaveRequestId: string;
+  reason: string;
+  recallAuthority: string;
+  authorityUserId: string | null;
+  actualWorkStartDate: string;
+  actualWorkEndDate: string;
+  status: LeaveRequestStatus;
+  requestedBy: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dates: LeaveInterruptionDate[];
+};
 export type LeaveRequest = {
   id: string;
   employeeId: string;
@@ -953,6 +992,12 @@ export type LeaveRequest = {
   startDate: string;
   endDate: string;
   requestedDays: string;
+  approvedDays: string;
+  consumedDays: string;
+  scheduledDays: string;
+  interruptedDays: string;
+  remainingDays: string;
+  isPartialApproval: boolean;
   reason: string;
   status: LeaveRequestStatus;
   requestedBy: string;
@@ -966,6 +1011,8 @@ export type LeaveRequest = {
   employee?: Employee | null;
   leaveType?: LeaveType | null;
   fiscalYear?: LeaveFiscalYear | null;
+  annualLeaveDates?: AnnualLeaveRequestDate[];
+  interruptions?: LeaveInterruption[];
 };
 export type LeaveFiscalYearsResponse = { success: boolean; leaveFiscalYears: LeaveFiscalYear[] };
 export type LeaveFiscalYearResponse = { success: boolean; leaveFiscalYear: LeaveFiscalYear };
@@ -1296,8 +1343,9 @@ export type CreateLeaveRequestInput = {
   employeeId: string;
   leaveTypeId: string;
   fiscalYearId?: string | null;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
+  annualLeaveDates?: Array<{ date: string; dayValue: string | number }>;
   reason: string;
   requestedBy?: string | null;
 };
@@ -1307,7 +1355,25 @@ export type ChangeLeaveRequestStatusInput = {
   status: Exclude<LeaveRequestStatus, 'PENDING'>;
   approvedBy?: string | null;
   approvedAt?: string | null;
+  approvedDates?: Array<{ date: string; dayValue: string | number }>;
   rejectedBy?: string | null;
   rejectedAt?: string | null;
+  rejectionReason?: string | null;
+};
+export type CreateLeaveInterruptionInput = {
+  leaveRequestId: string;
+  interruptedDates: Array<{ date: string; dayValue: string | number }>;
+  continuationDates: Array<{ date: string; dayValue: string | number }>;
+  reason: string;
+  recallAuthority: string;
+  authorityUserId?: string | null;
+  requestedBy?: string | null;
+};
+export type ReviewLeaveInterruptionInput = {
+  leaveInterruptionId: string;
+  status: 'APPROVED' | 'REJECTED';
+  reviewedBy?: string | null;
+  interruptedDates?: Array<{ date: string; dayValue: string | number }>;
+  continuationDates?: Array<{ date: string; dayValue: string | number }>;
   rejectionReason?: string | null;
 };

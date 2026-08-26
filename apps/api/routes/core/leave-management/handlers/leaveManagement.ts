@@ -2,10 +2,12 @@ import { Context } from 'hono';
 import {
   BulkUpsertLeaveBalancesRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
+  CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
   CreateLeaveRequestRequestSchema,
   CreateLeaveTypeRequestSchema,
   TransferLeaveBalanceRequestSchema,
+  ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
   UpdateLeaveTypeRequestSchema,
   UpsertLeaveBalanceRequestSchema,
@@ -13,6 +15,7 @@ import {
 import {
   bulkUpsertLeaveBalancesScoped,
   changeLeaveRequestStatusScoped,
+  createLeaveInterruptionScoped,
   createLeaveFiscalYear,
   createLeaveRequest,
   createLeaveType,
@@ -20,6 +23,7 @@ import {
   getLeaveFiscalYears,
   getLeaveRequests,
   getLeaveTypes,
+  reviewLeaveInterruptionScoped,
   setActiveLeaveFiscalYear,
   transferLeaveBalanceScoped,
   updateLeaveFiscalYear,
@@ -255,6 +259,44 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request status');
+  }
+}
+
+export async function createLeaveInterruptionHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const parsed = CreateLeaveInterruptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
+    if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
+    const leaveRequest = await createLeaveInterruptionScoped({
+      leaveRequestId: c.req.param('id'),
+      ...parsed.data,
+      requestedBy,
+    }, scope);
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to create leave interruption');
+  }
+}
+
+export async function reviewLeaveInterruptionHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const parsed = ReviewLeaveInterruptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const reviewedBy = session.user.id ?? c.user?.id ?? parsed.data.reviewedBy;
+    if (!reviewedBy) return validationErrorResponse(c, 'reviewedBy is required');
+    const leaveRequest = await reviewLeaveInterruptionScoped({
+      leaveInterruptionId: c.req.param('id'),
+      ...parsed.data,
+      reviewedBy,
+    }, scope);
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to review leave interruption');
   }
 }
 

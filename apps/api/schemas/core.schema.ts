@@ -707,7 +707,7 @@ export const UpdateAttendanceDailyRecordPayrollRequestSchema = z.object({
 });
 
 export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
-export const LeaveBalanceTransactionTypeSchema = z.enum(['INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'REVERSAL', 'ADJUSTMENT']);
+export const LeaveBalanceTransactionTypeSchema = z.enum(['INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'RESERVATION', 'CONSUMPTION', 'REVERSAL', 'ADJUSTMENT']);
 
 export const LeaveFiscalYearSchema = z.object({
   id: UuidSchema,
@@ -740,6 +740,7 @@ export const LeaveBalanceSchema = z.object({
   employmentTypeSnapshot: EmploymentTypeSchema,
   opening: z.string().openapi({ example: '20.00' }),
   transferredIn: z.string().openapi({ example: '0.00' }),
+  reserved: z.string().openapi({ example: '3.00' }),
   used: z.string().openapi({ example: '5.00' }),
   available: z.string().openapi({ example: '15.00' }),
   createdBy: z.string().nullable(),
@@ -772,6 +773,12 @@ export const LeaveRequestSchema = z.object({
   startDate: z.string().openapi({ example: '2026-08-01' }),
   endDate: z.string().openapi({ example: '2026-08-05' }),
   requestedDays: z.string().openapi({ example: '5.00' }),
+  approvedDays: z.string().openapi({ example: '3.50' }),
+  consumedDays: z.string().openapi({ example: '1.00' }),
+  scheduledDays: z.string().openapi({ example: '2.50' }),
+  interruptedDays: z.string().openapi({ example: '0.00' }),
+  remainingDays: z.string().openapi({ example: '2.50' }),
+  isPartialApproval: z.boolean().openapi({ example: true }),
   reason: z.string(),
   status: LeaveRequestStatusSchema,
   requestedBy: z.string(),
@@ -785,6 +792,42 @@ export const LeaveRequestSchema = z.object({
   employee: EmployeeSchema.nullable().optional(),
   leaveType: LeaveTypeSchema.nullable().optional(),
   fiscalYear: LeaveFiscalYearSchema.nullable().optional(),
+  annualLeaveDates: z.array(z.object({
+    id: UuidSchema,
+    leaveRequestId: UuidSchema,
+    date: z.string().openapi({ example: '2026-08-01' }),
+    requestedDayValue: z.string().openapi({ example: '1.00' }),
+    approvedDayValue: z.string().nullable().openapi({ example: '0.50' }),
+    status: z.enum(['PENDING', 'APPROVED', 'REJECTED']),
+    source: z.enum(['ORIGINAL', 'CONTINUATION']),
+    utilizationStatus: z.enum(['SCHEDULED', 'CONSUMED', 'INTERRUPTED', 'CANCELLED']),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })).optional(),
+  interruptions: z.array(z.object({
+    id: UuidSchema,
+    leaveRequestId: UuidSchema,
+    reason: z.string(),
+    recallAuthority: z.string(),
+    authorityUserId: z.string().nullable(),
+    actualWorkStartDate: z.string(),
+    actualWorkEndDate: z.string(),
+    status: LeaveRequestStatusSchema,
+    requestedBy: z.string(),
+    reviewedBy: z.string().nullable(),
+    reviewedAt: z.string().nullable(),
+    rejectionReason: z.string().nullable(),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+    dates: z.array(z.object({
+      id: UuidSchema,
+      leaveInterruptionId: UuidSchema,
+      kind: z.enum(['INTERRUPTED_PROPOSED', 'CONTINUATION_PROPOSED', 'INTERRUPTED_APPROVED', 'CONTINUATION_APPROVED']),
+      date: z.string(),
+      dayValue: z.string(),
+      createdAt: z.string(),
+    })),
+  })).optional(),
 });
 
 export const CreateLeaveFiscalYearRequestSchema = z.object({
@@ -840,8 +883,12 @@ export const CreateLeaveRequestRequestSchema = z.object({
   employeeId: UuidSchema,
   leaveTypeId: UuidSchema,
   fiscalYearId: UuidSchema.nullable().optional(),
-  startDate: RequiredDateSchema,
-  endDate: RequiredDateSchema,
+  startDate: RequiredDateSchema.optional(),
+  endDate: RequiredDateSchema.optional(),
+  annualLeaveDates: z.array(z.object({
+    date: RequiredDateSchema,
+    dayValue: z.union([z.literal('1.00'), z.literal('0.50'), z.literal(1), z.literal(0.5)]),
+  })).optional(),
   reason: z.string().min(1),
   requestedBy: z.string().min(1).nullable().optional(),
 });
@@ -850,8 +897,34 @@ export const ChangeLeaveRequestStatusRequestSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED']),
   approvedBy: z.string().min(1).optional(),
   approvedAt: z.string().datetime().optional(),
+  approvedDates: z.array(z.object({
+    date: RequiredDateSchema,
+    dayValue: z.union([z.literal('1.00'), z.literal('0.50'), z.literal(1), z.literal(0.5)]),
+  })).optional(),
   rejectedBy: z.string().min(1).optional(),
   rejectedAt: z.string().datetime().optional(),
+  rejectionReason: z.string().nullable().optional(),
+});
+
+const LeaveDateSelectionSchema = z.object({
+  date: RequiredDateSchema,
+  dayValue: z.union([z.literal('1.00'), z.literal('0.50'), z.literal(1), z.literal(0.5)]),
+});
+
+export const CreateLeaveInterruptionRequestSchema = z.object({
+  interruptedDates: z.array(LeaveDateSelectionSchema).min(1),
+  continuationDates: z.array(LeaveDateSelectionSchema).min(1),
+  reason: z.string().trim().min(1),
+  recallAuthority: z.string().trim().min(1),
+  authorityUserId: z.string().min(1).nullable().optional(),
+  requestedBy: z.string().min(1).nullable().optional(),
+});
+
+export const ReviewLeaveInterruptionRequestSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED']),
+  reviewedBy: z.string().min(1).nullable().optional(),
+  interruptedDates: z.array(LeaveDateSelectionSchema).min(1).optional(),
+  continuationDates: z.array(LeaveDateSelectionSchema).min(1).optional(),
   rejectionReason: z.string().nullable().optional(),
 });
 

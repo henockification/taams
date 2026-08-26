@@ -14,6 +14,7 @@ import {
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { reconcileAnnualLeaveConsumption } from './manageLeave';
 
 type DbClient = typeof db | any;
 
@@ -25,6 +26,9 @@ type ApprovalScope = {
 
 export async function generateAttendanceDailyRecords(date?: string | null) {
   const attendanceDate = normalizeDateParam(date);
+  if (attendanceDate < new Date().toISOString().slice(0, 10)) {
+    await reconcileAnnualLeaveConsumption(attendanceDate);
+  }
   const dayRange = getDayRange(attendanceDate);
 
   const [activeEmployees, punches, approvedLeaves, activeExemptions, activeHoliday] = await Promise.all([
@@ -46,7 +50,10 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
         lte(leaveRequests.startDate, attendanceDate),
         gte(leaveRequests.endDate, attendanceDate),
       ),
-      with: { leaveType: true },
+      with: {
+        leaveType: true,
+        annualLeaveDates: true,
+      },
     }),
     db.query.biometricExemptions.findMany({
       where: eq(biometricExemptions.isActive, true),
@@ -71,7 +78,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
   }
 
   for (const leave of approvedLeaves) {
-    const leaveDays = getLeaveDaysForDate(leave);
+    const leaveDays = getLeaveDaysForDate(leave, attendanceDate);
     const target = isUnpaidLeaveType(leave.leaveType) ? unpaidLeaveDaysByEmployee : leaveDaysByEmployee;
     target.set(leave.employeeId, Math.min(1, (target.get(leave.employeeId) ?? 0) + leaveDays));
   }
@@ -430,7 +437,17 @@ function getAttendanceDays(totalPunches: number) {
   return 1;
 }
 
-function getLeaveDaysForDate(leave: { startDate: string; endDate: string; requestedDays: string }) {
+function getLeaveDaysForDate(leave: { startDate: string; endDate: string; requestedDays: string; leaveType?: any; annualLeaveDates?: any[] }, attendanceDate: string) {
+  if (isAnnualLeaveType(leave.leaveType) && leave.annualLeaveDates?.length) {
+    const approvedDate = leave.annualLeaveDates.find((date) => (
+      formatDateValue(date.leaveDate) === attendanceDate
+      && date.status === 'APPROVED'
+      && ['SCHEDULED', 'CONSUMED'].includes(date.utilizationStatus ?? 'SCHEDULED')
+    ));
+    const approvedDays = Number(approvedDate?.approvedDayValue ?? 0);
+    return Number.isFinite(approvedDays) ? roundDayValue(Math.min(1, approvedDays)) : 0;
+  }
+
   const durationDays = Math.max(1, daysInclusive(leave.startDate, leave.endDate));
   const requestedDays = Number(leave.requestedDays);
 
@@ -472,6 +489,15 @@ function resolvePayrollDays(input: {
 
 function isUnpaidLeaveType(leaveType: typeof leaveTypes.$inferSelect | null | undefined) {
   return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
+}
+
+function isAnnualLeaveType(leaveType: typeof leaveTypes.$inferSelect | null | undefined) {
+  return String(leaveType?.code ?? '').trim().toUpperCase() === 'ANNUAL';
+}
+
+function formatDateValue(value: unknown) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value);
 }
 
 function daysInclusive(startDate: string, endDate: string) {

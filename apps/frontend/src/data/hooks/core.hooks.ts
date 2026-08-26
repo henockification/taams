@@ -24,11 +24,13 @@ import type {
   CreateManualPunchRequestInput,
   CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
+  CreateLeaveInterruptionInput,
   CreateLeaveRequestInput,
   LeaveRequest,
   CreateLeaveTypeInput,
   NotificationLogFilters,
   ReportKey,
+  ReviewLeaveInterruptionInput,
   TransferLeaveBalanceInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
@@ -1128,9 +1130,15 @@ export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
         employeeId: input.employeeId,
         leaveTypeId: input.leaveTypeId,
         fiscalYearId: input.fiscalYearId ?? null,
-        startDate: input.startDate,
-        endDate: input.endDate,
+        startDate: input.startDate ?? input.annualLeaveDates?.[0]?.date ?? '',
+        endDate: input.endDate ?? input.annualLeaveDates?.[input.annualLeaveDates.length - 1]?.date ?? '',
         requestedDays: '0.00',
+        approvedDays: '0.00',
+        consumedDays: '0.00',
+        scheduledDays: '0.00',
+        interruptedDays: '0.00',
+        remainingDays: '0.00',
+        isPartialApproval: false,
         reason: input.reason,
         status: 'PENDING',
         requestedBy: input.requestedBy ?? '',
@@ -1141,6 +1149,8 @@ export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
         rejectionReason: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        annualLeaveDates: [],
+        interruptions: [],
       };
 
       await queryClient.cancelQueries({ queryKey: coreQueryKeys.leaveRequests() });
@@ -1216,6 +1226,30 @@ export function useChangeLeaveRequestStatus() {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances(data.leaveRequest.fiscalYearId ?? undefined) });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useCreateLeaveInterruption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateLeaveInterruptionInput) => coreApi.createLeaveInterruption(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useReviewLeaveInterruption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ReviewLeaveInterruptionInput) => coreApi.reviewLeaveInterruption(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
