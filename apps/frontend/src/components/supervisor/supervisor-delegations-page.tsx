@@ -13,6 +13,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -68,6 +76,7 @@ export function SupervisorDelegationsPage() {
   const createDelegation = useCreateSupervisorDelegation();
   const revokeDelegation = useRevokeSupervisorDelegation();
   const [form, setForm] = useState<DelegationFormState>(() => initialForm());
+  const [createOpen, setCreateOpen] = useState(false);
 
   const supervisorDelegations = delegations.data?.supervisorDelegations ?? [];
   const currentUserId = session.data?.user?.id as string | undefined;
@@ -94,6 +103,7 @@ export function SupervisorDelegationsPage() {
       });
       await session.refetch();
       setForm(initialForm());
+      setCreateOpen(false);
       notifications.show({ title: common('success'), message: 'Supervisor delegation saved.', color: 'green' });
     } catch (error) {
       notifications.show({
@@ -122,11 +132,18 @@ export function SupervisorDelegationsPage() {
     <div className="space-y-6">
       <Card>
         <CardHeader className="space-y-3">
-          <div className="flex items-center gap-2">
-            <UserRoundCog className="h-5 w-5 text-primary" />
-            <CardTitle>{t('supervisorDelegation')}</CardTitle>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <UserRoundCog className="h-5 w-5 text-primary" />
+                <CardTitle>{t('supervisorDelegation')}</CardTitle>
+              </div>
+              <CardDescription>{t('supervisorDelegationDescription')}</CardDescription>
+            </div>
+            <Button type="button" onClick={() => setCreateOpen(true)}>
+              Delegate
+            </Button>
           </div>
-          <CardDescription>{t('supervisorDelegationDescription')}</CardDescription>
         </CardHeader>
         <CardContent>
           {activeDelegation ? (
@@ -162,60 +179,6 @@ export function SupervisorDelegationsPage() {
               description="Create a time-bound delegation when another employee should act on supervisor workflows for you."
             />
           )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Create delegation</CardTitle>
-          <CardDescription>
-            Creating a new current or future delegation automatically revokes your previous current/future delegation.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="grid gap-4 md:grid-cols-3" onSubmit={submitDelegation}>
-            <div className="space-y-2 md:col-span-3">
-              <Label>Delegate employee</Label>
-              <Select
-                value={form.delegateEmployeeId}
-                onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an active employee with a user account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {delegateOptions.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      {employeeName(employee)} · {employee.employeeCode}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Starts at</Label>
-              <Input
-                type="datetime-local"
-                value={form.startsAt}
-                onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Ends at</Label>
-              <Input
-                type="datetime-local"
-                value={form.endsAt}
-                onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))}
-                required
-              />
-            </div>
-            <div className="flex items-end">
-              <Button className="w-full" type="submit" disabled={createDelegation.isPending}>
-                {createDelegation.isPending ? common('loading') : 'Save delegation'}
-              </Button>
-            </div>
-          </form>
         </CardContent>
       </Card>
 
@@ -280,6 +243,68 @@ export function SupervisorDelegationsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={createOpen} onOpenChange={(open) => {
+        setCreateOpen(open);
+        if (!open) setForm(initialForm());
+      }}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Create delegation</DialogTitle>
+            <DialogDescription>
+              Creating a new current or future delegation automatically revokes your previous current/future delegation.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={submitDelegation}>
+            <div className="space-y-2">
+              <Label>Delegate employee</Label>
+              <Select
+                value={form.delegateEmployeeId}
+                onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select an active employee with a user account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {delegateOptions.map((employee) => (
+                    <SelectItem key={employee.id} value={employee.id}>
+                      {employeeName(employee)} · {employee.employeeCode}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Starts at</Label>
+                <Input
+                  type="datetime-local"
+                  value={form.startsAt}
+                  onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ends at</Label>
+                <Input
+                  type="datetime-local"
+                  value={form.endsAt}
+                  onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))}
+                  required
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+                {common('cancel')}
+              </Button>
+              <Button type="submit" disabled={createDelegation.isPending}>
+                {createDelegation.isPending ? common('loading') : 'Save delegation'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

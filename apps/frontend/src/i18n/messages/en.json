@@ -864,6 +864,7 @@
     "balancesSaved": "Leave balances saved",
     "leaveTransfer": "Leave transfer",
     "leaveTransferDescription": "Transfer approved unused annual leave from one of the previous two fiscal years.",
+    "supervisorDelegation": "Delegation",
     "leaveRequestApprovalsDescription": "Review and amend exact leave dates. Approved future days are reserved; only leave actually consumed is recorded as used.",
     "supervisorDelegationDescription": "Temporarily delegate supervisor approvals and assignments to another active employee.",
     "fromFiscalYear": "From fiscal year",

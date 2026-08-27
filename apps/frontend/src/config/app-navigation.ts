@@ -182,6 +182,13 @@ export const appNavGroups: AppNavGroup[] = [
         icon: ClipboardList,
       },
       {
+        titleKey: 'attendanceApprovals',
+        url: '/attendance-approvals/supervisor',
+        permissionResource: 'attendance-approvals',
+        requiredPermission: 'attendance-approvals:approve',
+        icon: FileCheck2,
+      },
+      {
         titleKey: 'supervisorDelegation',
         url: '/supervisor-delegations',
         permissionResource: 'supervisor-delegations',
@@ -287,13 +294,6 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'attendance-punches',
         requiredPermission: 'attendance-punches:read',
         icon: ScanLine,
-      },
-      {
-        titleKey: 'attendanceApprovals',
-        url: '/attendance-approvals/supervisor',
-        permissionResource: 'attendance-approvals',
-        requiredPermission: 'attendance-approvals:approve',
-        icon: FileCheck2,
       },
       {
         titleKey: 'hrAttendanceApproval',
