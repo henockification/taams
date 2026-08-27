@@ -6,7 +6,6 @@ import {
   hrApproveAttendanceDailyRecord,
   returnAttendanceDailyRecord,
   supervisorApproveAttendanceDailyRecord,
-  updateSupervisorAttendanceDailyRecordPayroll,
 } from '../../../../db/orm/core/manageAttendanceApprovals';
 import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
@@ -15,7 +14,6 @@ import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import {
   ReturnAttendanceDailyRecordRequestSchema,
-  UpdateAttendanceDailyRecordPayrollRequestSchema,
 } from '../../../../schemas/core.schema';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceDailyRecord } from '../../helpers/formatters';
@@ -108,26 +106,11 @@ export async function supervisorApproveAttendanceDailyRecordHandler(c: Context) 
 
 export async function updateSupervisorAttendanceDailyRecordPayrollHandler(c: Context) {
   try {
-    const session = await requireAuthenticatedUser(c);
-    const id = c.req.param('id');
-    const body = await c.req.json();
-    const parsed = UpdateAttendanceDailyRecordPayrollRequestSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return validationErrorResponse(c, parsed.error.message);
-    }
-
-    const record = await updateSupervisorAttendanceDailyRecordPayroll(id, {
-      userId: session.user.id,
-      roles: session.user.role ?? [],
-      scope: await resolveScope(session),
-      ...parsed.data,
-    });
-
+    await requireAuthenticatedUser(c);
     return c.json({
-      success: true,
-      attendanceDailyRecord: formatAttendanceDailyRecord(record),
-    });
+      success: false,
+      error: 'Supervisors cannot edit attendance records',
+    }, 403);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update attendance payroll values');
   }
@@ -173,7 +156,14 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
     }
 
     const canHrReturn = await canUseHrApproval(session.user.id, session.user.role ?? []);
-    const scope = canHrReturn ? await resolveScope(session) : undefined;
+    if (!canHrReturn) {
+      return c.json({
+        success: false,
+        error: 'Only HR can return attendance records',
+      }, 403);
+    }
+
+    const scope = await resolveScope(session);
     const record = await returnAttendanceDailyRecord(id, {
       userId: session.user.id,
       roles: session.user.role ?? [],

@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Pencil, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
+import { CheckCircle2, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Card,
   CardContent,
@@ -46,13 +47,13 @@ import {
   useReturnAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecord,
   useSupervisorAttendanceDailyRecords,
-  useUpdateSupervisorAttendanceDailyRecordPayroll,
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
+type ApprovalFilter = 'all' | 'approved' | 'unapproved';
 const allDepartmentsValue = '__all_departments';
 
 function today() {
@@ -74,22 +75,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const common = useTranslations('common');
   const [date, setDate] = useState(today());
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
-  const [editingRecord, setEditingRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
-  const [editForm, setEditForm] = useState({
-    attendanceDays: '0.00',
-    leaveDays: '0.00',
-    payableDays: '0.00',
-    payrollNote: '',
-  });
+  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
+  const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
 
   const supervisorQuery = useSupervisorAttendanceDailyRecords(date);
   const hrQuery = useHrAttendanceDailyRecords(date);
   const generateRecords = useGenerateAttendanceDailyRecords();
   const supervisorApprove = useSupervisorApproveAttendanceDailyRecord();
-  const updatePayrollValues = useUpdateSupervisorAttendanceDailyRecordPayroll();
   const hrApprove = useHrApproveAttendanceDailyRecord();
   const returnRecord = useReturnAttendanceDailyRecord();
   const session = useSession();
@@ -119,13 +114,27 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       const matchesDepartment = !isHrMode
         || departmentFilter === allDepartmentsValue
         || employee?.departmentId === departmentFilter;
-      return matchesEmployee && matchesDepartment;
+      const matchesApproval = approvalFilter === 'all'
+        || (approvalFilter === 'approved' && isAttendanceApproved(record, mode))
+        || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode));
+      return matchesEmployee && matchesDepartment && matchesApproval;
     });
-  }, [departmentFilter, employeeSearch, isHrMode, records]);
+  }, [approvalFilter, departmentFilter, employeeSearch, isHrMode, mode, records]);
+  const approvableRecords = useMemo(
+    () => filteredRecords.filter((record) => canApprove(record, mode)),
+    [filteredRecords, mode],
+  );
+  const selectedApprovableRecords = useMemo(
+    () => approvableRecords.filter((record) => selectedRecordIds.includes(record.id)),
+    [approvableRecords, selectedRecordIds],
+  );
+  const allVisibleApprovableSelected = approvableRecords.length > 0
+    && approvableRecords.every((record) => selectedRecordIds.includes(record.id));
 
   async function handleRefresh() {
     try {
       await generateRecords.mutateAsync({ date });
+      setSelectedRecordIds([]);
       notifications.show({ title: common('success'), message: t('dailyRecordsRefreshed'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
@@ -139,6 +148,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         notifications.show({ title: common('success'), message: t('hrAttendanceApproved'), color: 'green' });
       } else {
         await supervisorApprove.mutateAsync(record.id);
+        setSelectedRecordIds((current) => current.filter((id) => id !== record.id));
         notifications.show({ title: common('success'), message: t('attendanceApproved'), color: 'green' });
       }
     } catch (error) {
@@ -146,32 +156,33 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
     }
   }
 
-  function openEdit(record: AttendanceDailyRecord) {
-    setEditingRecord(record);
-    setEditForm({
-      attendanceDays: record.attendanceDays,
-      leaveDays: record.leaveDays,
-      payableDays: record.payableDays,
-      payrollNote: record.payrollNote ?? '',
-    });
-  }
-
-  async function handleSaveEdit() {
-    if (!editingRecord) return;
-
+  async function handleBatchApprove() {
+    if (selectedApprovableRecords.length === 0) return;
     try {
-      await updatePayrollValues.mutateAsync({
-        attendanceDailyRecordId: editingRecord.id,
-        attendanceDays: editForm.attendanceDays,
-        leaveDays: editForm.leaveDays,
-        payableDays: editForm.payableDays,
-        payrollNote: editForm.payrollNote.trim() || null,
+      await Promise.all(selectedApprovableRecords.map((record) => supervisorApprove.mutateAsync(record.id)));
+      setSelectedRecordIds([]);
+      notifications.show({
+        title: common('success'),
+        message: `${selectedApprovableRecords.length} attendance record(s) approved.`,
+        color: 'green',
       });
-      setEditingRecord(null);
-      notifications.show({ title: common('success'), message: t('attendanceUpdated'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
     }
+  }
+
+  function toggleRecordSelection(recordId: string, checked: boolean) {
+    setSelectedRecordIds((current) => (
+      checked ? [...new Set([...current, recordId])] : current.filter((id) => id !== recordId)
+    ));
+  }
+
+  function toggleVisibleApprovableRecords(checked: boolean) {
+    setSelectedRecordIds((current) => {
+      const visibleIds = new Set(approvableRecords.map((record) => record.id));
+      if (!checked) return current.filter((id) => !visibleIds.has(id));
+      return [...new Set([...current, ...visibleIds])];
+    });
   }
 
   async function handleReturn() {
@@ -234,6 +245,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               placeholder={t('searchEmployee')}
               className="md:max-w-xs"
             />
+            <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
+              <SelectTrigger className="md:w-48">
+                <SelectValue placeholder={t('approvalStatus')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
+                <SelectItem value="approved">{t('approved')}</SelectItem>
+                <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
+              </SelectContent>
+            </Select>
             {isHrMode ? (
               <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
                 <SelectTrigger className="md:w-64">
@@ -246,6 +267,19 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                   ))}
                 </SelectContent>
               </Select>
+            ) : null}
+            {!isHrMode ? (
+              <Button
+                type="button"
+                onClick={handleBatchApprove}
+                disabled={selectedApprovableRecords.length === 0 || supervisorApprove.isPending}
+                className="md:ml-auto"
+              >
+                <CheckCircle2 className="size-4" />
+                {selectedApprovableRecords.length > 0
+                  ? `${delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
+                  : t('approveSelected')}
+              </Button>
             ) : null}
           </div>
           {query.isLoading ? (
@@ -267,6 +301,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               <Table className="min-w-[96rem]">
                 <TableHeader>
                   <TableRow>
+                    {!isHrMode ? (
+                      <TableHead className="w-12">
+                        <Checkbox
+                          aria-label={t('selectAll')}
+                          checked={allVisibleApprovableSelected ? true : selectedApprovableRecords.length > 0 ? 'indeterminate' : false}
+                          disabled={approvableRecords.length === 0}
+                          onCheckedChange={(checked) => toggleVisibleApprovableRecords(Boolean(checked))}
+                        />
+                      </TableHead>
+                    ) : null}
                     <TableHead>{t('employee')}</TableHead>
                     <TableHead>{t('department')}</TableHead>
                     <TableHead>{t('attendanceDate')}</TableHead>
@@ -279,6 +323,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('overtimeHours')}</TableHead>
                     <TableHead>{t('payableDays')}</TableHead>
                     <TableHead>{t('absenceDays')}</TableHead>
+                    <TableHead>{t('approvalStatus')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
@@ -286,6 +331,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                 <TableBody>
                   {filteredRecords.map((record) => (
                     <TableRow key={record.id}>
+                      {!isHrMode ? (
+                        <TableCell>
+                          <Checkbox
+                            aria-label={`${t('selectAttendanceRecord')} ${employeeName(record.employee) || (record.employee?.employeeCode ?? '')}`}
+                            checked={selectedRecordIds.includes(record.id)}
+                            disabled={!canApprove(record, mode) || supervisorApprove.isPending}
+                            onCheckedChange={(checked) => toggleRecordSelection(record.id, Boolean(checked))}
+                          />
+                        </TableCell>
+                      ) : null}
                       <TableCell className="min-w-56">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{employeeName(record.employee) || t('unknown')}</p>
@@ -303,6 +358,11 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
                       <TableCell className="font-medium">{record.payableDays}</TableCell>
                       <TableCell>{record.absenceDays}</TableCell>
+                      <TableCell>
+                        <Badge variant={isAttendanceApproved(record, mode) ? 'default' : 'secondary'}>
+                          {isAttendanceApproved(record, mode) ? t('approved') : t('unapproved')}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1">
                           <Badge variant={statusVariant(record.status)}>{statusLabel(record.status, t)}</Badge>
@@ -323,18 +383,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          {!isHrMode ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEdit(record)}
-                              disabled={record.status === 'HR_APPROVED' || updatePayrollValues.isPending}
-                            >
-                              <Pencil className="size-4" />
-                              {common('edit')}
-                            </Button>
-                          ) : null}
                           <Button
                             type="button"
                             size="sm"
@@ -344,19 +392,21 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                             <CheckCircle2 className="size-4" />
                             {isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)}
                           </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setReturningRecord(record);
-                              setReturnReason('');
-                            }}
-                            disabled={record.status === 'HR_APPROVED' || returnRecord.isPending}
-                          >
-                            <RotateCcw className="size-4" />
-                            {isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
-                          </Button>
+                          {isHrMode ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setReturningRecord(record);
+                                setReturnReason('');
+                              }}
+                              disabled={record.status === 'HR_APPROVED' || returnRecord.isPending}
+                            >
+                              <RotateCcw className="size-4" />
+                              {t('returnAttendance')}
+                            </Button>
+                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -392,66 +442,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={Boolean(editingRecord)} onOpenChange={(open) => {
-        if (!open) setEditingRecord(null);
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('editAttendance')}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">{t('adjustmentSourceTruthNotice')}</p>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="grid gap-1 text-sm">
-              <span className="text-muted-foreground">{t('attendanceDays')}</span>
-              <Input
-                type="number"
-                min="0"
-                max="1"
-                step="0.01"
-                value={editForm.attendanceDays}
-                onChange={(event) => setEditForm((current) => ({ ...current, attendanceDays: event.target.value }))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-muted-foreground">{t('leaveDays')}</span>
-              <Input
-                type="number"
-                min="0"
-                max="1"
-                step="0.01"
-                value={editForm.leaveDays}
-                onChange={(event) => setEditForm((current) => ({ ...current, leaveDays: event.target.value }))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-muted-foreground">{t('payableDays')}</span>
-              <Input
-                type="number"
-                min="0"
-                max="1"
-                step="0.01"
-                value={editForm.payableDays}
-                onChange={(event) => setEditForm((current) => ({ ...current, payableDays: event.target.value }))}
-              />
-            </label>
-          </div>
-          <label className="grid gap-1 text-sm">
-            <span className="text-muted-foreground">{t('payrollNote')}</span>
-            <Textarea
-              value={editForm.payrollNote}
-              onChange={(event) => setEditForm((current) => ({ ...current, payrollNote: event.target.value }))}
-              rows={3}
-            />
-          </label>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditingRecord(null)}>{common('cancel')}</Button>
-            <Button type="button" onClick={handleSaveEdit} disabled={updatePayrollValues.isPending}>
-              {updatePayrollValues.isPending ? t('saving') : delegatedActionLabel(common('save'), session.data?.user)}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -480,6 +470,11 @@ function summarize(records: AttendanceDailyRecord[]) {
 function canApprove(record: AttendanceDailyRecord, mode: AttendanceApprovalMode) {
   if (mode === 'hr') return record.status === 'SUPERVISOR_APPROVED';
   return record.status === 'PENDING_SUPERVISOR' || record.status === 'RETURNED';
+}
+
+function isAttendanceApproved(record: AttendanceDailyRecord, mode: AttendanceApprovalMode) {
+  if (mode === 'hr') return record.status === 'HR_APPROVED';
+  return record.status === 'SUPERVISOR_APPROVED' || record.status === 'HR_APPROVED';
 }
 
 function statusLabel(status: AttendanceDailyRecordStatus, t: (key: string) => string) {
