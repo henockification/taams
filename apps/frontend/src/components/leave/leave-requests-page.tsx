@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { CalendarCheck, Check, Plus, X } from 'lucide-react';
+import { CalendarCheck, Check, Eye, Pencil, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +54,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, LeaveBalance, LeaveRequest } from '@/data/types/core.types';
 import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
+import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
@@ -355,10 +356,26 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
             {t('leaveRequestSelfServiceDescription')}
           </p>
         </div>
-        <Button onClick={openDialog} disabled={isLoading || !currentEmployee}>
-          <Plus className="size-4" />
-          {t('requestLeave')}
-        </Button>
+        {kind === 'annual' ? (
+          isLoading || !currentEmployee ? (
+            <Button disabled>
+              <Plus className="size-4" />
+              {t('requestLeave')}
+            </Button>
+          ) : (
+            <Button asChild>
+              <Link href="/annual-leave-requests/new">
+                <Plus className="size-4" />
+                {t('requestLeave')}
+              </Link>
+            </Button>
+          )
+        ) : (
+          <Button onClick={openDialog} disabled={isLoading || !currentEmployee}>
+            <Plus className="size-4" />
+            {t('requestLeave')}
+          </Button>
+        )}
       </div>
 
       <Card className="rounded-lg">
@@ -467,7 +484,24 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                             </TableCell>
                             <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
                             <TableCell>
-                              {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
+                              {kind === 'annual' ? (
+                                <div className="flex justify-end gap-2">
+                                  <Button type="button" size="sm" variant="outline" asChild>
+                                    <Link href={`/annual-leave-requests/${request.id}` as any}>
+                                      <Eye className="size-4" />
+                                      {t('viewDetails')}
+                                    </Link>
+                                  </Button>
+                                  {request.status === 'PENDING' && isOwnRequest ? (
+                                    <Button type="button" size="sm" variant="outline" asChild>
+                                      <Link href={`/annual-leave-requests/${request.id}/edit` as any}>
+                                        <Pencil className="size-4" />
+                                        {common('edit')}
+                                      </Link>
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              ) : request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
                                 <div className="flex justify-end gap-2">
                                   <Button
                                     type="button"

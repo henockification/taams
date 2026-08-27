@@ -893,6 +893,18 @@ export const CreateLeaveRequestRequestSchema = z.object({
   requestedBy: z.string().min(1).nullable().optional(),
 });
 
+export const UpdateLeaveRequestRequestSchema = z.object({
+  fiscalYearId: UuidSchema.nullable().optional(),
+  startDate: RequiredDateSchema.optional(),
+  endDate: RequiredDateSchema.optional(),
+  annualLeaveDates: z.array(z.object({
+    date: RequiredDateSchema,
+    dayValue: z.union([z.literal('1.00'), z.literal('0.50'), z.literal(1), z.literal(0.5)]),
+  })).optional(),
+  reason: z.string().min(1),
+  updatedBy: z.string().min(1).nullable().optional(),
+});
+
 export const ChangeLeaveRequestStatusRequestSchema = z.object({
   status: z.enum(['APPROVED', 'REJECTED']),
   approvedBy: z.string().min(1).optional(),

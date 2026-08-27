@@ -498,7 +498,8 @@ export function getNavItemForPath(pathname: string) {
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
-  if (pathname === '/leave-request-approvals') return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
+  if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/')) return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
+  if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);
   if (pathname === '/notification-logs' && hasHrRole(user)) return true;

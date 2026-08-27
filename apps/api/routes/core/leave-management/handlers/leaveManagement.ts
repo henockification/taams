@@ -9,6 +9,7 @@ import {
   TransferLeaveBalanceRequestSchema,
   ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
+  UpdateLeaveRequestRequestSchema,
   UpdateLeaveTypeRequestSchema,
   UpsertLeaveBalanceRequestSchema,
 } from '../../../../schemas/core.schema';
@@ -27,6 +28,7 @@ import {
   setActiveLeaveFiscalYear,
   transferLeaveBalanceScoped,
   updateLeaveFiscalYear,
+  updateLeaveRequestScoped,
   updateLeaveType,
   upsertLeaveBalanceScoped,
 } from '../../../../db/orm/core/manageLeave';
@@ -226,6 +228,21 @@ export async function createLeaveRequestHandler(c: Context) {
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create leave request');
+  }
+}
+
+export async function updateLeaveRequestHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const scope = await resolveScope(session);
+    const parsed = UpdateLeaveRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const updatedBy = session.user.id ?? c.user?.id ?? parsed.data.updatedBy;
+    if (!updatedBy) return validationErrorResponse(c, 'updatedBy is required');
+    const leaveRequest = await updateLeaveRequestScoped(c.req.param('id'), { ...parsed.data, updatedBy }, scope);
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to update leave request');
   }
 }
 

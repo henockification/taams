@@ -20,6 +20,7 @@ import {
   TransferLeaveBalanceRequestSchema,
   ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
+  UpdateLeaveRequestRequestSchema,
   UpdateLeaveTypeRequestSchema,
   UpsertLeaveBalanceRequestSchema,
 } from '../../../schemas/core.schema';
@@ -39,6 +40,7 @@ import {
   setActiveLeaveFiscalYearHandler,
   transferLeaveBalanceHandler,
   updateLeaveFiscalYearHandler,
+  updateLeaveRequestHandler,
   updateLeaveTypeHandler,
   upsertLeaveBalanceHandler,
 } from './handlers/leaveManagement';
@@ -165,6 +167,15 @@ export const createLeaveRequestRoute = createRoute({
   responses: { 201: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Created leave request' } },
 });
 
+export const updateLeaveRequestRoute = createRoute({
+  method: 'put',
+  path: '/leave/requests/{id}',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Update Pending Leave Request',
+  request: { params: uuidParam, body: { content: { 'application/json': { schema: UpdateLeaveRequestRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Updated leave request' } },
+});
+
 export const changeLeaveRequestStatusRoute = createRoute({
   method: 'post',
   path: '/leave/requests/{id}/status',
@@ -205,6 +216,7 @@ leaveManagementApp.post('/leave/balances/bulk', bulkUpsertLeaveBalancesHandler);
 leaveManagementApp.post('/leave/balances/transfer', transferLeaveBalanceHandler);
 leaveManagementApp.get('/leave/requests', getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', createLeaveRequestHandler);
+leaveManagementApp.put('/leave/requests/:id', updateLeaveRequestHandler);
 leaveManagementApp.post('/leave/requests/:id/status', changeLeaveRequestStatusHandler);
 leaveManagementApp.post('/leave/requests/:id/interruptions', createLeaveInterruptionHandler);
 leaveManagementApp.post('/leave/interruptions/:id/review', reviewLeaveInterruptionHandler);
@@ -223,6 +235,7 @@ openApiApp
   .openapi(transferLeaveBalanceRoute, transferLeaveBalanceHandler as any)
   .openapi(getLeaveRequestsRoute, getLeaveRequestsHandler as any)
   .openapi(createLeaveRequestRoute, createLeaveRequestHandler as any)
+  .openapi(updateLeaveRequestRoute, updateLeaveRequestHandler as any)
   .openapi(changeLeaveRequestStatusRoute, changeLeaveRequestStatusHandler as any);
 openApiApp
   .openapi(createLeaveInterruptionRoute, createLeaveInterruptionHandler as any)

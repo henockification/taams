@@ -1350,6 +1350,16 @@ export type CreateLeaveRequestInput = {
   requestedBy?: string | null;
 };
 
+export type UpdateLeaveRequestInput = {
+  leaveRequestId: string;
+  fiscalYearId?: string | null;
+  startDate?: string;
+  endDate?: string;
+  annualLeaveDates?: Array<{ date: string; dayValue: string | number }>;
+  reason: string;
+  updatedBy?: string | null;
+};
+
 export type ChangeLeaveRequestStatusInput = {
   leaveRequestId: string;
   status: Exclude<LeaveRequestStatus, 'PENDING'>;

@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Check, CalendarCheck, X } from 'lucide-react';
+import { CalendarCheck, Eye } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +45,7 @@ import {
   useReviewLeaveInterruption,
 } from '@/data/hooks/core.hooks';
 import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
+import { Link } from '@/i18n';
 import type { LeaveBalance, LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
@@ -319,33 +320,19 @@ export function LeaveRequestApprovalsPage() {
                         <TableCell>
                           {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
                             <div className="flex justify-end gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => approveRequest(request)}
-                                disabled={changeStatus.isPending}
-                              >
-                                <Check className="size-4" />
-                                {t('approve')}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openRejectDialog(request)}
-                                disabled={changeStatus.isPending}
-                              >
-                                <X className="size-4" />
-                                {t('reject')}
+                              <Button type="button" size="sm" variant="outline" asChild>
+                                <Link href={`/leave-request-approvals/${request.id}` as any}>
+                                  <Eye className="size-4" />
+                                  {t('viewDetails')}
+                                </Link>
                               </Button>
                             </div>
                           ) : pendingInterruption && pendingInterruption.requestedBy !== session.data?.user?.id && canReviewRequests ? (
                             <div className="flex justify-end gap-2">
-                              <Button type="button" size="sm" onClick={() => setInterruptionReviewTarget({ request, interruption: pendingInterruption })} disabled={reviewInterruption.isPending}>
-                                <Check className="size-4" />{t('reviewAmendment')}
-                              </Button>
-                              <Button type="button" size="sm" variant="outline" onClick={() => { setInterruptionRejectTarget({ request, interruption: pendingInterruption }); setRejectionReason(''); }} disabled={reviewInterruption.isPending}>
-                                <X className="size-4" />{t('reject')}
+                              <Button type="button" size="sm" variant="outline" asChild>
+                                <Link href={`/leave-request-approvals/${request.id}` as any}>
+                                  <Eye className="size-4" />{t('viewDetails')}
+                                </Link>
                               </Button>
                             </div>
                           ) : (

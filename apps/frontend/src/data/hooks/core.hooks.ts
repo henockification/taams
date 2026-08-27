@@ -39,6 +39,7 @@ import type {
   UpdateEmployeeWorkScheduleInput,
   UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
+  UpdateLeaveRequestInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
   UpdateShiftBreakInput,
@@ -106,6 +107,7 @@ export const coreQueryKeys = {
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
   leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
   leaveRequests: (kind?: 'annual' | 'other') => [...coreQueryKeys.all, 'leave', 'requests', kind ?? 'all'] as const,
+  leaveRequest: (id: string) => [...coreQueryKeys.all, 'leave', 'requests', 'detail', id] as const,
   timeOperationsSummary: () => [...coreQueryKeys.all, 'time-operations', 'summary'] as const,
   report: (key: ReportKey, params: Record<string, string>) => [...coreQueryKeys.all, 'reports', key, params] as const,
 };
@@ -1212,6 +1214,22 @@ export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+    },
+  });
+}
+
+export function useUpdateLeaveRequest(kind?: 'annual' | 'other') {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateLeaveRequestInput) => coreApi.updateLeaveRequest(input),
+    onSuccess: (data) => {
+      queryClient.setQueryData(coreQueryKeys.leaveRequest(data.leaveRequest.id), data);
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests() });
+      if (kind) queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequests(kind) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances(data.leaveRequest.fiscalYearId ?? undefined) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalances() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
   });
 }

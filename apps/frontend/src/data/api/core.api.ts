@@ -88,6 +88,7 @@ import type {
   UpdateEmployeeWorkScheduleInput,
   UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
+  UpdateLeaveRequestInput,
   UpdateLeaveTypeInput,
   UpdatePositionInput,
   UpdateShiftBreakInput,
@@ -555,6 +556,11 @@ export const coreApi = {
   createLeaveRequest: (input: CreateLeaveRequestInput) =>
     coreFetch<LeaveRequestResponse>('/leave/requests', {
       method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateLeaveRequest: ({ leaveRequestId, ...input }: UpdateLeaveRequestInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}`, {
+      method: 'PUT',
       body: JSON.stringify(input),
     }),
   changeLeaveRequestStatus: ({ leaveRequestId, ...input }: ChangeLeaveRequestStatusInput) =>

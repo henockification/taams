@@ -25,6 +25,7 @@ import type {
   CreateLeaveTypeInput,
   TransferLeaveBalanceInput,
   UpdateLeaveFiscalYearInput,
+  UpdateLeaveRequestInput,
   UpdateLeaveTypeInput,
   UpsertLeaveBalanceInput,
   ReviewLeaveInterruptionInput,
@@ -525,6 +526,86 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   return getLeaveRequestById(request.id);
 }
 
+export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestInput) {
+  return db.transaction(async (tx) => {
+    const request = await getLeaveRequestById(id, tx);
+    if (!request) throw new Error('Leave request not found');
+    if (request.status !== 'PENDING') throw new Error('Only pending leave requests can be edited');
+    if (!input.updatedBy) throw new Error('Updated by is required');
+    await assertUserExists(input.updatedBy, tx);
+    if (request.requestedBy !== input.updatedBy && request.employee?.userId !== input.updatedBy) {
+      throw new Error('Only the requester can edit this leave request before supervisor action');
+    }
+
+    const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
+    if (isAnnualLeaveType(leaveType)) {
+      if (!input.fiscalYearId) throw new Error('Fiscal year is required for annual leave');
+      const fiscalYear = await getLeaveFiscalYearById(input.fiscalYearId, tx);
+      if (!fiscalYear) throw new Error('Leave fiscal year not found');
+      const employee = await getEmployeeById(request.employeeId, tx);
+      if (!employee) throw new Error('Employee not found');
+      await assertAnnualFiscalYearAllowed(employee, fiscalYear);
+
+      const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, dateSelections.map((selection) => selection.date), tx);
+      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, dateSelections.map((selection) => selection.date), tx, request.id);
+      const requestedDays = sumDaySelections(dateSelections);
+      assertWithinAllowedDays(leaveType, requestedDays);
+
+      const balance = await getEmployeeFiscalYearBalance(request.employeeId, fiscalYear.id, tx);
+      if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
+      if (numeric(balance.available) < requestedDays) throw new Error('Insufficient annual leave balance');
+
+      const dateValues = dateSelections.map((selection) => selection.date).sort();
+      const [updated] = await tx.update(leaveRequests).set({
+        fiscalYearId: fiscalYear.id,
+        startDate: dateValues[0],
+        endDate: dateValues[dateValues.length - 1],
+        requestedDays: fixed(requestedDays),
+        reason: input.reason.trim(),
+        updatedAt: new Date(),
+      } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
+      if (!updated) throw new Error('Leave request is already processed');
+
+      await tx.delete(annualLeaveRequestDates).where(eq(annualLeaveRequestDates.leaveRequestId, id));
+      await tx.insert(annualLeaveRequestDates).values(
+        dateSelections.map((selection) => ({
+          leaveRequestId: id,
+          employeeId: request.employeeId,
+          leaveDate: selection.date,
+          requestedDayValue: fixed(selection.dayValue),
+          approvedDayValue: null,
+          status: 'PENDING',
+        }))
+      );
+
+      return getLeaveRequestById(id, tx);
+    }
+
+    if (!input.startDate || !input.endDate) throw new Error('Start date and end date are required');
+    const requestedDays = calculateCalendarDays(input.startDate, input.endDate);
+    assertWithinAllowedDays(leaveType, requestedDays);
+
+    const [updated] = await tx.update(leaveRequests).set({
+      startDate: input.startDate,
+      endDate: input.endDate,
+      requestedDays: fixed(requestedDays),
+      reason: input.reason.trim(),
+      updatedAt: new Date(),
+    } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
+    if (!updated) throw new Error('Leave request is already processed');
+
+    return getLeaveRequestById(id, tx);
+  });
+}
+
+export async function updateLeaveRequestScoped(id: string, input: UpdateLeaveRequestInput, scope: EmployeeVisibilityScope) {
+  const request = await getLeaveRequestById(id);
+  if (!request) throw new Error('Leave request not found');
+  await assertCanAccessEmployee(request.employeeId, scope);
+  return updateLeaveRequest(id, input);
+}
+
 export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveRequestStatusInput) {
   return db.transaction(async (tx) => {
     const request = await getLeaveRequestById(id, tx);
@@ -635,6 +716,7 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
 export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, scope: EmployeeVisibilityScope) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
+  await assertCanAccessEmployee(request.employeeId, scope);
   return changeLeaveRequestStatus(id, input);
 }
 
@@ -868,13 +950,14 @@ async function validateInterruptionPattern(
   await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, continuation.map((selection) => selection.date), tx);
 }
 
-async function assertNoActiveAnnualLeaveDateOverlap(employeeId: string, dates: string[], tx: DbClient = db) {
+async function assertNoActiveAnnualLeaveDateOverlap(employeeId: string, dates: string[], tx: DbClient = db, ignoreLeaveRequestId?: string) {
   const overlap = await tx.query.annualLeaveRequestDates.findFirst({
     where: and(
       eq(annualLeaveRequestDates.employeeId, employeeId),
       inArray(annualLeaveRequestDates.leaveDate, dates),
       or(eq(annualLeaveRequestDates.status, 'PENDING'), eq(annualLeaveRequestDates.status, 'APPROVED')),
       or(eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'), eq(annualLeaveRequestDates.utilizationStatus, 'CONSUMED')),
+      ignoreLeaveRequestId ? sql`${annualLeaveRequestDates.leaveRequestId} <> ${ignoreLeaveRequestId}` : undefined,
     ),
     columns: { leaveDate: true },
   });
