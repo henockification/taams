@@ -69,10 +69,11 @@ const allowedCorsOrigins = new Set(
 // Apply CORS before all routes so preflight works even if an adapter rewrites
 // the internal path seen by Hono.
 app.use('*', cors({
-  origin: (origin) => {
-    const requestOrigin = origin ? normalizeOrigin(origin) : '';
-    return allowedCorsOrigins.has(requestOrigin) ? origin : null;
-  },
+  // origin: (origin) => {
+  //   const requestOrigin = origin ? normalizeOrigin(origin) : '';
+  //   return allowedCorsOrigins.has(requestOrigin) ? origin : null;
+  // },
+  origin: 'http://taams-test.mofed.gov.et',
   credentials: true,
 }));
 
