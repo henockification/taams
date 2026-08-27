@@ -894,6 +894,8 @@
     "approveAnnualLeavePatternGuide": "የተጠየቁትን ቀናት እንዳሉ ማጽደቅ፣ ቀናትን ማስወገድ፣ የስራ ቀናትን መጨመር ወይም የተወሰነ ቀን መጨመር ይችላሉ። ቀሪ የሚያዝ ወይም የሚቀነስበት የመጨረሻው የጸደቀ መርሐግብር ብቻ ነው።",
     "approveAsRequested": "የተጠየቁትን ቀናት ተጠቀም",
     "supervisorAdded": "ተቆጣጣሪ የጨመረው",
+    "confirmAnnualLeaveApproval": "የዓመት ፈቃድ ማጽደቅን ያረጋግጡ",
+    "confirmAnnualLeaveApprovalDescription": "ይህን የዓመት ፈቃድ መርሐግብር ማጽደቅ እርግጠኛ ነዎት? የጸደቁት ቀናት የፈቃድ ቀሪን ይይዛሉ ወይም ይቀንሳሉ።",
     "addWorkingDays": "የስራ ቀናትን ጨምር",
     "addDate": "ቀን ጨምር",
     "noAnnualLeaveDates": "የተመረጠ የዓመት ፈቃድ ቀን የለም።",

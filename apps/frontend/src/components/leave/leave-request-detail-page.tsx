@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from 'react';
 import { ArrowLeft, CalendarCheck, Check, Pencil, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-import { AnnualLeaveApprovalDialog } from '@/components/leave/annual-leave-approval-dialog';
+import { AnnualLeaveApprovalEditor } from '@/components/leave/annual-leave-approval-editor';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -50,7 +50,6 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
   const leaveBalancesQuery = useLeaveBalances();
   const changeStatus = useChangeLeaveRequestStatus();
   const reviewInterruption = useReviewLeaveInterruption();
-  const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
   const [interruptionReviewTarget, setInterruptionReviewTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [interruptionRejectTarget, setInterruptionRejectTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -67,6 +66,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
   const canEdit = Boolean(request && request.status === 'PENDING' && isOwnRequest);
   const pendingInterruption = request?.interruptions?.find((interruption) => interruption.status === 'PENDING') ?? null;
   const canReviewRequest = Boolean(request && request.status === 'PENDING' && !isOwnRequest && canReviewRequests);
+  const isAnnualLeaveRequest = Boolean(request?.leaveType?.code?.trim().toUpperCase() === 'ANNUAL');
   const canReviewInterruption = Boolean(
     request
     && pendingInterruption
@@ -75,11 +75,6 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
   );
 
   const approveRequest = async (target: LeaveRequest) => {
-    if (target.leaveType?.code?.trim().toUpperCase() === 'ANNUAL' && target.annualLeaveDates?.length) {
-      setApprovalTarget(target);
-      return;
-    }
-
     try {
       await changeStatus.mutateAsync({
         leaveRequestId: target.id,
@@ -102,7 +97,6 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
         approvedAt: new Date().toISOString(),
         approvedDates,
       });
-      setApprovalTarget(null);
       notifications.show({ title: common('success'), message: t('leaveRequestApproved'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
@@ -191,7 +185,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
               <Link href={`/annual-leave-requests/${request.id}/edit` as any}><Pencil className="size-4" />{common('edit')}</Link>
             </Button>
           ) : null}
-          {canReviewRequest ? (
+          {canReviewRequest && !isAnnualLeaveRequest ? (
             <>
               <Button type="button" onClick={() => approveRequest(request)} disabled={changeStatus.isPending}>
                 <Check className="size-4" />{t('approve')}
@@ -253,6 +247,14 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
           </div>
         </CardContent>
       </Card>
+
+      {canReviewRequest && isAnnualLeaveRequest ? (
+        <AnnualLeaveApprovalEditor
+          request={request}
+          isSaving={changeStatus.isPending}
+          onApprove={submitAnnualApproval}
+        />
+      ) : null}
 
       <Card className="rounded-lg">
         <CardHeader><CardTitle>{t('leaveDates')}</CardTitle></CardHeader>
@@ -326,14 +328,6 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
           </CardContent>
         </Card>
       ) : null}
-
-      <AnnualLeaveApprovalDialog
-        request={approvalTarget}
-        open={Boolean(approvalTarget)}
-        isSaving={changeStatus.isPending}
-        onOpenChange={(open) => !open && setApprovalTarget(null)}
-        onApprove={submitAnnualApproval}
-      />
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent>

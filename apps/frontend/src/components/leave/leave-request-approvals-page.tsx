@@ -37,10 +37,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { AnnualLeaveApprovalDialog } from '@/components/leave/annual-leave-approval-dialog';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
 import {
-  useChangeLeaveRequestStatus,
   useLeaveBalances,
   useLeaveRequests,
   useReviewLeaveInterruption,
@@ -117,15 +115,12 @@ export function LeaveRequestApprovalsPage() {
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('ALL');
   const [requestDateFilters, setRequestDateFilters] = useState({ fromDate: '', toDate: '' });
-  const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
-  const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
   const [interruptionReviewTarget, setInterruptionReviewTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [interruptionRejectTarget, setInterruptionRejectTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
   const leaveBalancesQuery = useLeaveBalances();
   const leaveRequestsQuery = useLeaveRequests();
-  const changeStatus = useChangeLeaveRequestStatus();
   const reviewInterruption = useReviewLeaveInterruption();
 
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
@@ -196,94 +191,6 @@ export function LeaveRequestApprovalsPage() {
     setEmployeeSearch('');
     setDateFilter('ALL');
     setRequestDateFilters({ fromDate: '', toDate: '' });
-  };
-
-  const approveRequest = async (request: LeaveRequest) => {
-    if (isAnnualRequest(request) && request.annualLeaveDates?.length) {
-      setApprovalTarget(request);
-      return;
-    }
-
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: request.id,
-        status: 'APPROVED',
-        approvedBy: session.data?.user?.id ?? undefined,
-        approvedAt: new Date().toISOString(),
-      });
-
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestApproved'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
-  };
-
-  const submitAnnualApproval = async (request: LeaveRequest, approvedDates: Array<{ date: string; dayValue: string }>) => {
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: request.id,
-        status: 'APPROVED',
-        approvedBy: session.data?.user?.id ?? undefined,
-        approvedAt: new Date().toISOString(),
-        approvedDates,
-      });
-
-      setApprovalTarget(null);
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestApproved'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
-  };
-
-  const openRejectDialog = (request: LeaveRequest) => {
-    setRejectTarget(request);
-    setRejectionReason('');
-  };
-
-  const submitRejection = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!rejectTarget) return;
-
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: rejectTarget.id,
-        status: 'REJECTED',
-        rejectedBy: session.data?.user?.id ?? undefined,
-        rejectedAt: new Date().toISOString(),
-        rejectionReason: rejectionReason.trim() || null,
-      });
-
-      setRejectTarget(null);
-      setRejectionReason('');
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestRejected'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
   };
 
   const submitInterruptionApproval = async (payload: {
@@ -527,39 +434,6 @@ export function LeaveRequestApprovalsPage() {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => !open && setRejectTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('reject')}</DialogTitle>
-            <DialogDescription>{t('rejectionReason')}</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={submitRejection}>
-            <Textarea
-              value={rejectionReason}
-              onChange={(event) => setRejectionReason(event.target.value)}
-              placeholder={t('rejectionReason')}
-              rows={4}
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>
-                {common('cancel')}
-              </Button>
-              <Button type="submit" disabled={changeStatus.isPending || !rejectionReason.trim()}>
-                {changeStatus.isPending ? t('saving') : common('save')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <AnnualLeaveApprovalDialog
-        request={approvalTarget}
-        open={Boolean(approvalTarget)}
-        isSaving={changeStatus.isPending}
-        onOpenChange={(open) => !open && setApprovalTarget(null)}
-        onApprove={submitAnnualApproval}
-      />
 
       <LeaveInterruptionDialog
         request={interruptionReviewTarget?.request ?? null}

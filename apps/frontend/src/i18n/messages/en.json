@@ -894,6 +894,8 @@
     "approveAnnualLeavePatternGuide": "Approve the requested pattern as-is, remove dates, add working days, or add a specific date before approving. Only the final approved dates will reserve or deduct leave balance.",
     "approveAsRequested": "Use requested dates",
     "supervisorAdded": "Supervisor added",
+    "confirmAnnualLeaveApproval": "Confirm annual leave approval",
+    "confirmAnnualLeaveApprovalDescription": "Are you sure you want to approve this annual leave pattern? The approved dates will reserve or deduct leave balance.",
     "addWorkingDays": "Add working days",
     "addDate": "Add date",
     "noAnnualLeaveDates": "No annual leave dates selected.",
