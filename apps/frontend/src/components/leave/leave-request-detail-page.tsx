@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { AnnualLeaveApprovalEditor } from '@/components/leave/annual-leave-approval-editor';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
+import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -170,6 +171,8 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+      {approvalMode ? <DelegationBanner user={session.data?.user} /> : null}
+
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <Button type="button" variant="ghost" asChild className="-ml-3">
@@ -180,6 +183,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant={statusVariant(request.status) as any}>{request.status}</Badge>
+          <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
           {canEdit ? (
             <Button type="button" variant="outline" asChild>
               <Link href={`/annual-leave-requests/${request.id}/edit` as any}><Pencil className="size-4" />{common('edit')}</Link>
@@ -188,7 +192,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
           {canReviewRequest && !isAnnualLeaveRequest ? (
             <>
               <Button type="button" onClick={() => approveRequest(request)} disabled={changeStatus.isPending}>
-                <Check className="size-4" />{t('approve')}
+                <Check className="size-4" />{delegatedActionLabel(t('approve'), session.data?.user)}
               </Button>
               <Button
                 type="button"
@@ -199,7 +203,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
                 }}
                 disabled={changeStatus.isPending}
               >
-                <X className="size-4" />{t('reject')}
+                <X className="size-4" />{delegatedActionLabel(t('reject'), session.data?.user)}
               </Button>
             </>
           ) : null}
@@ -210,7 +214,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
                 onClick={() => setInterruptionReviewTarget({ request, interruption: pendingInterruption })}
                 disabled={reviewInterruption.isPending}
               >
-                <Check className="size-4" />{t('reviewLeaveInterruption')}
+                <Check className="size-4" />{delegatedActionLabel(t('reviewLeaveInterruption'), session.data?.user)}
               </Button>
               <Button
                 type="button"
@@ -221,7 +225,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
                 }}
                 disabled={reviewInterruption.isPending}
               >
-                <X className="size-4" />{t('rejectLeaveInterruption')}
+                <X className="size-4" />{delegatedActionLabel(t('rejectLeaveInterruption'), session.data?.user)}
               </Button>
             </>
           ) : null}
@@ -252,6 +256,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
         <AnnualLeaveApprovalEditor
           request={request}
           isSaving={changeStatus.isPending}
+          approveLabel={delegatedActionLabel(t('approve'), session.data?.user)}
           onApprove={submitAnnualApproval}
         />
       ) : null}
@@ -298,6 +303,9 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
                     value={`${formatDate(interruption.actualWorkStartDate)} - ${formatDate(interruption.actualWorkEndDate)}`}
                   />
                   <InfoBlock label={t('reviewedAt')} value={formatDate(interruption.reviewedAt)} />
+                  <div className="flex items-end">
+                    <DelegationAuditBadge delegationId={interruption.supervisorDelegationId} />
+                  </div>
                   <div className="md:col-span-4">
                     <p className="text-xs text-muted-foreground">{t('interruptionReason')}</p>
                     <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{interruption.reason}</p>

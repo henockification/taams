@@ -3,7 +3,6 @@ import { db } from '../../db';
 import {
   annualLeaveRequestDates,
   attendanceDailyRecords,
-  employeeSupervisors,
   employeeWorkSchedules,
   employees,
   leaveBalanceTransactions,
@@ -31,11 +30,13 @@ import type {
   ReviewLeaveInterruptionInput,
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
-import { userHasPermission } from '../rbac/manageRbac';
+import {
+  getVisibleEmployeeIdsForSupervisorActor,
+  resolveSupervisorActionContext,
+} from './manageSupervisorDelegations';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
-const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 const KNOWN_LEAVE_TYPES = [
   {
     code: 'ANNUAL',
@@ -222,7 +223,7 @@ export async function getLeaveBalances(
 
   const { scope, userId, roles } = context;
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return balances;
-  const managedEmployeeIds = userId ? await getManagedEmployeeIdsForUser(userId, roles) : [];
+  const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
   const visibleEmployeeIds = new Set(managedEmployeeIds);
   return balances.filter((balance) => (
     balance.employee?.userId === userId
@@ -619,7 +620,11 @@ export async function updateLeaveRequestScoped(id: string, input: UpdateLeaveReq
   return updateLeaveRequest(id, input);
 }
 
-export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveRequestStatusInput) {
+export async function changeLeaveRequestStatus(
+  id: string,
+  input: ChangeLeaveRequestStatusInput,
+  context: { roles?: string[] | null } = {},
+) {
   return db.transaction(async (tx) => {
     const request = await getLeaveRequestById(id, tx);
     if (!request) throw new Error('Leave request not found');
@@ -630,7 +635,12 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
       if (!rejectedBy) throw new Error('Rejected by is required when rejecting a leave request');
       if (!input.rejectionReason?.trim()) throw new Error('Rejection reason is required');
       await assertUserExists(rejectedBy, tx);
-      await assertCanReviewRequest(request.employeeId, rejectedBy, tx);
+      const actionContext = await resolveSupervisorActionContext({
+        actorUserId: rejectedBy,
+        roles: context.roles,
+        targetEmployeeId: request.employeeId,
+        tx,
+      });
       if (request.requestedBy === rejectedBy) throw new Error('A requester cannot review their own leave request');
 
       if (isAnnualLeaveType(request.leaveType)) {
@@ -649,6 +659,7 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
         rejectedBy,
         rejectedAt: input.rejectedAt ? new Date(input.rejectedAt) : new Date(),
         rejectionReason: input.rejectionReason.trim(),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
         updatedAt: new Date(),
       } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
       if (!updated) throw new Error('Leave request is already processed');
@@ -659,7 +670,12 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
     const approvedBy = input.approvedBy;
     if (!approvedBy) throw new Error('Approved by is required when approving a leave request');
     await assertUserExists(approvedBy, tx);
-    await assertCanReviewRequest(request.employeeId, approvedBy, tx);
+    const actionContext = await resolveSupervisorActionContext({
+      actorUserId: approvedBy,
+      roles: context.roles,
+      targetEmployeeId: request.employeeId,
+      tx,
+    });
     if (request.requestedBy === approvedBy) throw new Error('A requester cannot review their own leave request');
 
     const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
@@ -746,6 +762,7 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
       rejectedBy: null,
       rejectedAt: null,
       rejectionReason: null,
+      supervisorDelegationId: actionContext.supervisorDelegationId,
       updatedAt: new Date(),
     } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
     if (!updated) throw new Error('Leave request is already processed');
@@ -754,10 +771,15 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
   });
 }
 
-export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, _scope: EmployeeVisibilityScope) {
+export async function changeLeaveRequestStatusScoped(
+  id: string,
+  input: ChangeLeaveRequestStatusInput,
+  _scope: EmployeeVisibilityScope,
+  context: { roles?: string[] | null } = {},
+) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
-  return changeLeaveRequestStatus(id, input);
+  return changeLeaveRequestStatus(id, input, context);
 }
 
 export async function createLeaveInterruptionScoped(input: CreateLeaveInterruptionInput, scope: EmployeeVisibilityScope) {
@@ -799,15 +821,19 @@ export async function createLeaveInterruption(input: CreateLeaveInterruptionInpu
   });
 }
 
-export async function reviewLeaveInterruptionScoped(input: ReviewLeaveInterruptionInput, _scope: EmployeeVisibilityScope) {
+export async function reviewLeaveInterruptionScoped(
+  input: ReviewLeaveInterruptionInput,
+  _scope: EmployeeVisibilityScope,
+  context: { roles?: string[] | null } = {},
+) {
   const interruption = await getLeaveInterruptionById(input.leaveInterruptionId);
   if (!interruption) throw new Error('Leave interruption not found');
   const request = await getLeaveRequestById(interruption.leaveRequestId);
   if (!request) throw new Error('Leave request not found');
-  return reviewLeaveInterruption(input);
+  return reviewLeaveInterruption(input, context);
 }
 
-export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInput) {
+export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInput, context: { roles?: string[] | null } = {}) {
   return db.transaction(async (tx) => {
     const interruption = await getLeaveInterruptionById(input.leaveInterruptionId, tx);
     if (!interruption) throw new Error('Leave interruption not found');
@@ -817,7 +843,12 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
 
     const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
     if (!request) throw new Error('Leave request not found');
-    await assertCanReviewRequest(request.employeeId, input.reviewedBy, tx);
+    const actionContext = await resolveSupervisorActionContext({
+      actorUserId: input.reviewedBy,
+      roles: context.roles,
+      targetEmployeeId: request.employeeId,
+      tx,
+    });
     if (interruption.requestedBy === input.reviewedBy) {
       throw new Error('A requester cannot review their own leave interruption');
     }
@@ -829,6 +860,7 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
         reviewedBy: input.reviewedBy,
         reviewedAt: new Date(),
         rejectionReason: input.rejectionReason.trim(),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
         updatedAt: new Date(),
       } as any).where(and(
         eq(leaveInterruptions.id, interruption.id),
@@ -910,6 +942,7 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
       reviewedBy: input.reviewedBy,
       reviewedAt: new Date(),
       rejectionReason: null,
+      supervisorDelegationId: actionContext.supervisorDelegationId,
       updatedAt: new Date(),
     } as any).where(and(
       eq(leaveInterruptions.id, interruption.id),
@@ -929,7 +962,7 @@ async function filterLeaveRequestsForViewer(
 
   if (scope.type === 'hr') return requests.filter((request) => request.status === 'APPROVED');
 
-  const managedEmployeeIds = userId ? await getManagedEmployeeIdsForUser(userId, roles) : [];
+  const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
   const visibleEmployeeIds = new Set(managedEmployeeIds);
   return requests.filter((request) => (
     request.employee?.userId === userId
@@ -1209,66 +1242,6 @@ async function assertUserExists(id: string, tx: DbClient = db) {
     columns: { id: true },
   });
   if (!found) throw new Error('User not found');
-}
-
-async function assertCanReviewRequest(employeeId: string, reviewerUserId: string, tx: DbClient = db) {
-  const reviewer = await tx.query.user.findFirst({
-    where: eq(user.id, reviewerUserId),
-    columns: { id: true, role: true },
-  });
-  if (reviewer?.role?.some((role: string) => ['super_admin', 'admin'].includes(role))) return;
-  if (await userHasPermission(reviewerUserId, 'leave-request-approvals:approve')) return;
-
-  const reviewerEmployee = await tx.query.employees.findFirst({
-    where: eq(employees.userId, reviewerUserId),
-    columns: { id: true },
-  });
-  if (!reviewerEmployee) throw new Error('Reviewer is not linked to an employee record');
-
-  const assignment = await tx.query.employeeSupervisors.findFirst({
-    where: and(
-      eq(employeeSupervisors.employeeId, employeeId),
-      eq(employeeSupervisors.supervisorId, reviewerEmployee.id),
-      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, today())),
-    ),
-    columns: { id: true },
-  });
-  if (!assignment) throw new Error('Only the direct supervisor or an admin can review this leave request');
-}
-
-async function getManagedEmployeeIdsForUser(userId: string, roles?: string[] | null, tx: DbClient = db) {
-  const supervisor = await tx.query.employees.findFirst({
-    where: eq(employees.userId, userId),
-    columns: { id: true, departmentId: true },
-  });
-  if (!supervisor) return [];
-
-  const managedIds = new Set<string>();
-  const assignments = await tx.query.employeeSupervisors.findMany({
-    where: and(
-      eq(employeeSupervisors.supervisorId, supervisor.id),
-      lte(employeeSupervisors.effectiveFrom, today()),
-      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, today())),
-    ),
-    columns: { employeeId: true },
-  });
-  assignments.forEach((assignment: { employeeId: string }) => managedIds.add(assignment.employeeId));
-
-  const normalizedRoles = (roles ?? []).map((role) => role.toLowerCase());
-  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
-    const departmentEmployees = await tx.query.employees.findMany({
-      where: and(
-        eq(employees.departmentId, supervisor.departmentId),
-        eq(employees.isActive, true),
-      ),
-      columns: { id: true },
-    });
-    departmentEmployees.forEach((employee: { id: string }) => {
-      if (employee.id !== supervisor.id) managedIds.add(employee.id);
-    });
-  }
-
-  return [...managedIds];
 }
 
 async function calculateWorkingDays(employeeId: string, startDate: string, endDate: string, tx: DbClient = db) {

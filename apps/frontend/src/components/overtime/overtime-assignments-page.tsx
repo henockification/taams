@@ -16,6 +16,7 @@ import { MultiSelect } from '@/components/ui/multi-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
 import {
   useChangeOvertimeRequestStatus,
   useCreateOvertimeRequest,
@@ -121,11 +122,13 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {isSupervisor ? <DelegationBanner user={session.data?.user} /> : null}
+
       {isSupervisor ? (
         <div className="flex justify-end">
           <Button onClick={() => setAssignOpen(true)}>
             <Plus className="size-4" />
-            {t('assignOvertime')}
+            {delegatedActionLabel(t('assignOvertime'), session.data?.user)}
           </Button>
         </div>
       ) : null}
@@ -199,7 +202,12 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                         </TableCell>
                         <TableCell>{request.attendanceEvidence?.overlapMinutes ?? 0} min</TableCell>
                         <TableCell>{request.approvedMinutes} min / {request.overtimeDays} {t('days')}</TableCell>
-                        <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{t(overtimeStatusKey(request.status))}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant={requestStatusVariant(request.status) as any}>{t(overtimeStatusKey(request.status))}</Badge>
+                            <DelegationAuditBadge delegationId={request.supervisorDelegationId ?? request.requestedSupervisorDelegationId} />
+                          </div>
+                        </TableCell>
                         {isSupervisor ? (
                           <TableCell>
                             {request.status === 'ASSIGNED' && request.employee?.userId !== session.data?.user?.id ? (
@@ -355,7 +363,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                       disabled={changeOvertimeRequestStatus.isPending}
                     >
                       <X className="size-4" />
-                      {t('reject')}
+                      {delegatedActionLabel(t('reject'), session.data?.user)}
                     </Button>
                     <Button
                       type="button"
@@ -363,7 +371,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                       disabled={changeOvertimeRequestStatus.isPending || Number(approvedMinutes) <= 0}
                     >
                       <Check className="size-4" />
-                      {t('approve')}
+                      {delegatedActionLabel(t('approve'), session.data?.user)}
                     </Button>
                   </DialogFooter>
                 </div>

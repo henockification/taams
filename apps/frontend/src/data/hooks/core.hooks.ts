@@ -16,6 +16,7 @@ import type {
   CreateEmployeeWorkScheduleInput,
   CreateHolidayInput,
   CreatePositionInput,
+  CreateSupervisorDelegationInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
@@ -78,6 +79,7 @@ export const coreQueryKeys = {
   employeesPaginated: (page: number, pageSize: number, search: string) => [...coreQueryKeys.all, 'employees', 'paginated', page, pageSize, search] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
+  supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
   allEmployeeWorkSchedules: () => [...coreQueryKeys.all, 'employee-work-schedules'] as const,
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
@@ -520,6 +522,38 @@ export function useCreateEmployeeSupervisor() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeSupervisors(variables.employeeId) });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+    },
+  });
+}
+
+export function useSupervisorDelegations() {
+  return useQuery({
+    queryKey: coreQueryKeys.supervisorDelegations(),
+    queryFn: () => coreApi.getSupervisorDelegations(),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useCreateSupervisorDelegation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateSupervisorDelegationInput) => coreApi.createSupervisorDelegation(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorDelegations() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
+export function useRevokeSupervisorDelegation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (supervisorDelegationId: string) => coreApi.revokeSupervisorDelegation(supervisorDelegationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorDelegations() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
     },
   });
 }

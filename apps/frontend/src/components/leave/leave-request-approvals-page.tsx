@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
+import { DelegationAuditBadge, DelegationBanner } from '@/components/supervisor/delegation-context';
 import {
   useLeaveBalances,
   useLeaveRequests,
@@ -235,6 +236,8 @@ export function LeaveRequestApprovalsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      <DelegationBanner user={session.data?.user} />
+
       <div className="grid gap-2 sm:grid-cols-3">
         <Summary label={t('pendingRequests')} value={pendingCount} />
         <Summary label={t('approved')} value={approvedCount} />
@@ -400,7 +403,12 @@ export function LeaveRequestApprovalsPage() {
                             '-'
                           )}
                         </TableCell>
-                        <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant={statusVariant(request.status) as any}>{request.status}</Badge>
+                            <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
+                          </div>
+                        </TableCell>
                         <TableCell>
                           {request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
                             <div className="flex justify-end gap-2">

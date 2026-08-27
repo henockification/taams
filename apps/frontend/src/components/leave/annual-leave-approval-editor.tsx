@@ -31,6 +31,7 @@ import type { LeaveRequest } from '@/data/types/core.types';
 type AnnualLeaveApprovalEditorProps = {
   request: LeaveRequest;
   isSaving: boolean;
+  approveLabel?: string;
   onApprove: (request: LeaveRequest, approvedDates: Array<{ date: string; dayValue: string }>) => Promise<void>;
 };
 
@@ -45,7 +46,7 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function AnnualLeaveApprovalEditor({ request, isSaving, onApprove }: AnnualLeaveApprovalEditorProps) {
+export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onApprove }: AnnualLeaveApprovalEditorProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const [approvalDates, setApprovalDates] = useState<ApprovalDateSelection[]>([]);
@@ -212,7 +213,7 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, onApprove }: Annu
             </p>
             <Button type="submit" disabled={isSaving || approvedTotal <= 0}>
               <Check className="size-4" />
-              {isSaving ? t('saving') : t('approve')}
+              {isSaving ? t('saving') : approveLabel ?? t('approve')}
             </Button>
           </div>
         </form>
@@ -232,7 +233,7 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, onApprove }: Annu
             <Button type="button" variant="outline" onClick={() => setConfirmOpen(false)}>{common('cancel')}</Button>
             <Button type="button" onClick={confirmApproval} disabled={isSaving || approvedTotal <= 0}>
               <Check className="size-4" />
-              {isSaving ? t('saving') : t('approve')}
+              {isSaving ? t('saving') : approveLabel ?? t('approve')}
             </Button>
           </DialogFooter>
         </DialogContent>

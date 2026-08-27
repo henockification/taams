@@ -229,6 +229,31 @@ export type EmployeeSupervisor = {
   supervisor?: Employee;
 };
 
+export type SupervisorDelegation = {
+  id: string;
+  supervisorUserId: string;
+  supervisorEmployeeId: string;
+  delegateUserId: string;
+  delegateEmployeeId: string;
+  startsAt: string;
+  endsAt: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  supervisorUser?: unknown | null;
+  supervisorEmployee?: Employee | null;
+  delegateUser?: unknown | null;
+  delegateEmployee?: Employee | null;
+};
+
+export type CreateSupervisorDelegationInput = {
+  delegateEmployeeId: string;
+  startsAt: string;
+  endsAt: string;
+};
+
 export type EmployeeWorkSchedule = {
   id: string;
   employeeId: string;
@@ -352,6 +377,7 @@ export type AttendancePunch = {
   manualReason: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
+  supervisorDelegationId?: string | null;
   processedAt: string | null;
   rawPayload: Record<string, unknown> | null;
   createdAt: string;
@@ -384,6 +410,7 @@ export type AttendanceDailyRecord = {
   status: AttendanceDailyRecordStatus;
   supervisorApprovedBy: string | null;
   supervisorApprovedAt: string | null;
+  supervisorDelegationId?: string | null;
   hrApprovedBy: string | null;
   hrApprovedAt: string | null;
   returnedBy: string | null;
@@ -456,6 +483,7 @@ export type ManualPunchRequest = {
   hrReviewNote: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
+  supervisorDelegationId?: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -493,11 +521,13 @@ export type OvertimeRequest = {
   reason: string;
   status: OvertimeRequestStatus;
   requestedBy: string;
+  requestedSupervisorDelegationId?: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   payrollNote: string | null;
   createdAt: string;
   updatedAt: string;
@@ -881,6 +911,8 @@ export type PermanentEmployeeImportResponse = {
 };
 export type EmployeeSupervisorsResponse = { success: boolean; supervisors: EmployeeSupervisor[] };
 export type EmployeeSupervisorResponse = { success: boolean; supervisor: EmployeeSupervisor };
+export type SupervisorDelegationsResponse = { success: boolean; supervisorDelegations: SupervisorDelegation[] };
+export type SupervisorDelegationResponse = { success: boolean; supervisorDelegation: SupervisorDelegation };
 export type EmployeeWorkSchedulesResponse = { success: boolean; employeeWorkSchedules: EmployeeWorkSchedule[] };
 export type EmployeeWorkScheduleResponse = { success: boolean; employeeWorkSchedule: EmployeeWorkSchedule };
 export type BiometricDevicesResponse = { success: boolean; biometricDevices: BiometricDevice[] };
@@ -999,6 +1031,7 @@ export type LeaveInterruption = {
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
   dates: LeaveInterruptionDate[];
@@ -1025,6 +1058,7 @@ export type LeaveRequest = {
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;

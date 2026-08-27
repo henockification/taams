@@ -5,9 +5,13 @@ export function coreErrorResponse(c: Context, error: unknown, fallback: string) 
   const lowerMessage = message.toLowerCase();
   const status = lowerMessage.includes('not found')
     ? 404
+    : lowerMessage.includes('authentication required')
+      ? 401
     : lowerMessage.includes('duplicate') || lowerMessage.includes('unique')
       ? 409
-      : lowerMessage.includes('cannot')
+      : lowerMessage.includes('only ') || lowerMessage.includes('not authorized') || lowerMessage.includes('permission')
+        ? 403
+      : lowerMessage.includes('cannot') || lowerMessage.includes('must ') || lowerMessage.includes('invalid')
         ? 400
         : 500;
 

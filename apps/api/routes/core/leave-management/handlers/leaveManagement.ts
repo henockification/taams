@@ -260,6 +260,7 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
+    const roles = await resolveRoleNames(session);
     const parsed = ChangeLeaveRequestStatusRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const payload = { ...parsed.data };
@@ -272,7 +273,7 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
       if (!payload.rejectedBy) return validationErrorResponse(c, 'rejectedBy is required when rejecting a leave request');
     }
 
-    const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload, scope);
+    const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload, scope, { roles });
     // Notification trigger disabled until SMS/email provider credentials are available.
     // await safeEnqueueWorkflowNotification(
     //   leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_APPROVED' : 'LEAVE_REQUEST_REJECTED',
@@ -312,6 +313,7 @@ export async function reviewLeaveInterruptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
+    const roles = await resolveRoleNames(session);
     const parsed = ReviewLeaveInterruptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const reviewedBy = session.user.id ?? c.user?.id ?? parsed.data.reviewedBy;
@@ -320,7 +322,7 @@ export async function reviewLeaveInterruptionHandler(c: Context) {
       leaveInterruptionId: c.req.param('id'),
       ...parsed.data,
       reviewedBy,
-    }, scope);
+    }, scope, { roles });
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to review leave interruption');

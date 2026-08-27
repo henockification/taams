@@ -44,6 +44,7 @@ export async function getSupervisorAttendanceDailyRecordsHandler(c: Context) {
     const scope = await resolveScope(session);
     const records = await getSupervisorAttendanceDailyRecords({
       userId: session.user.id,
+      roles: session.user.role ?? [],
       date,
       scope,
     });
@@ -84,7 +85,11 @@ export async function supervisorApproveAttendanceDailyRecordHandler(c: Context) 
     const session = await requireAuthenticatedUser(c);
     const id = c.req.param('id');
     const scope = await resolveScope(session);
-    const record = await supervisorApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
+    const record = await supervisorApproveAttendanceDailyRecord(id, {
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+      scope,
+    });
     // Notification trigger disabled until SMS/email provider credentials are available.
     // await safeEnqueueWorkflowNotification('ATTENDANCE_SUPERVISOR_APPROVED', {
     //   entityId: record.id,
@@ -114,6 +119,7 @@ export async function updateSupervisorAttendanceDailyRecordPayrollHandler(c: Con
 
     const record = await updateSupervisorAttendanceDailyRecordPayroll(id, {
       userId: session.user.id,
+      roles: session.user.role ?? [],
       scope: await resolveScope(session),
       ...parsed.data,
     });
@@ -170,6 +176,7 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
     const scope = canHrReturn ? await resolveScope(session) : undefined;
     const record = await returnAttendanceDailyRecord(id, {
       userId: session.user.id,
+      roles: session.user.role ?? [],
       reason: parsed.data.reason,
       canHrReturn,
       scope,

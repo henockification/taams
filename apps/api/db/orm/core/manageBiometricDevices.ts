@@ -217,6 +217,7 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
       manualReason: input.manualReason ?? null,
       approvedBy: input.approvedBy ?? null,
       approvedAt: input.approvedAt ? new Date(input.approvedAt) : null,
+      supervisorDelegationId: input.supervisorDelegationId ?? null,
       processedAt: input.processedAt ? new Date(input.processedAt) : null,
       rawPayload: input.rawPayload ?? null,
     } as any)

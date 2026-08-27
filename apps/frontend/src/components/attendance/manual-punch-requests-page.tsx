@@ -40,6 +40,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
 import {
   useChangeManualPunchRequestStatus,
   useCreateManualPunchRequest,
@@ -161,6 +162,8 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {isSupervisor ? <DelegationBanner user={session.data?.user} /> : null}
+
       {!isSupervisor ? (
         <div className="flex justify-end">
           <Button onClick={openManualRequestDialog}>
@@ -231,18 +234,23 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
                           )}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
-                        <TableCell><Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge>
+                            <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
+                          </div>
+                        </TableCell>
                         {isSupervisor ? (
                           <TableCell>
                             {canApprove ? (
                               <div className="flex justify-end gap-2">
                                 <Button type="button" size="sm" onClick={() => changeRequestStatus(request, 'SUPERVISOR_APPROVED')} disabled={changeManualRequestStatus.isPending}>
                                   <Check className="size-4" />
-                                  {t('approve')}
+                                  {delegatedActionLabel(t('approve'), session.data?.user)}
                                 </Button>
                                 <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'SUPERVISOR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
                                   <X className="size-4" />
-                                  {t('reject')}
+                                  {delegatedActionLabel(t('reject'), session.data?.user)}
                                 </Button>
                               </div>
                             ) : (

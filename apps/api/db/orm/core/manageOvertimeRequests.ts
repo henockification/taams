@@ -3,7 +3,6 @@ import { db } from '../../db';
 import {
   attendanceDailyRecords,
   attendancePunches,
-  employeeSupervisors,
   employees,
   overtimeRequests,
   user,
@@ -15,9 +14,12 @@ import type {
   OvertimeAttendanceEvidence,
 } from '../../../types/core.types';
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import {
+  getVisibleEmployeeIdsForSupervisorActor,
+  resolveSupervisorActionContext,
+} from './manageSupervisorDelegations';
 
 type DbClient = typeof db | any;
-const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 const HR_ROLE_NAMES = ['human_resource'];
 const OVERTIME_NOTE_PREFIX = 'Approved overtime ';
 
@@ -43,12 +45,22 @@ export async function createOvertimeRequests(
   for (const employeeId of employeeIds) {
     await assertEmployeeExists(employeeId);
     if (actorEmployee?.id === employeeId) throw new Error('Cannot assign overtime to yourself');
-    await assertCanReviewOvertime(employeeId, context);
+    await resolveSupervisorActionContext({
+      actorUserId: context.requestedBy,
+      roles: context.roles,
+      targetEmployeeId: employeeId,
+    });
   }
 
   const inserted = await db.transaction(async (tx) => {
     const rows = [];
     for (const employeeId of employeeIds) {
+      const actionContext = await resolveSupervisorActionContext({
+        actorUserId: context.requestedBy,
+        roles: context.roles,
+        targetEmployeeId: employeeId,
+        tx,
+      });
       const attendanceDailyRecord = await findAttendanceDailyRecord(employeeId, overtimeDate, tx);
       const [request] = await tx
         .insert(overtimeRequests)
@@ -62,6 +74,7 @@ export async function createOvertimeRequests(
           reason: input.reason,
           status: 'ASSIGNED',
           requestedBy: context.requestedBy,
+          requestedSupervisorDelegationId: actionContext.supervisorDelegationId,
         } as any)
         .returning();
       rows.push(request);
@@ -126,7 +139,12 @@ export async function changeOvertimeRequestStatus(
       throw new Error('Overtime assignment is already processed');
     }
 
-    await assertCanReviewOvertime(request.employeeId, context, tx);
+    const actionContext = await resolveSupervisorActionContext({
+      actorUserId: context.reviewerUserId,
+      roles: context.roles,
+      targetEmployeeId: request.employeeId,
+      tx,
+    });
 
     if (input.status === 'APPROVED') {
       const dailyRecord = await findAttendanceDailyRecord(request.employeeId, request.overtimeDate, tx);
@@ -150,6 +168,7 @@ export async function changeOvertimeRequestStatus(
           status: 'APPROVED',
           approvedBy: context.reviewerUserId,
           approvedAt,
+          supervisorDelegationId: actionContext.supervisorDelegationId,
           approvedMinutes,
           overtimeDays: formatDayValue(overtimeDays),
           rejectedBy: null,
@@ -176,6 +195,7 @@ export async function changeOvertimeRequestStatus(
         rejectedBy: context.reviewerUserId,
         rejectedAt,
         rejectionReason: input.rejectionReason?.trim() || null,
+        supervisorDelegationId: actionContext.supervisorDelegationId,
         updatedAt: new Date(),
       })
       .where(eq(overtimeRequests.id, id));
@@ -365,7 +385,7 @@ async function filterVisibleOvertimeRequests<T extends { employeeId: string; emp
   userId?: string,
   roles?: string[] | null,
 ) {
-  const managedEmployeeIds = userId ? await getManagedEmployeeIdsForUser(userId, roles) : [];
+  const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
   return requests.filter((request) => (
     request.employee?.userId === userId || managedEmployeeIds.includes(request.employeeId)
   ));
@@ -385,56 +405,6 @@ async function assertUserExists(id: string, tx: DbClient = db) {
     columns: { id: true },
   });
   if (!found) throw new Error('User not found');
-}
-
-async function assertCanReviewOvertime(
-  employeeId: string,
-  context: { scope?: EmployeeVisibilityScope; reviewerUserId?: string; requestedBy?: string; roles?: string[] | null },
-  tx: DbClient = db,
-) {
-  if (!context.scope || context.scope.type === 'unrestricted') return;
-
-  const reviewerUserId = context.reviewerUserId ?? context.requestedBy;
-  if (!reviewerUserId) throw new Error('Cannot assign or review overtime for this employee');
-
-  const managedEmployeeIds = await getManagedEmployeeIdsForUser(reviewerUserId, context.roles, tx);
-  if (managedEmployeeIds.includes(employeeId)) return;
-
-  throw new Error('Cannot assign or review overtime for this employee');
-}
-
-async function getManagedEmployeeIdsForUser(userId: string, roles?: string[] | null, tx: DbClient = db) {
-  const supervisor = await tx.query.employees.findFirst({
-    where: eq(employees.userId, userId),
-    columns: { id: true, departmentId: true },
-  });
-  if (!supervisor) return [];
-
-  const managedIds = new Set<string>();
-  const assignments = await tx.query.employeeSupervisors.findMany({
-    where: and(
-      eq(employeeSupervisors.supervisorId, supervisor.id),
-      eq(employeeSupervisors.isPrimary, true),
-    ),
-    columns: { employeeId: true },
-  });
-  assignments.forEach((assignment: any) => managedIds.add(assignment.employeeId));
-
-  const normalizedRoles = (roles ?? []).map((role) => role.toLowerCase());
-  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
-    const departmentEmployees = await tx.query.employees.findMany({
-      where: and(
-        eq(employees.departmentId, supervisor.departmentId),
-        eq(employees.isActive, true),
-      ),
-      columns: { id: true },
-    });
-    departmentEmployees.forEach((employee: any) => {
-      if (employee.id !== supervisor.id) managedIds.add(employee.id);
-    });
-  }
-
-  return [...managedIds];
 }
 
 async function findAttendanceDailyRecord(employeeId: string, overtimeDate: string, tx: DbClient = db) {

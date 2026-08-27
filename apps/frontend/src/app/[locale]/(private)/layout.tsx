@@ -121,6 +121,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('leaveTransferDescription');
       case 'leaveRequestApprovals':
         return coreT('leaveRequestApprovalsDescription');
+      case 'supervisorDelegation':
+        return coreT('supervisorDelegationDescription');
       case 'overtimeAssignments':
         return coreT('overtimeAssignmentsDescription');
       case 'overtimeRequests':

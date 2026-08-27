@@ -11,6 +11,7 @@ import {
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
+import { hasActiveSupervisorDelegation } from '../../../../db/orm/core/manageSupervisorDelegations';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatOvertimeRequest } from '../../helpers/formatters';
@@ -27,7 +28,8 @@ export async function createOvertimeRequestHandler(c: Context) {
     const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
 
-    const canAssign = await userHasPermission(requestedBy, 'overtime-requests:approve');
+    const canAssign = await userHasPermission(requestedBy, 'overtime-requests:approve')
+      || await hasActiveSupervisorDelegation(requestedBy);
     if (!canAssign) throw new Error('Cannot assign overtime without supervisor approval access');
 
     const overtimeRequests = await createOvertimeRequests({
@@ -87,7 +89,8 @@ export async function changeOvertimeRequestStatusHandler(c: Context) {
 
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
-    const canReview = await userHasPermission(session.user.id, 'overtime-requests:approve');
+    const canReview = await userHasPermission(session.user.id, 'overtime-requests:approve')
+      || await hasActiveSupervisorDelegation(session.user.id);
     if (!canReview) throw new Error('Cannot review overtime without supervisor approval access');
 
     const overtimeRequest = await changeOvertimeRequestStatus(id, parsed.data, {

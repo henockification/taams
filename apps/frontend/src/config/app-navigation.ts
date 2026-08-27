@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'attendanceCorrectionApprovals' | 'overtimeRequests' | 'overtimeAssignments' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'supervisorDelegation' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'attendanceCorrectionApprovals' | 'overtimeRequests' | 'overtimeAssignments' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -180,6 +180,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'manual-punch-requests',
         requiredPermission: 'manual-punch-requests:approve',
         icon: ClipboardList,
+      },
+      {
+        titleKey: 'supervisorDelegation',
+        url: '/supervisor-delegations',
+        permissionResource: 'supervisor-delegations',
+        requiredPermission: 'supervisor-delegations:read',
+        icon: UserRoundCog,
       },
     ],
   },
@@ -402,6 +409,8 @@ export const permissionActions = ['read', 'add', 'edit', 'approve', 'reject'] as
 type AuthzUser = {
   role?: string[];
   permissions?: string[];
+  delegatedSupervisorCapabilities?: Array<{ id: string; endsAt?: string | null }>;
+  hasDelegatedSupervisorAccess?: boolean;
 } | null | undefined;
 
 export function isSuperAdmin(user: AuthzUser) {
@@ -422,9 +431,10 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/notification-logs' && hasHrRole(user)) return true;
-  if (item.url === '/overtime-assignments') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
-  if (item.url === '/leave-request-approvals') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
-  if (item.url === '/attendance-correction-approvals') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve');
+  if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
+  if (item.url === '/overtime-assignments') return hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve'));
+  if (item.url === '/leave-request-approvals') return hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve'));
+  if (item.url === '/attendance-correction-approvals') return hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve'));
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
@@ -508,13 +518,24 @@ export function hasSupervisorRole(user: AuthzUser) {
   ));
 }
 
+export function hasDelegatedSupervisorAccess(user: AuthzUser) {
+  if (!user) return false;
+  if (user.hasDelegatedSupervisorAccess) return true;
+
+  const now = Date.now();
+  return Boolean(user.delegatedSupervisorCapabilities?.some((delegation) => {
+    if (!delegation.endsAt) return true;
+    return new Date(delegation.endsAt).getTime() > now;
+  }));
+}
+
 export function hasExactSupervisorRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.includes('supervisor');
 }
 
 export function hasSupervisorApprovalAccess(user: AuthzUser, permission?: string) {
-  return hasSupervisorRole(user) || Boolean(permission && userHasPermission(user, permission));
+  return hasSupervisorRole(user) || hasDelegatedSupervisorAccess(user) || Boolean(permission && userHasPermission(user, permission));
 }
 
 export function getNavItemForPath(pathname: string) {
@@ -528,8 +549,9 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/')) return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
-  if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/')) return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
-  if (pathname === '/attendance-correction-approvals' || pathname.startsWith('/attendance-correction-approvals/')) return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve');
+  if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/')) return hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve'));
+  if (pathname === '/attendance-correction-approvals' || pathname.startsWith('/attendance-correction-approvals/')) return hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve'));
+  if (pathname === '/supervisor-delegations' || pathname.startsWith('/supervisor-delegations/')) return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);
@@ -543,7 +565,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
 
 export function getAccessibleNavGroups(user: AuthzUser) {
   return appNavGroups
-    .filter((group) => group.requiredRole !== 'supervisor' || hasExactSupervisorRole(user))
+    .filter((group) => group.requiredRole !== 'supervisor' || hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user))
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => userCanAccessNavItem(user, item)),
@@ -555,6 +577,7 @@ export function getFirstAccessiblePath(user: AuthzUser) {
   if (hasExecutiveRole(user)) return '/executive-dashboard';
   if (hasHrDashboardAccess(user)) return '/hr-dashboard';
   if (hasSupervisorRole(user)) return '/department-head-dashboard';
+  if (hasDelegatedSupervisorAccess(user)) return '/leave-request-approvals';
   return getAccessibleNavGroups(user)[0]?.items[0]?.url ?? null;
 }
 

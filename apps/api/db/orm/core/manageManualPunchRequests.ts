@@ -1,15 +1,18 @@
-import { and, eq, gte, lte, or, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../../db';
-import { employeeSupervisors, employees, manualPunchRequests, user } from '../../schema';
+import { employees, manualPunchRequests, user } from '../../schema';
 import type {
   ChangeManualPunchRequestStatusInput,
   CreateManualPunchRequestInput,
 } from '../../../types/core.types';
 import { createAttendancePunch } from './manageBiometricDevices';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import {
+  getVisibleEmployeeIdsForSupervisorActor,
+  resolveSupervisorActionContext,
+} from './manageSupervisorDelegations';
 
 type DbClient = typeof db | any;
-const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 const HR_ROLE_NAMES = ['human_resource'];
 
 export async function createManualPunchRequest(input: CreateManualPunchRequestInput, scope?: EmployeeVisibilityScope) {
@@ -73,7 +76,7 @@ export async function getManualPunchRequests(input: {
   const isHrRole = roles.some((role) => HR_ROLE_NAMES.includes(role));
   if (!input.scope || input.scope.type === 'unrestricted' || isHrRole) return requests;
 
-  const managedEmployeeIds = input.userId ? await getManagedEmployeeIdsForUser(input.userId, input.roles) : [];
+  const managedEmployeeIds = input.userId ? await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles) : [];
   return requests.filter((request) => managedEmployeeIds.includes(request.employeeId));
 }
 
@@ -128,13 +131,18 @@ export async function changeManualPunchRequestStatus(
         throw new Error('This correction request cannot be approved');
       }
 
-      await assertCanSupervisorReview(request.employeeId, context, tx);
-      if (request.employee?.userId === context.reviewerUserId) {
-        throw new Error('Cannot approve your own attendance correction');
-      }
       const approvedBy = context.reviewerUserId ?? input.approvedBy;
       if (!approvedBy) throw new Error('Approved by is required when approving a correction request');
       await assertUserExists(approvedBy, tx);
+      const actionContext = await resolveSupervisorActionContext({
+        actorUserId: approvedBy,
+        roles: context.roles,
+        targetEmployeeId: request.employeeId,
+        tx,
+      });
+      if (request.employee?.userId === approvedBy) {
+        throw new Error('Cannot approve your own attendance correction');
+      }
 
       const approvedAt = input.approvedAt ? new Date(input.approvedAt) : new Date();
       const employee = await tx.query.employees.findFirst({
@@ -163,6 +171,7 @@ export async function changeManualPunchRequestStatus(
         manualReason: request.reason,
         approvedBy,
         approvedAt: approvedAt.toISOString(),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
       }, tx);
 
       await tx
@@ -171,6 +180,7 @@ export async function changeManualPunchRequestStatus(
           status: 'SUPERVISOR_APPROVED',
           approvedBy,
           approvedAt,
+          supervisorDelegationId: actionContext.supervisorDelegationId,
           rejectedBy: null,
           rejectedAt: null,
           rejectionReason: null,
@@ -189,13 +199,18 @@ export async function changeManualPunchRequestStatus(
         throw new Error('This correction request cannot be rejected');
       }
 
-      await assertCanSupervisorReview(request.employeeId, context, tx);
       const rejectedBy = context.reviewerUserId ?? input.rejectedBy;
       if (!rejectedBy) {
         throw new Error('Rejected by is required when rejecting a correction request');
       }
 
       await assertUserExists(rejectedBy, tx);
+      const actionContext = await resolveSupervisorActionContext({
+        actorUserId: rejectedBy,
+        roles: context.roles,
+        targetEmployeeId: request.employeeId,
+        tx,
+      });
 
       const rejectedAt = input.rejectedAt ? new Date(input.rejectedAt) : new Date();
 
@@ -208,6 +223,7 @@ export async function changeManualPunchRequestStatus(
           rejectedBy,
           rejectedAt,
           rejectionReason: input.rejectionReason ?? null,
+          supervisorDelegationId: actionContext.supervisorDelegationId,
           updatedAt: new Date(),
         })
         .where(eq(manualPunchRequests.id, id));
@@ -275,48 +291,4 @@ function toDateKey(value: Date) {
   const month = String(value.getMonth() + 1).padStart(2, '0');
   const day = String(value.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-async function assertCanSupervisorReview(employeeId: string, context: { scope?: EmployeeVisibilityScope; reviewerUserId?: string; roles?: string[] | null }, tx: DbClient) {
-  if (context.scope?.type === 'unrestricted') return;
-  if (!context.reviewerUserId) throw new Error('Reviewer is required');
-  const managedEmployeeIds = await getManagedEmployeeIdsForUser(context.reviewerUserId, context.roles, tx);
-  if (managedEmployeeIds.includes(employeeId)) return;
-  throw new Error('Only the assigned supervisor can approve this correction request');
-}
-
-async function getManagedEmployeeIdsForUser(userId: string, roles?: string[] | null, tx: DbClient = db) {
-  const supervisor = await tx.query.employees.findFirst({
-    where: eq(employees.userId, userId),
-    columns: { id: true, departmentId: true },
-  });
-  if (!supervisor) return [];
-
-  const managedIds = new Set<string>();
-  const today = new Date().toISOString().slice(0, 10);
-  const assignments = await tx.query.employeeSupervisors.findMany({
-    where: and(
-      eq(employeeSupervisors.supervisorId, supervisor.id),
-      lte(employeeSupervisors.effectiveFrom, today),
-      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, today)),
-    ),
-    columns: { employeeId: true },
-  });
-  assignments.forEach((assignment: any) => managedIds.add(assignment.employeeId));
-
-  const normalizedRoles = (roles ?? []).map((role) => role.toLowerCase());
-  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
-    const departmentEmployees = await tx.query.employees.findMany({
-      where: and(
-        eq(employees.departmentId, supervisor.departmentId),
-        eq(employees.isActive, true),
-      ),
-      columns: { id: true },
-    });
-    departmentEmployees.forEach((employee: any) => {
-      if (employee.id !== supervisor.id) managedIds.add(employee.id);
-    });
-  }
-
-  return [...managedIds];
 }

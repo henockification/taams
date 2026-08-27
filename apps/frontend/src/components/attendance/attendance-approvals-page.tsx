@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
 import {
   Table,
   TableBody,
@@ -49,6 +50,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { useSession } from '@/lib/auth-client';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
 const allDepartmentsValue = '__all_departments';
@@ -90,6 +92,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const updatePayrollValues = useUpdateSupervisorAttendanceDailyRecordPayroll();
   const hrApprove = useHrApproveAttendanceDailyRecord();
   const returnRecord = useReturnAttendanceDailyRecord();
+  const session = useSession();
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
   const records = query.data?.attendanceDailyRecords ?? [];
   const summary = useMemo(() => summarize(records), [records]);
@@ -189,6 +192,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">{isHrMode ? t('hrAttendanceApproval') : t('attendanceApprovals')}</h1>
@@ -313,6 +318,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           {record.payrollNote ? (
                             <span className="max-w-64 text-xs text-muted-foreground">{record.payrollNote}</span>
                           ) : null}
+                          <DelegationAuditBadge delegationId={record.supervisorDelegationId} />
                         </div>
                       </TableCell>
                       <TableCell>
@@ -336,7 +342,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                             disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending}
                           >
                             <CheckCircle2 className="size-4" />
-                            {isHrMode ? t('approveForPayroll') : t('approve')}
+                            {isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)}
                           </Button>
                           <Button
                             type="button"
@@ -349,7 +355,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                             disabled={record.status === 'HR_APPROVED' || returnRecord.isPending}
                           >
                             <RotateCcw className="size-4" />
-                            {t('returnAttendance')}
+                            {isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
                           </Button>
                         </div>
                       </TableCell>
@@ -381,7 +387,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setReturningRecord(null)}>{common('cancel')}</Button>
             <Button type="button" onClick={handleReturn} disabled={!returnReason.trim() || returnRecord.isPending}>
-              {returnRecord.isPending ? t('saving') : t('returnAttendance')}
+              {returnRecord.isPending ? t('saving') : isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -441,7 +447,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditingRecord(null)}>{common('cancel')}</Button>
             <Button type="button" onClick={handleSaveEdit} disabled={updatePayrollValues.isPending}>
-              {updatePayrollValues.isPending ? t('saving') : common('save')}
+              {updatePayrollValues.isPending ? t('saving') : delegatedActionLabel(common('save'), session.data?.user)}
             </Button>
           </DialogFooter>
         </DialogContent>

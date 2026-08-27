@@ -214,6 +214,31 @@ export const EmployeeSupervisorSchema = z.object({
   supervisor: EmployeeSchema.optional(),
 });
 
+export const SupervisorDelegationSchema = z.object({
+  id: UuidSchema,
+  supervisorUserId: z.string(),
+  supervisorEmployeeId: UuidSchema,
+  delegateUserId: z.string(),
+  delegateEmployeeId: UuidSchema,
+  startsAt: z.string(),
+  endsAt: z.string(),
+  revokedAt: z.string().nullable(),
+  revokedBy: z.string().nullable(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  supervisorUser: z.any().nullable().optional(),
+  supervisorEmployee: EmployeeSchema.nullable().optional(),
+  delegateUser: z.any().nullable().optional(),
+  delegateEmployee: EmployeeSchema.nullable().optional(),
+});
+
+export const CreateSupervisorDelegationRequestSchema = z.object({
+  delegateEmployeeId: UuidSchema,
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+});
+
 export const CreateBiometricExemptionRequestSchema = z.object({
   targetType: BiometricExemptionTargetTypeSchema,
   targetId: UuidSchema,
@@ -339,6 +364,7 @@ export const AttendancePunchSchema = z.object({
   manualReason: z.string().nullable().openapi({ example: null }),
   approvedBy: z.string().nullable().openapi({ example: null }),
   approvedAt: z.string().nullable().openapi({ example: null }),
+  supervisorDelegationId: z.string().uuid().nullable().openapi({ example: null }),
   processedAt: z.string().nullable().openapi({ example: null }),
   rawPayload: z.record(z.any()).nullable().openapi({ example: { userId: 'BIO-001' } }),
   createdAt: z.string().openapi({ example: '2026-06-09T08:15:00.000Z' }),
@@ -371,6 +397,7 @@ export const AttendanceDailyRecordSchema = z.object({
   status: AttendanceDailyRecordStatusSchema,
   supervisorApprovedBy: z.string().nullable(),
   supervisorApprovedAt: z.string().nullable(),
+  supervisorDelegationId: z.string().uuid().nullable(),
   hrApprovedBy: z.string().nullable(),
   hrApprovedAt: z.string().nullable(),
   returnedBy: z.string().nullable(),
@@ -417,11 +444,13 @@ export const OvertimeRequestSchema = z.object({
   reason: z.string(),
   status: OvertimeRequestStatusSchema,
   requestedBy: z.string(),
+  requestedSupervisorDelegationId: z.string().uuid().nullable(),
   approvedBy: z.string().nullable(),
   approvedAt: z.string().nullable(),
   rejectedBy: z.string().nullable(),
   rejectedAt: z.string().nullable(),
   rejectionReason: z.string().nullable(),
+  supervisorDelegationId: z.string().uuid().nullable(),
   payrollNote: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -665,6 +694,7 @@ export const ManualPunchRequestSchema = z.object({
   rejectedBy: z.string().nullable().openapi({ example: null }),
   rejectedAt: z.string().nullable().openapi({ example: null }),
   rejectionReason: z.string().nullable().openapi({ example: null }),
+  supervisorDelegationId: z.string().uuid().nullable().openapi({ example: null }),
   createdAt: z.string().openapi({ example: '2026-06-09T08:15:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2026-06-09T08:15:00.000Z' }),
   employee: EmployeeSchema.nullable().optional(),
@@ -810,6 +840,7 @@ export const LeaveRequestSchema = z.object({
   rejectedBy: z.string().nullable(),
   rejectedAt: z.string().nullable(),
   rejectionReason: z.string().nullable(),
+  supervisorDelegationId: z.string().uuid().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   employee: EmployeeSchema.nullable().optional(),
@@ -840,6 +871,7 @@ export const LeaveRequestSchema = z.object({
     reviewedBy: z.string().nullable(),
     reviewedAt: z.string().nullable(),
     rejectionReason: z.string().nullable(),
+    supervisorDelegationId: z.string().uuid().nullable(),
     createdAt: z.string(),
     updatedAt: z.string(),
     dates: z.array(z.object({
@@ -1103,6 +1135,16 @@ export const EmployeeSupervisorsResponseSchema = z.object({
 export const EmployeeSupervisorResponseSchema = z.object({
   success: z.boolean(),
   supervisor: EmployeeSupervisorSchema,
+});
+
+export const SupervisorDelegationsResponseSchema = z.object({
+  success: z.boolean(),
+  supervisorDelegations: z.array(SupervisorDelegationSchema),
+});
+
+export const SupervisorDelegationResponseSchema = z.object({
+  success: z.boolean(),
+  supervisorDelegation: SupervisorDelegationSchema,
 });
 
 export const BiometricDevicesResponseSchema = z.object({

@@ -5,7 +5,6 @@ import {
   attendanceDailyRecords,
   attendancePunches,
   biometricExemptions,
-  employeeSupervisors,
   employees,
   holidays,
   leaveRequests,
@@ -16,12 +15,17 @@ import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
+import {
+  getVisibleEmployeeIdsForSupervisorActor,
+  resolveSupervisorActionContext,
+} from './manageSupervisorDelegations';
 
 type DbClient = typeof db | any;
 
 type ApprovalScope = {
   userId: string;
   date?: string | null;
+  roles?: string[] | null;
   scope?: EmployeeVisibilityScope;
 };
 
@@ -180,7 +184,7 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     });
   }
 
-  const directReportIds = await getDirectReportIds(input.userId, attendanceDate);
+  const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, attendanceDate);
 
   if (directReportIds.length === 0) return [];
 
@@ -208,14 +212,20 @@ export async function getHrAttendanceDailyRecords(date?: string | null, scope?: 
   return records.filter((record) => record.employee?.userId === scope.userId);
 }
 
-export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; scope?: EmployeeVisibilityScope }) {
+export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope }) {
   return db.transaction(async (tx) => {
     const record = await getAttendanceDailyRecordById(id, tx);
     if (!record) throw new Error('Attendance daily record not found');
 
-    if (input.scope?.type !== 'unrestricted') {
-      await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
-    }
+    const actionContext = input.scope?.type === 'unrestricted'
+      ? { supervisorDelegationId: null }
+      : await resolveSupervisorActionContext({
+        actorUserId: input.userId,
+        roles: input.roles,
+        targetEmployeeId: record.employeeId,
+        referenceDate: record.attendanceDate,
+        tx,
+      });
 
     if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
       throw new Error('Only pending or returned attendance records can be supervisor approved');
@@ -228,6 +238,7 @@ export async function supervisorApproveAttendanceDailyRecord(id: string, input: 
         status: 'SUPERVISOR_APPROVED',
         supervisorApprovedBy: input.userId,
         supervisorApprovedAt: approvedAt,
+        supervisorDelegationId: actionContext.supervisorDelegationId,
         hrApprovedBy: null,
         hrApprovedAt: null,
         returnedBy: null,
@@ -251,15 +262,22 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
     payableDays?: string | number;
     payrollNote?: string | null;
     scope?: EmployeeVisibilityScope;
+    roles?: string[] | null;
   },
 ) {
   return db.transaction(async (tx) => {
     const record = await getAttendanceDailyRecordById(id, tx);
     if (!record) throw new Error('Attendance daily record not found');
 
-    if (input.scope?.type !== 'unrestricted') {
-      await assertCanSuperviseEmployee(input.userId, record.employeeId, record.attendanceDate, tx);
-    }
+    const actionContext = input.scope?.type === 'unrestricted'
+      ? { supervisorDelegationId: null }
+      : await resolveSupervisorActionContext({
+        actorUserId: input.userId,
+        roles: input.roles,
+        targetEmployeeId: record.employeeId,
+        referenceDate: record.attendanceDate,
+        tx,
+      });
 
     if (record.status === 'HR_APPROVED') {
       throw new Error('Payroll-ready attendance records cannot be edited');
@@ -288,6 +306,7 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
         previousPayrollNote: record.payrollNote ?? null,
         newPayrollNote: payrollNote,
         reason: payrollNote,
+        supervisorDelegationId: actionContext.supervisorDelegationId,
       } as any);
 
     await tx
@@ -332,7 +351,7 @@ export async function hrApproveAttendanceDailyRecord(id: string, input: { userId
   return getAttendanceDailyRecordById(id);
 }
 
-export async function returnAttendanceDailyRecord(id: string, input: { userId: string; reason: string; canHrReturn?: boolean; scope?: EmployeeVisibilityScope }) {
+export async function returnAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; reason: string; canHrReturn?: boolean; scope?: EmployeeVisibilityScope }) {
   const record = await getAttendanceDailyRecordById(id);
   if (!record) throw new Error('Attendance daily record not found');
 
@@ -340,8 +359,16 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
     throw new Error('Payroll-ready attendance records cannot be returned');
   }
 
-  const directReportIds = await getDirectReportIds(input.userId, record.attendanceDate);
+  const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, record.attendanceDate);
   const isSupervisorReturn = directReportIds.includes(record.employeeId);
+  const supervisorActionContext = isSupervisorReturn
+    ? await resolveSupervisorActionContext({
+      actorUserId: input.userId,
+      roles: input.roles,
+      targetEmployeeId: record.employeeId,
+      referenceDate: record.attendanceDate,
+    })
+    : { supervisorDelegationId: null };
 
   if (!isSupervisorReturn && !input.canHrReturn) {
     throw new Error('You do not have permission to return this attendance record');
@@ -363,6 +390,7 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
       returnedBy: input.userId,
       returnedAt,
       returnReason: input.reason,
+      supervisorDelegationId: supervisorActionContext.supervisorDelegationId,
       hrApprovedBy: null,
       hrApprovedAt: null,
       payrollReadyAt: null,
@@ -394,34 +422,6 @@ async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
     where: eq(attendanceDailyRecords.id, id),
     with: recordRelations,
   });
-}
-
-async function getDirectReportIds(userId: string, attendanceDate: string, tx: DbClient = db) {
-  const supervisor = await tx.query.employees.findFirst({
-    where: eq(employees.userId, userId),
-    columns: { id: true },
-  });
-
-  if (!supervisor) return [];
-
-  const reports = await tx.query.employeeSupervisors.findMany({
-    where: and(
-      eq(employeeSupervisors.supervisorId, supervisor.id),
-      lte(employeeSupervisors.effectiveFrom, attendanceDate),
-      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, attendanceDate)),
-    ),
-    columns: { employeeId: true },
-  });
-
-  return reports.map((report: { employeeId: string }) => report.employeeId);
-}
-
-async function assertCanSuperviseEmployee(userId: string, employeeId: string, attendanceDate: string, tx: DbClient = db) {
-  const directReportIds = await getDirectReportIds(userId, attendanceDate, tx);
-
-  if (!directReportIds.includes(employeeId)) {
-    throw new Error('You can only approve attendance for employees you supervise');
-  }
 }
 
 function normalizeDateParam(date?: string | null) {

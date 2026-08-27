@@ -310,6 +310,27 @@ export const employeeSupervisors = pgTable('employee_supervisors', {
   employeeNotOwnSupervisorCheck: check('chk_employee_not_own_supervisor', sql`${table.employeeId} <> ${table.supervisorId}`),
 }));
 
+export const supervisorDelegations = pgTable('supervisor_delegations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  supervisorUserId: text('supervisor_user_id').notNull().references(() => user.id),
+  supervisorEmployeeId: uuid('supervisor_employee_id').notNull().references(() => employees.id),
+  delegateUserId: text('delegate_user_id').notNull().references(() => user.id),
+  delegateEmployeeId: uuid('delegate_employee_id').notNull().references(() => employees.id),
+  startsAt: timestamp('starts_at', { withTimezone: true, precision: 6 }).notNull(),
+  endsAt: timestamp('ends_at', { withTimezone: true, precision: 6 }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true, precision: 6 }),
+  revokedBy: text('revoked_by').references(() => user.id),
+  createdBy: text('created_by').notNull().references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  supervisorIdx: index('idx_supervisor_delegations_supervisor').on(table.supervisorUserId, table.startsAt, table.endsAt),
+  delegateIdx: index('idx_supervisor_delegations_delegate').on(table.delegateUserId, table.startsAt, table.endsAt),
+  userNotOwnDelegateCheck: check('chk_supervisor_delegation_user_not_self', sql`${table.supervisorUserId} <> ${table.delegateUserId}`),
+  employeeNotOwnDelegateCheck: check('chk_supervisor_delegation_employee_not_self', sql`${table.supervisorEmployeeId} <> ${table.delegateEmployeeId}`),
+  dateRangeCheck: check('chk_supervisor_delegation_date_range', sql`${table.startsAt} < ${table.endsAt}`),
+}));
+
 export const biometricDevices = pgTable('biometric_devices', {
   id: uuid('id').primaryKey().defaultRandom(),
   deviceName: varchar('device_name', { length: 150 }).notNull(),
@@ -385,6 +406,7 @@ export const attendancePunches = pgTable('attendance_punches', {
   manualReason: text('manual_reason'),
   approvedBy: text('approved_by').references(() => user.id),
   approvedAt: timestamp('approved_at', { withTimezone: false }),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   processedAt: timestamp('processed_at', { withTimezone: false }),
   rawPayload: jsonb('raw_payload'),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
@@ -428,6 +450,7 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   status: varchar('status', { length: 30 }).notNull().default('PENDING_SUPERVISOR'),
   supervisorApprovedBy: text('supervisor_approved_by').references(() => user.id),
   supervisorApprovedAt: timestamp('supervisor_approved_at', { withTimezone: false }),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   hrApprovedBy: text('hr_approved_by').references(() => user.id),
   hrApprovedAt: timestamp('hr_approved_at', { withTimezone: false }),
   returnedBy: text('returned_by').references(() => user.id),
@@ -503,6 +526,7 @@ export const attendanceDailyRecordAdjustments = pgTable('attendance_daily_record
   previousPayrollNote: text('previous_payroll_note'),
   newPayrollNote: text('new_payroll_note'),
   reason: text('reason'),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
   recordIdIdx: index('idx_attendance_daily_record_adjustments_record_id').on(table.attendanceDailyRecordId),
@@ -530,6 +554,7 @@ export const manualPunchRequests = pgTable('manual_punch_requests', {
   rejectedBy: text('rejected_by').references(() => user.id),
   rejectedAt: timestamp('rejected_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
@@ -550,11 +575,13 @@ export const overtimeRequests = pgTable('overtime_requests', {
   reason: text('reason').notNull(),
   status: varchar('status', { length: 30 }).notNull().default('ASSIGNED'),
   requestedBy: text('requested_by').notNull().references(() => user.id),
+  requestedSupervisorDelegationId: uuid('requested_supervisor_delegation_id').references(() => supervisorDelegations.id),
   approvedBy: text('approved_by').references(() => user.id),
   approvedAt: timestamp('approved_at', { withTimezone: false }),
   rejectedBy: text('rejected_by').references(() => user.id),
   rejectedAt: timestamp('rejected_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   payrollNote: text('payroll_note'),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
@@ -650,6 +677,7 @@ export const leaveRequests = pgTable('leave_requests', {
   rejectedBy: text('rejected_by').references(() => user.id),
   rejectedAt: timestamp('rejected_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
@@ -695,6 +723,7 @@ export const leaveInterruptions = pgTable('leave_interruptions', {
   reviewedBy: text('reviewed_by').references(() => user.id),
   reviewedAt: timestamp('reviewed_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
@@ -721,6 +750,8 @@ export const userRelations = relations(user, ({ one, many }) => ({
   sessions: many(authSessions),
   userRoles: many(userRoles),
   employees: many(employees),
+  supervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationSupervisorUser' }),
+  delegatedSupervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationDelegateUser' }),
 }));
 
 export const authCredentialsRelations = relations(authCredentials, ({ one }) => ({
@@ -863,6 +894,12 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   subordinateAssignments: many(employeeSupervisors, {
     relationName: 'employeeSubordinateAssignments',
   }),
+  supervisorDelegations: many(supervisorDelegations, {
+    relationName: 'supervisorDelegationSupervisorEmployee',
+  }),
+  delegatedSupervisorDelegations: many(supervisorDelegations, {
+    relationName: 'supervisorDelegationDelegateEmployee',
+  }),
   workSchedules: many(employeeWorkSchedules),
 }));
 
@@ -876,6 +913,39 @@ export const employeeSupervisorsRelations = relations(employeeSupervisors, ({ on
     fields: [employeeSupervisors.supervisorId],
     references: [employees.id],
     relationName: 'employeeSubordinateAssignments',
+  }),
+}));
+
+export const supervisorDelegationsRelations = relations(supervisorDelegations, ({ one }) => ({
+  supervisorUser: one(user, {
+    fields: [supervisorDelegations.supervisorUserId],
+    references: [user.id],
+    relationName: 'supervisorDelegationSupervisorUser',
+  }),
+  supervisorEmployee: one(employees, {
+    fields: [supervisorDelegations.supervisorEmployeeId],
+    references: [employees.id],
+    relationName: 'supervisorDelegationSupervisorEmployee',
+  }),
+  delegateUser: one(user, {
+    fields: [supervisorDelegations.delegateUserId],
+    references: [user.id],
+    relationName: 'supervisorDelegationDelegateUser',
+  }),
+  delegateEmployee: one(employees, {
+    fields: [supervisorDelegations.delegateEmployeeId],
+    references: [employees.id],
+    relationName: 'supervisorDelegationDelegateEmployee',
+  }),
+  revoker: one(user, {
+    fields: [supervisorDelegations.revokedBy],
+    references: [user.id],
+    relationName: 'supervisorDelegationRevoker',
+  }),
+  creator: one(user, {
+    fields: [supervisorDelegations.createdBy],
+    references: [user.id],
+    relationName: 'supervisorDelegationCreator',
   }),
 }));
 
@@ -1164,6 +1234,7 @@ export const allTables = {
   employeeWorkSchedules,
   employees,
   employeeSupervisors,
+  supervisorDelegations,
   holidays,
   biometricExemptions,
   biometricDevices,

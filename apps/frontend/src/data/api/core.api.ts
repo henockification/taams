@@ -25,6 +25,7 @@ import type {
   CreateEmployeeWorkScheduleInput,
   CreateHolidayInput,
   CreatePositionInput,
+  CreateSupervisorDelegationInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
@@ -79,6 +80,8 @@ import type {
   ShiftSegmentResponse,
   ShiftSegmentsResponse,
   ShiftsResponse,
+  SupervisorDelegationResponse,
+  SupervisorDelegationsResponse,
   TimeOperationsSummaryResponse,
   TransferLeaveBalanceInput,
   UpdateDepartmentInput,
@@ -329,6 +332,16 @@ export const coreApi = {
     coreFetch(`/employees/${employeeId}/supervisors`, {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+  getSupervisorDelegations: () => coreFetch<SupervisorDelegationsResponse>('/supervisor-delegations'),
+  createSupervisorDelegation: (input: CreateSupervisorDelegationInput) =>
+    coreFetch<SupervisorDelegationResponse>('/supervisor-delegations', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  revokeSupervisorDelegation: (supervisorDelegationId: string) =>
+    coreFetch<SupervisorDelegationResponse>(`/supervisor-delegations/${supervisorDelegationId}/revoke`, {
+      method: 'POST',
     }),
   getEmployeeWorkSchedules: (employeeId: string) =>
     coreFetch<EmployeeWorkSchedulesResponse>(`/employees/${employeeId}/work-schedules`),

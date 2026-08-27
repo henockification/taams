@@ -35,6 +35,27 @@ export function formatPosition(position: any) {
   };
 }
 
+export function formatSupervisorDelegation(delegation: any) {
+  return {
+    id: delegation.id,
+    supervisorUserId: delegation.supervisorUserId,
+    supervisorEmployeeId: delegation.supervisorEmployeeId,
+    delegateUserId: delegation.delegateUserId,
+    delegateEmployeeId: delegation.delegateEmployeeId,
+    startsAt: formatTimestamp(delegation.startsAt),
+    endsAt: formatTimestamp(delegation.endsAt),
+    revokedAt: formatTimestamp(delegation.revokedAt),
+    revokedBy: delegation.revokedBy ?? null,
+    createdBy: delegation.createdBy,
+    createdAt: formatTimestamp(delegation.createdAt),
+    updatedAt: formatTimestamp(delegation.updatedAt),
+    supervisorUser: delegation.supervisorUser ?? null,
+    supervisorEmployee: delegation.supervisorEmployee ? formatEmployee(delegation.supervisorEmployee) : null,
+    delegateUser: delegation.delegateUser ?? null,
+    delegateEmployee: delegation.delegateEmployee ? formatEmployee(delegation.delegateEmployee) : null,
+  };
+}
+
 export function formatShift(shift: any) {
   return {
     id: shift.id,
@@ -329,6 +350,7 @@ export function formatAttendancePunch(punch: any) {
     manualReason: punch.manualReason ?? null,
     approvedBy: punch.approvedBy ?? null,
     approvedAt: formatTimestamp(punch.approvedAt),
+    supervisorDelegationId: punch.supervisorDelegationId ?? null,
     processedAt: formatTimestamp(punch.processedAt),
     rawPayload: punch.rawPayload ?? null,
     createdAt: formatTimestamp(punch.createdAt),
@@ -363,6 +385,7 @@ export function formatAttendanceDailyRecord(record: any) {
     status: record.status,
     supervisorApprovedBy: record.supervisorApprovedBy ?? null,
     supervisorApprovedAt: formatTimestamp(record.supervisorApprovedAt),
+    supervisorDelegationId: record.supervisorDelegationId ?? null,
     hrApprovedBy: record.hrApprovedBy ?? null,
     hrApprovedAt: formatTimestamp(record.hrApprovedAt),
     returnedBy: record.returnedBy ?? null,
@@ -396,6 +419,7 @@ export function formatManualPunchRequest(request: any) {
     hrReviewNote: request.hrReviewNote ?? null,
     approvedBy: request.approvedBy ?? null,
     approvedAt: formatTimestamp(request.approvedAt),
+    supervisorDelegationId: request.supervisorDelegationId ?? null,
     rejectedBy: request.rejectedBy ?? null,
     rejectedAt: formatTimestamp(request.rejectedAt),
     rejectionReason: request.rejectionReason ?? null,
@@ -419,11 +443,13 @@ export function formatOvertimeRequest(request: any) {
     reason: request.reason,
     status: request.status,
     requestedBy: request.requestedBy,
+    requestedSupervisorDelegationId: request.requestedSupervisorDelegationId ?? null,
     approvedBy: request.approvedBy ?? null,
     approvedAt: formatTimestamp(request.approvedAt),
     rejectedBy: request.rejectedBy ?? null,
     rejectedAt: formatTimestamp(request.rejectedAt),
     rejectionReason: request.rejectionReason ?? null,
+    supervisorDelegationId: request.supervisorDelegationId ?? null,
     payrollNote: request.payrollNote ?? null,
     createdAt: formatTimestamp(request.createdAt),
     updatedAt: formatTimestamp(request.updatedAt),
@@ -528,6 +554,7 @@ export function formatLeaveRequest(request: any) {
     rejectedBy: request.rejectedBy ?? null,
     rejectedAt: formatTimestamp(request.rejectedAt),
     rejectionReason: request.rejectionReason ?? null,
+    supervisorDelegationId: request.supervisorDelegationId ?? null,
     createdAt: formatTimestamp(request.createdAt),
     updatedAt: formatTimestamp(request.updatedAt),
     employee: request.employee ? formatEmployee(request.employee) : null,
@@ -584,6 +611,7 @@ function formatLeaveInterruption(interruption: any) {
     reviewedBy: interruption.reviewedBy ?? null,
     reviewedAt: formatTimestamp(interruption.reviewedAt),
     rejectionReason: interruption.rejectionReason ?? null,
+    supervisorDelegationId: interruption.supervisorDelegationId ?? null,
     createdAt: formatTimestamp(interruption.createdAt),
     updatedAt: formatTimestamp(interruption.updatedAt),
     dates: (interruption.dates ?? []).map((date: any) => ({

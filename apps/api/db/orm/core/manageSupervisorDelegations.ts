@@ -1,0 +1,262 @@
+import { and, asc, desc, eq, gt, gte, isNull, lte, or } from 'drizzle-orm';
+import { db } from '../../db';
+import { employeeSupervisors, employees, supervisorDelegations, user } from '../../schema';
+import { getUserRoleNames } from '../rbac/manageRbac';
+
+type DbClient = typeof db | any;
+
+const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
+
+export type SupervisorDelegationActionContext = {
+  supervisorDelegationId: string | null;
+  effectiveSupervisorUserId: string | null;
+  effectiveSupervisorEmployeeId: string | null;
+};
+
+export async function getSupervisorDelegationsForUser(userId: string, tx: DbClient = db) {
+  return tx.query.supervisorDelegations.findMany({
+    where: or(
+      eq(supervisorDelegations.supervisorUserId, userId),
+      eq(supervisorDelegations.delegateUserId, userId),
+    ),
+    with: delegationRelations,
+    orderBy: (table: any, { desc }: any) => [desc(table.createdAt)],
+  });
+}
+
+export async function getActiveDelegatedSupervisorCapabilities(userId: string, tx: DbClient = db) {
+  const now = new Date();
+  return tx.query.supervisorDelegations.findMany({
+    where: and(
+      eq(supervisorDelegations.delegateUserId, userId),
+      isNull(supervisorDelegations.revokedAt),
+      lte(supervisorDelegations.startsAt, now),
+      gt(supervisorDelegations.endsAt, now),
+    ),
+    with: delegationRelations,
+    orderBy: (table: any, { asc }: any) => [asc(table.endsAt)],
+  });
+}
+
+export async function hasActiveSupervisorDelegation(userId: string, tx: DbClient = db) {
+  const delegations = await getActiveDelegatedSupervisorCapabilities(userId, tx);
+  return delegations.length > 0;
+}
+
+export async function createSupervisorDelegation(input: {
+  supervisorUserId: string;
+  delegateEmployeeId: string;
+  startsAt: string | Date;
+  endsAt: string | Date;
+  createdBy: string;
+}, tx: DbClient = db) {
+  const startsAt = parseDateTime(input.startsAt, 'startsAt');
+  const endsAt = parseDateTime(input.endsAt, 'endsAt');
+  if (startsAt >= endsAt) throw new Error('Delegation start must be before end');
+  if (endsAt <= new Date()) throw new Error('Delegation end must be in the future');
+
+  const supervisor = await getEmployeeByUserId(input.supervisorUserId, tx);
+  if (!supervisor) throw new Error('Supervisor user is not linked to an employee record');
+
+  const delegate = await tx.query.employees.findFirst({
+    where: eq(employees.id, input.delegateEmployeeId),
+    with: { user: true },
+  });
+  if (!delegate?.userId || !delegate.user) throw new Error('Delegate must be an employee linked to a user');
+  if (!delegate.isActive) throw new Error('Delegate employee must be active');
+  if (delegate.userId === input.supervisorUserId || delegate.id === supervisor.id) {
+    throw new Error('A supervisor cannot delegate to themselves');
+  }
+
+  return tx.transaction(async (innerTx: DbClient) => {
+    const now = new Date();
+    await innerTx.update(supervisorDelegations)
+      .set({
+        revokedAt: now,
+        revokedBy: input.createdBy,
+        updatedAt: now,
+      } as any)
+      .where(and(
+        eq(supervisorDelegations.supervisorUserId, input.supervisorUserId),
+        isNull(supervisorDelegations.revokedAt),
+        gt(supervisorDelegations.endsAt, now),
+      ));
+
+    const [created] = await innerTx.insert(supervisorDelegations).values({
+      supervisorUserId: input.supervisorUserId,
+      supervisorEmployeeId: supervisor.id,
+      delegateUserId: delegate.userId,
+      delegateEmployeeId: delegate.id,
+      startsAt,
+      endsAt,
+      createdBy: input.createdBy,
+    } as any).returning();
+
+    return getSupervisorDelegationById(created.id, innerTx);
+  });
+}
+
+export async function revokeSupervisorDelegation(id: string, revokedBy: string, tx: DbClient = db) {
+  const existing = await getSupervisorDelegationById(id, tx);
+  if (!existing) throw new Error('Delegation not found');
+  if (existing.supervisorUserId !== revokedBy) {
+    const roles = await resolveUserRoles(revokedBy, tx);
+    if (!roles.some((role) => ['super_admin', 'superadmin', 'admin'].includes(role))) {
+      throw new Error('Only the supervisor or an admin can revoke this delegation');
+    }
+  }
+
+  const now = new Date();
+  const [updated] = await tx.update(supervisorDelegations)
+    .set({ revokedAt: now, revokedBy, updatedAt: now } as any)
+    .where(and(eq(supervisorDelegations.id, id), isNull(supervisorDelegations.revokedAt)))
+    .returning();
+
+  return getSupervisorDelegationById(updated?.id ?? id, tx);
+}
+
+export async function getVisibleEmployeeIdsForSupervisorActor(
+  actorUserId: string,
+  roles?: string[] | null,
+  tx: DbClient = db,
+  referenceDate = today(),
+) {
+  const visibleIds = new Set(await getManagedEmployeeIdsForSupervisorUser(actorUserId, roles, tx, referenceDate));
+  const delegations = await getActiveDelegatedSupervisorCapabilities(actorUserId, tx);
+
+  for (const delegation of delegations) {
+    const supervisorRoles = await resolveUserRoles(delegation.supervisorUserId, tx);
+    const supervisorVisibleIds = await getManagedEmployeeIdsForSupervisorUser(
+      delegation.supervisorUserId,
+      supervisorRoles,
+      tx,
+      referenceDate,
+    );
+    supervisorVisibleIds.forEach((employeeId) => visibleIds.add(employeeId));
+  }
+
+  return [...visibleIds];
+}
+
+export async function resolveSupervisorActionContext(input: {
+  actorUserId: string;
+  roles?: string[] | null;
+  targetEmployeeId: string;
+  tx?: DbClient;
+  referenceDate?: string;
+}): Promise<SupervisorDelegationActionContext> {
+  const tx = input.tx ?? db;
+  const referenceDate = input.referenceDate ?? today();
+  const directEmployeeIds = await getManagedEmployeeIdsForSupervisorUser(input.actorUserId, input.roles, tx, referenceDate);
+
+  if (directEmployeeIds.includes(input.targetEmployeeId)) {
+    return {
+      supervisorDelegationId: null,
+      effectiveSupervisorUserId: input.actorUserId,
+      effectiveSupervisorEmployeeId: (await getEmployeeByUserId(input.actorUserId, tx))?.id ?? null,
+    };
+  }
+
+  const actorEmployee = await getEmployeeByUserId(input.actorUserId, tx);
+  if (actorEmployee?.id === input.targetEmployeeId) {
+    throw new Error('Delegates cannot act on their own records');
+  }
+
+  const delegations = await getActiveDelegatedSupervisorCapabilities(input.actorUserId, tx);
+  for (const delegation of delegations) {
+    const supervisorRoles = await resolveUserRoles(delegation.supervisorUserId, tx);
+    const supervisorVisibleIds = await getManagedEmployeeIdsForSupervisorUser(
+      delegation.supervisorUserId,
+      supervisorRoles,
+      tx,
+      referenceDate,
+    );
+
+    if (supervisorVisibleIds.includes(input.targetEmployeeId)) {
+      return {
+        supervisorDelegationId: delegation.id,
+        effectiveSupervisorUserId: delegation.supervisorUserId,
+        effectiveSupervisorEmployeeId: delegation.supervisorEmployeeId,
+      };
+    }
+  }
+
+  throw new Error('Only the assigned supervisor or an active delegate can perform this action');
+}
+
+export async function getManagedEmployeeIdsForSupervisorUser(
+  userId: string,
+  roles?: string[] | null,
+  tx: DbClient = db,
+  referenceDate = today(),
+) {
+  const supervisor = await getEmployeeByUserId(userId, tx);
+  if (!supervisor) return [];
+
+  const managedIds = new Set<string>();
+  const assignments = await tx.query.employeeSupervisors.findMany({
+    where: and(
+      eq(employeeSupervisors.supervisorId, supervisor.id),
+      lte(employeeSupervisors.effectiveFrom, referenceDate),
+      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, referenceDate)),
+    ),
+    columns: { employeeId: true },
+  });
+  assignments.forEach((assignment: { employeeId: string }) => managedIds.add(assignment.employeeId));
+
+  const normalizedRoles = roles?.length ? roles.map((role) => role.toLowerCase()) : await resolveUserRoles(userId, tx);
+  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
+    const departmentEmployees = await tx.query.employees.findMany({
+      where: and(
+        eq(employees.departmentId, supervisor.departmentId),
+        eq(employees.isActive, true),
+      ),
+      columns: { id: true },
+    });
+    departmentEmployees.forEach((employee: { id: string }) => {
+      if (employee.id !== supervisor.id) managedIds.add(employee.id);
+    });
+  }
+
+  return [...managedIds];
+}
+
+export async function getSupervisorDelegationById(id: string, tx: DbClient = db) {
+  return tx.query.supervisorDelegations.findFirst({
+    where: eq(supervisorDelegations.id, id),
+    with: delegationRelations,
+  });
+}
+
+async function getEmployeeByUserId(userId: string, tx: DbClient = db) {
+  return tx.query.employees.findFirst({
+    where: eq(employees.userId, userId),
+    columns: { id: true, departmentId: true, userId: true, isActive: true },
+  });
+}
+
+async function resolveUserRoles(userId: string, tx: DbClient = db) {
+  const found = await tx.query.user.findFirst({
+    where: eq(user.id, userId),
+    columns: { role: true },
+  });
+  const assignedRoles = tx === db ? await getUserRoleNames(userId) : [];
+  return [...new Set([...(found?.role ?? []), ...assignedRoles].map((role) => role.toLowerCase()))];
+}
+
+function parseDateTime(value: string | Date, field: string) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`${field} must be a valid date/time`);
+  return date;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const delegationRelations = {
+  supervisorUser: true,
+  supervisorEmployee: { with: { department: true, position: true } },
+  delegateUser: true,
+  delegateEmployee: { with: { department: true, position: true } },
+};

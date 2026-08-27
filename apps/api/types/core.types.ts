@@ -158,6 +158,31 @@ export type CreateEmployeeSupervisorInput = {
   effectiveTo?: string | null;
 };
 
+export type SupervisorDelegation = {
+  id: string;
+  supervisorUserId: string;
+  supervisorEmployeeId: string;
+  delegateUserId: string;
+  delegateEmployeeId: string;
+  startsAt: string;
+  endsAt: string;
+  revokedAt: string | null;
+  revokedBy: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  supervisorUser?: unknown | null;
+  supervisorEmployee?: Employee | null;
+  delegateUser?: unknown | null;
+  delegateEmployee?: Employee | null;
+};
+
+export type CreateSupervisorDelegationInput = {
+  delegateEmployeeId: string;
+  startsAt: string;
+  endsAt: string;
+};
+
 export type CreateShiftInput = {
   nameEn: string;
   nameAm?: string | null;
@@ -388,6 +413,7 @@ export type AttendancePunch = {
   manualReason: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
+  supervisorDelegationId?: string | null;
   processedAt: string | null;
   rawPayload: Record<string, unknown> | null;
   createdAt: string;
@@ -420,6 +446,7 @@ export type AttendanceDailyRecord = {
   status: AttendanceDailyRecordStatus;
   supervisorApprovedBy: string | null;
   supervisorApprovedAt: string | null;
+  supervisorDelegationId?: string | null;
   hrApprovedBy: string | null;
   hrApprovedAt: string | null;
   returnedBy: string | null;
@@ -466,11 +493,13 @@ export type OvertimeRequest = {
   reason: string;
   status: OvertimeRequestStatus;
   requestedBy: string;
+  requestedSupervisorDelegationId?: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   payrollNote: string | null;
   createdAt: string;
   updatedAt: string;
@@ -547,6 +576,7 @@ export type ManualPunchRequest = {
   hrReviewNote: string | null;
   approvedBy: string | null;
   approvedAt: string | null;
+  supervisorDelegationId?: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -611,6 +641,7 @@ export type CreateAttendancePunchInput = {
   manualReason?: string | null;
   approvedBy?: string | null;
   approvedAt?: string | null;
+  supervisorDelegationId?: string | null;
   processedAt?: string | null;
   rawPayload?: Record<string, unknown> | null;
 };
@@ -794,6 +825,7 @@ export type LeaveInterruption = {
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
   dates: LeaveInterruptionDate[];
@@ -821,6 +853,7 @@ export type LeaveRequest = {
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
+  supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;
