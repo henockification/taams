@@ -668,8 +668,11 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
       if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
       const approvedSelections = resolveAnnualApprovalSelections(request, input.approvedDates);
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedSelections.map((selection) => selection.date), tx);
+      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedSelections.map((selection) => selection.date), tx, request.id);
       const days = sumDaySelections(approvedSelections);
       if (days <= 0) throw new Error('At least one annual leave date must be approved');
+      assertWithinAllowedDays(leaveType, days);
       if (numeric(balance.available) < days) throw new Error('Insufficient annual leave balance');
 
       const consumedImmediately = approvedSelections
@@ -697,18 +700,43 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
 
       const approvedByDate = new Map(approvedSelections.map((selection) => [selection.date, selection.dayValue]));
       const requestDates = request.annualLeaveDates ?? [];
+      const requestDateByDate = new Map(
+        requestDates.map((requestDate: any) => [formatDateValue(requestDate.leaveDate), requestDate]),
+      );
 
       if (requestDates.length > 0) {
         for (const requestDate of requestDates) {
-          const approvedDayValue = approvedByDate.get(formatDateValue(requestDate.leaveDate));
+          const dateValue = formatDateValue(requestDate.leaveDate);
+          const approvedDayValue = approvedByDate.get(dateValue);
           await tx.update(annualLeaveRequestDates).set({
             status: approvedDayValue ? 'APPROVED' : 'REJECTED',
             approvedDayValue: fixed(approvedDayValue ?? 0),
-            utilizationStatus: approvedDayValue && formatDateValue(requestDate.leaveDate) < today() ? 'CONSUMED' : approvedDayValue ? 'SCHEDULED' : 'CANCELLED',
+            utilizationStatus: approvedDayValue && dateValue < today() ? 'CONSUMED' : approvedDayValue ? 'SCHEDULED' : 'CANCELLED',
             updatedAt: new Date(),
           } as any).where(eq(annualLeaveRequestDates.id, requestDate.id));
         }
       }
+
+      const supervisorAddedSelections = approvedSelections.filter((selection) => !requestDateByDate.has(selection.date));
+      if (supervisorAddedSelections.length) {
+        await tx.insert(annualLeaveRequestDates).values(supervisorAddedSelections.map((selection) => ({
+          leaveRequestId: request.id,
+          employeeId: request.employeeId,
+          leaveDate: selection.date,
+          requestedDayValue: fixed(selection.dayValue),
+          approvedDayValue: fixed(selection.dayValue),
+          status: 'APPROVED',
+          source: 'ORIGINAL',
+          utilizationStatus: selection.date < today() ? 'CONSUMED' : 'SCHEDULED',
+        })) as any);
+      }
+
+      const approvedDates = approvedSelections.map((selection) => selection.date).sort();
+      await tx.update(leaveRequests).set({
+        startDate: approvedDates[0],
+        endDate: approvedDates[approvedDates.length - 1],
+        updatedAt: new Date(),
+      } as any).where(eq(leaveRequests.id, request.id));
     }
 
     const [updated] = await tx.update(leaveRequests).set({
@@ -1036,28 +1064,16 @@ function resolveAnnualApprovalSelections(
 ): AnnualLeaveDateSelection[] {
   const requestDates = request.annualLeaveDates ?? [];
   if (requestDates.length === 0) {
-    if (approvedDates?.length) throw new Error('This annual leave request does not have exact dates to partially approve');
+    if (approvedDates?.length) return normalizeAnnualLeaveDateSelections(approvedDates);
     return [{ date: request.startDate, dayValue: numeric(request.requestedDays) }];
   }
 
-  const requestedByDate = new Map(
-    requestDates.map((requestDate: any) => [formatDateValue(requestDate.leaveDate), numeric(requestDate.requestedDayValue)]),
-  );
-
-  const selections = approvedDates?.length
+  return approvedDates?.length
     ? normalizeAnnualLeaveDateSelections(approvedDates)
     : requestDates.map((requestDate: any) => ({
       date: formatDateValue(requestDate.leaveDate),
       dayValue: numeric(requestDate.requestedDayValue),
     }));
-
-  for (const selection of selections) {
-    const requestedDayValue = requestedByDate.get(selection.date);
-    if (!requestedDayValue) throw new Error('Approved annual leave dates must be part of the original request');
-    if (selection.dayValue > requestedDayValue) throw new Error('Approved day value cannot exceed requested day value');
-  }
-
-  return selections;
 }
 
 async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, dates: string[], tx: DbClient = db) {
