@@ -5,11 +5,11 @@ import {
 } from '../../../../schemas/core.schema';
 import {
   changeOvertimeRequestStatus,
-  createOvertimeRequest,
+  createOvertimeRequests,
   getOvertimeRequests,
 } from '../../../../db/orm/core/manageOvertimeRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -27,10 +27,17 @@ export async function createOvertimeRequestHandler(c: Context) {
     const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
 
-    const overtimeRequest = await createOvertimeRequest({
+    const canAssign = await userHasPermission(requestedBy, 'overtime-requests:approve');
+    if (!canAssign) throw new Error('Cannot assign overtime without supervisor approval access');
+
+    const overtimeRequests = await createOvertimeRequests({
       ...parsed.data,
       requestedBy,
-    }, scope);
+    }, {
+      scope,
+      requestedBy,
+      roles: session.user.role ?? [],
+    });
     // Notification trigger disabled until SMS/email provider credentials are available.
     // await safeEnqueueWorkflowNotification('OVERTIME_REQUEST_SUBMITTED', {
     //   entityId: overtimeRequest.id,
@@ -41,10 +48,10 @@ export async function createOvertimeRequestHandler(c: Context) {
 
     return c.json({
       success: true,
-      overtimeRequest: formatOvertimeRequest(overtimeRequest),
+      overtimeRequests: overtimeRequests.map(formatOvertimeRequest),
     }, 201);
   } catch (error) {
-    return coreErrorResponse(c, error, 'Failed to create overtime request');
+    return coreErrorResponse(c, error, 'Failed to create overtime assignment');
   }
 }
 
@@ -59,6 +66,7 @@ export async function getOvertimeRequestsHandler(c: Context) {
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
       status: c.req.query('status'),
+      mine: c.req.query('mine') === 'true' || c.req.query('mine') === '1',
     });
 
     return c.json({
@@ -66,7 +74,7 @@ export async function getOvertimeRequestsHandler(c: Context) {
       overtimeRequests: overtimeRequests.map(formatOvertimeRequest),
     });
   } catch (error) {
-    return coreErrorResponse(c, error, 'Failed to fetch overtime requests');
+    return coreErrorResponse(c, error, 'Failed to fetch overtime assignments');
   }
 }
 
@@ -79,6 +87,9 @@ export async function changeOvertimeRequestStatusHandler(c: Context) {
 
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
+    const canReview = await userHasPermission(session.user.id, 'overtime-requests:approve');
+    if (!canReview) throw new Error('Cannot review overtime without supervisor approval access');
+
     const overtimeRequest = await changeOvertimeRequestStatus(id, parsed.data, {
       scope,
       reviewerUserId: session.user.id,
@@ -104,7 +115,7 @@ export async function changeOvertimeRequestStatusHandler(c: Context) {
       overtimeRequest: formatOvertimeRequest(overtimeRequest),
     });
   } catch (error) {
-    return coreErrorResponse(c, error, 'Failed to update overtime request status');
+    return coreErrorResponse(c, error, 'Failed to update overtime assignment');
   }
 }
 

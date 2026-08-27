@@ -429,6 +429,7 @@ export function formatOvertimeRequest(request: any) {
     updatedAt: formatTimestamp(request.updatedAt),
     employee: request.employee ? formatEmployee(request.employee) : null,
     attendanceDailyRecord: request.attendanceDailyRecord ? formatAttendanceDailyRecord(request.attendanceDailyRecord) : null,
+    attendanceEvidence: request.attendanceEvidence ?? null,
   };
 }
 

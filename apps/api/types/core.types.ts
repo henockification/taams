@@ -434,7 +434,24 @@ export type AttendanceDailyRecord = {
   holiday?: Holiday | null;
 };
 
-export type OvertimeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type OvertimeRequestStatus = 'ASSIGNED' | 'APPROVED' | 'REJECTED';
+export type OvertimeAttendanceCoverage = 'UPCOMING' | 'NONE' | 'PARTIAL' | 'COVERED';
+
+export type OvertimeAttendancePunch = {
+  id: string;
+  punchTime: string;
+  punchType: string;
+  source: string;
+};
+
+export type OvertimeAttendanceEvidence = {
+  coverage: OvertimeAttendanceCoverage;
+  assignedMinutes: number;
+  overlapMinutes: number;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  punches: OvertimeAttendancePunch[];
+};
 
 export type OvertimeRequest = {
   id: string;
@@ -459,6 +476,7 @@ export type OvertimeRequest = {
   updatedAt: string;
   employee?: Employee | null;
   attendanceDailyRecord?: AttendanceDailyRecord | null;
+  attendanceEvidence?: OvertimeAttendanceEvidence | null;
 };
 
 export type CreateBiometricExemptionInput = {
@@ -626,7 +644,8 @@ export type ChangeManualPunchRequestStatusInput = {
 };
 
 export type CreateOvertimeRequestInput = {
-  employeeId: string;
+  employeeId?: string | null;
+  employeeIds?: string[];
   overtimeDate?: string | null;
   startAt: string;
   endAt: string;
@@ -635,7 +654,7 @@ export type CreateOvertimeRequestInput = {
 };
 
 export type ChangeOvertimeRequestStatusInput = {
-  status: Exclude<OvertimeRequestStatus, 'PENDING'>;
+  status: Exclude<OvertimeRequestStatus, 'ASSIGNED'>;
   approvedMinutes?: number | null;
   overtimeDays?: number | null;
   approvedAt?: string | null;
@@ -670,6 +689,7 @@ export type ManualPunchRequestActionResponse = {
   attendancePunch: AttendancePunch | null;
 };
 export type OvertimeRequestResponse = { success: boolean; overtimeRequest: OvertimeRequest };
+export type CreateOvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
 export type OvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
 export type AttendanceDailyRecordsResponse = { success: boolean; attendanceDailyRecords: AttendanceDailyRecord[] };
 export type AttendanceDailyRecordResponse = { success: boolean; attendanceDailyRecord: AttendanceDailyRecord };

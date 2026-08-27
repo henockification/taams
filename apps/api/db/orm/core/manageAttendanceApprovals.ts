@@ -15,6 +15,7 @@ import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
+import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
 
 type DbClient = typeof db | any;
 
@@ -149,11 +150,15 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
       .returning();
 
     if (record) {
-      records.push(await getAttendanceDailyRecordById(record.id));
+      records.push(record);
     }
   }
 
-  return records.filter(Boolean);
+  await syncApprovedOvertimeForDate(attendanceDate);
+
+  return (await Promise.all(
+    records.map((record) => getAttendanceDailyRecordById(record.id)),
+  )).filter(Boolean);
 }
 
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {

@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'overtimeRequests' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'overtimeRequests' | 'overtimeAssignments' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -38,9 +38,10 @@ export type AppNavItem = {
 };
 
 export type AppNavGroup = {
-  labelKey: 'workspace' | 'core' | 'leaveManagement' | 'employeeServices' | 'workScheduleShift' | 'biometric' | 'reports' | 'security';
+  labelKey: 'workspace' | 'core' | 'leaveManagement' | 'supervisor' | 'employeeServices' | 'workScheduleShift' | 'biometric' | 'reports' | 'security';
   icon: LucideIcon;
   items: AppNavItem[];
+  requiredRole?: 'supervisor';
 };
 
 export const appNavGroups: AppNavGroup[] = [
@@ -151,6 +152,13 @@ export const appNavGroups: AppNavGroup[] = [
         legacyPermissions: ['leave-management:read'],
         icon: ArrowRightLeft,
       },
+    ],
+  },
+  {
+    labelKey: 'supervisor',
+    icon: UserCheck,
+    requiredRole: 'supervisor',
+    items: [
       {
         titleKey: 'leaveRequestApprovals',
         url: '/leave-request-approvals',
@@ -158,6 +166,13 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'leave-request-approvals:approve',
         legacyPermissions: ['leave-requests:approve'],
         icon: FileCheck2,
+      },
+      {
+        titleKey: 'overtimeAssignments',
+        url: '/overtime-assignments',
+        permissionResource: 'overtime-requests',
+        requiredPermission: 'overtime-requests:approve',
+        icon: Timer,
       },
     ],
   },
@@ -400,6 +415,8 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/notification-logs' && hasHrRole(user)) return true;
+  if (item.url === '/overtime-assignments') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
+  if (item.url === '/leave-request-approvals') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
@@ -459,7 +476,6 @@ function isHrCapabilityPermission(permission: string) {
     'hr-dashboard',
     'hr-attendance-approvals',
     'manual-punch-requests',
-    'overtime-requests',
     'leave-balances',
     'leave-transfer',
     'leave-fiscal-years',
@@ -484,6 +500,11 @@ export function hasSupervisorRole(user: AuthzUser) {
   ));
 }
 
+export function hasExactSupervisorRole(user: AuthzUser) {
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  return roles.includes('supervisor');
+}
+
 export function hasSupervisorApprovalAccess(user: AuthzUser, permission?: string) {
   return hasSupervisorRole(user) || Boolean(permission && userHasPermission(user, permission));
 }
@@ -499,6 +520,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/')) return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
+  if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/')) return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);
@@ -512,6 +534,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
 
 export function getAccessibleNavGroups(user: AuthzUser) {
   return appNavGroups
+    .filter((group) => group.requiredRole !== 'supervisor' || hasExactSupervisorRole(user))
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => userCanAccessNavItem(user, item)),

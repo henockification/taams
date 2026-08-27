@@ -385,7 +385,24 @@ export const AttendanceDailyRecordSchema = z.object({
   holiday: HolidaySchema.nullable().optional(),
 });
 
-export const OvertimeRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+export const OvertimeRequestStatusSchema = z.enum(['ASSIGNED', 'APPROVED', 'REJECTED']);
+export const OvertimeAttendanceCoverageSchema = z.enum(['UPCOMING', 'NONE', 'PARTIAL', 'COVERED']);
+
+export const OvertimeAttendancePunchSchema = z.object({
+  id: UuidSchema,
+  punchTime: z.string(),
+  punchType: z.string(),
+  source: z.string(),
+});
+
+export const OvertimeAttendanceEvidenceSchema = z.object({
+  coverage: OvertimeAttendanceCoverageSchema,
+  assignedMinutes: z.number().int().nonnegative(),
+  overlapMinutes: z.number().int().nonnegative(),
+  checkInAt: z.string().nullable(),
+  checkOutAt: z.string().nullable(),
+  punches: z.array(OvertimeAttendancePunchSchema),
+});
 
 export const OvertimeRequestSchema = z.object({
   id: UuidSchema,
@@ -410,6 +427,7 @@ export const OvertimeRequestSchema = z.object({
   updatedAt: z.string(),
   employee: EmployeeSchema.nullable().optional(),
   attendanceDailyRecord: AttendanceDailyRecordSchema.nullable().optional(),
+  attendanceEvidence: OvertimeAttendanceEvidenceSchema.nullable().optional(),
 });
 
 export const CreateDepartmentRequestSchema = z.object({
@@ -677,12 +695,17 @@ export const ChangeManualPunchRequestStatusRequestSchema = z.object({
 });
 
 export const CreateOvertimeRequestRequestSchema = z.object({
-  employeeId: UuidSchema,
+  employeeId: UuidSchema.optional(),
+  employeeIds: z.array(UuidSchema).min(1).optional(),
   overtimeDate: RequiredDateSchema.optional(),
   startAt: z.string().datetime(),
   endAt: z.string().datetime(),
   reason: z.string().min(1),
   requestedBy: z.string().min(1).optional(),
+}).superRefine((data, ctx) => {
+  if (!(data.employeeIds?.length) && !data.employeeId) {
+    ctx.addIssue({ code: 'custom', message: 'employeeIds is required', path: ['employeeIds'] });
+  }
 });
 
 export const ChangeOvertimeRequestStatusRequestSchema = z.object({

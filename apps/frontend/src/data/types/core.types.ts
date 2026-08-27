@@ -263,7 +263,8 @@ export type ManualPunchRequestStatus =
   | 'HR_REJECTED'
   | 'SUPERVISOR_APPROVED'
   | 'SUPERVISOR_REJECTED';
-export type OvertimeRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type OvertimeRequestStatus = 'ASSIGNED' | 'APPROVED' | 'REJECTED';
+export type OvertimeAttendanceCoverage = 'UPCOMING' | 'NONE' | 'PARTIAL' | 'COVERED';
 export type TimeOperationSeverity = 'critical' | 'warning' | 'info' | 'success';
 export type TimeOperationStatus = 'CLEAR' | 'WATCH' | 'ACTION_REQUIRED';
 export type TimeOperationType =
@@ -463,6 +464,22 @@ export type ManualPunchRequest = {
   employee?: Employee | null;
 };
 
+export type OvertimeAttendancePunch = {
+  id: string;
+  punchTime: string;
+  punchType: string;
+  source: string;
+};
+
+export type OvertimeAttendanceEvidence = {
+  coverage: OvertimeAttendanceCoverage;
+  assignedMinutes: number;
+  overlapMinutes: number;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  punches: OvertimeAttendancePunch[];
+};
+
 export type OvertimeRequest = {
   id: string;
   employeeId: string;
@@ -486,6 +503,7 @@ export type OvertimeRequest = {
   updatedAt: string;
   employee?: Employee | null;
   attendanceDailyRecord?: AttendanceDailyRecord | null;
+  attendanceEvidence?: OvertimeAttendanceEvidence | null;
 };
 
 export type TimeOperationItem = {
@@ -1274,7 +1292,8 @@ export type ChangeManualPunchRequestStatusInput = {
 };
 
 export type CreateOvertimeRequestInput = {
-  employeeId: string;
+  employeeId?: string;
+  employeeIds?: string[];
   overtimeDate?: string;
   startAt: string;
   endAt: string;
@@ -1284,7 +1303,7 @@ export type CreateOvertimeRequestInput = {
 
 export type ChangeOvertimeRequestStatusInput = {
   overtimeRequestId: string;
-  status: Exclude<OvertimeRequestStatus, 'PENDING'>;
+  status: Exclude<OvertimeRequestStatus, 'ASSIGNED'>;
   approvedMinutes?: number;
   overtimeDays?: number;
   approvedAt?: string;

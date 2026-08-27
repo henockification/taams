@@ -489,17 +489,18 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  getOvertimeRequests: (params: { dateFrom?: string; dateTo?: string; status?: string } = {}) => {
+  getOvertimeRequests: (params: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean } = {}) => {
     const query = new URLSearchParams();
     if (params.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params.dateTo) query.set('dateTo', params.dateTo);
     if (params.status) query.set('status', params.status);
+    if (params.mine) query.set('mine', 'true');
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<OvertimeRequestsResponse>(`/overtime-requests${suffix}`);
   },
   createOvertimeRequest: (input: CreateOvertimeRequestInput) =>
-    coreFetch<OvertimeRequestResponse>('/overtime-requests', {
+    coreFetch<OvertimeRequestsResponse>('/overtime-requests', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

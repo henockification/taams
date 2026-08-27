@@ -548,7 +548,7 @@ export const overtimeRequests = pgTable('overtime_requests', {
   approvedMinutes: integer('approved_minutes').notNull().default(0),
   overtimeDays: numeric('overtime_days', { precision: 8, scale: 2 }).notNull().default('0'),
   reason: text('reason').notNull(),
-  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  status: varchar('status', { length: 30 }).notNull().default('ASSIGNED'),
   requestedBy: text('requested_by').notNull().references(() => user.id),
   approvedBy: text('approved_by').references(() => user.id),
   approvedAt: timestamp('approved_at', { withTimezone: false }),
@@ -559,7 +559,7 @@ export const overtimeRequests = pgTable('overtime_requests', {
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
-  overtimeStatusCheck: check('chk_overtime_request_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  overtimeStatusCheck: check('chk_overtime_request_status', sql`${table.status} IN ('ASSIGNED', 'APPROVED', 'REJECTED')`),
   overtimeDateRangeCheck: check('chk_overtime_request_date_range', sql`${table.startAt} < ${table.endAt}`),
   overtimeRequestedMinutesCheck: check('chk_overtime_request_requested_minutes', sql`${table.requestedMinutes} > 0`),
   overtimeApprovedMinutesCheck: check('chk_overtime_request_approved_minutes', sql`${table.approvedMinutes} >= 0`),

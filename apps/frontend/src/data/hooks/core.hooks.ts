@@ -102,7 +102,7 @@ export const coreQueryKeys = {
   supervisorAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', date] as const,
   hrAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'hr', date] as const,
   manualPunchRequests: () => [...coreQueryKeys.all, 'manual-punch-requests'] as const,
-  overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
+  overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
   leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
@@ -412,11 +412,12 @@ export function useUpdateHoliday() {
   });
 }
 
-export function useEmployees() {
+export function useEmployees(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.employees(),
     queryFn: () => coreApi.getEmployees(),
     staleTime: 5 * 60 * 1000,
+    enabled,
   });
 }
 
@@ -950,7 +951,7 @@ export function useChangeManualPunchRequestStatus() {
   });
 }
 
-export function useOvertimeRequests(params: { dateFrom?: string; dateTo?: string; status?: string } = {}) {
+export function useOvertimeRequests(params: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean } = {}) {
   return useQuery({
     queryKey: coreQueryKeys.overtimeRequests(params),
     queryFn: () => coreApi.getOvertimeRequests(params),

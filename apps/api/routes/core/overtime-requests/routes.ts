@@ -24,7 +24,7 @@ export const createOvertimeRequestRoute = createRoute({
   method: 'post',
   path: '/overtime-requests',
   tags: ['Core', 'Overtime Requests'],
-  summary: 'Create Overtime Request',
+  summary: 'Create Overtime Assignments',
   request: {
     body: {
       content: {
@@ -36,8 +36,8 @@ export const createOvertimeRequestRoute = createRoute({
   },
   responses: {
     201: {
-      content: { 'application/json': { schema: OvertimeRequestResponseSchema } },
-      description: 'Created overtime request',
+      content: { 'application/json': { schema: OvertimeRequestsResponseSchema } },
+      description: 'Created overtime assignments',
     },
     400: {
       content: { 'application/json': { schema: ErrorResponseSchema } },
@@ -50,11 +50,11 @@ export const getOvertimeRequestsRoute = createRoute({
   method: 'get',
   path: '/overtime-requests',
   tags: ['Core', 'Overtime Requests'],
-  summary: 'Get Overtime Requests',
+  summary: 'Get Overtime Assignments',
   responses: {
     200: {
       content: { 'application/json': { schema: OvertimeRequestsResponseSchema } },
-      description: 'Overtime request list',
+      description: 'Overtime assignment list',
     },
   },
 });
@@ -63,7 +63,7 @@ export const changeOvertimeRequestStatusRoute = createRoute({
   method: 'post',
   path: '/overtime-requests/{id}/status',
   tags: ['Core', 'Overtime Requests'],
-  summary: 'Approve or Reject Overtime Request',
+  summary: 'Approve or Reject Overtime Assignment',
   request: {
     params: uuidParam,
     body: {

@@ -259,7 +259,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
             />
           ) : (
             <div className="overflow-x-auto rounded-md border border-border">
-              <Table className="min-w-[86rem]">
+              <Table className="min-w-[96rem]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('employee')}</TableHead>
@@ -270,6 +270,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('attendanceDays')}</TableHead>
                     <TableHead>{t('leaveDays')}</TableHead>
                     <TableHead>{t('holidayDays')}</TableHead>
+                    <TableHead>{t('overtimeMinutes')}</TableHead>
+                    <TableHead>{t('overtimeHours')}</TableHead>
                     <TableHead>{t('payableDays')}</TableHead>
                     <TableHead>{t('absenceDays')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
@@ -292,6 +294,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell>{record.attendanceDays}</TableCell>
                       <TableCell>{record.leaveDays}</TableCell>
                       <TableCell>{record.holidayDays}</TableCell>
+                      <TableCell>{record.overtimeMinutes ?? 0}</TableCell>
+                      <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
                       <TableCell className="font-medium">{record.payableDays}</TableCell>
                       <TableCell>{record.absenceDays}</TableCell>
                       <TableCell>
