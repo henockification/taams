@@ -33,7 +33,7 @@ import {
   upsertLeaveBalanceScoped,
 } from '../../../../db/orm/core/manageLeave';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
 import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -126,12 +126,13 @@ export async function updateLeaveTypeHandler(c: Context) {
 export async function getLeaveBalancesHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const fiscalYearId = c.req.query('fiscalYearId') || undefined;
     const leaveBalances = await getLeaveBalances(fiscalYearId, {
       scope,
       userId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
     });
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
@@ -197,6 +198,7 @@ export async function transferLeaveBalanceHandler(c: Context) {
 export async function getLeaveRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const kind = c.req.query('kind') === 'annual'
       ? 'annual'
@@ -206,7 +208,7 @@ export async function getLeaveRequestsHandler(c: Context) {
     const leaveRequests = await getLeaveRequests(kind, {
       scope,
       userId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
     });
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
   } catch (error) {
@@ -335,10 +337,17 @@ async function resolveSession(c: Context) {
 
 async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
   if (!session?.user?.id) throw new Error('Authentication required');
+  const roles = await resolveRoleNames(session);
   const permissions = await getUserPermissionNames(session.user.id);
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
-    roles: session.user.role ?? [],
-    permissions,
+    roles,
+    permissions: roles.some((role) => role.toLowerCase() === 'human_resource') ? permissions : [],
   });
+}
+
+async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const assignedRoles = await getUserRoleNames(session.user.id);
+  return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
 }

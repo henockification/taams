@@ -279,6 +279,16 @@ export async function getUserPermissionNames(userId: string) {
   return [...new Set(rows.map((row) => row.name))];
 }
 
+export async function getUserRoleNames(userId: string) {
+  const rows = await db
+    .select({ name: roles.name })
+    .from(userRoles)
+    .innerJoin(roles, eq(userRoles.roleId, roles.id))
+    .where(eq(userRoles.userId, userId));
+
+  return [...new Set(rows.map((row) => row.name))];
+}
+
 async function getRoleById(roleId: string, tx: DbClient = db) {
   return tx.query.roles.findFirst({
     where: eq(roles.id, roleId),
