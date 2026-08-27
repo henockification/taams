@@ -10,21 +10,29 @@ import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageE
 
 type DbClient = typeof db | any;
 const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
+const HR_ROLE_NAMES = ['human_resource'];
 
 export async function createManualPunchRequest(input: CreateManualPunchRequestInput, scope?: EmployeeVisibilityScope) {
-  await assertEmployeeExists(input.employeeId);
-  if (scope) await assertCanAccessEmployee(input.employeeId, scope);
-
   if (!input.requestedBy) {
     throw new Error('requestedBy is required');
   }
 
   await assertUserExists(input.requestedBy);
 
+  const actorEmployee = await db.query.employees.findFirst({
+    where: eq(employees.userId, input.requestedBy),
+    columns: { id: true },
+  });
+  if (!actorEmployee) throw new Error('No employee profile is linked to this user');
+
+  const employeeId = actorEmployee.id;
+  await assertEmployeeExists(employeeId);
+  if (scope) await assertCanAccessEmployee(employeeId, scope);
+
   const [request] = await db
     .insert(manualPunchRequests)
     .values({
-      employeeId: input.employeeId,
+      employeeId,
       requestedPunchTime: new Date(input.requestedPunchTime),
       requestedPunchType: input.requestedPunchType,
       reason: input.reason,
@@ -39,7 +47,12 @@ export async function createManualPunchRequest(input: CreateManualPunchRequestIn
   return getManualPunchRequestById(request.id);
 }
 
-export async function getManualPunchRequests(input: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {}) {
+export async function getManualPunchRequests(input: {
+  scope?: EmployeeVisibilityScope;
+  userId?: string;
+  roles?: string[] | null;
+  mine?: boolean;
+} = {}) {
   const requests = await db.query.manualPunchRequests.findMany({
     with: {
       employee: {
@@ -52,13 +65,16 @@ export async function getManualPunchRequests(input: { scope?: EmployeeVisibility
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  if (!input.scope || input.scope.type === 'unrestricted' || input.scope.type === 'hr') return requests;
+  if (input.mine) {
+    return requests.filter((request) => request.employee?.userId === input.userId);
+  }
+
+  const roles = (input.roles ?? []).map((role) => role.toLowerCase());
+  const isHrRole = roles.some((role) => HR_ROLE_NAMES.includes(role));
+  if (!input.scope || input.scope.type === 'unrestricted' || isHrRole) return requests;
 
   const managedEmployeeIds = input.userId ? await getManagedEmployeeIdsForUser(input.userId, input.roles) : [];
-  return requests.filter((request) => (
-    request.employee?.userId === input.userId
-    || (managedEmployeeIds.includes(request.employeeId) && request.status === 'HR_REVIEWED')
-  ));
+  return requests.filter((request) => managedEmployeeIds.includes(request.employeeId));
 }
 
 export async function changeManualPunchRequestStatus(
@@ -66,7 +82,7 @@ export async function changeManualPunchRequestStatus(
   input: ChangeManualPunchRequestStatusInput,
   context: { scope?: EmployeeVisibilityScope; reviewerUserId?: string; roles?: string[] | null } = {},
 ) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const request = await getManualPunchRequestById(id, tx);
 
     if (!request) {
@@ -108,11 +124,14 @@ export async function changeManualPunchRequestStatus(
     }
 
     if (input.status === 'SUPERVISOR_APPROVED' || input.status === 'APPROVED') {
-      if (request.status !== 'HR_REVIEWED') {
-        throw new Error('HR must review this correction request before supervisor approval');
+      if (!canSupervisorDecide(request.status)) {
+        throw new Error('This correction request cannot be approved');
       }
 
       await assertCanSupervisorReview(request.employeeId, context, tx);
+      if (request.employee?.userId === context.reviewerUserId) {
+        throw new Error('Cannot approve your own attendance correction');
+      }
       const approvedBy = context.reviewerUserId ?? input.approvedBy;
       if (!approvedBy) throw new Error('Approved by is required when approving a correction request');
       await assertUserExists(approvedBy, tx);
@@ -166,8 +185,8 @@ export async function changeManualPunchRequestStatus(
     }
 
     if (input.status === 'SUPERVISOR_REJECTED' || input.status === 'REJECTED') {
-      if (request.status !== 'HR_REVIEWED') {
-        throw new Error('HR must review this correction request before supervisor rejection');
+      if (!canSupervisorDecide(request.status)) {
+        throw new Error('This correction request cannot be rejected');
       }
 
       await assertCanSupervisorReview(request.employeeId, context, tx);
@@ -201,6 +220,14 @@ export async function changeManualPunchRequestStatus(
 
     throw new Error('Unsupported correction request status');
   });
+
+  if (result.attendancePunch && result.manualPunchRequest?.requestedPunchTime) {
+    const punchDate = toDateKey(new Date(result.manualPunchRequest.requestedPunchTime));
+    const { generateAttendanceDailyRecords } = await import('./manageAttendanceApprovals');
+    await generateAttendanceDailyRecords(punchDate);
+  }
+
+  return result;
 }
 
 export async function getManualPunchRequestById(id: string, tx: DbClient = db) {
@@ -237,6 +264,17 @@ async function assertUserExists(id: string, tx: DbClient = db) {
 
 function isProcessedStatus(status: string) {
   return ['HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED', 'APPROVED', 'REJECTED'].includes(status);
+}
+
+function canSupervisorDecide(status: string) {
+  return status === 'PENDING_HR_REVIEW' || status === 'HR_REVIEWED' || status === 'PENDING';
+}
+
+function toDateKey(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 async function assertCanSupervisorReview(employeeId: string, context: { scope?: EmployeeVisibilityScope; reviewerUserId?: string; roles?: string[] | null }, tx: DbClient) {

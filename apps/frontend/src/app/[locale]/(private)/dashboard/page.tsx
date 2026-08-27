@@ -269,7 +269,8 @@ function EmployeeDashboard({
   const t = useTranslations("dashboard")
   const section = dashboard.sections.employee
   const todayAttendance = section?.todayAttendance
-  const leaveBalance = dashboard.currentAnnualLeaveBalance
+  const leaveBalances = section?.annualLeaveBalances ?? []
+  const isPermanentEmployee = section?.profile.employmentType === "PERMANENT"
 
   return (
     <div className="space-y-6">
@@ -319,15 +320,37 @@ function EmployeeDashboard({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-xl border border-border bg-background p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("annualLeaveBalance")}</p>
-              <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
-                {leaveBalance?.available ?? t("notAvailable")}
-              </p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {leaveBalance?.fiscalYear?.name ?? t("currentFiscalYear")}
-              </p>
-            </div>
+            {leaveBalances.length === 0 ? (
+              <div className="rounded-xl border border-border bg-background p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {isPermanentEmployee ? t("previousFiscalYearBalances") : t("currentFiscalYearBalance")}
+                </p>
+                <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">{t("notAvailable")}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {isPermanentEmployee ? t("previousFiscalYears") : t("currentFiscalYear")}
+                </p>
+              </div>
+            ) : (
+              <div className={cn("grid gap-3", leaveBalances.length > 1 && "sm:grid-cols-2")}>
+                {leaveBalances.map((balance) => (
+                  <div key={balance.id} className="rounded-xl border border-border bg-background p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {isPermanentEmployee ? t("previousFiscalYearBalance") : t("currentFiscalYearBalance")}
+                    </p>
+                    <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+                      {formatLeaveDays(balance.available)}
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {balance.fiscalYear?.name ?? (isPermanentEmployee ? t("previousFiscalYears") : t("currentFiscalYear"))}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{t("usedLabel")}: {formatLeaveDays(balance.used)}</span>
+                      <span>{t("reservedLabel")}: {formatLeaveDays(balance.reserved)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             <Link
               href="/annual-leave-requests"
               className="inline-flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 hover:underline"
@@ -555,6 +578,7 @@ function PunchList({ title, punches, emptyText }: { title: string; punches: Atte
 
 function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
   const t = useTranslations("dashboard")
+  const recentRequests = requests.slice(0, 5)
 
   return (
     <Card>
@@ -565,11 +589,15 @@ function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {requests.length === 0 ? (
+        {recentRequests.length === 0 ? (
           <EmptyLine text={t("noLeaveRequests")} />
         ) : (
-          requests.map((request) => (
-            <div key={request.id} className="rounded-xl border border-border bg-background p-4">
+          recentRequests.map((request) => (
+            <Link
+              key={request.id}
+              href={leaveRequestHref(request)}
+              className="block rounded-xl border border-border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">{request.leaveType?.nameEn ?? t("leaveRequests")}</p>
@@ -582,7 +610,7 @@ function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
                 </Badge>
               </div>
               <p className="mt-3 line-clamp-2 text-sm leading-5 text-muted-foreground">{request.reason}</p>
-            </div>
+            </Link>
           ))
         )}
       </CardContent>
@@ -875,7 +903,7 @@ function getHeroInsight(
       secondaryLabel: t("reportsLabel"),
       secondaryValue: section?.directReportsCount ?? 0,
       actionLabel: canViewManualPunchRequests ? t("reviewRequests") : "",
-      href: canViewManualPunchRequests ? "/manual-punch-requests" : null,
+      href: canViewManualPunchRequests ? "/attendance-correction-approvals" : null,
     }
   }
 
@@ -918,6 +946,21 @@ function severityClass(severity: string) {
 
 function employeeName(employee: { firstNameEn: string; middleNameEn?: string | null; lastNameEn: string }) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(" ")
+}
+
+function leaveRequestHref(request: LeaveRequest) {
+  return request.leaveType?.deductsAnnualBalance
+    ? (`/annual-leave-requests/${request.id}` as const)
+    : "/other-leave-requests"
+}
+
+function formatLeaveDays(value?: string | null) {
+  if (!value) return "0"
+
+  const numericValue = Number(value)
+  if (!Number.isFinite(numericValue)) return value
+
+  return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(2).replace(/\.?0+$/, "")
 }
 
 function formatDateTime(value?: string | null) {

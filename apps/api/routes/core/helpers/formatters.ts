@@ -670,6 +670,9 @@ function formatDashboardSections(sections: any) {
           formatManualPunchRequest(request)
         )),
         leaveRequests: (sections.employee.leaveRequests ?? []).map((request: any) => formatLeaveRequest(request)),
+        annualLeaveBalances: (sections.employee.annualLeaveBalances ?? []).map((balance: any) => (
+          formatLeaveBalance(balance)
+        )),
         todayAttendance: {
           date: sections.employee.todayAttendance.date,
           checkIn: sections.employee.todayAttendance.checkIn ? formatAttendancePunch(sections.employee.todayAttendance.checkIn) : null,

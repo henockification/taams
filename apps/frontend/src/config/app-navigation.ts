@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export type AppNavItem = {
-  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'overtimeRequests' | 'overtimeAssignments' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
+  titleKey: 'dashboard' | 'executiveDashboard' | 'hrDashboard' | 'departmentHeadDashboard' | 'users' | 'roles' | 'permissions' | 'notificationLogs' | 'organizationStructure' | 'positions' | 'employees' | 'permanentEmployees' | 'fiscalYears' | 'leaveTypes' | 'leaveBalances' | 'leaveTransfer' | 'leaveRequestApprovals' | 'workSchedules' | 'holidays' | 'shifts' | 'scheduleAssignments' | 'biometricDevices' | 'biometricExemptions' | 'attendancePunches' | 'attendanceApprovals' | 'hrAttendanceApproval' | 'manualPunchRequests' | 'attendanceCorrectionApprovals' | 'overtimeRequests' | 'overtimeAssignments' | 'annualLeaveRequests' | 'otherLeaveRequests' | 'attendanceDailyReport' | 'attendancePunchesReport' | 'lateAttendanceReport' | 'overtimeReport' | 'leaveBalancesReport' | 'leaveRequestsReport' | 'employeeRosterReport' | 'deviceSyncReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -173,6 +173,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'overtime-requests',
         requiredPermission: 'overtime-requests:approve',
         icon: Timer,
+      },
+      {
+        titleKey: 'attendanceCorrectionApprovals',
+        url: '/attendance-correction-approvals',
+        permissionResource: 'manual-punch-requests',
+        requiredPermission: 'manual-punch-requests:approve',
+        icon: ClipboardList,
       },
     ],
   },
@@ -417,6 +424,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/notification-logs' && hasHrRole(user)) return true;
   if (item.url === '/overtime-assignments') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
   if (item.url === '/leave-request-approvals') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
+  if (item.url === '/attendance-correction-approvals') return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve');
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests' || item.url === '/overtime-requests' || item.url === '/manual-punch-requests') return Boolean(user);
   return userHasPermission(user, item.requiredPermission)
     || Boolean(item.legacyPermissions?.some((permission) => userHasPermission(user, permission)));
@@ -521,6 +529,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/')) return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
   if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/')) return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve');
+  if (pathname === '/attendance-correction-approvals' || pathname.startsWith('/attendance-correction-approvals/')) return hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve');
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);

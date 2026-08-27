@@ -109,7 +109,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     db.query.manualPunchRequests.findMany({
       where: and(
         inArray(manualPunchRequests.employeeId, departmentEmployeeIds),
-        eq(manualPunchRequests.status, 'HR_REVIEWED'),
+        inArray(manualPunchRequests.status, ['PENDING_HR_REVIEW', 'HR_REVIEWED', 'PENDING']),
       ),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
@@ -189,7 +189,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
       late: createWidget('late', 'Late', lateEmployeeIds.size, '/attendance-punches'),
       pendingAttendance: createWidget('pending-attendance', 'Pending Attendance', pendingAttendancePunches.length, '/attendance-punches'),
       pendingLeave: createWidget('pending-leave', 'Pending Leave', pendingLeaveRequests.length, '/leave-request-approvals'),
-      pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', pendingCorrections.length, '/manual-punch-requests'),
+      pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', pendingCorrections.length, '/attendance-correction-approvals'),
     },
     details: {
       todaysStaff: departmentEmployees,
@@ -223,7 +223,7 @@ function createEmptySummary(input: { generatedAt: Date; selectedDate: string; su
       late: createWidget('late', 'Late', 0, '/attendance-punches'),
       pendingAttendance: createWidget('pending-attendance', 'Pending Attendance', 0, '/attendance-punches'),
       pendingLeave: createWidget('pending-leave', 'Pending Leave', 0, '/leave-request-approvals'),
-      pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', 0, '/manual-punch-requests'),
+      pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', 0, '/attendance-correction-approvals'),
     },
     details: {
       todaysStaff: [],

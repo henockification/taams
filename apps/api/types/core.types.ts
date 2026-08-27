@@ -620,7 +620,7 @@ export type UpdateAttendancePunchInput = Partial<CreateAttendancePunchInput> & {
 };
 
 export type CreateManualPunchRequestInput = {
-  employeeId: string;
+  employeeId?: string | null;
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;

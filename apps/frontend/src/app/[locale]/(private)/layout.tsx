@@ -131,6 +131,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('otherLeaveRequestsDescription');
       case 'manualPunchRequests':
         return coreT('manualPunchRequestsDescription');
+      case 'attendanceCorrectionApprovals':
+        return coreT('attendanceCorrectionApprovalsDescription');
       case 'workSchedules':
         return coreT('workSchedulesDescription');
       case 'holidays':

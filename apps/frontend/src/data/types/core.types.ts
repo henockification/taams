@@ -617,6 +617,7 @@ export type DashboardSummary = {
       todayPunches: AttendancePunch[];
       manualPunchRequests: ManualPunchRequest[];
       leaveRequests: LeaveRequest[];
+      annualLeaveBalances: LeaveBalance[];
       todayAttendance: EmployeeTodayAttendance;
       announcements: DashboardAnnouncement[];
     };
@@ -1267,7 +1268,7 @@ export type CreateAttendancePunchInput = {
 };
 
 export type CreateManualPunchRequestInput = {
-  employeeId: string;
+  employeeId?: string;
   requestedPunchTime: string;
   requestedPunchType: PunchType;
   reason: string;

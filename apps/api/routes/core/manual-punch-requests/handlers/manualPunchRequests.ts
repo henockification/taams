@@ -62,6 +62,7 @@ export async function getManualPunchRequestsHandler(c: Context) {
       scope,
       userId: session.user.id,
       roles: session.user.role ?? [],
+      mine: c.req.query('mine') === 'true' || c.req.query('mine') === '1',
     });
 
     return c.json({

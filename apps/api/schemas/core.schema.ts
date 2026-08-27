@@ -671,7 +671,7 @@ export const ManualPunchRequestSchema = z.object({
 });
 
 export const CreateManualPunchRequestRequestSchema = z.object({
-  employeeId: UuidSchema,
+  employeeId: UuidSchema.optional(),
   requestedPunchTime: z.string().datetime(),
   requestedPunchType: PunchTypeSchema,
   reason: z.string().min(1),

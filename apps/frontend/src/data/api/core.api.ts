@@ -478,7 +478,12 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify({ reason: input.reason }),
     }),
-  getManualPunchRequests: () => coreFetch<ManualPunchRequestsResponse>('/manual-punch-requests'),
+  getManualPunchRequests: (params: { mine?: boolean } = {}) => {
+    const query = new URLSearchParams();
+    if (params.mine) query.set('mine', 'true');
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return coreFetch<ManualPunchRequestsResponse>(`/manual-punch-requests${suffix}`);
+  },
   createManualPunchRequest: (input: CreateManualPunchRequestInput) =>
     coreFetch<ManualPunchRequestResponse>('/manual-punch-requests', {
       method: 'POST',

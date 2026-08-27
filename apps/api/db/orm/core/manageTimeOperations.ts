@@ -211,7 +211,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
       manualPunchRequests,
       and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        eq(manualPunchRequests.status, 'HR_REVIEWED'),
+        inArray(manualPunchRequests.status, ['PENDING_HR_REVIEW', 'HR_REVIEWED', 'PENDING']),
       ),
     ),
     getCount(
@@ -231,7 +231,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
     db.query.manualPunchRequests.findMany({
       where: and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        eq(manualPunchRequests.status, 'HR_REVIEWED'),
+        inArray(manualPunchRequests.status, ['PENDING_HR_REVIEW', 'HR_REVIEWED', 'PENDING']),
       ),
       with: {
         employee: {
@@ -387,7 +387,7 @@ function buildManualPunchItem(countValue: number, requests: any[]): TimeOperatio
       : 'Employees are waiting for manual punch approvals.',
     count: countValue,
     actionLabel: 'Review requests',
-    actionHref: '/manual-punch-requests',
+    actionHref: '/attendance-correction-approvals',
     occurredAt: firstRequest?.createdAt ?? null,
     metadata: {
       previewIds: requests.map((request) => request.id),

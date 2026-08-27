@@ -101,7 +101,7 @@ export const coreQueryKeys = {
   unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
   supervisorAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', date] as const,
   hrAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'hr', date] as const,
-  manualPunchRequests: () => [...coreQueryKeys.all, 'manual-punch-requests'] as const,
+  manualPunchRequests: (params?: { mine?: boolean }) => [...coreQueryKeys.all, 'manual-punch-requests', params ?? {}] as const,
   overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
@@ -912,10 +912,10 @@ export function useReturnAttendanceDailyRecord() {
   });
 }
 
-export function useManualPunchRequests() {
+export function useManualPunchRequests(params: { mine?: boolean } = {}) {
   return useQuery({
-    queryKey: coreQueryKeys.manualPunchRequests(),
-    queryFn: () => coreApi.getManualPunchRequests(),
+    queryKey: coreQueryKeys.manualPunchRequests(params),
+    queryFn: () => coreApi.getManualPunchRequests(params),
     staleTime: 60 * 1000,
   });
 }
@@ -926,7 +926,7 @@ export function useCreateManualPunchRequest() {
   return useMutation({
     mutationFn: (input: CreateManualPunchRequestInput) => coreApi.createManualPunchRequest(input),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.manualPunchRequests() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'manual-punch-requests'] });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
     },
@@ -939,8 +939,9 @@ export function useChangeManualPunchRequestStatus() {
   return useMutation({
     mutationFn: (input: ChangeManualPunchRequestStatusInput) => coreApi.changeManualPunchRequestStatus(input),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.manualPunchRequests() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'manual-punch-requests'] });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.attendancePunches() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'attendance-approvals'] });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.unprocessedAttendancePunches() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
