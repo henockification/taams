@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { CalendarCheck, Eye } from 'lucide-react';
+import { CalendarCheck, Eye, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
 import { Select,
   SelectContent,
   SelectItem,
@@ -51,6 +52,7 @@ import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 
 type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
+type DateFilter = 'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 
 function formatDate(value: string | null) {
   if (!value) return '-';
@@ -68,11 +70,53 @@ function statusVariant(status: LeaveRequest['status']) {
   return 'secondary';
 }
 
+function dateToYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string; toDate: string }) {
+  if (dateFilter === 'CUSTOM') return custom;
+  if (dateFilter === 'ALL') return { fromDate: '', toDate: '' };
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(today);
+
+  if (dateFilter === 'TODAY') {
+    return { fromDate: dateToYmd(today), toDate: dateToYmd(end) };
+  }
+
+  if (dateFilter === 'THIS_WEEK') {
+    const mondayOffset = (today.getDay() + 6) % 7;
+    const start = new Date(today);
+    start.setDate(today.getDate() - mondayOffset);
+    end.setDate(start.getDate() + 6);
+    return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
+  }
+
+  if (dateFilter === 'THIS_MONTH') {
+    const start = new Date(today.getFullYear(), today.getMonth(), 1);
+    end.setMonth(today.getMonth() + 1, 0);
+    return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
+  }
+
+  const start = new Date(today.getFullYear(), 0, 1);
+  end.setMonth(11, 31);
+  return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
+}
+
 export function LeaveRequestApprovalsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const session = useSession();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
+  const [leaveTypeFilter, setLeaveTypeFilter] = useState('ALL');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilter>('ALL');
+  const [requestDateFilters, setRequestDateFilters] = useState({ fromDate: '', toDate: '' });
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
   const [interruptionReviewTarget, setInterruptionReviewTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
@@ -91,18 +135,68 @@ export function LeaveRequestApprovalsPage() {
     () => new Map(balances.map((balance) => [`${balance.employeeId}:${balance.fiscalYearId}`, balance])),
     [balances],
   );
+  const leaveTypeOptions = useMemo(() => {
+    const byId = new Map<string, NonNullable<LeaveRequest['leaveType']>>();
+    for (const request of requests) {
+      if (request.leaveType) byId.set(request.leaveTypeId, request.leaveType);
+    }
+    return Array.from(byId.values()).sort((a, b) => a.nameEn.localeCompare(b.nameEn));
+  }, [requests]);
+
+  const baseFilteredRequests = useMemo(() => {
+    const search = employeeSearch.trim().toLowerCase();
+    const bounds = getDateFilterBounds(dateFilter, requestDateFilters);
+
+    return requests.filter((request) => {
+      if (leaveTypeFilter !== 'ALL' && request.leaveTypeId !== leaveTypeFilter) return false;
+
+      if (search) {
+        const haystack = [
+          employeeName(request.employee),
+          request.employee?.employeeCode,
+          request.employee?.firstNameEn,
+          request.employee?.middleNameEn,
+          request.employee?.lastNameEn,
+          request.employee?.firstNameAm,
+          request.employee?.middleNameAm,
+          request.employee?.lastNameAm,
+        ].filter(Boolean).join(' ').toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+
+      const requestDate = request.createdAt.slice(0, 10);
+      if (bounds.fromDate && requestDate < bounds.fromDate) return false;
+      if (bounds.toDate && requestDate > bounds.toDate) return false;
+
+      return true;
+    });
+  }, [dateFilter, employeeSearch, leaveTypeFilter, requestDateFilters, requests]);
 
   const filteredRequests = useMemo(() => {
-    if (statusFilter === 'ALL') return requests;
-    return requests.filter((request) => request.status === statusFilter || (
+    if (statusFilter === 'ALL') return baseFilteredRequests;
+    return baseFilteredRequests.filter((request) => request.status === statusFilter || (
       statusFilter === 'PENDING' && request.interruptions?.some((interruption) => interruption.status === 'PENDING')
     ));
-  }, [statusFilter, requests]);
+  }, [baseFilteredRequests, statusFilter]);
 
-  const pendingCount = useMemo(() => requests.filter((request) => request.status === 'PENDING').length
-    + requests.reduce((count, request) => count + (request.interruptions?.filter((interruption) => interruption.status === 'PENDING').length ?? 0), 0), [requests]);
-  const approvedCount = useMemo(() => requests.filter((request) => request.status === 'APPROVED').length, [requests]);
-  const rejectedCount = useMemo(() => requests.filter((request) => request.status === 'REJECTED').length, [requests]);
+  const pendingCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'PENDING').length
+    + baseFilteredRequests.reduce((count, request) => count + (request.interruptions?.filter((interruption) => interruption.status === 'PENDING').length ?? 0), 0), [baseFilteredRequests]);
+  const approvedCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'APPROVED').length, [baseFilteredRequests]);
+  const rejectedCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'REJECTED').length, [baseFilteredRequests]);
+  const hasActiveFilters = statusFilter !== 'PENDING'
+    || leaveTypeFilter !== 'ALL'
+    || Boolean(employeeSearch.trim())
+    || dateFilter !== 'ALL'
+    || Boolean(requestDateFilters.fromDate)
+    || Boolean(requestDateFilters.toDate);
+
+  const clearFilters = () => {
+    setStatusFilter('PENDING');
+    setLeaveTypeFilter('ALL');
+    setEmployeeSearch('');
+    setDateFilter('ALL');
+    setRequestDateFilters({ fromDate: '', toDate: '' });
+  };
 
   const approveRequest = async (request: LeaveRequest) => {
     if (isAnnualRequest(request) && request.annualLeaveDates?.length) {
@@ -241,21 +335,104 @@ export function LeaveRequestApprovalsPage() {
       </div>
 
       <Card className="rounded-lg">
-        <CardHeader className="flex w-full flex-row items-start justify-between gap-4">
+        <CardHeader className="space-y-4">
           <div className="min-w-0 flex-1">
             <CardTitle>{t('leaveRequestApprovals')}</CardTitle>
           </div>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-            <SelectTrigger className="w-[14rem]">
-              <SelectValue placeholder={t('allStatuses')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">{t('allStatuses')}</SelectItem>
-              <SelectItem value="PENDING">{t('pendingRequests')}</SelectItem>
-              <SelectItem value="APPROVED">{t('approved')}</SelectItem>
-              <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="grid gap-3 lg:grid-cols-[minmax(14rem,1.3fr)_minmax(12rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] lg:items-end">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-employee-search">{t('employeeSearch')}</label>
+              <Input
+                id="leave-approval-employee-search"
+                value={employeeSearch}
+                onChange={(event) => setEmployeeSearch(event.target.value)}
+                placeholder={t('searchEmployeePlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-type-filter">{t('leaveType')}</label>
+              <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
+                <SelectTrigger id="leave-approval-type-filter">
+                  <SelectValue placeholder={t('allLeaveTypes')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{t('allLeaveTypes')}</SelectItem>
+                  {leaveTypeOptions.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-filter">{t('requestDateRange')}</label>
+              <Select
+                value={dateFilter}
+                onValueChange={(value) => {
+                  const nextFilter = value as DateFilter;
+                  setDateFilter(nextFilter);
+                  if (nextFilter !== 'CUSTOM') setRequestDateFilters({ fromDate: '', toDate: '' });
+                }}
+              >
+                <SelectTrigger id="leave-approval-date-filter">
+                  <SelectValue placeholder={t('allDates')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">{t('allDates')}</SelectItem>
+                  <SelectItem value="TODAY">{t('today')}</SelectItem>
+                  <SelectItem value="THIS_WEEK">{t('thisWeek')}</SelectItem>
+                  <SelectItem value="THIS_MONTH">{t('thisMonth')}</SelectItem>
+                  <SelectItem value="THIS_YEAR">{t('thisYear')}</SelectItem>
+                  <SelectItem value="CUSTOM">{t('customRange')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-from">{t('requestDateFrom')}</label>
+              <Input
+                id="leave-approval-date-from"
+                type="date"
+                value={requestDateFilters.fromDate}
+                onChange={(event) => {
+                  setDateFilter('CUSTOM');
+                  setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }));
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-to">{t('requestDateTo')}</label>
+              <Input
+                id="leave-approval-date-to"
+                type="date"
+                value={requestDateFilters.toDate}
+                onChange={(event) => {
+                  setDateFilter('CUSTOM');
+                  setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }));
+                }}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={clearFilters}
+              disabled={!hasActiveFilters}
+            >
+              <X className="size-4" />
+              {t('clearFilters')}
+            </Button>
+          </div>
+          <div className="max-w-xs">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+              <SelectTrigger>
+                <SelectValue placeholder={t('allStatuses')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">{t('allStatuses')}</SelectItem>
+                <SelectItem value="PENDING">{t('pendingRequests')}</SelectItem>
+                <SelectItem value="APPROVED">{t('approved')}</SelectItem>
+                <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -264,7 +441,7 @@ export function LeaveRequestApprovalsPage() {
             <EmptyState
               icon={CalendarCheck}
               title={t('noLeaveRequests')}
-              description={t('noLeaveRequestsDescription')}
+              description={hasActiveFilters ? t('noLeaveRequestsForFilters') : t('noLeaveRequestsDescription')}
             />
           ) : (
             <div className="overflow-hidden rounded-md border border-border">

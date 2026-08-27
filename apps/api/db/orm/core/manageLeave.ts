@@ -35,6 +35,7 @@ import { userHasPermission } from '../rbac/manageRbac';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
+const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 const KNOWN_LEAVE_TYPES = [
   {
     code: 'ANNUAL',
@@ -201,7 +202,10 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
   return leaveType;
 }
 
-export async function getLeaveBalances(fiscalYearId?: string, scope?: EmployeeVisibilityScope) {
+export async function getLeaveBalances(
+  fiscalYearId?: string,
+  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+) {
   const balances = await db.query.leaveBalances.findMany({
     where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
     with: {
@@ -216,8 +220,14 @@ export async function getLeaveBalances(fiscalYearId?: string, scope?: EmployeeVi
     orderBy: (table, { asc }) => [asc(table.createdAt)],
   });
 
+  const { scope, userId, roles } = context;
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return balances;
-  return balances.filter((balance) => balance.employee?.userId === scope.userId);
+  const managedEmployeeIds = userId ? await getManagedEmployeeIdsForUser(userId, roles) : [];
+  const visibleEmployeeIds = new Set(managedEmployeeIds);
+  return balances.filter((balance) => (
+    balance.employee?.userId === userId
+    || visibleEmployeeIds.has(balance.employeeId)
+  ));
 }
 
 export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbClient = db) {
@@ -376,7 +386,10 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
   });
 }
 
-export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: EmployeeVisibilityScope) {
+export async function getLeaveRequests(
+  kind?: 'annual' | 'other',
+  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+) {
   await ensureKnownLeaveTypes();
   await reconcileAnnualLeaveConsumption();
   const requests = await db.query.leaveRequests.findMany({
@@ -400,7 +413,7 @@ export async function getLeaveRequests(kind?: 'annual' | 'other', scope?: Employ
     orderBy: (table, { desc }) => [desc(table.createdAt)],
   });
 
-  const scopedRequests = await filterLeaveRequestsForViewer(requests, scope);
+  const scopedRequests = await filterLeaveRequestsForViewer(requests, context);
 
   if (!kind) return scopedRequests;
   return scopedRequests.filter((request) => isAnnualLeaveType(request.leaveType) === (kind === 'annual'));
@@ -713,10 +726,9 @@ export async function changeLeaveRequestStatus(id: string, input: ChangeLeaveReq
   });
 }
 
-export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, scope: EmployeeVisibilityScope) {
+export async function changeLeaveRequestStatusScoped(id: string, input: ChangeLeaveRequestStatusInput, _scope: EmployeeVisibilityScope) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
-  await assertCanAccessEmployee(request.employeeId, scope);
   return changeLeaveRequestStatus(id, input);
 }
 
@@ -880,20 +892,22 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
   });
 }
 
-async function filterLeaveRequestsForViewer(requests: any[], scope?: EmployeeVisibilityScope) {
+async function filterLeaveRequestsForViewer(
+  requests: any[],
+  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+) {
+  const { scope, userId, roles } = context;
   if (!scope || scope.type === 'unrestricted') return requests;
 
   if (scope.type === 'hr') return requests.filter((request) => request.status === 'APPROVED');
 
-  const viewerEmployee = await db.query.employees.findFirst({
-    where: eq(employees.userId, scope.userId),
-    columns: { id: true },
-  });
-  if (!viewerEmployee) return [];
-
-  const directReportIds = await getDirectReportIds(viewerEmployee.id);
-  const visibleEmployeeIds = new Set([viewerEmployee.id, ...directReportIds]);
-  return requests.filter((request) => visibleEmployeeIds.has(request.employeeId));
+  const managedEmployeeIds = userId ? await getManagedEmployeeIdsForUser(userId, roles) : [];
+  const visibleEmployeeIds = new Set(managedEmployeeIds);
+  return requests.filter((request) => (
+    request.employee?.userId === userId
+    || request.requestedBy === userId
+    || visibleEmployeeIds.has(request.employeeId)
+  ));
 }
 
 async function validateInterruptionPattern(
@@ -1206,16 +1220,39 @@ async function assertCanReviewRequest(employeeId: string, reviewerUserId: string
   if (!assignment) throw new Error('Only the direct supervisor or an admin can review this leave request');
 }
 
-async function getDirectReportIds(supervisorEmployeeId: string, tx: DbClient = db) {
+async function getManagedEmployeeIdsForUser(userId: string, roles?: string[] | null, tx: DbClient = db) {
+  const supervisor = await tx.query.employees.findFirst({
+    where: eq(employees.userId, userId),
+    columns: { id: true, departmentId: true },
+  });
+  if (!supervisor) return [];
+
+  const managedIds = new Set<string>();
   const assignments = await tx.query.employeeSupervisors.findMany({
     where: and(
-      eq(employeeSupervisors.supervisorId, supervisorEmployeeId),
+      eq(employeeSupervisors.supervisorId, supervisor.id),
+      lte(employeeSupervisors.effectiveFrom, today()),
       or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, today())),
     ),
     columns: { employeeId: true },
   });
+  assignments.forEach((assignment: { employeeId: string }) => managedIds.add(assignment.employeeId));
 
-  return assignments.map((assignment: { employeeId: string }) => assignment.employeeId);
+  const normalizedRoles = (roles ?? []).map((role) => role.toLowerCase());
+  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
+    const departmentEmployees = await tx.query.employees.findMany({
+      where: and(
+        eq(employees.departmentId, supervisor.departmentId),
+        eq(employees.isActive, true),
+      ),
+      columns: { id: true },
+    });
+    departmentEmployees.forEach((employee: { id: string }) => {
+      if (employee.id !== supervisor.id) managedIds.add(employee.id);
+    });
+  }
+
+  return [...managedIds];
 }
 
 async function calculateWorkingDays(employeeId: string, startDate: string, endDate: string, tx: DbClient = db) {

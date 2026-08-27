@@ -128,7 +128,11 @@ export async function getLeaveBalancesHandler(c: Context) {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
     const fiscalYearId = c.req.query('fiscalYearId') || undefined;
-    const leaveBalances = await getLeaveBalances(fiscalYearId, scope);
+    const leaveBalances = await getLeaveBalances(fiscalYearId, {
+      scope,
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+    });
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch leave balances');
@@ -199,7 +203,11 @@ export async function getLeaveRequestsHandler(c: Context) {
       : c.req.query('kind') === 'other'
         ? 'other'
         : undefined;
-    const leaveRequests = await getLeaveRequests(kind, scope);
+    const leaveRequests = await getLeaveRequests(kind, {
+      scope,
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+    });
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch leave requests');
