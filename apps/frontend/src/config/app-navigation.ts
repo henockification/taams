@@ -198,8 +198,9 @@ export const appNavGroups: AppNavGroup[] = [
       {
         titleKey: 'temporaryAssignments',
         url: '/temporary-assignments',
-        permissionResource: 'employees',
-        requiredPermission: 'employees:read',
+        permissionResource: 'temporary-assignment',
+        requiredPermission: 'temporary-assignment:read',
+        legacyPermissions: ['employees:read'],
         icon: ArrowRightLeft,
       },
     ],
