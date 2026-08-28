@@ -310,6 +310,26 @@ export const employeeSupervisors = pgTable('employee_supervisors', {
   employeeNotOwnSupervisorCheck: check('chk_employee_not_own_supervisor', sql`${table.employeeId} <> ${table.supervisorId}`),
 }));
 
+export const temporaryDepartmentAssignments = pgTable('temporary_department_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  sourceDepartmentId: uuid('source_department_id').notNull().references(() => departments.id),
+  targetDepartmentId: uuid('target_department_id').notNull().references(() => departments.id),
+  effectiveFrom: date('effective_from').notNull(),
+  effectiveTo: date('effective_to').notNull(),
+  reason: text('reason').notNull(),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: text('created_by').notNull().references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  employeeIdx: index('idx_temporary_department_assignments_employee').on(table.employeeId, table.effectiveFrom, table.effectiveTo),
+  targetDepartmentIdx: index('idx_temporary_department_assignments_target_department').on(table.targetDepartmentId, table.effectiveFrom, table.effectiveTo),
+  activeIdx: index('idx_temporary_department_assignments_active').on(table.isActive),
+  departmentDifferentCheck: check('chk_temporary_department_assignment_departments_differ', sql`${table.sourceDepartmentId} <> ${table.targetDepartmentId}`),
+  dateRangeCheck: check('chk_temporary_department_assignment_date_range', sql`${table.effectiveFrom} <= ${table.effectiveTo}`),
+}));
+
 export const supervisorDelegations = pgTable('supervisor_delegations', {
   id: uuid('id').primaryKey().defaultRandom(),
   supervisorUserId: text('supervisor_user_id').notNull().references(() => user.id),
@@ -750,6 +770,7 @@ export const userRelations = relations(user, ({ one, many }) => ({
   sessions: many(authSessions),
   userRoles: many(userRoles),
   employees: many(employees),
+  createdTemporaryDepartmentAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentCreator' }),
   supervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationSupervisorUser' }),
   delegatedSupervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationDelegateUser' }),
 }));
@@ -809,6 +830,8 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
     relationName: 'departmentHierarchy',
   }),
   employees: many(employees),
+  temporarySourceAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentSource' }),
+  temporaryTargetAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentTarget' }),
 }));
 
 export const positionsRelations = relations(positions, ({ many }) => ({
@@ -900,6 +923,7 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   delegatedSupervisorDelegations: many(supervisorDelegations, {
     relationName: 'supervisorDelegationDelegateEmployee',
   }),
+  temporaryDepartmentAssignments: many(temporaryDepartmentAssignments),
   workSchedules: many(employeeWorkSchedules),
 }));
 
@@ -913,6 +937,28 @@ export const employeeSupervisorsRelations = relations(employeeSupervisors, ({ on
     fields: [employeeSupervisors.supervisorId],
     references: [employees.id],
     relationName: 'employeeSubordinateAssignments',
+  }),
+}));
+
+export const temporaryDepartmentAssignmentsRelations = relations(temporaryDepartmentAssignments, ({ one }) => ({
+  employee: one(employees, {
+    fields: [temporaryDepartmentAssignments.employeeId],
+    references: [employees.id],
+  }),
+  sourceDepartment: one(departments, {
+    fields: [temporaryDepartmentAssignments.sourceDepartmentId],
+    references: [departments.id],
+    relationName: 'temporaryDepartmentAssignmentSource',
+  }),
+  targetDepartment: one(departments, {
+    fields: [temporaryDepartmentAssignments.targetDepartmentId],
+    references: [departments.id],
+    relationName: 'temporaryDepartmentAssignmentTarget',
+  }),
+  creator: one(user, {
+    fields: [temporaryDepartmentAssignments.createdBy],
+    references: [user.id],
+    relationName: 'temporaryDepartmentAssignmentCreator',
   }),
 }));
 
@@ -1234,6 +1280,7 @@ export const allTables = {
   employeeWorkSchedules,
   employees,
   employeeSupervisors,
+  temporaryDepartmentAssignments,
   supervisorDelegations,
   holidays,
   biometricExemptions,

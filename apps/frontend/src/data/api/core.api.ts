@@ -26,6 +26,7 @@ import type {
   CreateHolidayInput,
   CreatePositionInput,
   CreateSupervisorDelegationInput,
+  CreateTemporaryDepartmentAssignmentInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
@@ -82,6 +83,8 @@ import type {
   ShiftsResponse,
   SupervisorDelegationResponse,
   SupervisorDelegationsResponse,
+  TemporaryDepartmentAssignmentResponse,
+  TemporaryDepartmentAssignmentsResponse,
   TimeOperationsSummaryResponse,
   TransferLeaveBalanceInput,
   UpdateDepartmentInput,
@@ -89,6 +92,7 @@ import type {
   UpdateBiometricExemptionInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
+  UpdateTemporaryDepartmentAssignmentInput,
   UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveRequestInput,
@@ -341,6 +345,22 @@ export const coreApi = {
     }),
   revokeSupervisorDelegation: (supervisorDelegationId: string) =>
     coreFetch<SupervisorDelegationResponse>(`/supervisor-delegations/${supervisorDelegationId}/revoke`, {
+      method: 'POST',
+    }),
+  getTemporaryDepartmentAssignments: () =>
+    coreFetch<TemporaryDepartmentAssignmentsResponse>('/temporary-department-assignments'),
+  createTemporaryDepartmentAssignment: (input: CreateTemporaryDepartmentAssignmentInput) =>
+    coreFetch<TemporaryDepartmentAssignmentResponse>('/temporary-department-assignments', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateTemporaryDepartmentAssignment: ({ temporaryDepartmentAssignmentId, ...input }: UpdateTemporaryDepartmentAssignmentInput) =>
+    coreFetch<TemporaryDepartmentAssignmentResponse>(`/temporary-department-assignments/${temporaryDepartmentAssignmentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  deactivateTemporaryDepartmentAssignment: (temporaryDepartmentAssignmentId: string) =>
+    coreFetch<TemporaryDepartmentAssignmentResponse>(`/temporary-department-assignments/${temporaryDepartmentAssignmentId}/deactivate`, {
       method: 'POST',
     }),
   getEmployeeWorkSchedules: (employeeId: string) =>

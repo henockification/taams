@@ -203,6 +203,36 @@ export const EmployeeSchema = z.object({
   position: PositionSchema.nullable().optional(),
 });
 
+export const TemporaryDepartmentAssignmentSchema = z.object({
+  id: UuidSchema,
+  employeeId: UuidSchema,
+  sourceDepartmentId: UuidSchema,
+  targetDepartmentId: UuidSchema,
+  effectiveFrom: z.string().openapi({ example: '2026-08-01' }),
+  effectiveTo: z.string().openapi({ example: '2026-08-31' }),
+  reason: z.string().openapi({ example: 'Temporary support for month-end attendance operations' }),
+  isActive: z.boolean().openapi({ example: true }),
+  createdBy: z.string().openapi({ example: 'user_123' }),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  employee: EmployeeSchema.nullable().optional(),
+  sourceDepartment: DepartmentSchema.nullable().optional(),
+  targetDepartment: DepartmentSchema.nullable().optional(),
+  creator: z.any().nullable().optional(),
+});
+
+export const CreateTemporaryDepartmentAssignmentRequestSchema = z.object({
+  employeeId: UuidSchema,
+  targetDepartmentId: UuidSchema,
+  effectiveFrom: RequiredDateSchema,
+  effectiveTo: RequiredDateSchema,
+  reason: z.string().min(1),
+});
+
+export const UpdateTemporaryDepartmentAssignmentRequestSchema = CreateTemporaryDepartmentAssignmentRequestSchema
+  .omit({ employeeId: true })
+  .partial();
+
 export const EmployeeSupervisorSchema = z.object({
   id: UuidSchema,
   employeeId: UuidSchema,
@@ -407,6 +437,8 @@ export const AttendanceDailyRecordSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
   employee: EmployeeSchema.nullable().optional(),
+  temporaryDepartmentAssignment: TemporaryDepartmentAssignmentSchema.nullable().optional(),
+  effectiveDepartment: DepartmentSchema.nullable().optional(),
   firstPunch: AttendancePunchSchema.nullable().optional(),
   lastPunch: AttendancePunchSchema.nullable().optional(),
   holiday: HolidaySchema.nullable().optional(),
@@ -1145,6 +1177,16 @@ export const SupervisorDelegationsResponseSchema = z.object({
 export const SupervisorDelegationResponseSchema = z.object({
   success: z.boolean(),
   supervisorDelegation: SupervisorDelegationSchema,
+});
+
+export const TemporaryDepartmentAssignmentsResponseSchema = z.object({
+  success: z.boolean(),
+  temporaryDepartmentAssignments: z.array(TemporaryDepartmentAssignmentSchema),
+});
+
+export const TemporaryDepartmentAssignmentResponseSchema = z.object({
+  success: z.boolean(),
+  temporaryDepartmentAssignment: TemporaryDepartmentAssignmentSchema,
 });
 
 export const BiometricDevicesResponseSchema = z.object({

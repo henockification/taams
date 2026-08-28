@@ -95,7 +95,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const departments = useMemo(() => {
     const byId = new Map<string, { id: string; nameEn: string }>();
     for (const record of records) {
-      const department = record.employee?.department;
+      const department = record.effectiveDepartment ?? record.employee?.department;
       if (department?.id) byId.set(department.id, { id: department.id, nameEn: department.nameEn });
     }
     return [...byId.values()].sort((left, right) => left.nameEn.localeCompare(right.nameEn));
@@ -113,7 +113,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       const matchesEmployee = !search || haystack.includes(search);
       const matchesDepartment = !isHrMode
         || departmentFilter === allDepartmentsValue
-        || employee?.departmentId === departmentFilter;
+        || (record.effectiveDepartment?.id ?? employee?.departmentId) === departmentFilter;
       const matchesApproval = approvalFilter === 'all'
         || (approvalFilter === 'approved' && isAttendanceApproved(record, mode))
         || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode));
@@ -347,7 +347,21 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           <p className="truncate text-xs text-muted-foreground">{record.employee?.employeeCode ?? '-'}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="min-w-44 whitespace-nowrap">{record.employee?.department?.nameEn ?? record.employee?.sourceDepartmentName ?? '-'}</TableCell>
+                      <TableCell className="min-w-56">
+                        <div className="flex flex-col gap-1">
+                          <span className="whitespace-nowrap">
+                            {record.effectiveDepartment?.nameEn ?? record.employee?.department?.nameEn ?? record.employee?.sourceDepartmentName ?? '-'}
+                          </span>
+                          {record.temporaryDepartmentAssignment ? (
+                            <div className="flex flex-wrap items-center gap-1">
+                              <Badge variant="outline">{t('temporarilyAssigned')}</Badge>
+                              <span className="text-xs text-muted-foreground">
+                                {t('homeDepartment')}: {record.temporaryDepartmentAssignment.sourceDepartment?.nameEn ?? record.employee?.department?.nameEn ?? '-'}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCell className="whitespace-nowrap">{record.attendanceDate}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>

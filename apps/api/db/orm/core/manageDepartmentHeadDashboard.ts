@@ -1,9 +1,8 @@
-import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendancePunches,
   biometricExemptions,
-  employeeSupervisors,
   employeeWorkSchedules,
   employees,
   leaveBalances,
@@ -12,6 +11,7 @@ import {
   manualPunchRequests,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
 
 const DEFAULT_SHIFT_START = '08:30:00';
 
@@ -41,29 +41,17 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     throw new Error('Department head dashboard requires a linked employee profile');
   }
 
-  const directReports = await db.query.employeeSupervisors.findMany({
-    where: and(
-      eq(employeeSupervisors.supervisorId, supervisor.id),
-      lte(employeeSupervisors.effectiveFrom, selectedDate),
-      or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, selectedDate)),
-    ),
-    columns: { employeeId: true },
-  });
+  const departmentEmployeeIds = await getVisibleEmployeeIdsForSupervisorActor(params.userId, params.roles, db, selectedDate);
 
-  if (!hasSupervisorRole && directReports.length === 0) {
+  if (!hasSupervisorRole && departmentEmployeeIds.length === 0) {
     throw new Error('Department head dashboard is available only to supervisors');
   }
 
   const departmentEmployees = await db.query.employees.findMany({
-    where: and(
-      eq(employees.isActive, true),
-      eq(employees.departmentId, supervisor.departmentId),
-    ),
+    where: inArray(employees.id, departmentEmployeeIds),
     with: { department: true, position: true },
     orderBy: (table, { asc }) => [asc(table.firstNameEn), asc(table.lastNameEn)],
   });
-
-  const departmentEmployeeIds = departmentEmployees.map((employee) => employee.id);
 
   if (departmentEmployeeIds.length === 0) {
     return createEmptySummary({ generatedAt, selectedDate, supervisor });

@@ -17,6 +17,7 @@ import type {
   CreateHolidayInput,
   CreatePositionInput,
   CreateSupervisorDelegationInput,
+  CreateTemporaryDepartmentAssignmentInput,
   CreateShiftBreakInput,
   CreateShiftInput,
   CreateShiftSegmentInput,
@@ -38,6 +39,7 @@ import type {
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
+  UpdateTemporaryDepartmentAssignmentInput,
   UpdateHolidayInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveRequestInput,
@@ -80,6 +82,7 @@ export const coreQueryKeys = {
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
   supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
+  temporaryDepartmentAssignments: () => [...coreQueryKeys.all, 'temporary-department-assignments'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
   allEmployeeWorkSchedules: () => [...coreQueryKeys.all, 'employee-work-schedules'] as const,
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
@@ -553,6 +556,50 @@ export function useRevokeSupervisorDelegation() {
     mutationFn: (supervisorDelegationId: string) => coreApi.revokeSupervisorDelegation(supervisorDelegationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorDelegations() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
+export function useTemporaryDepartmentAssignments() {
+  return useQuery({
+    queryKey: coreQueryKeys.temporaryDepartmentAssignments(),
+    queryFn: () => coreApi.getTemporaryDepartmentAssignments(),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useCreateTemporaryDepartmentAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateTemporaryDepartmentAssignmentInput) => coreApi.createTemporaryDepartmentAssignment(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.temporaryDepartmentAssignments() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
+export function useUpdateTemporaryDepartmentAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateTemporaryDepartmentAssignmentInput) => coreApi.updateTemporaryDepartmentAssignment(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.temporaryDepartmentAssignments() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
+export function useDeactivateTemporaryDepartmentAssignment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (temporaryDepartmentAssignmentId: string) => coreApi.deactivateTemporaryDepartmentAssignment(temporaryDepartmentAssignmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.temporaryDepartmentAssignments() });
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
     },
   });

@@ -289,6 +289,34 @@ export type Employee = {
   position?: Position | null;
 };
 
+export type TemporaryDepartmentAssignment = {
+  id: string;
+  employeeId: string;
+  sourceDepartmentId: string;
+  targetDepartmentId: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  reason: string;
+  isActive: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  employee?: Employee | null;
+  sourceDepartment?: Department | null;
+  targetDepartment?: Department | null;
+  creator?: unknown | null;
+};
+
+export type CreateTemporaryDepartmentAssignmentInput = {
+  employeeId: string;
+  targetDepartmentId: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  reason: string;
+};
+
+export type UpdateTemporaryDepartmentAssignmentInput = Partial<Omit<CreateTemporaryDepartmentAssignmentInput, 'employeeId'>>;
+
 export type BiometricExemptionTargetType = 'EMPLOYEE' | 'POSITION';
 export type BiometricExemptionStatus = 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE';
 export type HolidayType = 'PUBLIC_HOLIDAY' | 'INSTITUTION_OFF_DAY';
@@ -456,6 +484,8 @@ export type AttendanceDailyRecord = {
   createdAt: string;
   updatedAt: string;
   employee?: Employee | null;
+  temporaryDepartmentAssignment?: TemporaryDepartmentAssignment | null;
+  effectiveDepartment?: Department | null;
   firstPunch?: AttendancePunch | null;
   lastPunch?: AttendancePunch | null;
   holiday?: Holiday | null;
@@ -729,6 +759,8 @@ export type GenerateAttendanceDailyRecordsResponse = {
   generated: number;
   attendanceDailyRecords: AttendanceDailyRecord[];
 };
+export type TemporaryDepartmentAssignmentsResponse = { success: boolean; temporaryDepartmentAssignments: TemporaryDepartmentAssignment[] };
+export type TemporaryDepartmentAssignmentResponse = { success: boolean; temporaryDepartmentAssignment: TemporaryDepartmentAssignment };
 
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type AnnualLeaveRequestDateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';

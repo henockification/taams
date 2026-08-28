@@ -220,6 +220,26 @@ export function formatEmployee(employee: any) {
   };
 }
 
+export function formatTemporaryDepartmentAssignment(assignment: any) {
+  return {
+    id: assignment.id,
+    employeeId: assignment.employeeId,
+    sourceDepartmentId: assignment.sourceDepartmentId,
+    targetDepartmentId: assignment.targetDepartmentId,
+    effectiveFrom: formatDate(assignment.effectiveFrom),
+    effectiveTo: formatDate(assignment.effectiveTo),
+    reason: assignment.reason,
+    isActive: assignment.isActive,
+    createdBy: assignment.createdBy,
+    createdAt: formatTimestamp(assignment.createdAt),
+    updatedAt: formatTimestamp(assignment.updatedAt),
+    employee: assignment.employee ? formatEmployee(assignment.employee) : null,
+    sourceDepartment: assignment.sourceDepartment ? formatDepartment(assignment.sourceDepartment) : null,
+    targetDepartment: assignment.targetDepartment ? formatDepartment(assignment.targetDepartment) : null,
+    creator: assignment.creator ?? null,
+  };
+}
+
 export function formatEmployeeSupervisor(supervisor: any) {
   return {
     id: supervisor.id,
@@ -395,6 +415,14 @@ export function formatAttendanceDailyRecord(record: any) {
     createdAt: formatTimestamp(record.createdAt),
     updatedAt: formatTimestamp(record.updatedAt),
     employee: record.employee ? formatEmployee(record.employee) : null,
+    temporaryDepartmentAssignment: record.temporaryDepartmentAssignment
+      ? formatTemporaryDepartmentAssignment(record.temporaryDepartmentAssignment)
+      : null,
+    effectiveDepartment: record.effectiveDepartment
+      ? formatDepartment(record.effectiveDepartment)
+      : record.employee?.department
+        ? formatDepartment(record.employee.department)
+        : null,
     firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
     lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
     holiday: record.holiday ? formatHoliday(record.holiday) : null,

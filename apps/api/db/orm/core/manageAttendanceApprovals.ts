@@ -5,10 +5,12 @@ import {
   attendanceDailyRecords,
   attendancePunches,
   biometricExemptions,
+  departments,
   employees,
   holidays,
   leaveRequests,
   leaveTypes,
+  temporaryDepartmentAssignments,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
@@ -170,7 +172,7 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
   await generateAttendanceDailyRecords(attendanceDate);
 
   if (input.scope?.type === 'unrestricted') {
-    return db.query.attendanceDailyRecords.findMany({
+    const records = await db.query.attendanceDailyRecords.findMany({
       where: and(
         eq(attendanceDailyRecords.attendanceDate, attendanceDate),
         inArray(attendanceDailyRecords.status, [
@@ -182,6 +184,7 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
       with: recordRelations,
       orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
     });
+    return attachEffectiveDepartmentContext(records, attendanceDate);
   }
 
   const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, attendanceDate);
@@ -208,8 +211,9 @@ export async function getHrAttendanceDailyRecords(date?: string | null, scope?: 
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
 
-  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return records;
-  return records.filter((record) => record.employee?.userId === scope.userId);
+  const enriched = await attachEffectiveDepartmentContext(records, attendanceDate);
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return enriched;
+  return enriched.filter((record) => record.employee?.userId === scope.userId);
 }
 
 export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope }) {
@@ -406,7 +410,7 @@ async function getAttendanceDailyRecordsByEmployeeIds(
   attendanceDate: string,
   statuses: AttendanceDailyRecordStatus[],
 ) {
-  return db.query.attendanceDailyRecords.findMany({
+  const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       inArray(attendanceDailyRecords.employeeId, employeeIds),
       eq(attendanceDailyRecords.attendanceDate, attendanceDate),
@@ -415,12 +419,57 @@ async function getAttendanceDailyRecordsByEmployeeIds(
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
+  return attachEffectiveDepartmentContext(records, attendanceDate);
 }
 
 async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
-  return tx.query.attendanceDailyRecords.findFirst({
+  const record = await tx.query.attendanceDailyRecords.findFirst({
     where: eq(attendanceDailyRecords.id, id),
     with: recordRelations,
+  });
+  if (!record) return record;
+  return (await attachEffectiveDepartmentContext([record], record.attendanceDate, tx))[0] ?? record;
+}
+
+async function attachEffectiveDepartmentContext(records: any[], attendanceDate: string, tx: DbClient = db) {
+  if (records.length === 0) return records;
+  const employeeIds = [...new Set(records.map((record) => record.employeeId).filter(Boolean))];
+  const activeAssignments = employeeIds.length > 0
+    ? await tx.query.temporaryDepartmentAssignments.findMany({
+      where: and(
+        inArray(temporaryDepartmentAssignments.employeeId, employeeIds),
+        eq(temporaryDepartmentAssignments.isActive, true),
+        lte(temporaryDepartmentAssignments.effectiveFrom, attendanceDate),
+        gte(temporaryDepartmentAssignments.effectiveTo, attendanceDate),
+      ),
+      with: {
+        employee: { with: { department: true, position: true } },
+        sourceDepartment: true,
+        targetDepartment: true,
+        creator: true,
+      },
+    })
+    : [];
+  const assignmentByEmployee = new Map<string, any>(activeAssignments.map((assignment: any) => [assignment.employeeId, assignment]));
+  const effectiveDepartmentIds = [...new Set(records.map((record) => {
+    const assignment = assignmentByEmployee.get(record.employeeId);
+    return assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null;
+  }).filter(Boolean))] as string[];
+  const effectiveDepartments = effectiveDepartmentIds.length > 0
+    ? await tx.query.departments.findMany({
+      where: inArray(departments.id, effectiveDepartmentIds),
+    })
+    : [];
+  const departmentById = new Map(effectiveDepartments.map((department: any) => [department.id, department]));
+
+  return records.map((record) => {
+    const assignment = assignmentByEmployee.get(record.employeeId) ?? null;
+    const effectiveDepartmentId = assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null;
+    return {
+      ...record,
+      temporaryDepartmentAssignment: assignment,
+      effectiveDepartment: effectiveDepartmentId ? departmentById.get(effectiveDepartmentId) ?? record.employee?.department ?? null : null,
+    };
   });
 }
 

@@ -76,8 +76,21 @@ export async function getManualPunchRequests(input: {
   const isHrRole = roles.some((role) => HR_ROLE_NAMES.includes(role));
   if (!input.scope || input.scope.type === 'unrestricted' || isHrRole) return requests;
 
-  const managedEmployeeIds = input.userId ? await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles) : [];
-  return requests.filter((request) => managedEmployeeIds.includes(request.employeeId));
+  if (!input.userId) return [];
+  const visibleRequests = [];
+  const visibleIdsByDate = new Map<string, string[]>();
+
+  for (const request of requests) {
+    const referenceDate = toDateKey(new Date(request.requestedPunchTime));
+    let managedEmployeeIds = visibleIdsByDate.get(referenceDate);
+    if (!managedEmployeeIds) {
+      managedEmployeeIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, referenceDate);
+      visibleIdsByDate.set(referenceDate, managedEmployeeIds);
+    }
+    if (managedEmployeeIds.includes(request.employeeId)) visibleRequests.push(request);
+  }
+
+  return visibleRequests;
 }
 
 export async function changeManualPunchRequestStatus(
@@ -138,6 +151,7 @@ export async function changeManualPunchRequestStatus(
         actorUserId: approvedBy,
         roles: context.roles,
         targetEmployeeId: request.employeeId,
+        referenceDate: toDateKey(new Date(request.requestedPunchTime)),
         tx,
       });
       if (request.employee?.userId === approvedBy) {
@@ -209,6 +223,7 @@ export async function changeManualPunchRequestStatus(
         actorUserId: rejectedBy,
         roles: context.roles,
         targetEmployeeId: request.employeeId,
+        referenceDate: toDateKey(new Date(request.requestedPunchTime)),
         tx,
       });
 
