@@ -40,6 +40,7 @@ import timeOperationsApp from './time-operations/routes';
 import dashboardApp from './dashboard/routes';
 import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
+import ifmisAttendanceApp from './ifmis-attendance/routes';
 import {
   createDepartmentHandler,
   getDepartmentsHandler,
@@ -548,6 +549,7 @@ coreApp.route('/', notificationLogsApp);
 coreApp.route('/', timeOperationsApp);
 coreApp.route('/', shiftsApp);
 coreApp.route('/', workSchedulesApp);
+coreApp.route('/', ifmisAttendanceApp);
 
 openApiApp
   .openapi(createDepartmentRoute, createDepartmentHandler as any)

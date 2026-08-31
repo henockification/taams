@@ -1,44 +1,21 @@
 'use client';
 
 import { type FormEvent, useMemo, useState } from 'react';
-import { ArrowRightLeft, CalendarClock, Pencil, Plus, XCircle } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, Check, ChevronsUpDown, Pencil, Plus, XCircle } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   useCreateTemporaryDepartmentAssignment,
   useDeactivateTemporaryDepartmentAssignment,
@@ -49,6 +26,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, TemporaryDepartmentAssignment } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { cn } from '@/lib/utils';
 
 type AssignmentFilter = 'active' | 'history' | 'all';
 
@@ -89,16 +67,20 @@ export function TemporaryDepartmentAssignmentsPage() {
   const filteredAssignments = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     return assignments.filter((assignment) => {
-      const matchesStatus = filter === 'all'
-        || (filter === 'active' && isCurrentOrFutureAssignment(assignment))
-        || (filter === 'history' && !isCurrentOrFutureAssignment(assignment));
+      const matchesStatus =
+        filter === 'all' ||
+        (filter === 'active' && isCurrentOrFutureAssignment(assignment)) ||
+        (filter === 'history' && !isCurrentOrFutureAssignment(assignment));
       const haystack = [
         employeeName(assignment.employee),
         assignment.employee?.employeeCode,
         assignment.sourceDepartment?.nameEn,
         assignment.targetDepartment?.nameEn,
         assignment.reason,
-      ].filter(Boolean).join(' ').toLowerCase();
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
       return matchesStatus && (!normalizedSearch || haystack.includes(normalizedSearch));
     });
   }, [assignments, filter, search]);
@@ -124,7 +106,11 @@ export function TemporaryDepartmentAssignmentsPage() {
   async function submitAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.employeeId || !form.targetDepartmentId || !form.effectiveFrom || !form.effectiveTo || !form.reason.trim()) {
-      notifications.show({ title: common('error'), message: t('temporaryAssignmentRequiredFields'), color: 'red' });
+      notifications.show({
+        title: common('error'),
+        message: t('temporaryAssignmentRequiredFields'),
+        color: 'red',
+      });
       return;
     }
 
@@ -149,18 +135,34 @@ export function TemporaryDepartmentAssignmentsPage() {
       setDialogOpen(false);
       setEditingAssignment(null);
       setForm(emptyForm());
-      notifications.show({ title: common('success'), message: t('temporaryAssignmentSaved'), color: 'green' });
+      notifications.show({
+        title: common('success'),
+        message: t('temporaryAssignmentSaved'),
+        color: 'green',
+      });
     } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
     }
   }
 
   async function deactivate(id: string) {
     try {
       await deactivateAssignment.mutateAsync(id);
-      notifications.show({ title: common('success'), message: t('temporaryAssignmentDeactivated'), color: 'green' });
+      notifications.show({
+        title: common('success'),
+        message: t('temporaryAssignmentDeactivated'),
+        color: 'green',
+      });
     } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
     }
   }
 
@@ -206,11 +208,7 @@ export function TemporaryDepartmentAssignmentsPage() {
           {assignmentsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : filteredAssignments.length === 0 ? (
-            <EmptyState
-              icon={ArrowRightLeft}
-              title={t('noTemporaryAssignments')}
-              description={t('noTemporaryAssignmentsDescription')}
-            />
+            <EmptyState icon={ArrowRightLeft} title={t('noTemporaryAssignments')} description={t('noTemporaryAssignmentsDescription')} />
           ) : (
             <div className="overflow-x-auto rounded-md border border-border">
               <Table className="min-w-[72rem]">
@@ -236,7 +234,9 @@ export function TemporaryDepartmentAssignmentsPage() {
                         </TableCell>
                         <TableCell>{assignment.sourceDepartment?.nameEn ?? '-'}</TableCell>
                         <TableCell>{assignment.targetDepartment?.nameEn ?? '-'}</TableCell>
-                        <TableCell className="whitespace-nowrap">{assignment.effectiveFrom} - {assignment.effectiveTo}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {assignment.effectiveFrom} - {assignment.effectiveTo}
+                        </TableCell>
                         <TableCell className="max-w-xs truncate">{assignment.reason}</TableCell>
                         <TableCell>
                           <Badge variant={assignment.isActive && currentOrFuture ? 'default' : 'secondary'}>
@@ -252,7 +252,13 @@ export function TemporaryDepartmentAssignmentsPage() {
                               </Button>
                             ) : null}
                             {assignment.isActive && currentOrFuture ? (
-                              <Button type="button" size="sm" variant="destructive" onClick={() => deactivate(assignment.id)} disabled={deactivateAssignment.isPending}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => deactivate(assignment.id)}
+                                disabled={deactivateAssignment.isPending}
+                              >
                                 <XCircle className="size-4" />
                                 {t('deactivate')}
                               </Button>
@@ -269,60 +275,74 @@ export function TemporaryDepartmentAssignmentsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => {
-        setDialogOpen(open);
-        if (!open) {
-          setEditingAssignment(null);
-          setForm(emptyForm());
-        }
-      }}>
+      <Dialog
+        open={dialogOpen}
+        onOpenChange={(open) => {
+          setDialogOpen(open);
+          if (!open) {
+            setEditingAssignment(null);
+            setForm(emptyForm());
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingAssignment ? t('editTemporaryAssignment') : t('addTemporaryAssignment')}</DialogTitle>
           </DialogHeader>
           <form className="space-y-4" onSubmit={submitAssignment}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2 sm:col-span-2">
-                <Label>{t('employee')}</Label>
-                <Select
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="temporary-assignment-employee">{t('employee')}</Label>
+                <SearchableSelect
+                  id="temporary-assignment-employee"
                   value={form.employeeId || undefined}
                   onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}
                   disabled={Boolean(editingAssignment)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('selectEmployee')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.filter((employee) => employee.isActive).map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employeeName(employee)} - {employee.employeeCode}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  options={employees
+                    .filter((employee) => employee.isActive)
+                    .map((employee) => ({
+                      value: employee.id,
+                      label: employeeName(employee),
+                      description: employee.employeeCode,
+                    }))}
+                  placeholder={t('selectEmployee')}
+                  searchPlaceholder={t('searchEmployee')}
+                  emptyMessage={t('noMatchingEmployees')}
+                />
               </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>{t('temporaryDepartment')}</Label>
-                <Select
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="temporary-assignment-department">{t('temporaryDepartment')}</Label>
+                <SearchableSelect
+                  id="temporary-assignment-department"
                   value={form.targetDepartmentId || undefined}
-                  onValueChange={(value) => setForm((current) => ({ ...current, targetDepartmentId: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={t('selectDepartment')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments.filter((department) => department.isActive).map((department) => (
-                      <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      targetDepartmentId: value,
+                    }))
+                  }
+                  options={departments
+                    .filter((department) => department.isActive)
+                    .map((department) => ({
+                      value: department.id,
+                      label: department.nameEn,
+                    }))}
+                  placeholder={t('selectDepartment')}
+                  searchPlaceholder={t('searchDepartment')}
+                  emptyMessage={t('noMatchingDepartments')}
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t('startDate')}</Label>
                 <Input
                   type="date"
                   value={form.effectiveFrom}
-                  onChange={(event) => setForm((current) => ({ ...current, effectiveFrom: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      effectiveFrom: event.target.value,
+                    }))
+                  }
                 />
               </div>
               <div className="space-y-2">
@@ -330,20 +350,32 @@ export function TemporaryDepartmentAssignmentsPage() {
                 <Input
                   type="date"
                   value={form.effectiveTo}
-                  onChange={(event) => setForm((current) => ({ ...current, effectiveTo: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      effectiveTo: event.target.value,
+                    }))
+                  }
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label>{t('reason')}</Label>
                 <Textarea
                   value={form.reason}
-                  onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      reason: event.target.value,
+                    }))
+                  }
                   rows={4}
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                {common('cancel')}
+              </Button>
               <Button type="submit" disabled={createAssignment.isPending || updateAssignment.isPending}>
                 <CalendarClock className="size-4" />
                 {createAssignment.isPending || updateAssignment.isPending ? t('saving') : t('saveTemporaryAssignment')}
@@ -353,6 +385,84 @@ export function TemporaryDepartmentAssignmentsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+type SearchableSelectOption = {
+  value: string;
+  label: string;
+  description?: string | null;
+};
+
+function SearchableSelect({
+  id,
+  value,
+  onValueChange,
+  options,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+  disabled,
+}: {
+  id: string;
+  value?: string;
+  onValueChange: (value: string) => void;
+  options: SearchableSelectOption[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = options.find((option) => option.value === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className="h-10 w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {selectedOption
+              ? `${selectedOption.label}${selectedOption.description ? ` · ${selectedOption.description}` : ''}`
+              : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={`${option.label} ${option.description ?? ''}`}
+                  onSelect={() => {
+                    onValueChange(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn('size-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{option.label}</span>
+                    {option.description ? <span className="block truncate text-xs text-muted-foreground">{option.description}</span> : null}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

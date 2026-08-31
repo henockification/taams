@@ -50,6 +50,8 @@ import type {
   EmployeesPaginatedResponse,
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
+  IfmisAttendancePreviewResponse,
+  IfmisAttendancePushResponse,
   GenerateAttendanceDailyRecordsResponse,
   HolidayResponse,
   HolidaysResponse,
@@ -148,6 +150,15 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 }
 
 export const coreApi = {
+  getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
+    const query = new URLSearchParams({ payMonth: String(params.payMonth), payYear: String(params.payYear) });
+    return coreFetch<IfmisAttendancePreviewResponse>(`/ifmis/attendance?${query.toString()}`);
+  },
+  pushIfmisAttendance: (params: { payMonth: number; payYear: number }) =>
+    coreFetch<IfmisAttendancePushResponse>('/ifmis/attendance/push', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
   getDashboardSummary: () => coreFetch<DashboardSummaryResponse>('/dashboard/summary'),
   getExecutiveDashboardSummary: (params: { date?: string; month?: string } = {}) => {
     const query = new URLSearchParams();

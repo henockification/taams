@@ -496,6 +496,38 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   statusIdx: index('idx_attendance_daily_records_status').on(table.status),
 }));
 
+export const ifmisExportBatches = pgTable('ifmis_export_batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  payMonth: integer('pay_month').notNull(),
+  payYear: integer('pay_year').notNull(),
+  status: varchar('status', { length: 20 }).notNull().default('PROCESSING'),
+  recordCount: integer('record_count').notNull().default(0),
+  pushedBy: text('pushed_by').notNull().references(() => user.id),
+  startedAt: timestamp('started_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true, precision: 6 }),
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  periodIdx: index('idx_ifmis_export_batches_period').on(table.payYear, table.payMonth),
+  statusCheck: check('chk_ifmis_export_batches_status', sql`${table.status} IN ('PROCESSING', 'SUCCEEDED', 'FAILED')`),
+  monthCheck: check('chk_ifmis_export_batches_month', sql`${table.payMonth} BETWEEN 1 AND 12`),
+  activePeriodUnique: uniqueIndex('ux_ifmis_export_batches_active_period')
+    .on(table.payYear, table.payMonth)
+    .where(sql`${table.status} IN ('PROCESSING', 'SUCCEEDED')`),
+}));
+
+export const ifmisExportItems = pgTable('ifmis_export_items', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => ifmisExportBatches.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  batchEmployeeUnique: unique('ux_ifmis_export_items_batch_employee').on(table.batchId, table.employeeId),
+  batchIdx: index('idx_ifmis_export_items_batch').on(table.batchId),
+}));
+
 export const notificationLogs = pgTable('notification_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
   eventType: varchar('event_type', { length: 80 }).notNull(),

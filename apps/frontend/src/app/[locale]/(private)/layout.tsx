@@ -149,6 +149,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('biometricExemptionsDescription');
       case 'attendancePunches':
         return coreT('attendancePunchesDescription');
+      case 'ifmisAttendance':
+        return coreT('ifmisAttendanceDescription');
       case 'users':
         return rbacT('usersDescription');
       case 'roles':

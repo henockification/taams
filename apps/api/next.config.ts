@@ -30,7 +30,7 @@ const nextConfig = {
   transpilePackages: ['@taams/shared'],
 
   // Keep postgres available as a runtime Node.js dependency.
-  serverExternalPackages: ['postgres'],
+  serverExternalPackages: ['postgres', 'oracledb'],
 
   webpack: (config, { dev }) => {
     if (!dev) {

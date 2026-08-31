@@ -309,6 +309,57 @@ export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
 export type AttendanceDailyRecordStatus = 'PENDING_SUPERVISOR' | 'RETURNED' | 'SUPERVISOR_APPROVED' | 'HR_APPROVED';
+export type IfmisExportStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
+export type IfmisReadinessIssueCode = 'MISSING_SCHEDULE' | 'INVALID_SCHEDULE' | 'MISSING_RECORD' | 'NOT_HR_APPROVED' | 'DUPLICATE_NAME';
+
+export type IfmisAttendanceRow = {
+  employeeId: string;
+  ifmisNo: number | null;
+  nationalId: string | null;
+  orgId: string | null;
+  firstName: string;
+  fatherName: string | null;
+  grandName: string;
+  firstNameAmharic: string | null;
+  fatherNameAmharic: string | null;
+  grandNameAmharic: string | null;
+  absenteeism: number;
+  late: number;
+  currentStatus: string;
+  approved: 'YES';
+  payMonth: number;
+  payYear: number;
+};
+
+export type IfmisReadinessIssue = {
+  code: IfmisReadinessIssueCode;
+  employeeId: string;
+  employeeName: string;
+  date: string | null;
+  message: string;
+};
+
+export type IfmisExportBatch = {
+  id: string;
+  payMonth: number;
+  payYear: number;
+  status: IfmisExportStatus;
+  recordCount: number;
+  pushedBy: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+};
+
+export type IfmisAttendancePreviewResponse = {
+  success: boolean;
+  ready: boolean;
+  rows: IfmisAttendanceRow[];
+  issues: IfmisReadinessIssue[];
+  batches: IfmisExportBatch[];
+};
+
+export type IfmisAttendancePushResponse = { success: boolean; batch: IfmisExportBatch };
 export type ManualPunchRequestStatus =
   | 'PENDING'
   | 'APPROVED'

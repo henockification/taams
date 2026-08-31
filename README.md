@@ -202,6 +202,20 @@ Each app can be deployed independently:
 - **API**: Deploy to Railway, Render, Heroku, or similar
 - **Database**: Use your Neon PostgreSQL instance
 
+### IFMIS Oracle setup
+
+The API connects to IFMIS only from the private server network. Configure the
+`IFMIS_ORACLE_*` variables documented in `apps/api/env.example`, then run the
+idempotent setup job once before the first Finance export:
+
+```bash
+npm run ifmis:setup --workspace=@taams/api
+```
+
+For container deployments, build and run the dedicated `ifmis-setup` Docker
+target with the same private environment variables. The regular API startup
+migration creates the local audit tables, Finance role, and permissions.
+
 ## 📝 Next Steps
 
 1. Set up your Neon PostgreSQL database

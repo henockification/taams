@@ -56,6 +56,7 @@ import type {
 
 export const coreQueryKeys = {
   all: ['core'] as const,
+  ifmisAttendance: (payMonth: number, payYear: number) => [...coreQueryKeys.all, 'ifmis-attendance', payYear, payMonth] as const,
   dashboardSummary: (userId?: string | null) => {
     if (userId) {
       return [...coreQueryKeys.all, 'dashboard', 'summary', userId] as const;
@@ -116,6 +117,23 @@ export const coreQueryKeys = {
   timeOperationsSummary: () => [...coreQueryKeys.all, 'time-operations', 'summary'] as const,
   report: (key: ReportKey, params: Record<string, string>) => [...coreQueryKeys.all, 'reports', key, params] as const,
 };
+
+export function useIfmisAttendancePreview(params: { payMonth: number; payYear: number }) {
+  return useQuery({
+    queryKey: coreQueryKeys.ifmisAttendance(params.payMonth, params.payYear),
+    queryFn: () => coreApi.getIfmisAttendancePreview(params),
+  });
+}
+
+export function usePushIfmisAttendance() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { payMonth: number; payYear: number }) => coreApi.pushIfmisAttendance(params),
+    onSuccess: (_data, params) => queryClient.invalidateQueries({
+      queryKey: coreQueryKeys.ifmisAttendance(params.payMonth, params.payYear),
+    }),
+  });
+}
 
 export function useDashboardSummary(userId?: string | null) {
   return useQuery({

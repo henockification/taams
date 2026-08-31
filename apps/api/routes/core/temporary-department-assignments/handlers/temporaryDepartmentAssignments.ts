@@ -41,10 +41,13 @@ export async function createTemporaryDepartmentAssignmentHandler(c: Context) {
 
     const assignment = await createTemporaryDepartmentAssignment(parsed.data, context);
 
-    return c.json({
-      success: true,
-      temporaryDepartmentAssignment: formatTemporaryDepartmentAssignment(assignment),
-    }, 201);
+    return c.json(
+      {
+        success: true,
+        temporaryDepartmentAssignment: formatTemporaryDepartmentAssignment(assignment),
+      },
+      201,
+    );
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create temporary department assignment');
   }
@@ -95,6 +98,14 @@ async function resolveContext(c: Context) {
   }
 
   const permissions = await getUserPermissionNames(session.user.id);
+  const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
+  const canManageTemporaryAssignments = roles.some((role) =>
+    ['super_admin', 'superadmin', 'admin', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'].includes(role),
+  );
+  if (!canManageTemporaryAssignments) {
+    throw new Error('Human Resources permission is required to manage temporary assignments');
+  }
+
   const scope = await resolveEmployeeVisibilityScope({
     userId: session.user.id,
     roles: session.user.role ?? [],

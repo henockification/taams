@@ -76,6 +76,7 @@ export default function PermissionsPage() {
     edit: t('permissionActionEdit'),
     approve: t('permissionActionApprove'),
     reject: t('permissionActionReject'),
+    push: t('permissionActionPush'),
   };
 
   const getResourceLabel = (resource: string) => {

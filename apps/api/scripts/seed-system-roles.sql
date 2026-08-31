@@ -16,6 +16,9 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('employees:read', 'employees', 'read', 'View employees'),
   ('employees:create', 'employees', 'create', 'Create employees'),
   ('employees:update', 'employees', 'update', 'Update employees'),
+  ('temporary-assignment:read', 'temporary-assignment', 'read', 'View temporary department assignments'),
+  ('temporary-assignment:add', 'temporary-assignment', 'add', 'Create temporary department assignments'),
+  ('temporary-assignment:edit', 'temporary-assignment', 'edit', 'Update temporary department assignments'),
   ('leave-fiscal-years:read', 'leave-fiscal-years', 'read', 'View leave fiscal years'),
   ('leave-types:read', 'leave-types', 'read', 'View leave types'),
   ('leave-balances:read', 'leave-balances', 'read', 'View leave balances'),
@@ -39,6 +42,8 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('attendance-punches:read', 'attendance-punches', 'read', 'View attendance punches'),
   ('attendance-approvals:approve', 'attendance-approvals', 'approve', 'Approve supervised daily attendance'),
   ('hr-attendance-approvals:approve', 'hr-attendance-approvals', 'approve', 'Approve daily attendance for payroll readiness'),
+  ('ifmis-attendance:read', 'ifmis-attendance', 'read', 'View HR-approved attendance prepared for IFMIS'),
+  ('ifmis-attendance:push', 'ifmis-attendance', 'push', 'Push a complete payroll month to IFMIS'),
   ('reports-attendance-daily:read', 'reports-attendance-daily', 'read', 'View attendance daily report'),
   ('reports-attendance-punches:read', 'reports-attendance-punches', 'read', 'View attendance punches report'),
   ('reports-late-attendance:read', 'reports-late-attendance', 'read', 'View late attendance report'),
@@ -92,6 +97,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
   ]),
   ('human_resource', 'Human resources user with employee, leave, attendance, schedule, and report access', ARRAY[
     'hr-dashboard:read', 'employees:read', 'employees:create', 'employees:update', 'permanent-employees:read',
+    'temporary-assignment:read', 'temporary-assignment:add', 'temporary-assignment:edit',
     'leave-fiscal-years:read', 'leave-types:read', 'leave-balances:read', 'leave-transfer:read',
     'leave-request-approvals:approve', 'annual-leave-requests:read', 'other-leave-requests:read',
     'overtime-requests:read', 'manual-punch-requests:read', 'manual-punch-requests:approve',
@@ -101,6 +107,9 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
     'reports-attendance-daily:read', 'reports-attendance-punches:read', 'reports-late-attendance:read',
     'reports-overtime:read', 'reports-leave-balances:read', 'reports-leave-requests:read',
     'reports-employees:read', 'reports-device-sync:read', 'notification-logs:read'
+  ]),
+  ('finance', 'Finance user with IFMIS attendance review and export access', ARRAY[
+    'ifmis-attendance:read', 'ifmis-attendance:push'
   ]),
   ('supervisor', 'Supervisor with supervised employee workflow approvals', ARRAY[
     'department-head-dashboard:read', 'leave-request-approvals:approve', 'annual-leave-requests:read',
@@ -129,6 +138,14 @@ JOIN roles r ON r.name = sr.name
 JOIN LATERAL unnest(sr.permission_names) AS wanted_permission(name) ON true
 JOIN permissions p ON p.name = wanted_permission.name
 ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+DELETE FROM role_permissions
+WHERE role_id IN (
+  SELECT id FROM roles WHERE lower(name) = 'supervisor'
+)
+AND permission_id IN (
+  SELECT id FROM permissions WHERE name LIKE 'temporary-assignment:%'
+);
 
 WITH aliases(alias_name, canonical_name) AS (
   VALUES

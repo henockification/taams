@@ -90,6 +90,17 @@ ENV SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
 CMD ["npm", "run", "db:seed-super-admin", "--workspace=@taams/api"]
 
 # =======================================================
+# IFMIS Oracle schema setup target
+# =======================================================
+FROM source AS ifmis-setup
+
+ENV NODE_ENV=production
+
+WORKDIR /app/apps/api
+
+CMD ["npm", "run", "ifmis:setup"]
+
+# =======================================================
 # Database migration target
 # =======================================================
 FROM source AS db-migrate

@@ -28,6 +28,8 @@ const DEFAULT_PERMISSIONS = [
   { name: 'department-head-dashboard:read', resource: 'department-head-dashboard', action: 'read', description: 'View supervisor dashboard' },
   { name: 'attendance-approvals:approve', resource: 'attendance-approvals', action: 'approve', description: 'Approve supervised daily attendance' },
   { name: 'hr-attendance-approvals:approve', resource: 'hr-attendance-approvals', action: 'approve', description: 'Approve daily attendance for payroll readiness' },
+  { name: 'ifmis-attendance:read', resource: 'ifmis-attendance', action: 'read', description: 'View HR-approved attendance prepared for IFMIS' },
+  { name: 'ifmis-attendance:push', resource: 'ifmis-attendance', action: 'push', description: 'Push a complete payroll month to IFMIS' },
   { name: 'overtime-requests:read', resource: 'overtime-requests', action: 'read', description: 'View overtime requests' },
   { name: 'overtime-requests:approve', resource: 'overtime-requests', action: 'approve', description: 'Approve overtime requests' },
   { name: 'reports-attendance-daily:read', resource: 'reports-attendance-daily', action: 'read', description: 'View attendance daily report' },

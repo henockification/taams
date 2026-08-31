@@ -444,6 +444,63 @@ export const AttendanceDailyRecordSchema = z.object({
   holiday: HolidaySchema.nullable().optional(),
 });
 
+export const IfmisAttendancePeriodSchema = z.object({
+  payMonth: z.coerce.number().int().min(1).max(12),
+  payYear: z.coerce.number().int().min(2000).max(2200),
+});
+
+export const IfmisAttendanceRowSchema = z.object({
+  employeeId: UuidSchema,
+  ifmisNo: z.number().nullable(),
+  nationalId: z.string().nullable(),
+  orgId: z.string().nullable(),
+  firstName: z.string(),
+  fatherName: z.string().nullable(),
+  grandName: z.string(),
+  firstNameAmharic: z.string().nullable(),
+  fatherNameAmharic: z.string().nullable(),
+  grandNameAmharic: z.string().nullable(),
+  absenteeism: z.number(),
+  late: z.number(),
+  currentStatus: z.string(),
+  approved: z.literal('YES'),
+  payMonth: z.number().int(),
+  payYear: z.number().int(),
+});
+
+export const IfmisReadinessIssueSchema = z.object({
+  code: z.enum(['MISSING_SCHEDULE', 'INVALID_SCHEDULE', 'MISSING_RECORD', 'NOT_HR_APPROVED', 'DUPLICATE_NAME']),
+  employeeId: UuidSchema,
+  employeeName: z.string(),
+  date: z.string().nullable(),
+  message: z.string(),
+});
+
+export const IfmisExportBatchSchema = z.object({
+  id: UuidSchema,
+  payMonth: z.number().int(),
+  payYear: z.number().int(),
+  status: z.enum(['PROCESSING', 'SUCCEEDED', 'FAILED']),
+  recordCount: z.number().int(),
+  pushedBy: z.string(),
+  startedAt: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+});
+
+export const IfmisAttendancePreviewResponseSchema = z.object({
+  success: z.boolean(),
+  ready: z.boolean(),
+  rows: z.array(IfmisAttendanceRowSchema),
+  issues: z.array(IfmisReadinessIssueSchema),
+  batches: z.array(IfmisExportBatchSchema),
+});
+
+export const IfmisAttendancePushResponseSchema = z.object({
+  success: z.boolean(),
+  batch: IfmisExportBatchSchema,
+});
+
 export const OvertimeRequestStatusSchema = z.enum(['ASSIGNED', 'APPROVED', 'REJECTED']);
 export const OvertimeAttendanceCoverageSchema = z.enum(['UPCOMING', 'NONE', 'PARTIAL', 'COVERED']);
 

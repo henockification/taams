@@ -13,8 +13,6 @@ if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is not set');
 }
 
-console.log('Drizzle connection string:', connectionString.substring(0, 50) + '...');
-
 // Disable prepared statements for Neon
 const client = postgres(connectionString, { 
   prepare: false,
