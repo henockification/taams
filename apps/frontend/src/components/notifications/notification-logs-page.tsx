@@ -11,12 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useNotificationLogs } from '@/data/hooks/core.hooks';
 import type { NotificationChannel, NotificationStatus } from '@/data/types/core.types';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type ChannelFilter = 'all' | NotificationChannel;
 type StatusFilter = 'all' | NotificationStatus;
 
 export default function NotificationLogsPage() {
   const t = useTranslations('core');
+  const { formatDateTime } = useCalendarPreference();
   const [channel, setChannel] = useState<ChannelFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [eventType, setEventType] = useState('');
@@ -133,11 +135,4 @@ function StatusBadge({ status }: { status: NotificationStatus }) {
 
 function formatEventType(value: string) {
   return value.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }

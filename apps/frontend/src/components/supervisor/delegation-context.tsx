@@ -4,6 +4,7 @@ import { ShieldCheck } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type DelegatedCapability = {
   id: string;
@@ -28,6 +29,7 @@ export function getActiveDelegatedCapability(user: SessionUserWithDelegation) {
 }
 
 export function DelegationBanner({ user }: { user: SessionUserWithDelegation }) {
+  const { formatDateTime } = useCalendarPreference();
   const delegation = getActiveDelegatedCapability(user);
   if (!delegation) return null;
 
@@ -55,11 +57,4 @@ export function delegatedActionLabel(label: string, user: SessionUserWithDelegat
 function employeeName(employee?: DelegatedCapability['supervisorEmployee']) {
   if (!employee) return 'supervisor';
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ') || 'supervisor';
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }

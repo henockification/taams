@@ -46,6 +46,7 @@ import type {
 import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type FormState = {
   targetType: BiometricExemptionTargetType;
@@ -85,6 +86,7 @@ function statusLabel(status: BiometricExemption['status'], t: (key: string) => s
 export default function BiometricExemptionsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDateTime } = useCalendarPreference();
   const { data: exemptionsResponse, isLoading } = useBiometricExemptions();
   const { data: employeesResponse } = useEmployees();
   const { data: positionsResponse } = usePositions();
@@ -350,7 +352,7 @@ export default function BiometricExemptionsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {new Date(exemption.updatedAt).toLocaleString()}
+                      {formatDateTime(exemption.updatedAt)}
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">

@@ -83,6 +83,17 @@
     "timeOperations": "የጊዜ ስራዎች",
     "timeOperationsDescription": "መገኘት፣ ፈረቃዎች፣ ማጽደቆች እና ለደመወዝ ዝግጁ መዝገቦች እዚህ ይኖራሉ።"
   },
+  "calendar": {
+    "calendarSystem": "የቀን መቁጠሪያ ስርዓት",
+    "gregorian": "ግሪጎሪያን የቀን መቁጠሪያ",
+    "ethiopian": "የኢትዮጵያ የቀን መቁጠሪያ",
+    "gregorianShort": "GC",
+    "ethiopianShort": "EC",
+    "openPicker": "የኢትዮጵያ የቀን መቁጠሪያ ክፈት",
+    "previousMonth": "ያለፈው ወር",
+    "nextMonth": "ቀጣዩ ወር",
+    "invalidEthiopianDate": "ትክክለኛ የኢትዮጵያ ቀን በ YYYY-MM-DD ቅርጽ ያስገቡ"
+  },
   "auth": {
     "brandEyebrow": "ደህንነቱ የተጠበቀ መግቢያ",
     "shellDescription": "ለ Tams አስተዳዳሪዎች እና ሰራተኞች በሚና የተመሰረተ መዳረሻ።",

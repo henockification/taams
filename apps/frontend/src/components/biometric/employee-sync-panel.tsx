@@ -20,6 +20,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { BiometricDevice, BiometricProvisioningJob, BiometricProvisioningMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type Props = { devices: BiometricDevice[] };
 
@@ -322,6 +323,7 @@ function HealthBadge({ status }: { status: string }) {
 }
 
 function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onApply: () => void; onRetry: () => void }) {
+  const { formatDateTime } = useCalendarPreference();
   const results = job.deviceResults ?? [];
   const conflicts = results.reduce((total, result) => total + result.uidConflicts, 0);
   const missing = results.reduce((total, result) => total + result.missingTemplates, 0);
@@ -336,7 +338,7 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
         </Badge>
         <span className="text-sm font-medium">{job.mode.replace(/_/g, ' ')}</span>
         <span className="text-xs text-muted-foreground">
-          {job.isPreview ? 'Preview' : 'Apply'} · {new Date(job.createdAt).toLocaleString()}
+          {job.isPreview ? 'Preview' : 'Apply'} · {formatDateTime(job.createdAt)}
         </span>
         <div className="ml-auto flex gap-2">
           {canApply ? (

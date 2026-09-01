@@ -19,6 +19,7 @@ import type { IfmisExportStatus } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { userHasPermission } from '@/config/app-navigation';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
 
@@ -31,6 +32,7 @@ function previousMonth() {
 export function IfmisAttendancePage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate, formatDateTime } = useCalendarPreference();
   const initial = useMemo(previousMonth, []);
   const [payMonth, setPayMonth] = useState(initial.payMonth);
   const [payYear, setPayYear] = useState(initial.payYear);
@@ -103,7 +105,7 @@ export function IfmisAttendancePage() {
             <ul className="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5">
               {data.issues.slice(0, 100).map((issue, index) => (
                 <li key={`${issue.employeeId}-${issue.date}-${issue.code}-${index}`}>
-                  {issue.employeeName}{issue.date ? ` · ${issue.date}` : ''}: {t(issueLabelKey(issue.code))}
+                  {issue.employeeName}{issue.date ? ` · ${formatDate(issue.date)}` : ''}: {t(issueLabelKey(issue.code))}
                 </li>
               ))}
             </ul>
@@ -181,10 +183,6 @@ function batchVariant(status: IfmisExportStatus): 'default' | 'destructive' | 's
   if (status === 'SUCCEEDED') return 'default';
   if (status === 'FAILED') return 'destructive';
   return 'secondary';
-}
-
-function formatDateTime(value: string | null) {
-  return value ? new Date(value).toLocaleString() : '-';
 }
 
 function issueLabelKey(code: string) {

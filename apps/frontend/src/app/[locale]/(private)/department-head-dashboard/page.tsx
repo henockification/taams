@@ -33,6 +33,7 @@ import type {
   ManualPunchRequest,
 } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
+import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof DepartmentHeadDashboardSummary["widgets"]
 type MessageKey =
@@ -58,6 +59,7 @@ const widgetMeta: Record<WidgetKey, { icon: React.ComponentType<{ className?: st
 
 export default function DepartmentHeadDashboardPage() {
   const t = useTranslations("departmentHeadDashboard")
+  const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const { data, isLoading, isFetching, isError, error, refetch } = useDepartmentHeadDashboardSummary({ date })
   const dashboard = data?.departmentHeadDashboard
@@ -213,6 +215,7 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
 
 function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary }) {
   const t = useTranslations("departmentHeadDashboard")
+  const { formatDate, formatDateTime } = useCalendarPreference()
   const rows = [
     ...dashboard.details.pendingAttendance.map((punch) => ({
       id: `attendance-${punch.id}`,
@@ -226,7 +229,7 @@ function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary 
       employee: request.employee ?? null,
       type: t("pendingLeave"),
       date: request.createdAt,
-      note: formatLeaveDates(request),
+      note: `${formatDate(request.startDate)} - ${formatDate(request.endDate)}`,
     })),
     ...dashboard.details.pendingCorrections.map((request) => ({
       id: `correction-${request.id}`,
@@ -352,23 +355,9 @@ function formatDepartment(employee: Employee | null | undefined) {
   return employee?.department?.nameEn ?? employee?.sourceDepartmentName ?? "-"
 }
 
-function formatLeaveDates(request: LeaveRequest) {
-  return `${request.startDate} - ${request.endDate}`
-}
-
 function formatDays(value: string | number | null | undefined) {
   if (value == null) return "-"
   const amount = Number(value)
   if (!Number.isFinite(amount)) return String(value)
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(amount)
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-"
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value))
 }

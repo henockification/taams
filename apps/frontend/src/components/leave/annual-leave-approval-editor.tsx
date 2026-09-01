@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -27,6 +26,8 @@ import {
 } from '@/components/ui/table';
 import { useEmployeeWorkSchedules, useWorkScheduleDays } from '@/data/hooks/core.hooks';
 import type { LeaveRequest } from '@/data/types/core.types';
+import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type AnnualLeaveApprovalEditorProps = {
   request: LeaveRequest;
@@ -49,6 +50,7 @@ function today() {
 export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onApprove }: AnnualLeaveApprovalEditorProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const [approvalDates, setApprovalDates] = useState<ApprovalDateSelection[]>([]);
   const [specificDate, setSpecificDate] = useState(today());
   const [range, setRange] = useState({ startDate: today(), endDate: today() });
@@ -130,10 +132,10 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
         <form className="space-y-4" onSubmit={openConfirmation}>
           <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
             <Field label={t('startDate')} id="approval-range-start">
-              <Input id="approval-range-start" type="date" value={range.startDate} onChange={(event) => setRange((current) => ({ ...current, startDate: event.target.value }))} />
+              <DualCalendarDateField id="approval-range-start" value={range.startDate} onChange={(startDate) => setRange((current) => ({ ...current, startDate }))} />
             </Field>
             <Field label={t('endDate')} id="approval-range-end">
-              <Input id="approval-range-end" type="date" value={range.endDate} onChange={(event) => setRange((current) => ({ ...current, endDate: event.target.value }))} />
+              <DualCalendarDateField id="approval-range-end" value={range.endDate} onChange={(endDate) => setRange((current) => ({ ...current, endDate }))} />
             </Field>
             <Button type="button" className="self-end" variant="outline" onClick={addApprovalRange} disabled={workScheduleDaysQuery.isLoading}>
               <Plus className="size-4" />
@@ -142,7 +144,7 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
           </div>
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
             <Field label={t('specificDate')} id="approval-specific-date">
-              <Input id="approval-specific-date" type="date" value={specificDate} onChange={(event) => setSpecificDate(event.target.value)} />
+              <DualCalendarDateField id="approval-specific-date" value={specificDate} onChange={setSpecificDate} />
             </Field>
             <Button type="button" className="self-end" variant="outline" onClick={() => addApprovalDate(specificDate)}>
               <Plus className="size-4" />
@@ -262,11 +264,6 @@ function workingDateRange(startDate: string, endDate: string, workingDays: Set<s
     current.setUTCDate(current.getUTCDate() + 1);
   }
   return dates;
-}
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
 }
 
 function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {

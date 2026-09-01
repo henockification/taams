@@ -20,6 +20,7 @@ import type { LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type LeaveRequestDetailPageProps = {
   requestId: string;
@@ -32,11 +33,6 @@ function employeeName(employee?: LeaveRequest['employee'] | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
-}
-
 function statusVariant(status: LeaveRequest['status']) {
   if (status === 'APPROVED') return 'default';
   if (status === 'REJECTED') return 'destructive';
@@ -46,6 +42,7 @@ function statusVariant(status: LeaveRequest['status']) {
 export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = false }: LeaveRequestDetailPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const session = useSession();
   const leaveRequestsQuery = useLeaveRequests(approvalMode ? undefined : 'annual');
   const leaveBalancesQuery = useLeaveBalances();

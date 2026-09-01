@@ -49,13 +49,9 @@ import {
   useEmployees,
 } from '@/data/hooks/core.hooks';
 import type { Employee } from '@/data/types/core.types';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allDevicesValue = '__all';
-
-function formatDateTime(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
-}
 
 function employeeName(employee?: Employee | null) {
   if (!employee) return '';
@@ -65,6 +61,7 @@ function employeeName(employee?: Employee | null) {
 export default function AttendancePunchesPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDateTime } = useCalendarPreference();
   const [employeeId, setEmployeeId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [status, setStatus] = useState<'all' | 'processed' | 'unprocessed'>('all');

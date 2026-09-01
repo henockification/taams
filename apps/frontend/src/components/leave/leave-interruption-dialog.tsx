@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import type { LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
+import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type DateSelection = { date: string; dayValue: string };
 
@@ -32,6 +34,7 @@ type Props = {
 export function LeaveInterruptionDialog({ request, interruption, open, isSaving, onOpenChange, onSubmit }: Props) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const [interruptedByDate, setInterruptedByDate] = useState<Record<string, string>>({});
   const [continuationDates, setContinuationDates] = useState<DateSelection[]>([]);
   const [continuationDate, setContinuationDate] = useState('');
@@ -122,8 +125,8 @@ export function LeaveInterruptionDialog({ request, interruption, open, isSaving,
 
           <div className="space-y-2">
             <Label htmlFor="continuation-date">{t('continuationPattern')}</Label>
-            <div className="flex gap-2">
-              <Input id="continuation-date" type="date" value={continuationDate} onChange={(event) => setContinuationDate(event.target.value)} />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <DualCalendarDateField id="continuation-date" value={continuationDate} onChange={setContinuationDate} className="flex-1" />
               <Button type="button" variant="outline" onClick={addContinuationDate}><Plus className="size-4" />{t('addDate')}</Button>
             </div>
             <div className="overflow-hidden rounded-md border border-border">
@@ -170,8 +173,4 @@ function normalizeDayValue(value: string | number | null | undefined) {
 
 function sumDates(dates: DateSelection[]) {
   return dates.reduce((sum, date) => sum + Number(date.dayValue), 0);
-}
-
-function formatDate(value: string) {
-  return new Date(`${value}T00:00:00`).toLocaleDateString();
 }

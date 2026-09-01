@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
 import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 interface User {
   id: string;
@@ -32,6 +33,7 @@ interface UserResponse {
 }
 
 export default function UserDetailPage() {
+  const { formatDateTime } = useCalendarPreference();
   const params = useParams();
   const router = useRouter();
   const userId = params.id as string;
@@ -266,12 +268,12 @@ export default function UserDetailPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">Created At</p>
-                <p className="font-medium">{new Date(user.createdAt).toLocaleString()}</p>
+                <p className="font-medium">{formatDateTime(user.createdAt)}</p>
               </div>
               <Separator />
               <div>
                 <p className="text-sm text-muted-foreground">Last Updated</p>
-                <p className="font-medium">{new Date(user.updatedAt).toLocaleString()}</p>
+                <p className="font-medium">{formatDateTime(user.updatedAt)}</p>
               </div>
               <Separator />
               <div>

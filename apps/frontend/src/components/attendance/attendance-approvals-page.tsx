@@ -51,6 +51,7 @@ import {
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
 type ApprovalFilter = 'all' | 'approved' | 'unapproved';
@@ -65,14 +66,10 @@ function employeeName(employee?: Employee | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
-}
-
 export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate, formatDateTime } = useCalendarPreference();
   const [date, setDate] = useState(today());
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
@@ -234,7 +231,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       <Card className="rounded-lg">
         <CardHeader>
           <CardTitle>{isHrMode ? t('hrAttendanceApproval') : t('attendanceApprovals')}</CardTitle>
-          <CardDescription>{t('attendanceDate')}: {date}</CardDescription>
+          <CardDescription>{t('attendanceDate')}: {formatDate(date)}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
@@ -362,7 +359,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           ) : null}
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{record.attendanceDate}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(record.attendanceDate)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>

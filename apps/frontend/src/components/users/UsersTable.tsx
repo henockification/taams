@@ -7,9 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { useUsers } from '../../data/hooks/users.hooks';
 import { OurTable, TableColumn, TableFilter, TableSort, TablePagination } from '../ui';
 import type { User } from '../../data/types/api';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 export default function UsersTable() {
   const router = useRouter();
+  const { formatDate } = useCalendarPreference();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [searchValue, setSearchValue] = useState('');
@@ -166,7 +168,7 @@ export default function UsersTable() {
       dataIndex: 'createdAt',
       render: (value) => (
         <span className="text-sm text-muted-foreground">
-          {new Date(value).toLocaleDateString()}
+          {formatDate(value)}
         </span>
       ),
       sortable: true,

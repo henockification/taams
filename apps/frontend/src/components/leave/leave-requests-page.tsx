@@ -57,6 +57,8 @@ import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
 const dayValueOptions = ['1.00', '0.50'] as const;
@@ -80,11 +82,6 @@ function statusVariant(status: LeaveRequest['status']) {
   return 'secondary';
 }
 
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
-}
-
 type AnnualDateSelection = {
   date: string;
   dayValue: string;
@@ -93,6 +90,7 @@ type AnnualDateSelection = {
 export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const session = useSession();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
@@ -597,10 +595,10 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               {kind !== 'annual' ? (
                 <>
                   <Field label={t('startDate')} id="leave-start">
-                    <Input id="leave-start" type="date" value={form.startDate} onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))} required />
+                    <DualCalendarDateField id="leave-start" value={form.startDate} onChange={(startDate) => setForm((current) => ({ ...current, startDate }))} required />
                   </Field>
                   <Field label={t('endDate')} id="leave-end">
-                    <Input id="leave-end" type="date" value={form.endDate} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} required />
+                    <DualCalendarDateField id="leave-end" value={form.endDate} onChange={(endDate) => setForm((current) => ({ ...current, endDate }))} required />
                   </Field>
                 </>
               ) : null}
@@ -609,10 +607,10 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               <div className="space-y-3 rounded-md border border-border p-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                   <Field label={t('startDate')} id="annual-range-start">
-                    <Input id="annual-range-start" type="date" value={annualRange.startDate} onChange={(event) => setAnnualRange((current) => ({ ...current, startDate: event.target.value }))} />
+                    <DualCalendarDateField id="annual-range-start" value={annualRange.startDate} onChange={(startDate) => setAnnualRange((current) => ({ ...current, startDate }))} />
                   </Field>
                   <Field label={t('endDate')} id="annual-range-end">
-                    <Input id="annual-range-end" type="date" value={annualRange.endDate} onChange={(event) => setAnnualRange((current) => ({ ...current, endDate: event.target.value }))} />
+                    <DualCalendarDateField id="annual-range-end" value={annualRange.endDate} onChange={(endDate) => setAnnualRange((current) => ({ ...current, endDate }))} />
                   </Field>
                   <Button type="button" className="self-end" variant="outline" onClick={addAnnualRange}>
                     <Plus className="size-4" />
@@ -621,7 +619,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                 </div>
                 <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                   <Field label={t('date')} id="annual-date">
-                    <Input id="annual-date" type="date" value={annualDateInput} onChange={(event) => setAnnualDateInput(event.target.value)} />
+                    <DualCalendarDateField id="annual-date" value={annualDateInput} onChange={setAnnualDateInput} />
                   </Field>
                   <Button type="button" className="self-end" variant="outline" onClick={() => addAnnualDate(annualDateInput)}>
                     <Plus className="size-4" />

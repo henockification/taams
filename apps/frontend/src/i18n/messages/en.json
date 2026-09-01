@@ -83,6 +83,17 @@
     "timeOperations": "Time operations",
     "timeOperationsDescription": "Attendance, shifts, approvals, and payroll-ready records will live here."
   },
+  "calendar": {
+    "calendarSystem": "Calendar system",
+    "gregorian": "Gregorian calendar",
+    "ethiopian": "Ethiopian calendar",
+    "gregorianShort": "GC",
+    "ethiopianShort": "EC",
+    "openPicker": "Open Ethiopian calendar",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "invalidEthiopianDate": "Enter a valid Ethiopian date in YYYY-MM-DD format"
+  },
   "auth": {
     "brandEyebrow": "Secure access",
     "shellDescription": "Role-based access for Tams administrators and staff.",

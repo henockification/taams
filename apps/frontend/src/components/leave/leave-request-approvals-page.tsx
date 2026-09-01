@@ -49,14 +49,10 @@ import { Link } from '@/i18n';
 import type { LeaveBalance, LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
 type DateFilter = 'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
-}
 
 function employeeName(employee?: LeaveRequest['employee'] | null) {
   if (!employee) return '';
@@ -110,6 +106,7 @@ function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string;
 export function LeaveRequestApprovalsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const session = useSession();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('ALL');

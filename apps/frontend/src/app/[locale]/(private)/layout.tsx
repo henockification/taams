@@ -26,6 +26,7 @@ import { Link, usePathname, useRouter } from '@/i18n';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { LanguageSwitcher } from '@/components/language-switcher';
+import { CalendarSwitcher } from '@/components/calendar-switcher';
 import { getFirstAccessiblePath, getNavItemForPath, userCanAccessPath } from '@/config/app-navigation';
 import { coreQueryKeys } from '@/data/hooks/core.hooks';
 
@@ -189,6 +190,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
+            <CalendarSwitcher className="rounded-md text-primary hover:bg-accent hover:text-accent-foreground" />
             <LanguageSwitcher
               variant="ghost"
               className="rounded-md text-primary hover:bg-accent hover:text-accent-foreground"

@@ -49,6 +49,7 @@ import {
 import type { Employee, ManualPunchRequest, PunchType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const punchTypes: PunchType[] = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN'];
 
@@ -65,6 +66,7 @@ const initialRequestForm = {
 export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervisor' }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
@@ -328,11 +330,6 @@ function toDateTimeLocal(date = new Date()) {
 
 function toIso(value: string) {
   return new Date(value).toISOString();
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
 }
 
 function employeeName(employee?: Employee | null) {

@@ -37,6 +37,7 @@ import type {
   LeaveBalance,
 } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
+import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof HrDashboardSummary["widgets"]
 type HrDashboardMessageKey =
@@ -69,6 +70,7 @@ const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ 
 
 export default function HrDashboardPage() {
   const t = useTranslations("hrDashboard")
+  const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const { data, isLoading, isFetching, isError, error, refetch } = useHrDashboardSummary({ date })
   const dashboard = data?.hrDashboard
@@ -206,6 +208,7 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
 
 function OperationalQueue({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const { formatDateTime } = useCalendarPreference()
   const rows = [
     ...dashboard.details.pendingManualRequests.map((request) => ({
       id: `manual-${request.id}`,
@@ -347,6 +350,7 @@ function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
 
 function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const { formatDate } = useCalendarPreference()
 
   return (
     <Card>
@@ -358,14 +362,14 @@ function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
           {dashboard.details.upcomingLeave.slice(0, 10).map((request) => (
             <TableRow key={request.id}>
               <TableCell className="min-w-52 font-medium">{formatEmployeeName(request.employee ?? null)}</TableCell>
-              <TableCell className="min-w-44 text-muted-foreground">{request.startDate} - {request.endDate}</TableCell>
+              <TableCell className="min-w-44 text-muted-foreground">{formatDate(request.startDate)} - {formatDate(request.endDate)}</TableCell>
               <TableCell className="min-w-36"><Badge variant="secondary">{request.leaveType?.nameEn ?? request.status}</Badge></TableCell>
             </TableRow>
           ))}
           {dashboard.details.employeesNearLeaveExpiry.slice(0, 10).map((balance) => (
             <TableRow key={`balance-${balance.id}`}>
               <TableCell className="min-w-52 font-medium">{formatEmployeeName(balance.employee ?? null)}</TableCell>
-              <TableCell className="min-w-44 text-muted-foreground">{balance.fiscalYear?.endsAt ?? "-"}</TableCell>
+              <TableCell className="min-w-44 text-muted-foreground">{formatDate(balance.fiscalYear?.endsAt)}</TableCell>
               <TableCell className="min-w-36"><Badge>{t("available")}: {balance.available}</Badge></TableCell>
             </TableRow>
           ))}
@@ -377,6 +381,7 @@ function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
 
 function DeviceStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const { formatDateTime } = useCalendarPreference()
 
   return (
     <Card>
@@ -536,14 +541,4 @@ function formatDays(value: string | number | null | undefined) {
   const amount = Number(value)
   if (!Number.isFinite(amount)) return String(value)
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(amount)
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-"
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value))
 }

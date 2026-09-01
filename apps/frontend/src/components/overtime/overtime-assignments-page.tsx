@@ -31,6 +31,7 @@ import type {
 } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allStatuses = '__all';
 const statuses: OvertimeRequestStatus[] = ['ASSIGNED', 'APPROVED', 'REJECTED'];
@@ -46,6 +47,7 @@ const initialForm = {
 export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervisor' }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate, formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
   const [assignOpen, setAssignOpen] = useState(false);
   const [reviewing, setReviewing] = useState<OvertimeRequest | null>(null);
@@ -194,7 +196,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                             <p className="text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p>
                           </TableCell>
                         ) : null}
-                        <TableCell>{request.overtimeDate}</TableCell>
+                        <TableCell>{formatDate(request.overtimeDate)}</TableCell>
                         <TableCell className="whitespace-nowrap">{formatDateTime(request.startAt)} - {formatDateTime(request.endAt)}</TableCell>
                         <TableCell>{request.requestedMinutes} min</TableCell>
                         <TableCell>
@@ -283,7 +285,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                 <div className="space-y-4">
                   <div className="grid gap-2 text-sm">
                     <p><span className="text-muted-foreground">{t('employee')}: </span>{employeeName(reviewing.employee)}</p>
-                    <p><span className="text-muted-foreground">{t('date')}: </span>{reviewing.overtimeDate}</p>
+                    <p><span className="text-muted-foreground">{t('date')}: </span>{formatDate(reviewing.overtimeDate)}</p>
                     <p><span className="text-muted-foreground">{t('period')}: </span>{formatDateTime(reviewing.startAt)} - {formatDateTime(reviewing.endAt)}</p>
                     <p><span className="text-muted-foreground">{t('assignedMinutes')}: </span>{reviewing.requestedMinutes}</p>
                     <p>
@@ -404,11 +406,6 @@ function toIsoWindow(date: string, startTime: string, endTime: string) {
 
 function normalizeTime(value: string) {
   return value.length === 5 ? `${value}:00` : value;
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
 }
 
 function formatTime(value: string | null) {

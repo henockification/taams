@@ -42,6 +42,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useExecutiveDashboardSummary } from "@/data/hooks/core.hooks"
 import type { ExecutiveDashboardSeverity, ExecutiveDashboardSummary } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
+import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 const distributionColors = ["#1f8a70", "#4f46e5", "#dc2626", "#f59e0b", "#0e7490"]
 
@@ -63,6 +64,7 @@ const trendChartConfig = {
 
 export default function ExecutiveDashboardPage() {
   const t = useTranslations("executiveDashboard")
+  const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const [month, setMonth] = React.useState(todayInput().slice(0, 7))
   const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month })
@@ -551,14 +553,4 @@ function ExecutiveDashboardSkeleton() {
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10)
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "-"
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value))
 }

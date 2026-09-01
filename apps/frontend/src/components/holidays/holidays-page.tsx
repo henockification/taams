@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCreateHoliday, useHolidays, useUpdateHoliday } from '@/data/hooks/core.hooks';
 import type { Holiday, HolidayType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type HolidayForm = {
   nameEn: string;
@@ -50,6 +51,7 @@ const initialForm: HolidayForm = {
 export default function HolidaysPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const holidaysQuery = useHolidays();
   const createHoliday = useCreateHoliday();
   const updateHoliday = useUpdateHoliday();
@@ -219,7 +221,7 @@ export default function HolidaysPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>{holiday.durationDays === '0.50' ? t('halfDay') : t('fullDay')}</TableCell>
-                  <TableCell>{holiday.startDate === holiday.endDate ? holiday.startDate : `${holiday.startDate} - ${holiday.endDate}`}</TableCell>
+                  <TableCell>{holiday.startDate === holiday.endDate ? formatDate(holiday.startDate) : `${formatDate(holiday.startDate)} - ${formatDate(holiday.endDate)}`}</TableCell>
                   <TableCell>
                     <Badge variant={holiday.isActive ? 'default' : 'secondary'}>
                       {holiday.isActive ? t('active') : t('inactive')}

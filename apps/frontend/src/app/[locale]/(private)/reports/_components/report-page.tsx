@@ -40,6 +40,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { ReportKey } from '@/data/types/core.types';
 import { cn } from '@/lib/utils';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type FilterType = 'date' | 'time' | 'select' | 'search' | 'checkbox' | 'number';
 
@@ -114,6 +115,7 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
 
 export function ReportPage({ reportKey }: ReportPageProps) {
   const common = useTranslations('common');
+  const { formatDate, formatDateTime } = useCalendarPreference();
   const configBase = reportConfigs[reportKey];
   const [filters, setFilters] = useState<Record<string, string>>(() => defaultFilters(configBase.filterKeys));
   const departmentsQuery = useDepartments();
@@ -280,7 +282,7 @@ export function ReportPage({ reportKey }: ReportPageProps) {
                     <TableRow key={index}>
                       {report.columns.map((column) => (
                         <TableCell key={column.key} className="whitespace-nowrap">
-                          {String(row[column.key] ?? '')}
+                          {formatReportValue(row[column.key], formatDate, formatDateTime)}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -480,8 +482,16 @@ function defaultFilters(keys: string[]) {
   return Object.fromEntries(keys.map((key) => [key, key === 'dateFrom' || key === 'dateTo' ? today : '']));
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString();
+function formatReportValue(
+  value: unknown,
+  formatDate: (value: Date | string | null | undefined) => string,
+  formatDateTime: (value: Date | string | null | undefined) => string,
+) {
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value)) return formatDateTime(value);
+  }
+  return String(value ?? '');
 }
 
 const attendanceStatuses = ['PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED', 'HR_APPROVED'].map((value) => ({ value, label: value }));

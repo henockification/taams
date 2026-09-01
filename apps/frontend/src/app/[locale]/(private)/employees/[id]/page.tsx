@@ -34,6 +34,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Link } from '@/i18n';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import {
   useBiometricExemptions,
   useCreateEmployeeSupervisor,
@@ -43,6 +44,7 @@ import {
 } from '@/data/hooks/core.hooks';
 
 export default function EmployeeDetailPage() {
+  const { formatDate } = useCalendarPreference();
   const params = useParams();
   const searchParams = useSearchParams();
   const employeeId = params.id as string;
@@ -184,8 +186,8 @@ export default function EmployeeDetailPage() {
             <Info label={t('positionCode')} value={positionCode} />
             <Info label={t('employmentType')} value={employee.employmentType} />
             <Info label={t('employmentStatus')} value={importedEmploymentStatus ?? employee.employmentStatus} />
-            <Info label={t('hireDate')} value={employee.hireDate} />
-            <Info label={t('terminationDate')} value={employee.terminationDate} />
+            <Info label={t('hireDate')} value={formatDate(employee.hireDate)} />
+            <Info label={t('terminationDate')} value={formatDate(employee.terminationDate)} />
             <Info label={t('salary')} value={employee.salary} />
             <Info label={t('step')} value={employee.salaryStep} />
           </CardContent>
@@ -219,7 +221,7 @@ export default function EmployeeDetailPage() {
                         {assignment.supervisor?.firstNameEn} {assignment.supervisor?.lastNameEn}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {assignment.effectiveFrom} {assignment.effectiveTo ? `- ${assignment.effectiveTo}` : ''}
+                        {formatDate(assignment.effectiveFrom)} {assignment.effectiveTo ? `- ${formatDate(assignment.effectiveTo)}` : ''}
                       </p>
                     </div>
                   </div>

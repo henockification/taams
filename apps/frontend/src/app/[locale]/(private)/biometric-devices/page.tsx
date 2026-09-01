@@ -18,6 +18,7 @@ import { useBiometricDeviceSyncHistory, useBiometricDevices, useCreateBiometricD
 import type { BiometricDevice, BiometricDeviceType, ConnectionType, DeviceHealthStatus, DeviceIntegrationMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { EmployeeSyncPanel } from '@/components/biometric/employee-sync-panel';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const deviceTypes: BiometricDeviceType[] = ['BIOMETRIC', 'RFID', 'FACE_RECOGNITION', 'MOBILE', 'WEB'];
 const connectionTypes: ConnectionType[] = ['TCP_IP', 'USB', 'WIFI', 'API'];
@@ -144,11 +145,6 @@ const initialForm = {
   isActive: true,
 };
 
-function formatDateTime(value: string | null) {
-  if (!value) return null;
-  return new Date(value).toLocaleString();
-}
-
 function statusVariant(status: string) {
   if (status === 'COMPLETED') return 'default';
   if (status === 'FAILED') return 'destructive';
@@ -158,6 +154,7 @@ function statusVariant(status: string) {
 export default function BiometricDevicesPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDateTime } = useCalendarPreference();
   const { data: devicesResponse, isLoading } = useBiometricDevices();
   const { data: departmentsResponse } = useDepartments();
   const createDevice = useCreateBiometricDevice();

@@ -38,6 +38,7 @@ import type {
 import { Link, useRouter } from "@/i18n"
 import { useSession } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
+import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 export default function DashboardPage() {
   const t = useTranslations("dashboard")
@@ -130,6 +131,7 @@ function HeroInsightCard({
   canViewManualPunchRequests: boolean
 }) {
   const t = useTranslations("dashboard")
+  const { formatDateTime } = useCalendarPreference()
   const insight = getHeroInsight(dashboard, t, canViewManualPunchRequests)
 
   return (
@@ -267,6 +269,7 @@ function EmployeeDashboard({
   canViewManualPunchRequests: boolean
 }) {
   const t = useTranslations("dashboard")
+  const { formatDate, formatDateTime } = useCalendarPreference()
   const section = dashboard.sections.employee
   const todayAttendance = section?.todayAttendance
   const leaveBalances = section?.annualLeaveBalances ?? []
@@ -286,7 +289,7 @@ function EmployeeDashboard({
               </div>
               <Badge variant="secondary">
                 <Fingerprint className="mr-2 size-3.5" />
-                {todayAttendance?.date ?? formatDate(new Date().toISOString())}
+                {formatDate(todayAttendance?.date ?? new Date().toISOString())}
               </Badge>
             </div>
           </CardHeader>
@@ -544,6 +547,7 @@ function TimeOperationsPanel({ dashboard }: { dashboard: DashboardSummary }) {
 
 function PunchList({ title, punches, emptyText }: { title: string; punches: AttendancePunch[]; emptyText: string }) {
   const t = useTranslations("dashboard")
+  const { formatDateTime } = useCalendarPreference()
 
   return (
     <Card>
@@ -578,6 +582,7 @@ function PunchList({ title, punches, emptyText }: { title: string; punches: Atte
 
 function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
   const t = useTranslations("dashboard")
+  const { formatDate } = useCalendarPreference()
   const recentRequests = requests.slice(0, 5)
 
   return (
@@ -620,6 +625,7 @@ function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
 
 function AnnouncementsPanel({ announcements }: { announcements: NonNullable<DashboardSummary["sections"]["employee"]>["announcements"] }) {
   const t = useTranslations("dashboard")
+  const { formatDateTime } = useCalendarPreference()
 
   return (
     <Card>
@@ -655,6 +661,7 @@ function ManualRequestsList({
   requests: ManualPunchRequest[]
   emptyText: string
 }) {
+  const { formatDateTime } = useCalendarPreference()
   return (
     <Card>
       <CardHeader>
@@ -696,6 +703,7 @@ function TeamRequestsList({
   emptyText: string
 }) {
   const t = useTranslations("dashboard")
+  const { formatDate, formatDateTime } = useCalendarPreference()
 
   const isEmpty = manualRequests.length === 0 && leaveRequests.length === 0
 
@@ -961,23 +969,6 @@ function formatLeaveDays(value?: string | null) {
   if (!Number.isFinite(numericValue)) return value
 
   return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(2).replace(/\.?0+$/, "")
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return "Not available"
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value))
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return "Not available"
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-  }).format(new Date(value))
 }
 
 function formatTime(value?: string | null) {

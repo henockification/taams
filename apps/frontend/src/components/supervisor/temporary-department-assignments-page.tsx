@@ -27,6 +27,7 @@ import {
 import type { Employee, TemporaryDepartmentAssignment } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type AssignmentFilter = 'active' | 'history' | 'all';
 
@@ -47,6 +48,7 @@ const emptyForm = (): FormState => ({
 });
 
 export function TemporaryDepartmentAssignmentsPage() {
+  const { formatDate } = useCalendarPreference();
   const t = useTranslations('core');
   const common = useTranslations('common');
   const assignmentsQuery = useTemporaryDepartmentAssignments();
@@ -235,7 +237,7 @@ export function TemporaryDepartmentAssignmentsPage() {
                         <TableCell>{assignment.sourceDepartment?.nameEn ?? '-'}</TableCell>
                         <TableCell>{assignment.targetDepartment?.nameEn ?? '-'}</TableCell>
                         <TableCell className="whitespace-nowrap">
-                          {assignment.effectiveFrom} - {assignment.effectiveTo}
+                          {formatDate(assignment.effectiveFrom)} - {formatDate(assignment.effectiveTo)}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{assignment.reason}</TableCell>
                         <TableCell>

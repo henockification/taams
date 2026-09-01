@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -28,6 +27,8 @@ import {
 import type { LeaveBalance } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
 const dayValueOptions = ['1.00', '0.50'] as const;
@@ -49,6 +50,7 @@ function today() {
 export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveRequestFormPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const router = useRouter();
   const session = useSession();
   const requestsQuery = useLeaveRequests('annual');
@@ -271,10 +273,10 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
         <CardContent className="space-y-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
             <Field label={t('startDate')} id="annual-range-start">
-              <Input id="annual-range-start" type="date" value={annualRange.startDate} onChange={(event) => setAnnualRange((current) => ({ ...current, startDate: event.target.value }))} />
+              <DualCalendarDateField id="annual-range-start" value={annualRange.startDate} onChange={(startDate) => setAnnualRange((current) => ({ ...current, startDate }))} />
             </Field>
             <Field label={t('endDate')} id="annual-range-end">
-              <Input id="annual-range-end" type="date" value={annualRange.endDate} onChange={(event) => setAnnualRange((current) => ({ ...current, endDate: event.target.value }))} />
+              <DualCalendarDateField id="annual-range-end" value={annualRange.endDate} onChange={(endDate) => setAnnualRange((current) => ({ ...current, endDate }))} />
             </Field>
             <Button type="button" className="self-end" variant="outline" onClick={addAnnualRange}>
               <Plus className="size-4" />
@@ -283,7 +285,7 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
           </div>
           <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
             <Field label={t('specificDate')} id="annual-date">
-              <Input id="annual-date" type="date" value={annualDateInput} onChange={(event) => setAnnualDateInput(event.target.value)} />
+              <DualCalendarDateField id="annual-date" value={annualDateInput} onChange={setAnnualDateInput} />
             </Field>
             <Button type="button" className="self-end" variant="outline" onClick={() => addAnnualDate(annualDateInput)}>
               <Plus className="size-4" />
@@ -403,11 +405,6 @@ function workingDateRange(startDate: string, endDate: string, workingDays: Set<s
     current.setUTCDate(current.getUTCDate() + 1);
   }
   return dates;
-}
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
 }
 
 function formatDateValue(value: string | Date) {

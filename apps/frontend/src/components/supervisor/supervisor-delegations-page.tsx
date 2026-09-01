@@ -48,6 +48,7 @@ import {
 import type { Employee, SupervisorDelegation } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type DelegationFormState = {
   delegateEmployeeId: string;
@@ -70,6 +71,7 @@ const initialForm = (): DelegationFormState => {
 export function SupervisorDelegationsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDateTime } = useCalendarPreference();
   const session = useSession();
   const employees = useEmployees();
   const delegations = useSupervisorDelegations();
@@ -324,13 +326,6 @@ function isCurrentOrFutureDelegation(delegation: SupervisorDelegation) {
 function employeeName(employee?: Employee | null) {
   if (!employee) return '—';
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }
 
 function toDateTimeLocal(value: Date) {

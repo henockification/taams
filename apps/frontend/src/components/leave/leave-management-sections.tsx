@@ -40,6 +40,7 @@ import { useUsers } from '@/data/hooks/users.hooks';
 import type { Employee, LeaveBalance, LeaveFiscalYear, LeaveType } from '@/data/types/core.types';
 import type { User } from '@/data/types/api';
 import { notifications } from '@/lib/notifications';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
 const initialFiscalYearForm = {
@@ -82,11 +83,6 @@ function userName(user?: User | null) {
   return user.name || user.email;
 }
 
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleDateString();
-}
-
 function normalize(value: string) {
   return value.trim().toLowerCase();
 }
@@ -94,6 +90,7 @@ function normalize(value: string) {
 export function FiscalYearsSection() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const fiscalYearsQuery = useLeaveFiscalYears();
   const createFiscalYear = useCreateLeaveFiscalYear();
   const updateFiscalYear = useUpdateLeaveFiscalYear();

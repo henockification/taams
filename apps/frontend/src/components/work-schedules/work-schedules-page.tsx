@@ -79,6 +79,7 @@ import {
 import type { DayOfWeek, Employee, EmployeeWorkSchedule, Shift, ShiftSegment, WorkSchedule, WorkScheduleDay } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
+import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const dayOptions: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
@@ -156,6 +157,7 @@ export function WorkSchedulesPage({
 }: WorkSchedulesPageProps = {}) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const { formatDate } = useCalendarPreference();
   const { data: shiftsResponse, isLoading: shiftsLoading } = useShifts();
   const { data: workSchedulesResponse, isLoading: workSchedulesLoading } = useWorkSchedules();
   const { data: employeesResponse, isLoading: employeesLoading } = useEmployees();
@@ -747,8 +749,8 @@ export function WorkSchedulesPage({
                             <TableCell className="font-medium">{assignment.workSchedule?.nameEn ?? '-'}</TableCell>
                             <TableCell>{employee?.department?.nameEn ?? employee?.sourceDepartmentName ?? '-'}</TableCell>
                             <TableCell>{employee?.position?.nameEn ?? employee?.positionName ?? employee?.sourcePositionName ?? '-'}</TableCell>
-                            <TableCell className="whitespace-nowrap">{assignment.effectiveFrom}</TableCell>
-                            <TableCell className="whitespace-nowrap">{assignment.effectiveTo ?? t('openEnded')}</TableCell>
+                            <TableCell className="whitespace-nowrap">{formatDate(assignment.effectiveFrom)}</TableCell>
+                            <TableCell className="whitespace-nowrap">{assignment.effectiveTo ? formatDate(assignment.effectiveTo) : t('openEnded')}</TableCell>
                             <TableCell>
                               <Badge variant={assignment.isActive ? 'default' : 'secondary'}>
                                 {assignment.isActive ? t('active') : t('inactive')}
