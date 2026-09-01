@@ -6,50 +6,18 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  useBiometricDeviceSyncHistory,
-  useBiometricDevices,
-  useCreateBiometricDevice,
-  useDepartments,
-  useSyncBiometricDevice,
-  useTestBiometricDeviceConnection,
-  useUpdateBiometricDevice,
-} from '@/data/hooks/core.hooks';
-import type {
-  BiometricDevice,
-  BiometricDeviceType,
-  ConnectionType,
-  DeviceHealthStatus,
-  DeviceIntegrationMode,
-} from '@/data/types/core.types';
+import { useBiometricDeviceSyncHistory, useBiometricDevices, useCreateBiometricDevice, useDepartments, useSyncBiometricDevice, useTestBiometricDeviceConnection, useUpdateBiometricDevice } from '@/data/hooks/core.hooks';
+import type { BiometricDevice, BiometricDeviceType, ConnectionType, DeviceHealthStatus, DeviceIntegrationMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { EmployeeSyncPanel } from '@/components/biometric/employee-sync-panel';
 
 const deviceTypes: BiometricDeviceType[] = ['BIOMETRIC', 'RFID', 'FACE_RECOGNITION', 'MOBILE', 'WEB'];
 const connectionTypes: ConnectionType[] = ['TCP_IP', 'USB', 'WIFI', 'API'];
@@ -164,6 +132,11 @@ const initialForm = {
   serialNumber: '',
   model: '',
   manufacturer: '',
+  firmwareVersion: '',
+  platformVersion: '',
+  fingerprintAlgorithm: '',
+  provisioningRole: 'TARGET' as 'ENROLLMENT_SOURCE' | 'TARGET',
+  provisioningEnabled: false,
   syncIntervalMinutes: '5',
   autoSyncEnabled: true,
   healthStatus: 'UNKNOWN' as DeviceHealthStatus,
@@ -232,6 +205,11 @@ export default function BiometricDevicesPage() {
       serialNumber: device.serialNumber ?? '',
       model: device.model ?? '',
       manufacturer: device.manufacturer ?? '',
+      firmwareVersion: device.firmwareVersion ?? '',
+      platformVersion: device.platformVersion ?? '',
+      fingerprintAlgorithm: device.fingerprintAlgorithm ?? '',
+      provisioningRole: device.provisioningRole,
+      provisioningEnabled: device.provisioningEnabled,
       syncIntervalMinutes: String(device.syncIntervalMinutes),
       autoSyncEnabled: device.autoSyncEnabled,
       healthStatus: device.healthStatus,
@@ -261,11 +239,16 @@ export default function BiometricDevicesPage() {
         preferredMode: form.preferredMode,
         pushEnabled: fieldVisibility.pushEnabled ? form.pushEnabled : false,
         pullEnabled: fieldVisibility.pullEnabled ? form.pullEnabled : false,
-        pushSecret: fieldVisibility.pushSecret ? form.pushSecret.trim() || null : null,
-        communicationKey: fieldVisibility.communicationKey ? form.communicationKey.trim() || null : null,
+        ...(fieldVisibility.pushSecret ? (form.pushSecret.trim() ? { pushSecret: form.pushSecret.trim() } : editingDevice ? {} : { pushSecret: null }) : { pushSecret: null }),
+        ...(fieldVisibility.communicationKey ? (form.communicationKey.trim() ? { communicationKey: form.communicationKey.trim() } : editingDevice ? {} : { communicationKey: null }) : { communicationKey: null }),
         serialNumber: form.serialNumber.trim() || null,
         model: form.model.trim() || null,
         manufacturer: form.manufacturer.trim() || null,
+        firmwareVersion: form.firmwareVersion.trim() || null,
+        platformVersion: form.platformVersion.trim() || null,
+        fingerprintAlgorithm: form.fingerprintAlgorithm.trim() || null,
+        provisioningRole: form.provisioningRole,
+        provisioningEnabled: form.provisioningEnabled,
         syncIntervalMinutes: fieldVisibility.syncIntervalMinutes && form.syncIntervalMinutes ? Number(form.syncIntervalMinutes) : 5,
         autoSyncEnabled: fieldVisibility.autoSyncEnabled ? form.autoSyncEnabled : false,
         healthStatus: editingDevice?.healthStatus ?? form.healthStatus,
@@ -274,7 +257,10 @@ export default function BiometricDevicesPage() {
       };
 
       const response = editingDevice
-        ? await updateDevice.mutateAsync({ biometricDeviceId: editingDevice.id, ...payload })
+        ? await updateDevice.mutateAsync({
+            biometricDeviceId: editingDevice.id,
+            ...payload,
+          })
         : await createDevice.mutateAsync(payload);
 
       setSelectedDeviceId(response.biometricDevice.id);
@@ -325,7 +311,9 @@ export default function BiometricDevicesPage() {
       notifications.show({
         title: response.connectionTest.success ? t('connectionTestSucceeded') : t('connectionTestFailed'),
         message: response.connectionTest.success
-          ? t('connectionTestSucceededMessage', { latencyMs: response.connectionTest.latencyMs })
+          ? t('connectionTestSucceededMessage', {
+              latencyMs: response.connectionTest.latencyMs,
+            })
           : response.connectionTest.message,
         color: response.connectionTest.success ? 'green' : 'red',
       });
@@ -373,11 +361,7 @@ export default function BiometricDevicesPage() {
             {isLoading ? (
               <p className="text-sm text-muted-foreground">{common('loading')}</p>
             ) : devices.length === 0 ? (
-              <EmptyState
-                icon={Fingerprint}
-                title={t('noBiometricDevices')}
-                description={t('noBiometricDevicesDescription')}
-              />
+              <EmptyState icon={Fingerprint} title={t('noBiometricDevices')} description={t('noBiometricDevicesDescription')} />
             ) : (
               devices.map((device) => {
                 const isSelected = selectedDevice?.id === device.id;
@@ -399,19 +383,14 @@ export default function BiometricDevicesPage() {
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{device.deviceName}</p>
-                        <Badge variant={device.isActive ? 'default' : 'secondary'}>
-                          {device.isActive ? t('active') : t('inactive')}
-                        </Badge>
-                        <Badge variant={device.healthStatus === 'ERROR' ? 'destructive' : 'outline'}>
-                          {device.healthStatus}
-                        </Badge>
+                        <Badge variant={device.isActive ? 'default' : 'secondary'}>{device.isActive ? t('active') : t('inactive')}</Badge>
+                        <Badge variant={device.healthStatus === 'ERROR' ? 'destructive' : 'outline'}>{device.healthStatus}</Badge>
+                        {device.provisioningEnabled ? <Badge variant="secondary">{device.provisioningRole === 'ENROLLMENT_SOURCE' ? 'Enrollment source' : 'Sync target'}</Badge> : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {device.deviceCode} · {device.deviceType} · {device.integrationMode}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {[device.ipAddress, device.port, device.locationName, device.department?.nameEn].filter(Boolean).join(' · ') || t('noDescription')}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{[device.ipAddress, device.port, device.locationName, device.department?.nameEn].filter(Boolean).join(' · ') || t('noDescription')}</p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Button
@@ -427,11 +406,27 @@ export default function BiometricDevicesPage() {
                         <PlugZap className="size-4" />
                         {testingDeviceId === device.id ? t('testingConnection') : t('testConnection')}
                       </Button>
-                      <Button type="button" variant="outline" size="sm" onClick={(event) => { event.stopPropagation(); runSync(device); }}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          runSync(device);
+                        }}
+                      >
                         <RefreshCw className="size-4" />
                         {t('sync')}
                       </Button>
-                      <Button type="button" variant="ghost" size="icon" onClick={(event) => { event.stopPropagation(); openEditDevice(device); }}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openEditDevice(device);
+                        }}
+                      >
                         <Pencil className="size-4" />
                       </Button>
                     </div>
@@ -446,9 +441,7 @@ export default function BiometricDevicesPage() {
       <Card className="h-fit rounded-lg">
         <CardHeader>
           <CardTitle>{t('syncHistory')}</CardTitle>
-          <CardDescription>
-            {selectedDevice ? selectedDevice.deviceName : t('selectDeviceForHistory')}
-          </CardDescription>
+          <CardDescription>{selectedDevice ? selectedDevice.deviceName : t('selectDeviceForHistory')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {!selectedDevice ? (
@@ -469,14 +462,16 @@ export default function BiometricDevicesPage() {
                   <Info label={t('successfulRecords')} value={batch.successfulRecords} />
                   <Info label={t('failedRecords')} value={batch.failedRecords} />
                 </div>
-                {batch.errorMessage ? (
-                  <p className="mt-2 text-xs text-destructive">{batch.errorMessage}</p>
-                ) : null}
+                {batch.errorMessage ? <p className="mt-2 text-xs text-destructive">{batch.errorMessage}</p> : null}
               </div>
             ))
           )}
         </CardContent>
       </Card>
+
+      <div className="xl:col-span-2">
+        <EmployeeSyncPanel devices={devices} />
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
@@ -498,45 +493,221 @@ export default function BiometricDevicesPage() {
                 <TabsContent value="basic" className="m-0">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label={t('deviceName')} id="device-name">
-                      <Input id="device-name" value={form.deviceName} onChange={(event) => setForm((current) => ({ ...current, deviceName: event.target.value }))} required />
+                      <Input
+                        id="device-name"
+                        value={form.deviceName}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            deviceName: event.target.value,
+                          }))
+                        }
+                        required
+                      />
                     </Field>
                     <Field label={t('deviceCode')} id="device-code">
-                      <Input id="device-code" value={form.deviceCode} onChange={(event) => setForm((current) => ({ ...current, deviceCode: event.target.value }))} required />
+                      <Input
+                        id="device-code"
+                        value={form.deviceCode}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            deviceCode: event.target.value,
+                          }))
+                        }
+                        required
+                      />
                     </Field>
                     <Field label={t('deviceType')} id="device-type">
-                      <Select value={form.deviceType} onValueChange={(value) => setForm((current) => ({ ...current, deviceType: value as BiometricDeviceType }))}>
-                        <SelectTrigger id="device-type"><SelectValue /></SelectTrigger>
-                        <SelectContent>{deviceTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                      <Select
+                        value={form.deviceType}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            deviceType: value as BiometricDeviceType,
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="device-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {deviceTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </Field>
                     <Field label={t('connectionType')} id="connection-type">
-                      <Select value={form.connectionType} onValueChange={(value) => setForm((current) => ({ ...current, connectionType: value as ConnectionType }))}>
-                        <SelectTrigger id="connection-type"><SelectValue /></SelectTrigger>
-                        <SelectContent>{connectionTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                      <Select
+                        value={form.connectionType}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            connectionType: value as ConnectionType,
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="connection-type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {connectionTypes.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </Field>
                     <Field label={t('department')} id="device-department">
-                      <Select value={form.departmentId || noneValue} onValueChange={(value) => setForm((current) => ({ ...current, departmentId: value === noneValue ? '' : value }))}>
-                        <SelectTrigger id="device-department"><SelectValue placeholder={t('selectDepartment')} /></SelectTrigger>
+                      <Select
+                        value={form.departmentId || noneValue}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            departmentId: value === noneValue ? '' : value,
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="device-department">
+                          <SelectValue placeholder={t('selectDepartment')} />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value={noneValue}>{t('noDescription')}</SelectItem>
-                          {departments.map((department) => <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>)}
+                          {departments.map((department) => (
+                            <SelectItem key={department.id} value={department.id}>
+                              {department.nameEn}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </Field>
                     <Field label={t('locationName')} id="device-location">
-                      <Input id="device-location" value={form.locationName} onChange={(event) => setForm((current) => ({ ...current, locationName: event.target.value }))} />
+                      <Input
+                        id="device-location"
+                        value={form.locationName}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            locationName: event.target.value,
+                          }))
+                        }
+                      />
                     </Field>
                     <Field label={t('serialNumber')} id="device-serial">
-                      <Input id="device-serial" value={form.serialNumber} onChange={(event) => setForm((current) => ({ ...current, serialNumber: event.target.value }))} />
+                      <Input
+                        id="device-serial"
+                        value={form.serialNumber}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            serialNumber: event.target.value,
+                          }))
+                        }
+                      />
                     </Field>
                     <Field label={t('model')} id="device-model">
-                      <Input id="device-model" value={form.model} onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))} />
+                      <Input
+                        id="device-model"
+                        value={form.model}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            model: event.target.value,
+                          }))
+                        }
+                      />
                     </Field>
                     <Field label={t('manufacturer')} id="device-manufacturer">
-                      <Input id="device-manufacturer" value={form.manufacturer} onChange={(event) => setForm((current) => ({ ...current, manufacturer: event.target.value }))} />
+                      <Input
+                        id="device-manufacturer"
+                        value={form.manufacturer}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            manufacturer: event.target.value,
+                          }))
+                        }
+                      />
                     </Field>
-                    <ToggleRow label={t('active')} checked={form.isActive} onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))} />
+                    <Field label="Firmware version" id="device-firmware">
+                      <Input
+                        id="device-firmware"
+                        value={form.firmwareVersion}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            firmwareVersion: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Platform version" id="device-platform">
+                      <Input
+                        id="device-platform"
+                        value={form.platformVersion}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            platformVersion: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Fingerprint algorithm" id="device-fingerprint-algorithm">
+                      <Input
+                        id="device-fingerprint-algorithm"
+                        value={form.fingerprintAlgorithm}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            fingerprintAlgorithm: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    <Field label="Provisioning role" id="device-provisioning-role">
+                      <Select
+                        value={form.provisioningRole}
+                        onValueChange={(value) =>
+                          setForm((current) => ({
+                            ...current,
+                            provisioningRole: value as 'ENROLLMENT_SOURCE' | 'TARGET',
+                          }))
+                        }
+                      >
+                        <SelectTrigger id="device-provisioning-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ENROLLMENT_SOURCE">Enrollment source</SelectItem>
+                          <SelectItem value="TARGET">Target</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <ToggleRow
+                      label="Enable employee provisioning"
+                      checked={form.provisioningEnabled}
+                      onCheckedChange={(checked) =>
+                        setForm((current) => ({
+                          ...current,
+                          provisioningEnabled: checked,
+                        }))
+                      }
+                    />
+                    <ToggleRow
+                      label={t('active')}
+                      checked={form.isActive}
+                      onCheckedChange={(checked) =>
+                        setForm((current) => ({
+                          ...current,
+                          isActive: checked,
+                        }))
+                      }
+                    />
                   </div>
                 </TabsContent>
                 <TabsContent value="integration" className="m-0">
@@ -546,72 +717,180 @@ export default function BiometricDevicesPage() {
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Field label={t('vendor')} id="device-vendor">
-                      <Input id="device-vendor" value={form.vendor} onChange={(event) => setForm((current) => ({ ...current, vendor: event.target.value }))} />
+                      <Input
+                        id="device-vendor"
+                        value={form.vendor}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            vendor: event.target.value,
+                          }))
+                        }
+                      />
                     </Field>
                     <Field label={t('integrationMode')} id="integration-mode">
-                      <Select value={form.integrationMode} onValueChange={(value) => {
-                        const integrationMode = value as DeviceIntegrationMode;
-                        setForm((current) => ({
-                          ...current,
-                          integrationMode,
-                          ...getModeDefaults(integrationMode),
-                        }));
-                      }}>
-                        <SelectTrigger id="integration-mode"><SelectValue /></SelectTrigger>
-                        <SelectContent>{integrationModes.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent>
+                      <Select
+                        value={form.integrationMode}
+                        onValueChange={(value) => {
+                          const integrationMode = value as DeviceIntegrationMode;
+                          setForm((current) => ({
+                            ...current,
+                            integrationMode,
+                            ...getModeDefaults(integrationMode),
+                          }));
+                        }}
+                      >
+                        <SelectTrigger id="integration-mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {integrationModes.map((mode) => (
+                            <SelectItem key={mode} value={mode}>
+                              {mode}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
                       </Select>
                     </Field>
                     {visibleFields.ipAddress ? (
                       <Field label={t('ipAddress')} id="device-ip">
-                        <Input id="device-ip" value={form.ipAddress} onChange={(event) => setForm((current) => ({ ...current, ipAddress: event.target.value }))} />
+                        <Input
+                          id="device-ip"
+                          value={form.ipAddress}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              ipAddress: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.port ? (
                       <Field label={t('port')} id="device-port">
-                        <Input id="device-port" type="number" min={1} value={form.port} onChange={(event) => setForm((current) => ({ ...current, port: event.target.value }))} />
+                        <Input
+                          id="device-port"
+                          type="number"
+                          min={1}
+                          value={form.port}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              port: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.protocol ? (
                       <Field label={t('protocol')} id="device-protocol">
-                        <Input id="device-protocol" value={form.protocol} onChange={(event) => setForm((current) => ({ ...current, protocol: event.target.value }))} />
+                        <Input
+                          id="device-protocol"
+                          value={form.protocol}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              protocol: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.communicationKey ? (
                       <Field label={t('communicationKey')} id="communication-key">
-                        <Input id="communication-key" value={form.communicationKey} onChange={(event) => setForm((current) => ({ ...current, communicationKey: event.target.value }))} />
+                        <Input
+                          id="communication-key"
+                          value={form.communicationKey}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              communicationKey: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.pushSecret ? (
                       <Field label={t('pushSecret')} id="push-secret">
-                        <Input id="push-secret" value={form.pushSecret} onChange={(event) => setForm((current) => ({ ...current, pushSecret: event.target.value }))} />
+                        <Input
+                          id="push-secret"
+                          value={form.pushSecret}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              pushSecret: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.syncIntervalMinutes ? (
                       <Field label={t('syncIntervalMinutes')} id="sync-interval">
-                        <Input id="sync-interval" type="number" min={1} value={form.syncIntervalMinutes} onChange={(event) => setForm((current) => ({ ...current, syncIntervalMinutes: event.target.value }))} />
+                        <Input
+                          id="sync-interval"
+                          type="number"
+                          min={1}
+                          value={form.syncIntervalMinutes}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              syncIntervalMinutes: event.target.value,
+                            }))
+                          }
+                        />
                       </Field>
                     ) : null}
                     {visibleFields.pushEnabled ? (
-                      <ToggleRow label={t('pushEnabled')} checked={form.pushEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, pushEnabled: checked }))} />
+                      <ToggleRow
+                        label={t('pushEnabled')}
+                        checked={form.pushEnabled}
+                        onCheckedChange={(checked) =>
+                          setForm((current) => ({
+                            ...current,
+                            pushEnabled: checked,
+                          }))
+                        }
+                      />
                     ) : null}
                     {visibleFields.pullEnabled ? (
-                      <ToggleRow label={t('pullEnabled')} checked={form.pullEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, pullEnabled: checked }))} />
+                      <ToggleRow
+                        label={t('pullEnabled')}
+                        checked={form.pullEnabled}
+                        onCheckedChange={(checked) =>
+                          setForm((current) => ({
+                            ...current,
+                            pullEnabled: checked,
+                          }))
+                        }
+                      />
                     ) : null}
                     {visibleFields.autoSyncEnabled ? (
-                      <ToggleRow label={t('autoSyncEnabled')} checked={form.autoSyncEnabled} onCheckedChange={(checked) => setForm((current) => ({ ...current, autoSyncEnabled: checked }))} />
+                      <ToggleRow
+                        label={t('autoSyncEnabled')}
+                        checked={form.autoSyncEnabled}
+                        onCheckedChange={(checked) =>
+                          setForm((current) => ({
+                            ...current,
+                            autoSyncEnabled: checked,
+                          }))
+                        }
+                      />
                     ) : null}
                     {visibleFields.fallbackToPull ? (
-                      <ToggleRow label={t('fallbackToPull')} checked={form.fallbackToPull} onCheckedChange={(checked) => setForm((current) => ({ ...current, fallbackToPull: checked }))} />
+                      <ToggleRow
+                        label={t('fallbackToPull')}
+                        checked={form.fallbackToPull}
+                        onCheckedChange={(checked) =>
+                          setForm((current) => ({
+                            ...current,
+                            fallbackToPull: checked,
+                          }))
+                        }
+                      />
                     ) : null}
-                    {visibleFields.lastPushAt ? (
-                      <ReadOnlyField label={t('lastPushAt')} value={formatDateTime(editingDevice?.lastPushAt ?? null)} />
-                    ) : null}
-                    {visibleFields.lastPullAt ? (
-                      <ReadOnlyField label={t('lastPullAt')} value={formatDateTime(editingDevice?.lastPullAt ?? null)} />
-                    ) : null}
-                    {visibleFields.lastSeenAt ? (
-                      <ReadOnlyField label={t('lastSeenAt')} value={formatDateTime(editingDevice?.lastSeenAt ?? null)} />
-                    ) : null}
+                    {visibleFields.lastPushAt ? <ReadOnlyField label={t('lastPushAt')} value={formatDateTime(editingDevice?.lastPushAt ?? null)} /> : null}
+                    {visibleFields.lastPullAt ? <ReadOnlyField label={t('lastPullAt')} value={formatDateTime(editingDevice?.lastPullAt ?? null)} /> : null}
+                    {visibleFields.lastSeenAt ? <ReadOnlyField label={t('lastSeenAt')} value={formatDateTime(editingDevice?.lastSeenAt ?? null)} /> : null}
                     <ReadOnlyField label={t('healthStatus')} value={editingDevice?.healthStatus ?? form.healthStatus} />
                     <ReadOnlyField label={t('lastErrorMessage')} value={editingDevice?.lastErrorMessage ?? null} />
                   </div>
@@ -619,7 +898,9 @@ export default function BiometricDevicesPage() {
               </div>
             </Tabs>
             <DialogFooter className="border-t border-border bg-background px-6 py-4">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                {common('cancel')}
+              </Button>
               <Button type="submit" disabled={createDevice.isPending || updateDevice.isPending || !form.deviceName.trim() || !form.deviceCode.trim()}>
                 {createDevice.isPending || updateDevice.isPending ? t('saving') : common('save')}
               </Button>
@@ -653,22 +934,12 @@ function ReadOnlyField({ label, value }: { label: string; value: string | null }
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <div className="min-h-10 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        {value || '-'}
-      </div>
+      <div className="min-h-10 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">{value || '-'}</div>
     </div>
   );
 }
 
-function ToggleRow({
-  label,
-  checked,
-  onCheckedChange,
-}: {
-  label: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
+function ToggleRow({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border p-3">
       <Label>{label}</Label>

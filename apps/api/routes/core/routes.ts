@@ -26,6 +26,7 @@ import {
 } from '../../schemas/core.schema';
 import { openApiApp } from '../../lib/openapi';
 import biometricDevicesApp from './biometric-devices/routes';
+import biometricProvisioningApp from './biometric-provisioning/routes';
 import biometricExemptionsApp from './biometric-exemptions/routes';
 import holidaysApp from './holidays/routes';
 import attendancePunchesApp from './attendance-punches/routes';
@@ -41,32 +42,9 @@ import dashboardApp from './dashboard/routes';
 import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
 import ifmisAttendanceApp from './ifmis-attendance/routes';
-import {
-  createDepartmentHandler,
-  getDepartmentsHandler,
-  updateDepartmentHandler,
-} from './handlers/departments';
-import {
-  createPositionHandler,
-  getPositionsHandler,
-  updatePositionHandler,
-} from './handlers/positions';
-import {
-  createEmployeeHandler,
-  createEmployeeSupervisorHandler,
-  createEmployeeWorkScheduleHandler,
-  deleteEmployeeWorkScheduleHandler,
-  getAllEmployeeWorkSchedulesHandler,
-  importContractEmployeesHandler,
-  getEmployeeHandler,
-  getEmployeesHandler,
-  getEmployeesPaginatedHandler,
-  getEmployeeSupervisorsHandler,
-  getEmployeeWorkSchedulesHandler,
-  importPermanentEmployeesHandler,
-  updateEmployeeWorkScheduleHandler,
-  updateEmployeeHandler,
-} from './handlers/employees';
+import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
+import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
+import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 
 const coreApp = new Hono();
 
@@ -259,7 +237,9 @@ export const getEmployeesPaginatedRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: EmployeesPaginatedResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeesPaginatedResponseSchema },
+      },
       description: 'Employee list with pagination',
     },
   },
@@ -303,7 +283,9 @@ export const importPermanentEmployeesRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: PermanentEmployeeImportResponseSchema } },
+      content: {
+        'application/json': { schema: PermanentEmployeeImportResponseSchema },
+      },
       description: 'Permanent employee import result',
     },
     400: {
@@ -331,7 +313,9 @@ export const importContractEmployeesRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: PermanentEmployeeImportResponseSchema } },
+      content: {
+        'application/json': { schema: PermanentEmployeeImportResponseSchema },
+      },
       description: 'Contract employee import result',
     },
     400: {
@@ -385,7 +369,9 @@ export const createEmployeeSupervisorRoute = createRoute({
   },
   responses: {
     201: {
-      content: { 'application/json': { schema: EmployeeSupervisorResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeSupervisorResponseSchema },
+      },
       description: 'Created supervisor assignment',
     },
     400: {
@@ -405,7 +391,9 @@ export const getEmployeeSupervisorsRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: EmployeeSupervisorsResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeSupervisorsResponseSchema },
+      },
       description: 'Employee supervisors',
     },
   },
@@ -428,7 +416,9 @@ export const createEmployeeWorkScheduleRoute = createRoute({
   },
   responses: {
     201: {
-      content: { 'application/json': { schema: EmployeeWorkScheduleResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeWorkScheduleResponseSchema },
+      },
       description: 'Created employee work schedule assignment',
     },
     400: {
@@ -448,7 +438,9 @@ export const getEmployeeWorkSchedulesRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: EmployeeWorkSchedulesResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeWorkSchedulesResponseSchema },
+      },
       description: 'Employee work schedules',
     },
   },
@@ -461,7 +453,9 @@ export const getAllEmployeeWorkSchedulesRoute = createRoute({
   summary: 'Get All Employee Work Schedule Assignments',
   responses: {
     200: {
-      content: { 'application/json': { schema: EmployeeWorkSchedulesResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeWorkSchedulesResponseSchema },
+      },
       description: 'Employee work schedule assignments',
     },
   },
@@ -484,7 +478,9 @@ export const updateEmployeeWorkScheduleRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: EmployeeWorkScheduleResponseSchema } },
+      content: {
+        'application/json': { schema: EmployeeWorkScheduleResponseSchema },
+      },
       description: 'Updated employee work schedule assignment',
     },
     404: {
@@ -504,7 +500,9 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
   },
   responses: {
     200: {
-      content: { 'application/json': { schema: z.object({ success: z.boolean() }) } },
+      content: {
+        'application/json': { schema: z.object({ success: z.boolean() }) },
+      },
       description: 'Removed employee work schedule assignment',
     },
     404: {
@@ -536,6 +534,7 @@ coreApp.post('/employees/:id/work-schedules', createEmployeeWorkScheduleHandler)
 coreApp.get('/employees/:id/work-schedules', getEmployeeWorkSchedulesHandler);
 coreApp.route('/', dashboardApp);
 coreApp.route('/', biometricDevicesApp);
+coreApp.route('/', biometricProvisioningApp);
 coreApp.route('/', biometricExemptionsApp);
 coreApp.route('/', holidaysApp);
 coreApp.route('/', attendancePunchesApp);

@@ -8,6 +8,8 @@ import type {
   BiometricDeviceConnectionTestResponse,
   BiometricDeviceResponse,
   BiometricDevicesResponse,
+  BiometricProvisioningJobResponse,
+  BiometricProvisioningJobsResponse,
   BiometricExemptionResponse,
   BiometricExemptionsResponse,
   BulkUpsertLeaveBalancesInput,
@@ -19,6 +21,7 @@ import type {
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
+  CreateBiometricProvisioningPreviewInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
@@ -151,7 +154,10 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 
 export const coreApi = {
   getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
-    const query = new URLSearchParams({ payMonth: String(params.payMonth), payYear: String(params.payYear) });
+    const query = new URLSearchParams({
+      payMonth: String(params.payMonth),
+      payYear: String(params.payYear),
+    });
     return coreFetch<IfmisAttendancePreviewResponse>(`/ifmis/attendance?${query.toString()}`);
   },
   pushIfmisAttendance: (params: { payMonth: number; payYear: number }) =>
@@ -266,8 +272,7 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  getWorkScheduleDays: (workScheduleId: string) =>
-    coreFetch<WorkScheduleDaysResponse>(`/work-schedules/${workScheduleId}/days`),
+  getWorkScheduleDays: (workScheduleId: string) => coreFetch<WorkScheduleDaysResponse>(`/work-schedules/${workScheduleId}/days`),
   createWorkScheduleDay: ({ workScheduleId, ...input }: CreateWorkScheduleDayInput) =>
     coreFetch<WorkScheduleDayResponse>(`/work-schedules/${workScheduleId}/days`, {
       method: 'POST',
@@ -341,8 +346,7 @@ export const coreApi = {
       body: formData,
     });
   },
-  getEmployeeSupervisors: (employeeId: string) =>
-    coreFetch<EmployeeSupervisorsResponse>(`/employees/${employeeId}/supervisors`),
+  getEmployeeSupervisors: (employeeId: string) => coreFetch<EmployeeSupervisorsResponse>(`/employees/${employeeId}/supervisors`),
   createEmployeeSupervisor: ({ employeeId, ...input }: CreateEmployeeSupervisorInput) =>
     coreFetch(`/employees/${employeeId}/supervisors`, {
       method: 'POST',
@@ -358,8 +362,7 @@ export const coreApi = {
     coreFetch<SupervisorDelegationResponse>(`/supervisor-delegations/${supervisorDelegationId}/revoke`, {
       method: 'POST',
     }),
-  getTemporaryDepartmentAssignments: () =>
-    coreFetch<TemporaryDepartmentAssignmentsResponse>('/temporary-department-assignments'),
+  getTemporaryDepartmentAssignments: () => coreFetch<TemporaryDepartmentAssignmentsResponse>('/temporary-department-assignments'),
   createTemporaryDepartmentAssignment: (input: CreateTemporaryDepartmentAssignmentInput) =>
     coreFetch<TemporaryDepartmentAssignmentResponse>('/temporary-department-assignments', {
       method: 'POST',
@@ -374,10 +377,8 @@ export const coreApi = {
     coreFetch<TemporaryDepartmentAssignmentResponse>(`/temporary-department-assignments/${temporaryDepartmentAssignmentId}/deactivate`, {
       method: 'POST',
     }),
-  getEmployeeWorkSchedules: (employeeId: string) =>
-    coreFetch<EmployeeWorkSchedulesResponse>(`/employees/${employeeId}/work-schedules`),
-  getAllEmployeeWorkSchedules: () =>
-    coreFetch<EmployeeWorkSchedulesResponse>('/employees/work-schedules'),
+  getEmployeeWorkSchedules: (employeeId: string) => coreFetch<EmployeeWorkSchedulesResponse>(`/employees/${employeeId}/work-schedules`),
+  getAllEmployeeWorkSchedules: () => coreFetch<EmployeeWorkSchedulesResponse>('/employees/work-schedules'),
   createEmployeeWorkSchedule: ({ employeeId, ...input }: CreateEmployeeWorkScheduleInput) =>
     coreFetch<EmployeeWorkScheduleResponse>(`/employees/${employeeId}/work-schedules`, {
       method: 'POST',
@@ -413,8 +414,7 @@ export const coreApi = {
     coreFetch<BiometricExemptionResponse>(`/biometric-exemptions/${biometricExemptionId}`, {
       method: 'DELETE',
     }),
-  getBiometricDevice: (biometricDeviceId: string) =>
-    coreFetch<BiometricDeviceResponse>(`/biometric-devices/${biometricDeviceId}`),
+  getBiometricDevice: (biometricDeviceId: string) => coreFetch<BiometricDeviceResponse>(`/biometric-devices/${biometricDeviceId}`),
   createBiometricDevice: (input: CreateBiometricDeviceInput) =>
     coreFetch<BiometricDeviceResponse>('/biometric-devices', {
       method: 'POST',
@@ -434,25 +434,35 @@ export const coreApi = {
     coreFetch<BiometricDeviceConnectionTestResponse>(`/biometric-devices/${biometricDeviceId}/test-connection`, {
       method: 'POST',
     }),
-  getBiometricDeviceSyncHistory: (biometricDeviceId: string) =>
-    coreFetch<AttendanceSyncBatchesResponse>(`/biometric-devices/${biometricDeviceId}/sync-history`),
+  getBiometricDeviceSyncHistory: (biometricDeviceId: string) => coreFetch<AttendanceSyncBatchesResponse>(`/biometric-devices/${biometricDeviceId}/sync-history`),
+  getBiometricProvisioningJobs: () => coreFetch<BiometricProvisioningJobsResponse>('/biometric-provisioning/jobs'),
+  getBiometricProvisioningJob: (jobId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${jobId}`),
+  createBiometricProvisioningPreview: (input: CreateBiometricProvisioningPreviewInput) =>
+    coreFetch<BiometricProvisioningJobResponse>('/biometric-provisioning/previews', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  applyBiometricProvisioningPreview: (previewId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${previewId}/apply`, { method: 'POST' }),
+  retryBiometricProvisioningJob: (jobId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${jobId}/retry`, { method: 'POST' }),
   createAttendancePunch: (input: CreateAttendancePunchInput) =>
     coreFetch<AttendancePunchResponse>('/attendance-punches', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
   getAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches'),
-  getAttendancePunchesPaginated: (params: {
-    page?: number;
-    pageSize?: number;
-    employeeId?: string;
-    deviceId?: string;
-    status?: 'processed' | 'unprocessed';
-    dateFrom?: string;
-    dateTo?: string;
-    timeFrom?: string;
-    timeTo?: string;
-  } = {}) => {
+  getAttendancePunchesPaginated: (
+    params: {
+      page?: number;
+      pageSize?: number;
+      employeeId?: string;
+      deviceId?: string;
+      status?: 'processed' | 'unprocessed';
+      dateFrom?: string;
+      dateTo?: string;
+      timeFrom?: string;
+      timeTo?: string;
+    } = {},
+  ) => {
     const query = new URLSearchParams();
     if (params.page) query.set('page', String(params.page));
     if (params.pageSize) query.set('pageSize', String(params.pageSize));
@@ -467,8 +477,7 @@ export const coreApi = {
 
     return coreFetch<AttendancePunchesResponse>(`/attendance-punches/paginated${suffix}`);
   },
-  getEmployeeAttendancePunches: (employeeId: string) =>
-    coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
+  getEmployeeAttendancePunches: (employeeId: string) => coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
   getUnprocessedAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches/unprocessed'),
   getSupervisorAttendanceDailyRecords: (params: { date?: string } = {}) => {
     const query = new URLSearchParams();
@@ -497,13 +506,7 @@ export const coreApi = {
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${attendanceDailyRecordId}/supervisor-approve`, {
       method: 'POST',
     }),
-  updateSupervisorAttendanceDailyRecordPayroll: (input: {
-    attendanceDailyRecordId: string;
-    attendanceDays?: string;
-    leaveDays?: string;
-    payableDays?: string;
-    payrollNote?: string | null;
-  }) =>
+  updateSupervisorAttendanceDailyRecordPayroll: (input: { attendanceDailyRecordId: string; attendanceDays?: string; leaveDays?: string; payableDays?: string; payrollNote?: string | null }) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/supervisor-edit`, {
       method: 'POST',
       body: JSON.stringify({
@@ -538,7 +541,14 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  getOvertimeRequests: (params: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean } = {}) => {
+  getOvertimeRequests: (
+    params: {
+      dateFrom?: string;
+      dateTo?: string;
+      status?: string;
+      mine?: boolean;
+    } = {},
+  ) => {
     const query = new URLSearchParams();
     if (params.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params.dateTo) query.set('dateTo', params.dateTo);
@@ -584,8 +594,7 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  getLeaveBalances: (fiscalYearId?: string) =>
-    coreFetch<LeaveBalancesResponse>(`/leave/balances${fiscalYearId ? `?fiscalYearId=${fiscalYearId}` : ''}`),
+  getLeaveBalances: (fiscalYearId?: string) => coreFetch<LeaveBalancesResponse>(`/leave/balances${fiscalYearId ? `?fiscalYearId=${fiscalYearId}` : ''}`),
   upsertLeaveBalance: (input: UpsertLeaveBalanceInput) =>
     coreFetch<LeaveBalanceResponse>('/leave/balances', {
       method: 'POST',
@@ -601,8 +610,7 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  getLeaveRequests: (kind?: 'annual' | 'other') =>
-    coreFetch<LeaveRequestsResponse>(`/leave/requests${kind ? `?kind=${kind}` : ''}`),
+  getLeaveRequests: (kind?: 'annual' | 'other') => coreFetch<LeaveRequestsResponse>(`/leave/requests${kind ? `?kind=${kind}` : ''}`),
   createLeaveRequest: (input: CreateLeaveRequestInput) =>
     coreFetch<LeaveRequestResponse>('/leave/requests', {
       method: 'POST',

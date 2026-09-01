@@ -1,4 +1,5 @@
 import ZKLib from "node-zklib";
+import { randomUUID } from "node:crypto";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "../../db/db";
 import { attendancePunches, employees } from "../../db/schema";
@@ -6,6 +7,8 @@ import {
   completeBiometricDeviceSyncBatch,
   createAttendancePunch,
   createBiometricDeviceSyncBatch,
+  acquireBiometricDeviceLock,
+  releaseBiometricDeviceLock,
 } from "../../db/orm/core/manageBiometricDevices";
 import type { DeviceIntegrationMode, PunchType, SyncStatus } from "../../types/core.types";
 
@@ -46,109 +49,112 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
     throw new Error("TCP pull is not enabled for this biometric device");
   }
 
-  const batch = await createBiometricDeviceSyncBatch(device.id, { syncStatus: "STARTED" });
-  if (!batch) throw new Error("Failed to create attendance sync batch");
-
-  const zk = new ZKLib(device.ipAddress, device.port || 4370, 10000, 4000);
-  let totalRecords = 0;
-  let successfulRecords = 0;
-  let failedRecords = 0;
-  const errors: string[] = [];
+  const lockOwnerId = randomUUID();
+  const lockAcquired = await acquireBiometricDeviceLock(device.id, "ATTENDANCE", lockOwnerId);
+  if (!lockAcquired) {
+    throw new Error("Attendance pull skipped because the biometric device is currently locked");
+  }
 
   try {
-    await zk.createSocket();
+    const batch = await createBiometricDeviceSyncBatch(device.id, {
+      syncStatus: "STARTED",
+    });
+    if (!batch) throw new Error("Failed to create attendance sync batch");
 
-    const attendances = await zk.getAttendances();
-    const logs = ((attendances?.data ?? []) as ZktecoAttendanceLog[]);
-    totalRecords = logs.length;
+    const zk = new ZKLib(device.ipAddress, device.port || 4370, 10000, 4000);
+    let totalRecords = 0;
+    let successfulRecords = 0;
+    let failedRecords = 0;
+    const errors: string[] = [];
 
-    for (const log of logs) {
-      try {
-        const parsed = parseAttendanceLog(device, log);
+    try {
+      await zk.createSocket();
 
-        if (!parsed) {
-          failedRecords += 1;
-          errors.push("Skipped a punch with missing biometric id or punch time");
-          continue;
-        }
+      const attendances = await zk.getAttendances();
+      const logs = (attendances?.data ?? []) as ZktecoAttendanceLog[];
+      totalRecords = logs.length;
 
-        const employee = await db.query.employees.findFirst({
-          where: or(
-            eq(employees.biometricId, parsed.biometricId),
-            eq(employees.employeeCode, parsed.biometricId),
-          ),
-          columns: { id: true },
-        });
+      for (const log of logs) {
+        try {
+          const parsed = parseAttendanceLog(device, log);
 
-        const alreadyImported = await db.query.attendancePunches.findFirst({
-          where: and(
-            eq(attendancePunches.deviceId, device.id),
-            eq(attendancePunches.externalUid, parsed.externalUid),
-          ),
-          columns: { id: true, employeeId: true },
-        });
-
-        if (alreadyImported) {
-          if (!alreadyImported.employeeId && employee) {
-            await db
-              .update(attendancePunches)
-              .set({ employeeId: employee.id } as any)
-              .where(and(
-                eq(attendancePunches.id, alreadyImported.id),
-                isNull(attendancePunches.employeeId),
-              ));
+          if (!parsed) {
+            failedRecords += 1;
+            errors.push("Skipped a punch with missing biometric id or punch time");
+            continue;
           }
 
-          continue;
+          const employee = await db.query.employees.findFirst({
+            where: or(eq(employees.biometricId, parsed.biometricId), eq(employees.employeeCode, parsed.biometricId)),
+            columns: { id: true },
+          });
+
+          const alreadyImported = await db.query.attendancePunches.findFirst({
+            where: and(eq(attendancePunches.deviceId, device.id), eq(attendancePunches.externalUid, parsed.externalUid)),
+            columns: { id: true, employeeId: true },
+          });
+
+          if (alreadyImported) {
+            if (!alreadyImported.employeeId && employee) {
+              await db
+                .update(attendancePunches)
+                .set({ employeeId: employee.id } as any)
+                .where(and(eq(attendancePunches.id, alreadyImported.id), isNull(attendancePunches.employeeId)));
+            }
+
+            continue;
+          }
+
+          await createAttendancePunch({
+            employeeId: employee?.id ?? null,
+            biometricId: parsed.biometricId,
+            deviceId: device.id,
+            syncBatchId: batch.id,
+            externalUid: parsed.externalUid,
+            punchTime: parsed.punchTime.toISOString(),
+            punchType: parsed.punchType,
+            verificationType: parsed.verificationType,
+            devicePunchId: parsed.devicePunchId,
+            source: "DEVICE",
+            isManual: false,
+            rawPayload: log,
+          });
+
+          successfulRecords += 1;
+        } catch (error) {
+          failedRecords += 1;
+          errors.push(error instanceof Error ? error.message : String(error));
         }
+      }
 
-        await createAttendancePunch({
-          employeeId: employee?.id ?? null,
-          biometricId: parsed.biometricId,
-          deviceId: device.id,
-          syncBatchId: batch.id,
-          externalUid: parsed.externalUid,
-          punchTime: parsed.punchTime.toISOString(),
-          punchType: parsed.punchType,
-          verificationType: parsed.verificationType,
-          devicePunchId: parsed.devicePunchId,
-          source: "DEVICE",
-          isManual: false,
-          rawPayload: log,
-        });
+      const syncStatus = getSyncStatus(totalRecords, failedRecords);
 
-        successfulRecords += 1;
-      } catch (error) {
-        failedRecords += 1;
-        errors.push(error instanceof Error ? error.message : String(error));
+      return completeBiometricDeviceSyncBatch(batch.id, {
+        syncStatus,
+        totalRecords,
+        successfulRecords,
+        failedRecords,
+        errorMessage: errors.length ? errors.slice(0, 5).join("; ") : null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      return completeBiometricDeviceSyncBatch(batch.id, {
+        syncStatus: "FAILED",
+        totalRecords,
+        successfulRecords,
+        failedRecords: totalRecords > 0 ? Math.max(failedRecords, totalRecords - successfulRecords) : 0,
+        errorMessage: message,
+      });
+    } finally {
+      try {
+        await zk.disconnect();
+      } catch {
+        // The sync result above is the useful operational signal.
       }
     }
-
-    const syncStatus = getSyncStatus(totalRecords, failedRecords);
-
-    return completeBiometricDeviceSyncBatch(batch.id, {
-      syncStatus,
-      totalRecords,
-      successfulRecords,
-      failedRecords,
-      errorMessage: errors.length ? errors.slice(0, 5).join("; ") : null,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    return completeBiometricDeviceSyncBatch(batch.id, {
-      syncStatus: "FAILED",
-      totalRecords,
-      successfulRecords,
-      failedRecords: totalRecords > 0 ? Math.max(failedRecords, totalRecords - successfulRecords) : 0,
-      errorMessage: message,
-    });
   } finally {
-    try {
-      await zk.disconnect();
-    } catch {
-      // The sync result above is the useful operational signal.
-    }
+    await releaseBiometricDeviceLock(device.id, "ATTENDANCE", lockOwnerId);
   }
 }
 
@@ -165,11 +171,7 @@ function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLo
     throw new Error(`Invalid ZKTeco punch time: ${String(recordTime)}`);
   }
 
-  const externalUid = [
-    device.deviceCode,
-    biometricId,
-    punchTime.toISOString(),
-  ].join(":");
+  const externalUid = [device.deviceCode, biometricId, punchTime.toISOString()].join(":");
 
   return {
     biometricId,

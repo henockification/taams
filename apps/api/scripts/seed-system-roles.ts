@@ -187,6 +187,18 @@ const PERMISSIONS = [
     description: 'View biometric devices',
   },
   {
+    name: 'biometric-provisioning:read',
+    resource: 'biometric-provisioning',
+    action: 'read',
+    description: 'View biometric provisioning jobs and previews',
+  },
+  {
+    name: 'biometric-provisioning:execute',
+    resource: 'biometric-provisioning',
+    action: 'execute',
+    description: 'Preview, confirm, and retry biometric provisioning',
+  },
+  {
     name: 'biometric-exemptions:read',
     resource: 'biometric-exemptions',
     action: 'read',
@@ -445,6 +457,8 @@ const SYSTEM_ROLES = [
       'shifts:read',
       'schedule-assignments:read',
       'biometric-devices:read',
+      'biometric-provisioning:read',
+      'biometric-provisioning:execute',
       'biometric-exemptions:read',
       'attendance-punches:read',
       'hr-attendance-approvals:approve',

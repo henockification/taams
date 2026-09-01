@@ -372,6 +372,13 @@ export const biometricDevices = pgTable('biometric_devices', {
   serialNumber: varchar('serial_number', { length: 150 }),
   model: varchar('model', { length: 150 }),
   manufacturer: varchar('manufacturer', { length: 150 }),
+  firmwareVersion: varchar('firmware_version', { length: 150 }),
+  platformVersion: varchar('platform_version', { length: 150 }),
+  fingerprintAlgorithm: varchar('fingerprint_algorithm', { length: 150 }),
+  provisioningRole: varchar('provisioning_role', { length: 30 }).notNull().default('TARGET'),
+  provisioningEnabled: boolean('provisioning_enabled').notNull().default(false),
+  lastProvisioningAt: timestamp('last_provisioning_at', { withTimezone: false }),
+  lastProvisioningStatus: varchar('last_provisioning_status', { length: 30 }),
   isActive: boolean('is_active').notNull().default(true),
   lastSyncAt: timestamp('last_sync_at', { withTimezone: false }),
   lastSuccessfulSyncAt: timestamp('last_successful_sync_at', { withTimezone: false }),
@@ -391,6 +398,65 @@ export const biometricDevices = pgTable('biometric_devices', {
   connectionTypeCheck: check('chk_connection_type', sql`${table.connectionType} IN ('TCP_IP', 'USB', 'WIFI', 'API')`),
   integrationModeCheck: check('chk_device_integration_mode', sql`${table.integrationMode} IN ('PUSH_ADMS', 'TCP_PULL', 'HYBRID', 'MANUAL_ONLY', 'DISABLED')`),
   healthStatusCheck: check('chk_device_health_status', sql`${table.healthStatus} IN ('ONLINE', 'OFFLINE', 'UNKNOWN', 'ERROR')`),
+  provisioningRoleCheck: check('chk_biometric_device_provisioning_role', sql`${table.provisioningRole} IN ('ENROLLMENT_SOURCE', 'TARGET')`),
+  oneActiveEnrollmentSource: uniqueIndex('biometric_devices_one_active_enrollment_source')
+    .on(table.provisioningRole)
+    .where(sql`${table.provisioningRole} = 'ENROLLMENT_SOURCE' AND ${table.isActive} = true`),
+}));
+
+export const biometricProvisioningJobs = pgTable('biometric_provisioning_jobs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  previewJobId: uuid('preview_job_id').references((): AnyPgColumn => biometricProvisioningJobs.id, { onDelete: 'set null' }),
+  sourceDeviceId: uuid('source_device_id').notNull().references(() => biometricDevices.id),
+  mode: varchar('mode', { length: 30 }).notNull(),
+  status: varchar('status', { length: 30 }).notNull().default('QUEUED'),
+  isPreview: boolean('is_preview').notNull().default(true),
+  requestedEmployeeIds: jsonb('requested_employee_ids').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  requestedTargetDeviceIds: jsonb('requested_target_device_ids').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  summary: jsonb('summary').$type<Record<string, unknown>>(),
+  errorMessage: text('error_message'),
+  requestedBy: text('requested_by').notNull().references(() => user.id),
+  startedAt: timestamp('started_at', { withTimezone: false }),
+  completedAt: timestamp('completed_at', { withTimezone: false }),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  modeCheck: check('chk_biometric_provisioning_job_mode', sql`${table.mode} IN ('FULL_SYNC', 'EMPLOYEE_UPSERT', 'EMPLOYEE_REMOVE')`),
+  statusCheck: check('chk_biometric_provisioning_job_status', sql`${table.status} IN ('QUEUED', 'RUNNING', 'PREVIEW_READY', 'WAITING_CONFIRMATION', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELED')`),
+  statusCreatedIdx: index('idx_biometric_provisioning_jobs_status_created').on(table.status, table.createdAt),
+}));
+
+export const biometricProvisioningDeviceResults = pgTable('biometric_provisioning_device_results', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  jobId: uuid('job_id').notNull().references(() => biometricProvisioningJobs.id, { onDelete: 'cascade' }),
+  deviceId: uuid('device_id').notNull().references(() => biometricDevices.id),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  addedUsers: integer('added_users').notNull().default(0),
+  updatedUsers: integer('updated_users').notNull().default(0),
+  removedUsers: integer('removed_users').notNull().default(0),
+  missingTemplates: integer('missing_templates').notNull().default(0),
+  uidConflicts: integer('uid_conflicts').notNull().default(0),
+  differences: jsonb('differences').$type<Record<string, unknown>>(),
+  errorMessage: text('error_message'),
+  attempts: integer('attempts').notNull().default(0),
+  startedAt: timestamp('started_at', { withTimezone: false }),
+  completedAt: timestamp('completed_at', { withTimezone: false }),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  jobDeviceUnique: unique('biometric_provisioning_results_job_device_unique').on(table.jobId, table.deviceId),
+  statusCheck: check('chk_biometric_provisioning_result_status', sql`${table.status} IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED')`),
+}));
+
+export const biometricDeviceLocks = pgTable('biometric_device_locks', {
+  deviceId: uuid('device_id').primaryKey().references(() => biometricDevices.id, { onDelete: 'cascade' }),
+  ownerType: varchar('owner_type', { length: 30 }).notNull(),
+  ownerId: varchar('owner_id', { length: 100 }).notNull(),
+  acquiredAt: timestamp('acquired_at', { withTimezone: false }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: false }).notNull(),
+}, (table) => ({
+  ownerTypeCheck: check('chk_biometric_device_lock_owner_type', sql`${table.ownerType} IN ('ATTENDANCE', 'PROVISIONING')`),
+  expiresIdx: index('idx_biometric_device_locks_expires').on(table.expiresAt),
 }));
 
 export const attendanceSyncBatches = pgTable('attendance_sync_batches', {
@@ -1055,6 +1121,45 @@ export const biometricDevicesRelations = relations(biometricDevices, ({ one, man
   }),
   syncBatches: many(attendanceSyncBatches),
   punches: many(attendancePunches),
+  provisioningJobs: many(biometricProvisioningJobs),
+  provisioningResults: many(biometricProvisioningDeviceResults),
+  lock: one(biometricDeviceLocks),
+}));
+
+export const biometricProvisioningJobsRelations = relations(biometricProvisioningJobs, ({ one, many }) => ({
+  sourceDevice: one(biometricDevices, {
+    fields: [biometricProvisioningJobs.sourceDeviceId],
+    references: [biometricDevices.id],
+  }),
+  requester: one(user, {
+    fields: [biometricProvisioningJobs.requestedBy],
+    references: [user.id],
+  }),
+  previewJob: one(biometricProvisioningJobs, {
+    fields: [biometricProvisioningJobs.previewJobId],
+    references: [biometricProvisioningJobs.id],
+    relationName: 'biometricProvisioningPreview',
+  }),
+  appliedJobs: many(biometricProvisioningJobs, { relationName: 'biometricProvisioningPreview' }),
+  deviceResults: many(biometricProvisioningDeviceResults),
+}));
+
+export const biometricProvisioningDeviceResultsRelations = relations(biometricProvisioningDeviceResults, ({ one }) => ({
+  job: one(biometricProvisioningJobs, {
+    fields: [biometricProvisioningDeviceResults.jobId],
+    references: [biometricProvisioningJobs.id],
+  }),
+  device: one(biometricDevices, {
+    fields: [biometricProvisioningDeviceResults.deviceId],
+    references: [biometricDevices.id],
+  }),
+}));
+
+export const biometricDeviceLocksRelations = relations(biometricDeviceLocks, ({ one }) => ({
+  device: one(biometricDevices, {
+    fields: [biometricDeviceLocks.deviceId],
+    references: [biometricDevices.id],
+  }),
 }));
 
 export const attendanceSyncBatchesRelations = relations(attendanceSyncBatches, ({ one, many }) => ({
@@ -1317,6 +1422,9 @@ export const allTables = {
   holidays,
   biometricExemptions,
   biometricDevices,
+  biometricProvisioningJobs,
+  biometricProvisioningDeviceResults,
+  biometricDeviceLocks,
   attendanceSyncBatches,
   attendancePunches,
   attendanceDailyRecords,

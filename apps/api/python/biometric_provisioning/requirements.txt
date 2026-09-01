@@ -1,0 +1,2 @@
+psycopg[binary]==3.2.10
+git+https://github.com/fananimi/pyzk.git@f29709c17bb8f1bbb5382d2670b493207cb35ff1

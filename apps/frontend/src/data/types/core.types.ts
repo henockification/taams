@@ -305,6 +305,9 @@ export type BiometricDeviceType = 'BIOMETRIC' | 'RFID' | 'FACE_RECOGNITION' | 'M
 export type ConnectionType = 'TCP_IP' | 'USB' | 'WIFI' | 'API';
 export type DeviceIntegrationMode = 'PUSH_ADMS' | 'TCP_PULL' | 'HYBRID' | 'MANUAL_ONLY' | 'DISABLED';
 export type DeviceHealthStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'ERROR';
+export type BiometricProvisioningRole = 'ENROLLMENT_SOURCE' | 'TARGET';
+export type BiometricProvisioningMode = 'FULL_SYNC' | 'EMPLOYEE_UPSERT' | 'EMPLOYEE_REMOVE';
+export type BiometricProvisioningJobStatus = 'QUEUED' | 'RUNNING' | 'PREVIEW_READY' | 'WAITING_CONFIRMATION' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELED';
 export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
@@ -359,28 +362,16 @@ export type IfmisAttendancePreviewResponse = {
   batches: IfmisExportBatch[];
 };
 
-export type IfmisAttendancePushResponse = { success: boolean; batch: IfmisExportBatch };
-export type ManualPunchRequestStatus =
-  | 'PENDING'
-  | 'APPROVED'
-  | 'REJECTED'
-  | 'PENDING_HR_REVIEW'
-  | 'HR_REVIEWED'
-  | 'HR_REJECTED'
-  | 'SUPERVISOR_APPROVED'
-  | 'SUPERVISOR_REJECTED';
+export type IfmisAttendancePushResponse = {
+  success: boolean;
+  batch: IfmisExportBatch;
+};
+export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_HR_REVIEW' | 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED';
 export type OvertimeRequestStatus = 'ASSIGNED' | 'APPROVED' | 'REJECTED';
 export type OvertimeAttendanceCoverage = 'UPCOMING' | 'NONE' | 'PARTIAL' | 'COVERED';
 export type TimeOperationSeverity = 'critical' | 'warning' | 'info' | 'success';
 export type TimeOperationStatus = 'CLEAR' | 'WATCH' | 'ACTION_REQUIRED';
-export type TimeOperationType =
-  | 'MANUAL_PUNCH_APPROVAL'
-  | 'LEAVE_REQUEST_APPROVAL'
-  | 'UNPROCESSED_PUNCHES'
-  | 'DEVICE_HEALTH'
-  | 'SYNC_FAILURE'
-  | 'DEVICE_SETUP'
-  | 'ALL_CLEAR';
+export type TimeOperationType = 'MANUAL_PUNCH_APPROVAL' | 'LEAVE_REQUEST_APPROVAL' | 'UNPROCESSED_PUNCHES' | 'DEVICE_HEALTH' | 'SYNC_FAILURE' | 'DEVICE_SETUP' | 'ALL_CLEAR';
 
 export type BiometricDevice = {
   id: string;
@@ -400,9 +391,17 @@ export type BiometricDevice = {
   pullEnabled: boolean;
   pushSecret: string | null;
   communicationKey: string | null;
+  communicationKeyConfigured: boolean;
   serialNumber: string | null;
   model: string | null;
   manufacturer: string | null;
+  firmwareVersion: string | null;
+  platformVersion: string | null;
+  fingerprintAlgorithm: string | null;
+  provisioningRole: BiometricProvisioningRole;
+  provisioningEnabled: boolean;
+  lastProvisioningAt: string | null;
+  lastProvisioningStatus: string | null;
   isActive: boolean;
   lastSyncAt: string | null;
   lastSuccessfulSyncAt: string | null;
@@ -418,6 +417,44 @@ export type BiometricDevice = {
   createdAt: string;
   updatedAt: string;
   department?: Department | null;
+};
+
+export type BiometricProvisioningDeviceResult = {
+  id: string;
+  jobId: string;
+  deviceId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
+  addedUsers: number;
+  updatedUsers: number;
+  removedUsers: number;
+  missingTemplates: number;
+  uidConflicts: number;
+  differences: Record<string, unknown> | null;
+  errorMessage: string | null;
+  attempts: number;
+  startedAt: string | null;
+  completedAt: string | null;
+  device?: BiometricDevice | null;
+};
+
+export type BiometricProvisioningJob = {
+  id: string;
+  previewJobId: string | null;
+  sourceDeviceId: string;
+  mode: BiometricProvisioningMode;
+  status: BiometricProvisioningJobStatus;
+  isPreview: boolean;
+  requestedEmployeeIds: string[];
+  requestedTargetDeviceIds: string[];
+  summary: Record<string, unknown> | null;
+  errorMessage: string | null;
+  requestedBy: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sourceDevice?: BiometricDevice | null;
+  deviceResults?: BiometricProvisioningDeviceResult[];
 };
 
 export type BiometricDeviceConnectionTest = {
@@ -952,20 +989,44 @@ export type DepartmentHeadDashboardSummary = {
   };
 };
 
-export type DepartmentsResponse = { success: boolean; departments: Department[] };
+export type DepartmentsResponse = {
+  success: boolean;
+  departments: Department[];
+};
 export type DepartmentResponse = { success: boolean; department: Department };
 export type PositionsResponse = { success: boolean; positions: Position[] };
 export type PositionResponse = { success: boolean; position: Position };
 export type ShiftsResponse = { success: boolean; shifts: Shift[] };
 export type ShiftResponse = { success: boolean; shift: Shift };
-export type ShiftSegmentsResponse = { success: boolean; shiftSegments: ShiftSegment[] };
-export type ShiftSegmentResponse = { success: boolean; shiftSegment: ShiftSegment };
-export type ShiftBreaksResponse = { success: boolean; shiftBreaks: ShiftBreak[] };
+export type ShiftSegmentsResponse = {
+  success: boolean;
+  shiftSegments: ShiftSegment[];
+};
+export type ShiftSegmentResponse = {
+  success: boolean;
+  shiftSegment: ShiftSegment;
+};
+export type ShiftBreaksResponse = {
+  success: boolean;
+  shiftBreaks: ShiftBreak[];
+};
 export type ShiftBreakResponse = { success: boolean; shiftBreak: ShiftBreak };
-export type WorkSchedulesResponse = { success: boolean; workSchedules: WorkSchedule[] };
-export type WorkScheduleResponse = { success: boolean; workSchedule: WorkSchedule };
-export type WorkScheduleDaysResponse = { success: boolean; days: WorkScheduleDay[] };
-export type WorkScheduleDayResponse = { success: boolean; day: WorkScheduleDay };
+export type WorkSchedulesResponse = {
+  success: boolean;
+  workSchedules: WorkSchedule[];
+};
+export type WorkScheduleResponse = {
+  success: boolean;
+  workSchedule: WorkSchedule;
+};
+export type WorkScheduleDaysResponse = {
+  success: boolean;
+  days: WorkScheduleDay[];
+};
+export type WorkScheduleDayResponse = {
+  success: boolean;
+  day: WorkScheduleDay;
+};
 export type EmployeesResponse = { success: boolean; employees: Employee[] };
 export type EmployeesPaginatedResponse = {
   success: boolean;
@@ -992,24 +1053,81 @@ export type PermanentEmployeeImportResponse = {
   errors: PermanentEmployeeImportRowError[];
   employees: Employee[];
 };
-export type EmployeeSupervisorsResponse = { success: boolean; supervisors: EmployeeSupervisor[] };
-export type EmployeeSupervisorResponse = { success: boolean; supervisor: EmployeeSupervisor };
-export type SupervisorDelegationsResponse = { success: boolean; supervisorDelegations: SupervisorDelegation[] };
-export type SupervisorDelegationResponse = { success: boolean; supervisorDelegation: SupervisorDelegation };
-export type TemporaryDepartmentAssignmentsResponse = { success: boolean; temporaryDepartmentAssignments: TemporaryDepartmentAssignment[] };
-export type TemporaryDepartmentAssignmentResponse = { success: boolean; temporaryDepartmentAssignment: TemporaryDepartmentAssignment };
-export type EmployeeWorkSchedulesResponse = { success: boolean; employeeWorkSchedules: EmployeeWorkSchedule[] };
-export type EmployeeWorkScheduleResponse = { success: boolean; employeeWorkSchedule: EmployeeWorkSchedule };
-export type BiometricDevicesResponse = { success: boolean; biometricDevices: BiometricDevice[] };
-export type BiometricDeviceResponse = { success: boolean; biometricDevice: BiometricDevice };
-export type BiometricExemptionsResponse = { success: boolean; biometricExemptions: BiometricExemption[] };
-export type BiometricExemptionResponse = { success: boolean; biometricExemption: BiometricExemption };
+export type EmployeeSupervisorsResponse = {
+  success: boolean;
+  supervisors: EmployeeSupervisor[];
+};
+export type EmployeeSupervisorResponse = {
+  success: boolean;
+  supervisor: EmployeeSupervisor;
+};
+export type SupervisorDelegationsResponse = {
+  success: boolean;
+  supervisorDelegations: SupervisorDelegation[];
+};
+export type SupervisorDelegationResponse = {
+  success: boolean;
+  supervisorDelegation: SupervisorDelegation;
+};
+export type TemporaryDepartmentAssignmentsResponse = {
+  success: boolean;
+  temporaryDepartmentAssignments: TemporaryDepartmentAssignment[];
+};
+export type TemporaryDepartmentAssignmentResponse = {
+  success: boolean;
+  temporaryDepartmentAssignment: TemporaryDepartmentAssignment;
+};
+export type EmployeeWorkSchedulesResponse = {
+  success: boolean;
+  employeeWorkSchedules: EmployeeWorkSchedule[];
+};
+export type EmployeeWorkScheduleResponse = {
+  success: boolean;
+  employeeWorkSchedule: EmployeeWorkSchedule;
+};
+export type BiometricDevicesResponse = {
+  success: boolean;
+  biometricDevices: BiometricDevice[];
+};
+export type BiometricDeviceResponse = {
+  success: boolean;
+  biometricDevice: BiometricDevice;
+};
+export type BiometricProvisioningJobResponse = {
+  success: boolean;
+  biometricProvisioningJob: BiometricProvisioningJob;
+};
+export type BiometricProvisioningJobsResponse = {
+  success: boolean;
+  biometricProvisioningJobs: BiometricProvisioningJob[];
+};
+export type BiometricExemptionsResponse = {
+  success: boolean;
+  biometricExemptions: BiometricExemption[];
+};
+export type BiometricExemptionResponse = {
+  success: boolean;
+  biometricExemption: BiometricExemption;
+};
 export type HolidaysResponse = { success: boolean; holidays: Holiday[] };
 export type HolidayResponse = { success: boolean; holiday: Holiday };
-export type NotificationLogsResponse = { success: boolean; notificationLogs: NotificationLog[] };
-export type BiometricDeviceConnectionTestResponse = { success: boolean; connectionTest: BiometricDeviceConnectionTest; biometricDevice: BiometricDevice };
-export type AttendanceSyncBatchesResponse = { success: boolean; attendanceSyncBatches: AttendanceSyncBatch[] };
-export type AttendanceSyncBatchResponse = { success: boolean; attendanceSyncBatch: AttendanceSyncBatch };
+export type NotificationLogsResponse = {
+  success: boolean;
+  notificationLogs: NotificationLog[];
+};
+export type BiometricDeviceConnectionTestResponse = {
+  success: boolean;
+  connectionTest: BiometricDeviceConnectionTest;
+  biometricDevice: BiometricDevice;
+};
+export type AttendanceSyncBatchesResponse = {
+  success: boolean;
+  attendanceSyncBatches: AttendanceSyncBatch[];
+};
+export type AttendanceSyncBatchResponse = {
+  success: boolean;
+  attendanceSyncBatch: AttendanceSyncBatch;
+};
 export type AttendancePunchesResponse = {
   success: boolean;
   attendancePunches: AttendancePunch[];
@@ -1019,15 +1137,44 @@ export type AttendancePunchesResponse = {
     pageSize: number;
   };
 };
-export type AttendancePunchResponse = { success: boolean; attendancePunch: AttendancePunch };
-export type AttendanceDailyRecordsResponse = { success: boolean; attendanceDailyRecords: AttendanceDailyRecord[] };
-export type AttendanceDailyRecordResponse = { success: boolean; attendanceDailyRecord: AttendanceDailyRecord };
-export type GenerateAttendanceDailyRecordsResponse = { success: boolean; generated: number; attendanceDailyRecords: AttendanceDailyRecord[] };
-export type ManualPunchRequestsResponse = { success: boolean; manualPunchRequests: ManualPunchRequest[] };
-export type ManualPunchRequestResponse = { success: boolean; manualPunchRequest: ManualPunchRequest };
-export type ManualPunchRequestActionResponse = { success: boolean; manualPunchRequest: ManualPunchRequest; attendancePunch: AttendancePunch | null };
-export type OvertimeRequestsResponse = { success: boolean; overtimeRequests: OvertimeRequest[] };
-export type OvertimeRequestResponse = { success: boolean; overtimeRequest: OvertimeRequest };
+export type AttendancePunchResponse = {
+  success: boolean;
+  attendancePunch: AttendancePunch;
+};
+export type AttendanceDailyRecordsResponse = {
+  success: boolean;
+  attendanceDailyRecords: AttendanceDailyRecord[];
+};
+export type AttendanceDailyRecordResponse = {
+  success: boolean;
+  attendanceDailyRecord: AttendanceDailyRecord;
+};
+export type GenerateAttendanceDailyRecordsResponse = {
+  success: boolean;
+  generated: number;
+  attendanceDailyRecords: AttendanceDailyRecord[];
+};
+export type ManualPunchRequestsResponse = {
+  success: boolean;
+  manualPunchRequests: ManualPunchRequest[];
+};
+export type ManualPunchRequestResponse = {
+  success: boolean;
+  manualPunchRequest: ManualPunchRequest;
+};
+export type ManualPunchRequestActionResponse = {
+  success: boolean;
+  manualPunchRequest: ManualPunchRequest;
+  attendancePunch: AttendancePunch | null;
+};
+export type OvertimeRequestsResponse = {
+  success: boolean;
+  overtimeRequests: OvertimeRequest[];
+};
+export type OvertimeRequestResponse = {
+  success: boolean;
+  overtimeRequest: OvertimeRequest;
+};
 export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type AnnualLeaveRequestDateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'RESERVATION' | 'CONSUMPTION' | 'REVERSAL' | 'ADJUSTMENT';
@@ -1152,30 +1299,60 @@ export type LeaveRequest = {
   annualLeaveDates?: AnnualLeaveRequestDate[];
   interruptions?: LeaveInterruption[];
 };
-export type LeaveFiscalYearsResponse = { success: boolean; leaveFiscalYears: LeaveFiscalYear[] };
-export type LeaveFiscalYearResponse = { success: boolean; leaveFiscalYear: LeaveFiscalYear };
+export type LeaveFiscalYearsResponse = {
+  success: boolean;
+  leaveFiscalYears: LeaveFiscalYear[];
+};
+export type LeaveFiscalYearResponse = {
+  success: boolean;
+  leaveFiscalYear: LeaveFiscalYear;
+};
 export type LeaveTypesResponse = { success: boolean; leaveTypes: LeaveType[] };
 export type LeaveTypeResponse = { success: boolean; leaveType: LeaveType };
-export type LeaveBalancesResponse = { success: boolean; leaveBalances: LeaveBalance[] };
-export type LeaveBalanceResponse = { success: boolean; leaveBalance: LeaveBalance };
-export type LeaveBalanceTransferResponse = { success: boolean; fromBalance: LeaveBalance; toBalance: LeaveBalance; transactions: LeaveBalanceTransaction[] };
-export type LeaveRequestsResponse = { success: boolean; leaveRequests: LeaveRequest[] };
-export type LeaveRequestResponse = { success: boolean; leaveRequest: LeaveRequest };
-export type TimeOperationsSummaryResponse = { success: boolean; timeOperations: TimeOperationsSummary };
-export type DashboardSummaryResponse = { success: boolean; dashboard: DashboardSummary };
-export type ExecutiveDashboardSummaryResponse = { success: boolean; executiveDashboard: ExecutiveDashboardSummary };
-export type HrDashboardSummaryResponse = { success: boolean; hrDashboard: HrDashboardSummary };
-export type DepartmentHeadDashboardSummaryResponse = { success: boolean; departmentHeadDashboard: DepartmentHeadDashboardSummary };
+export type LeaveBalancesResponse = {
+  success: boolean;
+  leaveBalances: LeaveBalance[];
+};
+export type LeaveBalanceResponse = {
+  success: boolean;
+  leaveBalance: LeaveBalance;
+};
+export type LeaveBalanceTransferResponse = {
+  success: boolean;
+  fromBalance: LeaveBalance;
+  toBalance: LeaveBalance;
+  transactions: LeaveBalanceTransaction[];
+};
+export type LeaveRequestsResponse = {
+  success: boolean;
+  leaveRequests: LeaveRequest[];
+};
+export type LeaveRequestResponse = {
+  success: boolean;
+  leaveRequest: LeaveRequest;
+};
+export type TimeOperationsSummaryResponse = {
+  success: boolean;
+  timeOperations: TimeOperationsSummary;
+};
+export type DashboardSummaryResponse = {
+  success: boolean;
+  dashboard: DashboardSummary;
+};
+export type ExecutiveDashboardSummaryResponse = {
+  success: boolean;
+  executiveDashboard: ExecutiveDashboardSummary;
+};
+export type HrDashboardSummaryResponse = {
+  success: boolean;
+  hrDashboard: HrDashboardSummary;
+};
+export type DepartmentHeadDashboardSummaryResponse = {
+  success: boolean;
+  departmentHeadDashboard: DepartmentHeadDashboardSummary;
+};
 
-export type ReportKey =
-  | 'attendance-daily'
-  | 'attendance-punches'
-  | 'late-attendance'
-  | 'overtime'
-  | 'leave-balances'
-  | 'leave-requests'
-  | 'employees'
-  | 'device-sync';
+export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync';
 
 export type ReportColumn = {
   key: string;
@@ -1204,7 +1381,9 @@ export type CreateDepartmentInput = {
   isActive?: boolean;
 };
 
-export type UpdateDepartmentInput = Partial<CreateDepartmentInput> & { departmentId: string };
+export type UpdateDepartmentInput = Partial<CreateDepartmentInput> & {
+  departmentId: string;
+};
 
 export type CreatePositionInput = {
   nameEn: string;
@@ -1213,7 +1392,9 @@ export type CreatePositionInput = {
   isActive?: boolean;
 };
 
-export type UpdatePositionInput = Partial<CreatePositionInput> & { positionId: string };
+export type UpdatePositionInput = Partial<CreatePositionInput> & {
+  positionId: string;
+};
 
 export type CreateShiftInput = {
   nameEn: string;
@@ -1237,7 +1418,9 @@ export type CreateShiftSegmentInput = {
   isActive?: boolean;
 };
 
-export type UpdateShiftSegmentInput = Partial<CreateShiftSegmentInput> & { shiftSegmentId: string };
+export type UpdateShiftSegmentInput = Partial<CreateShiftSegmentInput> & {
+  shiftSegmentId: string;
+};
 
 export type CreateShiftBreakInput = {
   shiftId: string;
@@ -1249,7 +1432,9 @@ export type CreateShiftBreakInput = {
   isActive?: boolean;
 };
 
-export type UpdateShiftBreakInput = Partial<CreateShiftBreakInput> & { shiftBreakId: string };
+export type UpdateShiftBreakInput = Partial<CreateShiftBreakInput> & {
+  shiftBreakId: string;
+};
 
 export type CreateWorkScheduleInput = {
   nameEn: string;
@@ -1259,7 +1444,9 @@ export type CreateWorkScheduleInput = {
   isActive?: boolean;
 };
 
-export type UpdateWorkScheduleInput = Partial<CreateWorkScheduleInput> & { workScheduleId: string };
+export type UpdateWorkScheduleInput = Partial<CreateWorkScheduleInput> & {
+  workScheduleId: string;
+};
 
 export type CreateWorkScheduleDayInput = {
   workScheduleId: string;
@@ -1269,7 +1456,9 @@ export type CreateWorkScheduleDayInput = {
   isActive?: boolean;
 };
 
-export type UpdateWorkScheduleDayInput = Partial<CreateWorkScheduleDayInput> & { workScheduleDayId: string };
+export type UpdateWorkScheduleDayInput = Partial<CreateWorkScheduleDayInput> & {
+  workScheduleDayId: string;
+};
 
 export type CreateEmployeeInput = {
   userId?: string | null;
@@ -1305,7 +1494,9 @@ export type CreateEmployeeInput = {
   isActive?: boolean;
 };
 
-export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & { employeeId: string };
+export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
+  employeeId: string;
+};
 
 export type CreateEmployeeSupervisorInput = {
   employeeId: string;
@@ -1347,6 +1538,11 @@ export type CreateBiometricDeviceInput = {
   serialNumber?: string | null;
   model?: string | null;
   manufacturer?: string | null;
+  firmwareVersion?: string | null;
+  platformVersion?: string | null;
+  fingerprintAlgorithm?: string | null;
+  provisioningRole?: BiometricProvisioningRole;
+  provisioningEnabled?: boolean;
   syncIntervalMinutes?: number;
   autoSyncEnabled?: boolean;
   healthStatus?: DeviceHealthStatus;
@@ -1354,7 +1550,15 @@ export type CreateBiometricDeviceInput = {
   isActive?: boolean;
 };
 
-export type UpdateBiometricDeviceInput = Partial<CreateBiometricDeviceInput> & { biometricDeviceId: string };
+export type UpdateBiometricDeviceInput = Partial<CreateBiometricDeviceInput> & {
+  biometricDeviceId: string;
+};
+
+export type CreateBiometricProvisioningPreviewInput = {
+  mode: BiometricProvisioningMode;
+  employeeIds?: string[];
+  targetDeviceIds?: string[];
+};
 
 export type CreateBiometricDeviceSyncInput = {
   biometricDeviceId: string;
@@ -1439,7 +1643,9 @@ export type CreateLeaveFiscalYearInput = {
   isActive?: boolean;
 };
 
-export type UpdateLeaveFiscalYearInput = Partial<CreateLeaveFiscalYearInput> & { fiscalYearId: string };
+export type UpdateLeaveFiscalYearInput = Partial<CreateLeaveFiscalYearInput> & {
+  fiscalYearId: string;
+};
 
 export type CreateLeaveTypeInput = {
   code: string;
@@ -1452,7 +1658,9 @@ export type CreateLeaveTypeInput = {
   isActive?: boolean;
 };
 
-export type UpdateLeaveTypeInput = Partial<CreateLeaveTypeInput> & { leaveTypeId: string };
+export type UpdateLeaveTypeInput = Partial<CreateLeaveTypeInput> & {
+  leaveTypeId: string;
+};
 
 export type UpsertLeaveBalanceInput = {
   employeeId: string;

@@ -207,3 +207,26 @@ ENV DATABASE_URL=${DATABASE_URL}
 WORKDIR /app/apps/api
 
 CMD ["npm", "run", "worker:zkteco"]
+
+# =======================================================
+# Private G3 Pro Provisioning Worker
+# =======================================================
+FROM python:3.12-slim-bookworm AS biometric-provisioning-worker
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY apps/api/python/biometric_provisioning/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY apps/api/python/biometric_provisioning/device_adapter.py ./device_adapter.py
+COPY apps/api/python/biometric_provisioning/worker.py ./worker.py
+
+RUN useradd --create-home --uid 10001 provisioning
+USER provisioning
+
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "worker.py"]

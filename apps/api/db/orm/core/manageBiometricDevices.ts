@@ -1,6 +1,6 @@
 import { and, asc, count, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
-import { attendancePunches, attendanceSyncBatches, biometricDevices, departments, employees, user } from '../../schema';
+import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, user } from '../../schema';
 import type {
   CreateAttendancePunchInput,
   CreateBiometricDeviceInput,
@@ -61,6 +61,30 @@ export async function updateBiometricDevice(id: string, input: UpdateBiometricDe
     .where(eq(biometricDevices.id, id));
 
   return getBiometricDeviceById(id);
+}
+
+export async function acquireBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE' | 'PROVISIONING', ownerId: string, ttlMilliseconds = 120_000) {
+  await assertBiometricDeviceExists(deviceId);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ttlMilliseconds);
+
+  return db.transaction(async (tx) => {
+    await tx.delete(biometricDeviceLocks).where(and(eq(biometricDeviceLocks.deviceId, deviceId), lte(biometricDeviceLocks.expiresAt, now)));
+
+    const [lock] = await tx
+      .insert(biometricDeviceLocks)
+      .values({ deviceId, ownerType, ownerId, acquiredAt: now, expiresAt })
+      .onConflictDoNothing()
+      .returning({ deviceId: biometricDeviceLocks.deviceId });
+
+    return Boolean(lock);
+  });
+}
+
+export async function releaseBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE' | 'PROVISIONING', ownerId: string) {
+  await db
+    .delete(biometricDeviceLocks)
+    .where(and(eq(biometricDeviceLocks.deviceId, deviceId), eq(biometricDeviceLocks.ownerType, ownerType), eq(biometricDeviceLocks.ownerId, ownerId)));
 }
 
 export async function createBiometricDeviceSyncBatch(deviceId: string, input: CreateBiometricDeviceSyncInput = {}) {
@@ -132,10 +156,10 @@ export async function completeBiometricDeviceSyncBatch(
         lastSyncAt: completedAt,
         lastPullAt: completedAt,
         lastSeenAt: completedAt,
-        lastSuccessfulSyncAt: input.syncStatus === 'FAILED' ? batch.device?.lastSuccessfulSyncAt ?? null : completedAt,
-        lastFailedSyncAt: input.syncStatus === 'FAILED' ? completedAt : batch.device?.lastFailedSyncAt ?? null,
+        lastSuccessfulSyncAt: input.syncStatus === 'FAILED' ? (batch.device?.lastSuccessfulSyncAt ?? null) : completedAt,
+        lastFailedSyncAt: input.syncStatus === 'FAILED' ? completedAt : (batch.device?.lastFailedSyncAt ?? null),
         healthStatus: input.syncStatus === 'FAILED' ? 'ERROR' : 'ONLINE',
-        lastErrorMessage: input.syncStatus === 'FAILED' ? input.errorMessage ?? null : null,
+        lastErrorMessage: input.syncStatus === 'FAILED' ? (input.errorMessage ?? null) : null,
         updatedAt: completedAt,
       } as any)
       .where(eq(biometricDevices.id, batch.deviceId));
@@ -156,10 +180,7 @@ export async function getAttendanceSyncBatchesByDeviceId(deviceId: string) {
   });
 }
 
-export async function markBiometricDeviceConnectionTestResult(
-  id: string,
-  input: { success: boolean; message: string; testedAt: Date },
-) {
+export async function markBiometricDeviceConnectionTestResult(id: string, input: { success: boolean; message: string; testedAt: Date }) {
   await assertBiometricDeviceExists(id);
 
   await db
@@ -195,9 +216,7 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
   }
 
   const punchTime = new Date(input.punchTime);
-  const externalUid = input.externalUid ?? (
-    device ? generateAttendancePunchExternalUid(device.deviceCode, input.biometricId, punchTime) : null
-  );
+  const externalUid = input.externalUid ?? (device ? generateAttendancePunchExternalUid(device.deviceCode, input.biometricId, punchTime) : null);
 
   const [punch] = await tx
     .insert(attendancePunches)
@@ -285,7 +304,7 @@ export async function getAttendancePunchesPaginated({
     status === 'unprocessed' ? eq(attendancePunches.isProcessed, false) : undefined,
     ...buildPunchTimeConditions({ dateFrom, dateTo, timeFrom, timeTo }),
   ].filter(Boolean);
-  const whereClause = conditions.length ? and(...conditions as any) : undefined;
+  const whereClause = conditions.length ? and(...(conditions as any)) : undefined;
   const totalQuery = db.select({ value: count() }).from(attendancePunches);
 
   const punchQuery = db.query.attendancePunches.findMany({
@@ -313,10 +332,7 @@ export async function getAttendancePunchesPaginated({
     offset,
   });
 
-  const [totalResult, punches] = await Promise.all([
-    whereClause ? totalQuery.where(whereClause) : totalQuery,
-    punchQuery,
-  ]);
+  const [totalResult, punches] = await Promise.all([whereClause ? totalQuery.where(whereClause) : totalQuery, punchQuery]);
 
   const scopedPunches = filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
 
@@ -411,16 +427,15 @@ async function getAttendancePunchById(id: string, tx: DbClient = db) {
   return punch ? (await hydratePunchEmployeesByBiometricId([punch], tx))[0] : punch;
 }
 
-async function hydratePunchEmployeesByBiometricId<T extends { biometricId: string; employee?: unknown | null }>(
-  punches: T[],
-  tx: DbClient = db,
-) {
-  const biometricIds = [...new Set(
-    punches
-      .filter((punch) => !punch.employee)
-      .map((punch) => punch.biometricId)
-      .filter(Boolean),
-  )];
+async function hydratePunchEmployeesByBiometricId<T extends { biometricId: string; employee?: unknown | null }>(punches: T[], tx: DbClient = db) {
+  const biometricIds = [
+    ...new Set(
+      punches
+        .filter((punch) => !punch.employee)
+        .map((punch) => punch.biometricId)
+        .filter(Boolean),
+    ),
+  ];
 
   if (biometricIds.length === 0) {
     return punches;
@@ -569,6 +584,11 @@ function normalizeBiometricDeviceInput(input: Partial<CreateBiometricDeviceInput
     communicationKey: input.communicationKey,
     serialNumber: input.serialNumber,
     model: input.model,
+    firmwareVersion: input.firmwareVersion,
+    platformVersion: input.platformVersion,
+    fingerprintAlgorithm: input.fingerprintAlgorithm,
+    provisioningRole: input.provisioningRole,
+    provisioningEnabled: input.provisioningEnabled,
     manufacturer: input.manufacturer,
     syncIntervalMinutes: input.syncIntervalMinutes,
     autoSyncEnabled: input.autoSyncEnabled,
@@ -603,7 +623,5 @@ function generateAttendancePunchExternalUid(deviceCode: string, biometricId: str
 }
 
 function removeUndefined<T extends Record<string, unknown>>(input: T) {
-  return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => value !== undefined)
-  ) as Partial<T>;
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)) as Partial<T>;
 }

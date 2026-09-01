@@ -171,11 +171,13 @@ export function formatNotificationLog(log: any) {
     createdAt: formatTimestamp(log.createdAt),
     updatedAt: formatTimestamp(log.updatedAt),
     recipientEmployee: log.recipientEmployee ? formatEmployee(log.recipientEmployee) : null,
-    recipientUser: log.recipientUser ? {
-      id: log.recipientUser.id,
-      name: log.recipientUser.name,
-      email: log.recipientUser.email,
-    } : null,
+    recipientUser: log.recipientUser
+      ? {
+          id: log.recipientUser.id,
+          name: log.recipientUser.name,
+          email: log.recipientUser.email,
+        }
+      : null,
   };
 }
 
@@ -313,11 +315,19 @@ export function formatBiometricDevice(device: any) {
     preferredMode: device.preferredMode,
     pushEnabled: device.pushEnabled,
     pullEnabled: device.pullEnabled,
-    pushSecret: device.pushSecret ?? null,
-    communicationKey: device.communicationKey ?? null,
+    pushSecret: null,
+    communicationKey: null,
+    communicationKeyConfigured: Boolean(device.communicationKey),
     serialNumber: device.serialNumber ?? null,
     model: device.model ?? null,
     manufacturer: device.manufacturer ?? null,
+    firmwareVersion: device.firmwareVersion ?? null,
+    platformVersion: device.platformVersion ?? null,
+    fingerprintAlgorithm: device.fingerprintAlgorithm ?? null,
+    provisioningRole: device.provisioningRole ?? 'TARGET',
+    provisioningEnabled: device.provisioningEnabled ?? false,
+    lastProvisioningAt: formatTimestamp(device.lastProvisioningAt),
+    lastProvisioningStatus: device.lastProvisioningStatus ?? null,
     isActive: device.isActive,
     lastSyncAt: formatTimestamp(device.lastSyncAt),
     lastSuccessfulSyncAt: formatTimestamp(device.lastSuccessfulSyncAt),
@@ -333,6 +343,48 @@ export function formatBiometricDevice(device: any) {
     createdAt: formatTimestamp(device.createdAt),
     updatedAt: formatTimestamp(device.updatedAt),
     department: device.department ? formatDepartment(device.department) : null,
+  };
+}
+
+export function formatBiometricProvisioningDeviceResult(result: any) {
+  return {
+    id: result.id,
+    jobId: result.jobId,
+    deviceId: result.deviceId,
+    status: result.status,
+    addedUsers: result.addedUsers,
+    updatedUsers: result.updatedUsers,
+    removedUsers: result.removedUsers,
+    missingTemplates: result.missingTemplates,
+    uidConflicts: result.uidConflicts,
+    differences: result.differences ?? null,
+    errorMessage: result.errorMessage ?? null,
+    attempts: result.attempts,
+    startedAt: formatTimestamp(result.startedAt),
+    completedAt: formatTimestamp(result.completedAt),
+    device: result.device ? formatBiometricDevice(result.device) : null,
+  };
+}
+
+export function formatBiometricProvisioningJob(job: any) {
+  return {
+    id: job.id,
+    previewJobId: job.previewJobId ?? null,
+    sourceDeviceId: job.sourceDeviceId,
+    mode: job.mode,
+    status: job.status,
+    isPreview: job.isPreview,
+    requestedEmployeeIds: job.requestedEmployeeIds ?? [],
+    requestedTargetDeviceIds: job.requestedTargetDeviceIds ?? [],
+    summary: job.summary ?? null,
+    errorMessage: job.errorMessage ?? null,
+    requestedBy: job.requestedBy,
+    startedAt: formatTimestamp(job.startedAt),
+    completedAt: formatTimestamp(job.completedAt),
+    createdAt: formatTimestamp(job.createdAt),
+    updatedAt: formatTimestamp(job.updatedAt),
+    sourceDevice: job.sourceDevice ? formatBiometricDevice(job.sourceDevice) : null,
+    deviceResults: job.deviceResults?.map(formatBiometricProvisioningDeviceResult) ?? [],
   };
 }
 
@@ -415,14 +467,8 @@ export function formatAttendanceDailyRecord(record: any) {
     createdAt: formatTimestamp(record.createdAt),
     updatedAt: formatTimestamp(record.updatedAt),
     employee: record.employee ? formatEmployee(record.employee) : null,
-    temporaryDepartmentAssignment: record.temporaryDepartmentAssignment
-      ? formatTemporaryDepartmentAssignment(record.temporaryDepartmentAssignment)
-      : null,
-    effectiveDepartment: record.effectiveDepartment
-      ? formatDepartment(record.effectiveDepartment)
-      : record.employee?.department
-        ? formatDepartment(record.employee.department)
-        : null,
+    temporaryDepartmentAssignment: record.temporaryDepartmentAssignment ? formatTemporaryDepartmentAssignment(record.temporaryDepartmentAssignment) : null,
+    effectiveDepartment: record.effectiveDepartment ? formatDepartment(record.effectiveDepartment) : record.employee?.department ? formatDepartment(record.employee.department) : null,
     firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
     lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
     holiday: record.holiday ? formatHoliday(record.holiday) : null,
@@ -612,13 +658,18 @@ function calculateApprovedLeaveDays(request: any, annualLeaveDates: Array<{ appr
   if (request.status !== 'APPROVED') return '0.00';
   if (annualLeaveDates.length === 0) return String(request.requestedDays);
 
-  const total = annualLeaveDates
-    .filter((date) => date.source === 'ORIGINAL')
-    .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
+  const total = annualLeaveDates.filter((date) => date.source === 'ORIGINAL').reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
   return total.toFixed(2);
 }
 
-function sumUtilizationDays(annualLeaveDates: Array<{ approvedDayValue: string | null; status: string; utilizationStatus: string }>, utilizationStatus: string) {
+function sumUtilizationDays(
+  annualLeaveDates: Array<{
+    approvedDayValue: string | null;
+    status: string;
+    utilizationStatus: string;
+  }>,
+  utilizationStatus: string,
+) {
   return annualLeaveDates
     .filter((date) => date.status === 'APPROVED' && date.utilizationStatus === utilizationStatus)
     .reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0)
@@ -704,9 +755,7 @@ function formatDashboardSections(sections: any) {
       manager: {
         ...sections.manager,
         directReports: sections.manager.directReports.map((employee: any) => formatEmployee(employee)),
-        pendingManualPunchRequests: sections.manager.pendingManualPunchRequests.map((request: any) => (
-          formatManualPunchRequest(request)
-        )),
+        pendingManualPunchRequests: sections.manager.pendingManualPunchRequests.map((request: any) => formatManualPunchRequest(request)),
         recentTeamPunches: sections.manager.recentTeamPunches.map((punch: any) => formatAttendancePunch(punch)),
       },
     };
@@ -717,18 +766,12 @@ function formatDashboardSections(sections: any) {
       employee: {
         ...sections.employee,
         profile: formatEmployee(sections.employee.profile),
-        latestWorkSchedule: sections.employee.latestWorkSchedule
-          ? formatDashboardEmployeeWorkSchedule(sections.employee.latestWorkSchedule)
-          : null,
+        latestWorkSchedule: sections.employee.latestWorkSchedule ? formatDashboardEmployeeWorkSchedule(sections.employee.latestWorkSchedule) : null,
         recentPunches: sections.employee.recentPunches.map((punch: any) => formatAttendancePunch(punch)),
         todayPunches: (sections.employee.todayPunches ?? []).map((punch: any) => formatAttendancePunch(punch)),
-        manualPunchRequests: sections.employee.manualPunchRequests.map((request: any) => (
-          formatManualPunchRequest(request)
-        )),
+        manualPunchRequests: sections.employee.manualPunchRequests.map((request: any) => formatManualPunchRequest(request)),
         leaveRequests: (sections.employee.leaveRequests ?? []).map((request: any) => formatLeaveRequest(request)),
-        annualLeaveBalances: (sections.employee.annualLeaveBalances ?? []).map((balance: any) => (
-          formatLeaveBalance(balance)
-        )),
+        annualLeaveBalances: (sections.employee.annualLeaveBalances ?? []).map((balance: any) => formatLeaveBalance(balance)),
         todayAttendance: {
           date: sections.employee.todayAttendance.date,
           checkIn: sections.employee.todayAttendance.checkIn ? formatAttendancePunch(sections.employee.todayAttendance.checkIn) : null,
@@ -751,12 +794,12 @@ function formatDashboardEmployeeWorkSchedule(schedule: any) {
     ...formatted,
     workSchedule: schedule.workSchedule
       ? {
-        ...formatWorkSchedule(schedule.workSchedule),
-        days: (schedule.workSchedule.days ?? []).map((day: any) => ({
-          ...formatWorkScheduleDay(day),
-          shift: day.shift ? formatShift(day.shift) : null,
-        })),
-      }
+          ...formatWorkSchedule(schedule.workSchedule),
+          days: (schedule.workSchedule.days ?? []).map((day: any) => ({
+            ...formatWorkScheduleDay(day),
+            shift: day.shift ? formatShift(day.shift) : null,
+          })),
+        }
       : null,
   };
 }
