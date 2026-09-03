@@ -22,7 +22,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { getAccessibleNavGroups, getFirstAccessiblePath } from "@/config/app-navigation"
+import { getAccessibleNavGroups, getFirstAccessiblePath, type AppNavItem } from "@/config/app-navigation"
 import { useTimeOperationsSummary } from "@/data/hooks/core.hooks"
 import { Link, usePathname } from "@/i18n"
 import { cn } from "@/lib/utils"
@@ -49,8 +49,15 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     () => getActiveGroupKey(navGroups, pathname),
     [navGroups, pathname],
   )
+  const activeSectionKey = React.useMemo(
+    () => getActiveSectionKey(navGroups, pathname),
+    [navGroups, pathname],
+  )
   const [openGroupKeys, setOpenGroupKeys] = React.useState<Set<string>>(
     () => new Set(activeGroupKey ? [activeGroupKey] : []),
+  )
+  const [openSectionKeys, setOpenSectionKeys] = React.useState<Set<string>>(
+    () => new Set(activeSectionKey ? [activeSectionKey] : []),
   )
   const { data: timeOperationsResponse, isLoading, isError } = useTimeOperationsSummary()
   const timeOperations = timeOperationsResponse?.timeOperations
@@ -68,23 +75,32 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
     })
   }, [activeGroupKey])
 
+  React.useEffect(() => {
+    if (!activeSectionKey) return
+
+    setOpenSectionKeys((currentSectionKeys) => {
+      if (currentSectionKeys.has(activeSectionKey)) return currentSectionKeys
+      const nextSectionKeys = new Set(currentSectionKeys)
+      nextSectionKeys.add(activeSectionKey)
+      return nextSectionKeys
+    })
+  }, [activeSectionKey])
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:px-2">
         <Link
           href={homeHref as any}
-          className="flex items-center gap-3 rounded-md px-1.5 py-1 transition-colors hover:bg-sidebar-accent group-data-[collapsible=icon]:justify-center"
+          className="flex items-center gap-3 px-1 py-0.5 group-data-[collapsible=icon]:justify-center"
         >
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground ring-1 ring-sidebar-border">
-            <Image
-              src="/logo.png"
-              alt="Tams"
-              width={28}
-              height={28}
-              priority
-              className="size-7 object-contain"
-            />
-          </span>
+          <Image
+            src="/logo.png"
+            alt="Tams"
+            width={44}
+            height={44}
+            priority
+            className="size-11 shrink-0 object-contain group-data-[collapsible=icon]:size-9"
+          />
           <span className="grid leading-tight group-data-[collapsible=icon]:hidden">
             <span className="text-base font-semibold text-sidebar-foreground">Tams</span>
             <span className="text-xs text-sidebar-foreground/70">
@@ -129,27 +145,48 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
                   <CollapsibleContent>
                     <SidebarGroupContent className="group-data-[collapsible=icon]:hidden">
                       <div className="relative ml-4 mt-1 pl-4 before:absolute before:left-0 before:top-1 before:h-[calc(100%-0.5rem)] before:w-px before:bg-sidebar-foreground/20">
-                        <SidebarMenu className="gap-1">
-                          {group.items.map((item) => {
-                            const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
-
-                            return (
-                              <SidebarMenuItem key={item.url}>
-                                <SidebarMenuButton
-                                  asChild
-                                  isActive={isActive}
-                                  tooltip={t(item.titleKey)}
-                                  className="h-8 gap-2.5 rounded-md px-2.5 text-[12.5px] font-normal data-[active=true]:bg-primary data-[active=true]:font-medium data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&>svg]:size-4"
+                        {group.sections?.length ? (
+                          <div className="space-y-1">
+                            {group.sections.map((section) => {
+                              const sectionKey = `${group.labelKey}:${section.labelKey}`
+                              return (
+                                <Collapsible
+                                  key={sectionKey}
+                                  open={openSectionKeys.has(sectionKey)}
+                                  onOpenChange={(open) => setOpenSectionKeys((current) => {
+                                    const next = new Set(current)
+                                    if (open) next.add(sectionKey)
+                                    else next.delete(sectionKey)
+                                    return next
+                                  })}
+                                  className="group/submenu"
                                 >
-                                  <Link href={item.url}>
-                                    <item.icon />
-                                    <span>{t(item.titleKey)}</span>
-                                  </Link>
-                                </SidebarMenuButton>
-                              </SidebarMenuItem>
-                            )
-                          })}
-                        </SidebarMenu>
+                                  <CollapsibleTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-medium text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                    >
+                                      <section.icon className="size-3.5 shrink-0" />
+                                      <span className="min-w-0 flex-1 truncate">{t(section.labelKey)}</span>
+                                      <ChevronRight className="size-3.5 shrink-0 transition-transform group-data-[state=open]/submenu:rotate-90" />
+                                    </button>
+                                  </CollapsibleTrigger>
+                                  <CollapsibleContent>
+                                    <div className="relative ml-3 pl-3 before:absolute before:left-0 before:top-1 before:h-[calc(100%-0.5rem)] before:w-px before:bg-sidebar-foreground/15">
+                                      <SidebarMenu className="gap-1 py-1">
+                                        {section.items.map((item) => <SidebarNavItem key={item.url} item={item} />)}
+                                      </SidebarMenu>
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
+                              )
+                            })}
+                          </div>
+                        ) : (
+                          <SidebarMenu className="gap-1">
+                            {group.items.map((item) => <SidebarNavItem key={item.url} item={item} />)}
+                          </SidebarMenu>
+                        )}
                       </div>
                     </SidebarGroupContent>
                   </CollapsibleContent>
@@ -217,6 +254,28 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
   )
 }
 
+function SidebarNavItem({ item }: { item: AppNavItem }) {
+  const pathname = usePathname()
+  const t = useTranslations("navigation")
+  const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        asChild
+        isActive={isActive}
+        tooltip={t(item.titleKey)}
+        className="h-8 gap-2.5 rounded-md px-2.5 text-[12.5px] font-normal data-[active=true]:bg-primary data-[active=true]:font-medium data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&>svg]:size-4"
+      >
+        <Link href={item.url}>
+          <item.icon />
+          <span>{t(item.titleKey)}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
+
 function getTimeOperationTone(
   severity?: "critical" | "warning" | "info" | "success",
   isError = false,
@@ -257,4 +316,18 @@ function getActiveGroupKey(
   )
 
   return activeGroup?.labelKey ?? navGroups.find((group) => group.labelKey === "workspace")?.labelKey ?? navGroups[0]?.labelKey ?? null
+}
+
+function getActiveSectionKey(
+  navGroups: ReturnType<typeof getAccessibleNavGroups>,
+  pathname: string,
+) {
+  for (const group of navGroups) {
+    const section = group.sections?.find((candidate) =>
+      candidate.items.some((item) => pathname === item.url || pathname.startsWith(`${item.url}/`)),
+    )
+    if (section) return `${group.labelKey}:${section.labelKey}`
+  }
+
+  return null
 }

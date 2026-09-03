@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Fingerprint, Pencil, PlugZap, Plus, RefreshCw, Router } from 'lucide-react';
+import { ArrowRight, Fingerprint, Pencil, PlugZap, Plus, RefreshCw, Router } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,9 @@ import { useBiometricDeviceSyncHistory, useBiometricDevices, useCreateBiometricD
 import type { BiometricDevice, BiometricDeviceType, ConnectionType, DeviceHealthStatus, DeviceIntegrationMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { EmployeeSyncPanel } from '@/components/biometric/employee-sync-panel';
+import { getReadableSyncError } from '@/components/biometric/sync-history-error';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
+import { Link } from '@/i18n';
 
 const deviceTypes: BiometricDeviceType[] = ['BIOMETRIC', 'RFID', 'FACE_RECOGNITION', 'MOBILE', 'WEB'];
 const connectionTypes: ConnectionType[] = ['TCP_IP', 'USB', 'WIFI', 'API'];
@@ -171,6 +173,7 @@ export default function BiometricDevicesPage() {
   const [form, setForm] = useState(initialForm);
   const selectedDevice = devices.find((device) => device.id === selectedDeviceId) ?? devices[0];
   const syncHistory = useBiometricDeviceSyncHistory(selectedDevice?.id ?? '');
+  const recentSyncHistory = (syncHistory.data?.attendanceSyncBatches ?? []).slice(0, 10);
   const activeCount = useMemo(() => devices.filter((device) => device.isActive).length, [devices]);
   const visibleFields = modeFieldVisibility[form.integrationMode];
 
@@ -448,7 +451,7 @@ export default function BiometricDevicesPage() {
           ) : (syncHistory.data?.attendanceSyncBatches ?? []).length === 0 ? (
             <EmptyState icon={RefreshCw} title={t('noSyncHistory')} description={t('noSyncHistoryDescription')} />
           ) : (
-            syncHistory.data?.attendanceSyncBatches.map((batch) => (
+            recentSyncHistory.map((batch) => (
               <div key={batch.id} className="rounded-md border border-border p-3">
                 <div className="flex items-center justify-between gap-3">
                   <Badge variant={statusVariant(batch.syncStatus) as any}>{batch.syncStatus}</Badge>
@@ -459,10 +462,22 @@ export default function BiometricDevicesPage() {
                   <Info label={t('successfulRecords')} value={batch.successfulRecords} />
                   <Info label={t('failedRecords')} value={batch.failedRecords} />
                 </div>
-                {batch.errorMessage ? <p className="mt-2 text-xs text-destructive">{batch.errorMessage}</p> : null}
+                {batch.errorMessage ? (
+                  <p className="mt-2 text-xs text-destructive">
+                    {getReadableSyncError(batch.errorMessage, t('unknownDeviceError'))}
+                  </p>
+                ) : null}
               </div>
             ))
           )}
+          {selectedDevice && (syncHistory.data?.attendanceSyncBatches.length ?? 0) > 10 ? (
+            <Button asChild variant="outline" className="w-full">
+              <Link href={`/biometric-devices/${selectedDevice.id}/sync-history` as any}>
+                {t('viewAllSyncHistory')}
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+          ) : null}
         </CardContent>
       </Card>
 

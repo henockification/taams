@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { BellRing, Search } from 'lucide-react';
+import { BellRing } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,6 @@ export default function NotificationLogsPage() {
   const [channel, setChannel] = useState<ChannelFilter>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [eventType, setEventType] = useState('');
-  const [recipient, setRecipient] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -30,7 +29,6 @@ export default function NotificationLogsPage() {
     channel: channel === 'all' ? '' : channel,
     status: status === 'all' ? '' : status,
     eventType: eventType.trim(),
-    recipient: recipient.trim(),
     dateFrom,
     dateTo,
     limit: 200,
@@ -39,16 +37,7 @@ export default function NotificationLogsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-[1fr_160px_160px_160px_160px]">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder={t('notificationRecipientSearch')}
-            value={recipient}
-            onChange={(event) => setRecipient(event.target.value)}
-          />
-        </div>
+      <div className="grid gap-3 md:grid-cols-[1fr_160px_160px_160px]">
         <Input
           placeholder={t('notificationEventType')}
           value={eventType}
@@ -82,7 +71,7 @@ export default function NotificationLogsPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-md border">
+      <div className="overflow-x-auto rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -90,7 +79,6 @@ export default function NotificationLogsPage() {
               <TableHead>{t('notificationEventType')}</TableHead>
               <TableHead>{t('channel')}</TableHead>
               <TableHead>{t('status')}</TableHead>
-              <TableHead>{t('recipient')}</TableHead>
               <TableHead>{t('destination')}</TableHead>
               <TableHead>{t('attempts')}</TableHead>
               <TableHead>{t('message')}</TableHead>
@@ -99,11 +87,11 @@ export default function NotificationLogsPage() {
           <TableBody>
             {notificationLogsQuery.isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">{t('loading')}</TableCell>
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">{t('loading')}</TableCell>
               </TableRow>
             ) : logs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={7}>
                   <EmptyState icon={BellRing} title={t('noNotificationLogs')} description={t('noNotificationLogsDescription')} />
                 </TableCell>
               </TableRow>
@@ -113,7 +101,6 @@ export default function NotificationLogsPage() {
                 <TableCell className="max-w-56 truncate font-medium">{formatEventType(log.eventType)}</TableCell>
                 <TableCell><Badge variant="outline">{log.channel}</Badge></TableCell>
                 <TableCell><StatusBadge status={log.status} /></TableCell>
-                <TableCell className="max-w-44 truncate">{log.recipientName ?? log.recipientUser?.name ?? '-'}</TableCell>
                 <TableCell className="max-w-52 truncate text-xs text-muted-foreground">{log.destination ?? '-'}</TableCell>
                 <TableCell>{log.attempts}</TableCell>
                 <TableCell className="max-w-80">

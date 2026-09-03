@@ -123,7 +123,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
           successfulRecords += 1;
         } catch (error) {
           failedRecords += 1;
-          errors.push(error instanceof Error ? error.message : String(error));
+          errors.push(describeDeviceError(error));
         }
       }
 
@@ -137,7 +137,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
         errorMessage: errors.length ? errors.slice(0, 5).join("; ") : null,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = describeDeviceError(error);
 
       return completeBiometricDeviceSyncBatch(batch.id, {
         syncStatus: "FAILED",
@@ -156,6 +156,32 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
   } finally {
     await releaseBiometricDeviceLock(device.id, "ATTENDANCE", lockOwnerId);
   }
+}
+
+function describeDeviceError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message.trim();
+  if (typeof error === "string" && error.trim() && error.trim() !== "[object Object]") return error.trim();
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    for (const key of ["message", "error", "err", "reason", "details", "code"]) {
+      const value = record[key];
+      if (value === error) continue;
+      const description = describeDeviceError(value);
+      if (description !== "Unknown biometric device error") {
+        return key === "code" ? `Device error code: ${description}` : description;
+      }
+    }
+
+    const details = Object.entries(record)
+      .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
+      .slice(0, 4)
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(", ");
+    if (details) return details;
+  }
+
+  return "Unknown biometric device error";
 }
 
 function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLog) {

@@ -1,7 +1,6 @@
 import {
   Building2,
   ArrowRightLeft,
-  BellRing,
   CalendarClock,
   CalendarDays,
   Clock3,
@@ -38,7 +37,6 @@ export type AppNavItem = {
     | 'users'
     | 'roles'
     | 'permissions'
-    | 'notificationLogs'
     | 'organizationStructure'
     | 'positions'
     | 'employees'
@@ -97,6 +95,17 @@ export type AppNavGroup = {
   icon: LucideIcon;
   items: AppNavItem[];
   requiredRole?: 'supervisor' | 'hr';
+};
+
+export type AccessibleNavSection = {
+  labelKey: 'core' | 'leaveManagement' | 'workScheduleShift' | 'attendance';
+  icon: LucideIcon;
+  items: AppNavItem[];
+};
+
+export type AccessibleNavGroup = AppNavGroup & {
+  items: AppNavItem[];
+  sections?: AccessibleNavSection[];
 };
 
 export const appNavGroups: AppNavGroup[] = [
@@ -473,13 +482,6 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'permissions:read',
         icon: KeyRound,
       },
-      {
-        titleKey: 'notificationLogs',
-        url: '/notification-logs',
-        permissionResource: 'notification-logs',
-        requiredPermission: 'notification-logs:read',
-        icon: BellRing,
-      },
     ],
   },
 ] as const;
@@ -518,7 +520,6 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/department-head-dashboard' && hasSupervisorRole(user)) return true;
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
-  if (item.url === '/notification-logs' && hasHrRole(user)) return true;
   if (item.url === '/temporary-assignments') return hasTemporaryAssignmentAccess(user);
   if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (item.url === '/overtime-assignments')
@@ -664,7 +665,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/manual-punch-requests') return Boolean(user);
-  if (pathname === '/notification-logs' && hasHrRole(user)) return true;
+  if (pathname === '/notification-logs' || pathname.startsWith('/notification-logs/')) return Boolean(user);
   if (pathname === '/temporary-assignments' || pathname.startsWith('/temporary-assignments/')) return hasTemporaryAssignmentAccess(user);
   if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');
   if (pathname === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
@@ -673,8 +674,8 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   return navItem ? userCanAccessNavItem(user, navItem) : true;
 }
 
-export function getAccessibleNavGroups(user: AuthzUser) {
-  return appNavGroups
+export function getAccessibleNavGroups(user: AuthzUser): AccessibleNavGroup[] {
+  const accessibleGroups = appNavGroups
     .filter((group) => {
       if (group.requiredRole === 'supervisor') return hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user);
       if (group.requiredRole === 'hr') return hasTemporaryAssignmentAccess(user);
@@ -685,6 +686,60 @@ export function getAccessibleNavGroups(user: AuthzUser) {
       items: group.items.filter((item) => userCanAccessNavItem(user, item)),
     }))
     .filter((group) => group.items.length > 0);
+
+  const findGroup = (labelKey: AppNavGroup['labelKey']) => accessibleGroups.find((group) => group.labelKey === labelKey);
+  const coreItems = findGroup('core')?.items ?? [];
+  const temporaryAssignmentItems = findGroup('humanResources')?.items ?? [];
+  const leaveItems = findGroup('leaveManagement')?.items ?? [];
+  const scheduleItems = findGroup('workScheduleShift')?.items ?? [];
+  const biometricGroup = findGroup('biometric');
+  const attendanceTitles = new Set<AppNavItem['titleKey']>(['attendancePunches', 'hrAttendanceApproval']);
+  const attendanceItems = biometricGroup?.items.filter((item) => attendanceTitles.has(item.titleKey)) ?? [];
+  const biometricItems = biometricGroup?.items.filter((item) => !attendanceTitles.has(item.titleKey)) ?? [];
+
+  const hrSections: AccessibleNavSection[] = [
+    { labelKey: 'core', icon: Building2, items: [...coreItems, ...temporaryAssignmentItems] },
+    { labelKey: 'leaveManagement', icon: PlaneTakeoff, items: leaveItems },
+    { labelKey: 'workScheduleShift', icon: CalendarClock, items: scheduleItems },
+    { labelKey: 'attendance', icon: ScanLine, items: attendanceItems },
+  ].filter((section) => section.items.length > 0) as AccessibleNavSection[];
+
+  const humanResourcesGroup: AccessibleNavGroup | null = hrSections.length > 0 && (hasHrRole(user) || hasTemporaryAssignmentAccess(user))
+    ? {
+        labelKey: 'humanResources',
+        icon: Users,
+        requiredRole: 'hr',
+        items: hrSections.flatMap((section) => section.items),
+        sections: hrSections,
+      }
+    : null;
+
+  const excludedGroups = new Set<AppNavGroup['labelKey']>([
+    'workspace',
+    'employeeServices',
+    'core',
+    'leaveManagement',
+    'humanResources',
+    'workScheduleShift',
+    'biometric',
+  ]);
+  const remainingGroups = accessibleGroups.filter((group) => !excludedGroups.has(group.labelKey));
+  const orderedGroups: AccessibleNavGroup[] = [];
+  const workspace = findGroup('workspace');
+  const employeeServices = findGroup('employeeServices');
+
+  if (workspace) orderedGroups.push(workspace);
+  if (employeeServices) orderedGroups.push(employeeServices);
+  if (humanResourcesGroup) orderedGroups.push(humanResourcesGroup);
+  orderedGroups.push(...remainingGroups);
+  if (biometricGroup && biometricItems.length > 0) {
+    const financeIndex = orderedGroups.findIndex((group) => group.labelKey === 'finance');
+    const visibleBiometricGroup = { ...biometricGroup, items: biometricItems };
+    if (financeIndex >= 0) orderedGroups.splice(financeIndex, 0, visibleBiometricGroup);
+    else orderedGroups.push(visibleBiometricGroup);
+  }
+
+  return orderedGroups;
 }
 
 export function getFirstAccessiblePath(user: AuthzUser) {

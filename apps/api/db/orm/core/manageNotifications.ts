@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   employeeSupervisors,
@@ -22,6 +22,7 @@ export type NotificationLogFilters = {
   dateFrom?: string | null;
   dateTo?: string | null;
   limit?: number | null;
+  recipientUserId?: string | null;
 };
 
 export type NotificationRecipient = {
@@ -116,6 +117,15 @@ export async function markNotificationLogSkipped(id: string, errorMessage: strin
 export async function getNotificationLogs(filters: NotificationLogFilters = {}) {
   const limit = Math.min(Math.max(filters.limit ?? 100, 1), 500);
   const where = and(
+    filters.recipientUserId
+      ? or(
+          eq(notificationLogs.recipientUserId, filters.recipientUserId),
+          inArray(
+            notificationLogs.recipientEmployeeId,
+            db.select({ id: employees.id }).from(employees).where(eq(employees.userId, filters.recipientUserId)),
+          ),
+        )
+      : undefined,
     isNotificationChannel(filters.channel) ? eq(notificationLogs.channel, filters.channel) : undefined,
     isNotificationLogStatus(filters.status) ? eq(notificationLogs.status, filters.status) : undefined,
     filters.eventType ? eq(notificationLogs.eventType, filters.eventType) : undefined,

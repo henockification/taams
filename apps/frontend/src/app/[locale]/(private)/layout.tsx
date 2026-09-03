@@ -15,9 +15,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  BellRing,
   ChevronDown,
   LogOut,
-  Settings,
   User,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -158,15 +158,17 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return rbacT('rolesDescription');
       case 'permissions':
         return rbacT('permissionsDescription');
-      case 'notificationLogs':
-        return coreT('notificationLogsDescription');
       default:
-        return '';
+        return pathname === '/notification-logs' ? coreT('myNotificationsDescription') : '';
     }
   };
 
   const currentNavItem = getNavItemForPath(pathname);
-  const currentPage = currentNavItem ? t(currentNavItem.titleKey) : t('dashboard');
+  const currentPage = pathname === '/notification-logs'
+    ? t('notifications')
+    : currentNavItem
+      ? t(currentNavItem.titleKey)
+      : t('dashboard');
   const currentDescription = getPageDescription();
 
   return (
@@ -237,9 +239,11 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
                     <span>{t('profile')}</span>
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuItem disabled>
-                  <Settings className="mr-2 size-4" />
-                  <span>{t('settings')}</span>
+                <DropdownMenuItem asChild>
+                  <Link href="/notification-logs" className="cursor-pointer">
+                    <BellRing className="mr-2 size-4" />
+                    <span>{t('notifications')}</span>
+                  </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
