@@ -862,7 +862,7 @@ export type TemporaryDepartmentAssignmentResponse = {
   temporaryDepartmentAssignment: TemporaryDepartmentAssignment;
 };
 
-export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'AUTHORIZED' | 'REJECTED' | 'AUTHORIZATION_REJECTED';
 export type AnnualLeaveRequestDateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'RESERVATION' | 'CONSUMPTION' | 'REVERSAL' | 'ADJUSTMENT';
 
@@ -957,6 +957,11 @@ export type LeaveInterruption = {
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  authorizedBy: string | null;
+  authorizedAt: string | null;
+  authorizationRejectedBy: string | null;
+  authorizationRejectedAt: string | null;
+  authorizationRejectionReason: string | null;
   supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -982,6 +987,11 @@ export type LeaveRequest = {
   requestedBy: string;
   approvedBy: string | null;
   approvedAt: string | null;
+  authorizedBy: string | null;
+  authorizedAt: string | null;
+  authorizationRejectedBy: string | null;
+  authorizationRejectedAt: string | null;
+  authorizationRejectionReason: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -1069,12 +1079,18 @@ export type UpdateLeaveRequestInput = {
 };
 
 export type ChangeLeaveRequestStatusInput = {
-  status: Exclude<LeaveRequestStatus, 'PENDING'>;
+  status: 'APPROVED' | 'REJECTED';
   approvedBy?: string | null;
   approvedAt?: string | null;
   approvedDates?: Array<{ date: string; dayValue: string | number }>;
   rejectedBy?: string | null;
   rejectedAt?: string | null;
+  rejectionReason?: string | null;
+};
+
+export type AuthorizeLeaveInput = {
+  status: 'AUTHORIZED' | 'AUTHORIZATION_REJECTED';
+  actorUserId: string;
   rejectionReason?: string | null;
 };
 

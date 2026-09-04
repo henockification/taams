@@ -1,9 +1,10 @@
 'use client';
 
-import { FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Check, Plus, X } from 'lucide-react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Check, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { AnnualLeaveDateControls } from '@/components/leave/annual-leave-date-controls';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +27,6 @@ import {
 } from '@/components/ui/table';
 import { useEmployeeWorkSchedules, useWorkScheduleDays } from '@/data/hooks/core.hooks';
 import type { LeaveRequest } from '@/data/types/core.types';
-import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type AnnualLeaveApprovalEditorProps = {
@@ -126,34 +126,24 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
     <Card className="rounded-lg border-primary/30">
       <CardHeader>
         <CardTitle>{t('approveAnnualLeave')}</CardTitle>
-        <p className="text-sm text-muted-foreground">{t('approveAnnualLeavePatternGuide')}</p>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={openConfirmation}>
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-            <Field label={t('startDate')} id="approval-range-start">
-              <DualCalendarDateField id="approval-range-start" value={range.startDate} onChange={(startDate) => setRange((current) => ({ ...current, startDate }))} />
-            </Field>
-            <Field label={t('endDate')} id="approval-range-end">
-              <DualCalendarDateField id="approval-range-end" value={range.endDate} onChange={(endDate) => setRange((current) => ({ ...current, endDate }))} />
-            </Field>
-            <Button type="button" className="self-end" variant="outline" onClick={addApprovalRange} disabled={workScheduleDaysQuery.isLoading}>
-              <Plus className="size-4" />
-              {t('addWorkingDays')}
-            </Button>
-          </div>
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto]">
-            <Field label={t('specificDate')} id="approval-specific-date">
-              <DualCalendarDateField id="approval-specific-date" value={specificDate} onChange={setSpecificDate} />
-            </Field>
-            <Button type="button" className="self-end" variant="outline" onClick={() => addApprovalDate(specificDate)}>
-              <Plus className="size-4" />
-              {t('addDate')}
-            </Button>
-            <Button type="button" className="self-end" variant="outline" onClick={resetToRequested}>
-              {t('approveAsRequested')}
-            </Button>
-          </div>
+          <AnnualLeaveDateControls
+            idPrefix="approval"
+            range={range}
+            onRangeChange={setRange}
+            specificDate={specificDate}
+            onSpecificDateChange={setSpecificDate}
+            onAddWorkingDays={addApprovalRange}
+            onAddDate={() => addApprovalDate(specificDate)}
+            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading}
+            actions={(
+              <Button type="button" className="w-full lg:w-auto" variant="outline" onClick={resetToRequested}>
+                {t('approveAsRequested')}
+              </Button>
+            )}
+          />
           <div className="rounded-md border border-border">
             <div className="max-h-[420px] overflow-auto">
               <Table>
@@ -264,13 +254,4 @@ function workingDateRange(startDate: string, endDate: string, workingDays: Set<s
     current.setUTCDate(current.getUTCDate() + 1);
   }
   return dates;
-}
-
-function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>{label}</Label>
-      {children}
-    </div>
-  );
 }

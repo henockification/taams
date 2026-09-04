@@ -53,7 +53,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
     }),
     db.query.leaveRequests.findMany({
       where: and(
-        eq(leaveRequests.status, 'APPROVED'),
+        eq(leaveRequests.status, 'AUTHORIZED'),
         lte(leaveRequests.startDate, attendanceDate),
         gte(leaveRequests.endDate, attendanceDate),
       ),
@@ -196,6 +196,19 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     'RETURNED',
     'SUPERVISOR_APPROVED',
   ]);
+}
+
+export async function refreshAttendanceForAuthorizedLeave(request: any) {
+  const records = await db.query.attendanceDailyRecords.findMany({
+    where: and(
+      eq(attendanceDailyRecords.employeeId, request.employeeId),
+      gte(attendanceDailyRecords.attendanceDate, request.startDate),
+      lte(attendanceDailyRecords.attendanceDate, request.endDate),
+      ne(attendanceDailyRecords.status, 'HR_APPROVED'),
+    ),
+    columns: { attendanceDate: true },
+  });
+  for (const record of records) await generateAttendanceDailyRecords(record.attendanceDate);
 }
 
 export async function getHrAttendanceDailyRecords(date?: string | null, scope?: EmployeeVisibilityScope) {

@@ -309,12 +309,8 @@ export default function OrganizationStructurePage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button onClick={() => openCreateDepartment()}>
-          <Plus className="size-4" />
-          {t('addRootDepartment')}
-        </Button>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex w-fit rounded-md border border-border p-1">
           <Button
             type="button"
@@ -335,16 +331,16 @@ export default function OrganizationStructurePage() {
             {t('chartView')}
           </Button>
         </div>
+        <Button onClick={() => openCreateDepartment()} className="w-full lg:w-auto">
+          <Plus className="size-4" />
+          {t('addRootDepartment')}
+        </Button>
       </div>
 
       {organizationView === 'tree' ? (
         <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
           <Card className="rounded-lg">
-            <CardHeader>
-              <CardTitle>{t('departmentTree')}</CardTitle>
-              <CardDescription>{t('departmentTreeDescription')}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent className="space-y-2 pt-6">
               {departmentsLoading ? (
                 <p className="text-sm text-muted-foreground">{t('loadingOrganization')}</p>
               ) : departmentTree.length === 0 ? (
@@ -382,11 +378,7 @@ export default function OrganizationStructurePage() {
       ) : (
         <div className="space-y-6">
           <Card className="rounded-lg">
-            <CardHeader>
-              <CardTitle>{t('chartView')}</CardTitle>
-              <CardDescription>{t('departmentTreeDescription')}</CardDescription>
-            </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {departmentsLoading ? (
                 <p className="text-sm text-muted-foreground">{t('loadingOrganization')}</p>
               ) : departmentTree.length === 0 ? (

@@ -1,9 +1,11 @@
-export type LeaveRequestView = 'self' | 'approvals';
+export type LeaveRequestView = 'self' | 'approvals' | 'authorizations';
 
 type LeaveRequestVisibilityRow = {
   employeeId: string;
   requestedBy: string;
+  status?: string;
   employee?: { userId?: string | null } | null;
+  interruptions?: Array<{ status?: string }>;
 };
 
 type SupervisorAssignmentVisibilityRow = {
@@ -22,6 +24,14 @@ export function filterLeaveRequestsByView<T extends LeaveRequestVisibilityRow>(
   if (view === 'self') {
     return requests.filter((request) => (
       request.requestedBy === actorUserId && request.employee?.userId === actorUserId
+    ));
+  }
+
+  if (view === 'authorizations') {
+    const authorizationStatuses = new Set(['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED']);
+    return requests.filter((request) => (
+      authorizationStatuses.has(request.status ?? '')
+      || request.interruptions?.some((interruption) => authorizationStatuses.has(interruption.status ?? ''))
     ));
   }
 

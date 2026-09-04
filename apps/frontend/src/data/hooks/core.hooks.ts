@@ -4,6 +4,8 @@ import type {
   CreateAttendancePunchInput,
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
+  AuthorizeLeaveInterruptionInput,
+  AuthorizeLeaveRequestInput,
   ChangeManualPunchRequestStatusInput,
   ChangeBiometricExemptionStatusInput,
   ChangeOvertimeRequestStatusInput,
@@ -1522,6 +1524,11 @@ export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
         requestedBy: input.requestedBy ?? '',
         approvedBy: null,
         approvedAt: null,
+        authorizedBy: null,
+        authorizedAt: null,
+        authorizationRejectedBy: null,
+        authorizationRejectedAt: null,
+        authorizationRejectionReason: null,
         rejectedBy: null,
         rejectedAt: null,
         rejectionReason: null,
@@ -1658,6 +1665,30 @@ export function useChangeLeaveRequestStatus() {
       });
     },
   });
+}
+
+export function useAuthorizeLeaveRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AuthorizeLeaveRequestInput) => coreApi.authorizeLeaveRequest(input),
+    onSuccess: (data) => invalidateLeaveAuthorizationQueries(queryClient, data.leaveRequest),
+  });
+}
+
+export function useAuthorizeLeaveInterruption() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: AuthorizeLeaveInterruptionInput) => coreApi.authorizeLeaveInterruption(input),
+    onSuccess: (data) => invalidateLeaveAuthorizationQueries(queryClient, data.leaveRequest),
+  });
+}
+
+function invalidateLeaveAuthorizationQueries(queryClient: ReturnType<typeof useQueryClient>, leaveRequest: LeaveRequest) {
+  queryClient.setQueryData(coreQueryKeys.leaveRequest(leaveRequest.id), { success: true, leaveRequest });
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequestsRoot() });
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalancesRoot() });
+  queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+  queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'hr-dashboard', 'summary'] });
 }
 
 export function useCreateLeaveInterruption() {

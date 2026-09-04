@@ -109,6 +109,12 @@ const PERMISSIONS = [
     description: 'Approve or reject supervised leave requests',
   },
   {
+    name: 'leave-authorizations:approve',
+    resource: 'leave-authorizations',
+    action: 'approve',
+    description: 'Authorize or reject supervisor-approved leave requests',
+  },
+  {
     name: 'annual-leave-requests:read',
     resource: 'annual-leave-requests',
     action: 'read',
@@ -445,6 +451,7 @@ const SYSTEM_ROLES = [
       'leave-balances:read',
       'leave-transfer:read',
       'leave-request-approvals:approve',
+      'leave-authorizations:approve',
       'annual-leave-requests:read',
       'other-leave-requests:read',
       'overtime-requests:read',

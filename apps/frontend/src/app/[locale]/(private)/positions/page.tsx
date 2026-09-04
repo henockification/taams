@@ -6,12 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -101,18 +96,15 @@ export default function PositionsPage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
-      <div className="flex justify-start">
-        <Button onClick={openCreatePosition}>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full justify-end">
+        <Button onClick={openCreatePosition} className="w-full lg:w-auto">
           <Plus className="size-4" />
           {t('addPosition')}
         </Button>
       </div>
 
       <Card className="rounded-lg">
-        <CardHeader>
-          <CardTitle>{t('positions')}</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-3">
           {isLoading ? (
             <p className="text-sm text-muted-foreground">{t('loadingOrganization')}</p>

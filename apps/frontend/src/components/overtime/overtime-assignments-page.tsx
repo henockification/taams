@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
@@ -123,42 +123,34 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
   const coverageMismatch = evidence && evidence.coverage !== 'COVERED';
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {isSupervisor ? <DelegationBanner user={session.data?.user} /> : null}
 
-      {isSupervisor ? (
-        <div className="flex justify-end">
-          <Button onClick={() => setAssignOpen(true)}>
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 w-40" />
+          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 w-40" />
+          <Select value={status || allStatuses} onValueChange={(value) => setStatus(value === allStatuses ? '' : value)}>
+            <SelectTrigger className="h-9 w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={allStatuses}>{t('allStatuses')}</SelectItem>
+              {statuses.map((item) => (
+                <SelectItem key={item} value={item}>{t(overtimeStatusKey(item))}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {isSupervisor ? (
+          <Button onClick={() => setAssignOpen(true)} className="w-full lg:w-auto">
             <Plus className="size-4" />
             {delegatedActionLabel(t('assignOvertime'), session.data?.user)}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
 
       <Card className="rounded-lg">
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle>{isSupervisor ? t('overtimeAssignments') : t('overtimeRequests')}</CardTitle>
-            <CardDescription>
-              {isSupervisor ? t('overtimeAssignmentsDescription') : t('myOvertimeAssignmentsDescription')}
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 w-40" />
-            <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 w-40" />
-            <Select value={status || allStatuses} onValueChange={(value) => setStatus(value === allStatuses ? '' : value)}>
-              <SelectTrigger className="h-9 w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={allStatuses}>{t('allStatuses')}</SelectItem>
-                {statuses.map((item) => (
-                  <SelectItem key={item} value={item}>{t(overtimeStatusKey(item))}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
         <CardContent>
           {overtimeRequests.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>

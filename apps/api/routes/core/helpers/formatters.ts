@@ -619,12 +619,17 @@ export function formatLeaveRequest(request: any) {
     scheduledDays,
     interruptedDays,
     remainingDays,
-    isPartialApproval: request.status === 'APPROVED' && Number(approvedDays) < Number(requestedDays),
+    isPartialApproval: ['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED'].includes(request.status) && Number(approvedDays) < Number(requestedDays),
     reason: request.reason,
     status: request.status,
     requestedBy: request.requestedBy,
     approvedBy: request.approvedBy ?? null,
     approvedAt: formatTimestamp(request.approvedAt),
+    authorizedBy: request.authorizedBy ?? null,
+    authorizedAt: formatTimestamp(request.authorizedAt),
+    authorizationRejectedBy: request.authorizationRejectedBy ?? null,
+    authorizationRejectedAt: formatTimestamp(request.authorizationRejectedAt),
+    authorizationRejectionReason: request.authorizationRejectionReason ?? null,
     rejectedBy: request.rejectedBy ?? null,
     rejectedAt: formatTimestamp(request.rejectedAt),
     rejectionReason: request.rejectionReason ?? null,
@@ -655,7 +660,7 @@ function formatAnnualLeaveRequestDate(date: any) {
 }
 
 function calculateApprovedLeaveDays(request: any, annualLeaveDates: Array<{ approvedDayValue: string | null; source: string }>) {
-  if (request.status !== 'APPROVED') return '0.00';
+  if (!['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED'].includes(request.status)) return '0.00';
   if (annualLeaveDates.length === 0) return String(request.requestedDays);
 
   const total = annualLeaveDates.filter((date) => date.source === 'ORIGINAL').reduce((sum, date) => sum + Number(date.approvedDayValue ?? 0), 0);
@@ -690,6 +695,11 @@ function formatLeaveInterruption(interruption: any) {
     reviewedBy: interruption.reviewedBy ?? null,
     reviewedAt: formatTimestamp(interruption.reviewedAt),
     rejectionReason: interruption.rejectionReason ?? null,
+    authorizedBy: interruption.authorizedBy ?? null,
+    authorizedAt: formatTimestamp(interruption.authorizedAt),
+    authorizationRejectedBy: interruption.authorizationRejectedBy ?? null,
+    authorizationRejectedAt: formatTimestamp(interruption.authorizationRejectedAt),
+    authorizationRejectionReason: interruption.authorizationRejectionReason ?? null,
     supervisorDelegationId: interruption.supervisorDelegationId ?? null,
     createdAt: formatTimestamp(interruption.createdAt),
     updatedAt: formatTimestamp(interruption.updatedAt),

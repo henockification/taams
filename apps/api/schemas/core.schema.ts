@@ -946,7 +946,7 @@ export const UpdateAttendanceDailyRecordPayrollRequestSchema = z.object({
   payrollNote: z.string().nullable().optional(),
 });
 
-export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED']);
 export const LeaveBalanceTransactionTypeSchema = z.enum(['INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'RESERVATION', 'CONSUMPTION', 'REVERSAL', 'ADJUSTMENT']);
 
 export const LeaveFiscalYearSchema = z.object({
@@ -1024,6 +1024,11 @@ export const LeaveRequestSchema = z.object({
   requestedBy: z.string(),
   approvedBy: z.string().nullable(),
   approvedAt: z.string().nullable(),
+  authorizedBy: z.string().nullable(),
+  authorizedAt: z.string().nullable(),
+  authorizationRejectedBy: z.string().nullable(),
+  authorizationRejectedAt: z.string().nullable(),
+  authorizationRejectionReason: z.string().nullable(),
   rejectedBy: z.string().nullable(),
   rejectedAt: z.string().nullable(),
   rejectionReason: z.string().nullable(),
@@ -1064,6 +1069,11 @@ export const LeaveRequestSchema = z.object({
         reviewedBy: z.string().nullable(),
         reviewedAt: z.string().nullable(),
         rejectionReason: z.string().nullable(),
+        authorizedBy: z.string().nullable(),
+        authorizedAt: z.string().nullable(),
+        authorizationRejectedBy: z.string().nullable(),
+        authorizationRejectedAt: z.string().nullable(),
+        authorizationRejectionReason: z.string().nullable(),
         supervisorDelegationId: z.string().uuid().nullable(),
         createdAt: z.string(),
         updatedAt: z.string(),
@@ -1184,6 +1194,11 @@ export const ChangeLeaveRequestStatusRequestSchema = z.object({
   rejectedBy: z.string().min(1).optional(),
   rejectedAt: z.string().datetime().optional(),
   rejectionReason: z.string().nullable().optional(),
+});
+
+export const AuthorizeLeaveRequestSchema = z.object({
+  status: z.enum(['AUTHORIZED', 'AUTHORIZATION_REJECTED']),
+  rejectionReason: z.string().trim().min(1).nullable().optional(),
 });
 
 const LeaveDateSelectionSchema = z.object({

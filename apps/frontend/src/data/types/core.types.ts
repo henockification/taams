@@ -248,8 +248,8 @@ export type NotificationLogFilters = {
   limit?: number;
 };
 
-export type LeaveRequestView = 'self' | 'approvals';
-export type LeaveBalanceView = 'self' | 'approvals' | 'management';
+export type LeaveRequestView = 'self' | 'approvals' | 'authorizations';
+export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
 
 export type EmployeeSupervisor = {
   id: string;
@@ -1178,7 +1178,7 @@ export type OvertimeRequestResponse = {
   success: boolean;
   overtimeRequest: OvertimeRequest;
 };
-export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type LeaveRequestStatus = 'PENDING' | 'APPROVED' | 'AUTHORIZED' | 'REJECTED' | 'AUTHORIZATION_REJECTED';
 export type AnnualLeaveRequestDateStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type LeaveBalanceTransactionType = 'INITIAL' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'DEDUCTION' | 'RESERVATION' | 'CONSUMPTION' | 'REVERSAL' | 'ADJUSTMENT';
 export type LeaveFiscalYear = {
@@ -1266,6 +1266,11 @@ export type LeaveInterruption = {
   reviewedBy: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
+  authorizedBy: string | null;
+  authorizedAt: string | null;
+  authorizationRejectedBy: string | null;
+  authorizationRejectedAt: string | null;
+  authorizationRejectionReason: string | null;
   supervisorDelegationId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1290,6 +1295,11 @@ export type LeaveRequest = {
   requestedBy: string;
   approvedBy: string | null;
   approvedAt: string | null;
+  authorizedBy: string | null;
+  authorizedAt: string | null;
+  authorizationRejectedBy: string | null;
+  authorizationRejectedAt: string | null;
+  authorizationRejectionReason: string | null;
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason: string | null;
@@ -1712,12 +1722,22 @@ export type UpdateLeaveRequestInput = {
 
 export type ChangeLeaveRequestStatusInput = {
   leaveRequestId: string;
-  status: Exclude<LeaveRequestStatus, 'PENDING'>;
+  status: 'APPROVED' | 'REJECTED';
   approvedBy?: string | null;
   approvedAt?: string | null;
   approvedDates?: Array<{ date: string; dayValue: string | number }>;
   rejectedBy?: string | null;
   rejectedAt?: string | null;
+  rejectionReason?: string | null;
+};
+export type AuthorizeLeaveRequestInput = {
+  leaveRequestId: string;
+  status: 'AUTHORIZED' | 'AUTHORIZATION_REJECTED';
+  rejectionReason?: string | null;
+};
+export type AuthorizeLeaveInterruptionInput = {
+  leaveInterruptionId: string;
+  status: 'AUTHORIZED' | 'AUTHORIZATION_REJECTED';
   rejectionReason?: string | null;
 };
 export type CreateLeaveInterruptionInput = {

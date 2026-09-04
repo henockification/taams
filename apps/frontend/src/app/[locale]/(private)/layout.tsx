@@ -120,6 +120,10 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('initialBalancesDescription');
       case 'leaveTransfer':
         return coreT('leaveTransferDescription');
+      case 'leaveAuthorizations':
+        return coreT('leaveAuthorizationsDescription');
+      case 'temporaryAssignments':
+        return coreT('temporaryAssignmentsDescription');
       case 'leaveRequestApprovals':
         return coreT('leaveRequestApprovalsDescription');
       case 'supervisorDelegation':
@@ -152,6 +156,26 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('attendancePunchesDescription');
       case 'ifmisAttendance':
         return coreT('ifmisAttendanceDescription');
+      case 'attendanceApprovals':
+        return coreT('attendanceApprovalsDescription');
+      case 'hrAttendanceApproval':
+        return coreT('hrAttendanceApprovalDescription');
+      case 'attendanceDailyReport':
+        return coreT('attendanceDailyReportDescription');
+      case 'attendancePunchesReport':
+        return coreT('attendancePunchesReportDescription');
+      case 'lateAttendanceReport':
+        return coreT('lateAttendanceReportDescription');
+      case 'overtimeReport':
+        return coreT('overtimeReportDescription');
+      case 'leaveBalancesReport':
+        return coreT('leaveBalancesReportDescription');
+      case 'leaveRequestsReport':
+        return coreT('leaveRequestsReportDescription');
+      case 'employeeRosterReport':
+        return coreT('employeeRosterReportDescription');
+      case 'deviceSyncReport':
+        return coreT('deviceSyncReportDescription');
       case 'users':
         return rbacT('usersDescription');
       case 'roles':

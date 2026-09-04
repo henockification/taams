@@ -6,12 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -51,7 +46,7 @@ import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
-type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED';
+type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'AUTHORIZED' | 'REJECTED' | 'AUTHORIZATION_REJECTED';
 type DateFilter = 'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 
 function employeeName(employee?: LeaveRequest['employee'] | null) {
@@ -60,8 +55,8 @@ function employeeName(employee?: LeaveRequest['employee'] | null) {
 }
 
 function statusVariant(status: LeaveRequest['status']) {
-  if (status === 'APPROVED') return 'default';
-  if (status === 'REJECTED') return 'destructive';
+  if (status === 'AUTHORIZED') return 'default';
+  if (status === 'REJECTED' || status === 'AUTHORIZATION_REJECTED') return 'destructive';
   return 'secondary';
 }
 
@@ -175,6 +170,7 @@ export function LeaveRequestApprovalsPage() {
   const pendingCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'PENDING').length
     + baseFilteredRequests.reduce((count, request) => count + (request.interruptions?.filter((interruption) => interruption.status === 'PENDING').length ?? 0), 0), [baseFilteredRequests]);
   const approvedCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'APPROVED').length, [baseFilteredRequests]);
+  const authorizedCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'AUTHORIZED').length, [baseFilteredRequests]);
   const rejectedCount = useMemo(() => baseFilteredRequests.filter((request) => request.status === 'REJECTED').length, [baseFilteredRequests]);
   const hasActiveFilters = statusFilter !== 'PENDING'
     || leaveTypeFilter !== 'ALL'
@@ -232,115 +228,118 @@ export function LeaveRequestApprovalsPage() {
   const isLoading = session.isPending || leaveRequestsQuery.isLoading || leaveBalancesQuery.isLoading;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <DelegationBanner user={session.data?.user} />
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Summary label={t('pendingRequests')} value={pendingCount} />
-        <Summary label={t('approved')} value={approvedCount} />
+        <Summary label={t('awaitingHrAuthorization')} value={approvedCount} />
+        <Summary label={t('authorized')} value={authorizedCount} />
         <Summary label={t('rejected')} value={rejectedCount} />
       </div>
 
-      <Card className="rounded-lg">
-        <CardHeader className="space-y-4">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{t('leaveRequestApprovals')}</CardTitle>
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-employee-search">{t('employeeSearch')}</label>
+            <Input
+              id="leave-approval-employee-search"
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+              placeholder={t('searchEmployeePlaceholder')}
+              className="w-full md:w-64"
+            />
           </div>
-          <div className="grid gap-3 lg:grid-cols-[minmax(14rem,1.3fr)_minmax(12rem,1fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_minmax(11rem,0.8fr)_auto] lg:items-end">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-employee-search">{t('employeeSearch')}</label>
-              <Input
-                id="leave-approval-employee-search"
-                value={employeeSearch}
-                onChange={(event) => setEmployeeSearch(event.target.value)}
-                placeholder={t('searchEmployeePlaceholder')}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-type-filter">{t('leaveType')}</label>
-              <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
-                <SelectTrigger id="leave-approval-type-filter">
-                  <SelectValue placeholder={t('allLeaveTypes')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">{t('allLeaveTypes')}</SelectItem>
-                  {leaveTypeOptions.map((type) => (
-                    <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-filter">{t('requestDateRange')}</label>
-              <Select
-                value={dateFilter}
-                onValueChange={(value) => {
-                  const nextFilter = value as DateFilter;
-                  setDateFilter(nextFilter);
-                  if (nextFilter !== 'CUSTOM') setRequestDateFilters({ fromDate: '', toDate: '' });
-                }}
-              >
-                <SelectTrigger id="leave-approval-date-filter">
-                  <SelectValue placeholder={t('allDates')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">{t('allDates')}</SelectItem>
-                  <SelectItem value="TODAY">{t('today')}</SelectItem>
-                  <SelectItem value="THIS_WEEK">{t('thisWeek')}</SelectItem>
-                  <SelectItem value="THIS_MONTH">{t('thisMonth')}</SelectItem>
-                  <SelectItem value="THIS_YEAR">{t('thisYear')}</SelectItem>
-                  <SelectItem value="CUSTOM">{t('customRange')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-from">{t('requestDateFrom')}</label>
-              <Input
-                id="leave-approval-date-from"
-                type="date"
-                value={requestDateFilters.fromDate}
-                onChange={(event) => {
-                  setDateFilter('CUSTOM');
-                  setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }));
-                }}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-to">{t('requestDateTo')}</label>
-              <Input
-                id="leave-approval-date-to"
-                type="date"
-                value={requestDateFilters.toDate}
-                onChange={(event) => {
-                  setDateFilter('CUSTOM');
-                  setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }));
-                }}
-              />
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={clearFilters}
-              disabled={!hasActiveFilters}
-            >
-              <X className="size-4" />
-              {t('clearFilters')}
-            </Button>
-          </div>
-          <div className="max-w-xs">
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger>
-                <SelectValue placeholder={t('allStatuses')} />
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-type-filter">{t('leaveType')}</label>
+            <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
+              <SelectTrigger id="leave-approval-type-filter" className="w-full md:w-48">
+                <SelectValue placeholder={t('allLeaveTypes')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">{t('allStatuses')}</SelectItem>
-                <SelectItem value="PENDING">{t('pendingRequests')}</SelectItem>
-                <SelectItem value="APPROVED">{t('approved')}</SelectItem>
-                <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
+                <SelectItem value="ALL">{t('allLeaveTypes')}</SelectItem>
+                {leaveTypeOptions.map((type) => (
+                  <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
-        </CardHeader>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-filter">{t('requestDateRange')}</label>
+            <Select
+              value={dateFilter}
+              onValueChange={(value) => {
+                const nextFilter = value as DateFilter;
+                setDateFilter(nextFilter);
+                if (nextFilter !== 'CUSTOM') setRequestDateFilters({ fromDate: '', toDate: '' });
+              }}
+            >
+              <SelectTrigger id="leave-approval-date-filter" className="w-full md:w-44">
+                <SelectValue placeholder={t('allDates')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">{t('allDates')}</SelectItem>
+                <SelectItem value="TODAY">{t('today')}</SelectItem>
+                <SelectItem value="THIS_WEEK">{t('thisWeek')}</SelectItem>
+                <SelectItem value="THIS_MONTH">{t('thisMonth')}</SelectItem>
+                <SelectItem value="THIS_YEAR">{t('thisYear')}</SelectItem>
+                <SelectItem value="CUSTOM">{t('customRange')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-from">{t('requestDateFrom')}</label>
+            <Input
+              id="leave-approval-date-from"
+              type="date"
+              value={requestDateFilters.fromDate}
+              onChange={(event) => {
+                setDateFilter('CUSTOM');
+                setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }));
+              }}
+              className="w-full md:w-40"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="leave-approval-date-to">{t('requestDateTo')}</label>
+            <Input
+              id="leave-approval-date-to"
+              type="date"
+              value={requestDateFilters.toDate}
+              onChange={(event) => {
+                setDateFilter('CUSTOM');
+                setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }));
+              }}
+              className="w-full md:w-40"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+            <SelectTrigger className="w-full md:w-44">
+              <SelectValue placeholder={t('allStatuses')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">{t('allStatuses')}</SelectItem>
+              <SelectItem value="PENDING">{t('pendingRequests')}</SelectItem>
+              <SelectItem value="APPROVED">{t('approved')}</SelectItem>
+              <SelectItem value="AUTHORIZED">{t('authorized')}</SelectItem>
+              <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
+              <SelectItem value="AUTHORIZATION_REJECTED">{t('rejectedByHr')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+          className="w-full lg:w-auto"
+        >
+          <X className="size-4" />
+          {t('clearFilters')}
+        </Button>
+      </div>
+
+      <Card className="rounded-lg">
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
@@ -384,7 +383,7 @@ export function LeaveRequestApprovalsPage() {
                         <TableCell>
                           <div>
                             <p>{request.requestedDays}</p>
-                            {request.status === 'APPROVED' ? (
+                            {['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED'].includes(request.status) ? (
                               <div className="text-xs text-muted-foreground">
                                 <p>{t('approvedDays')}: {request.approvedDays}{request.isPartialApproval ? ` · ${t('partialApproval')}` : ''}</p>
                                 {isAnnualRequest(request) ? <p>{t('consumedDays')}: {request.consumedDays} · {t('remainingDays')}: {request.remainingDays}</p> : null}
@@ -402,7 +401,7 @@ export function LeaveRequestApprovalsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge variant={statusVariant(request.status) as any}>{request.status}</Badge>
+                            <Badge variant={statusVariant(request.status) as any}>{leaveStatusLabel(request.status, t)}</Badge>
                             <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
                           </div>
                         </TableCell>
@@ -426,7 +425,7 @@ export function LeaveRequestApprovalsPage() {
                             </div>
                           ) : (
                             <span className="block text-right text-xs text-muted-foreground">
-                              {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
+                              {request.status === 'AUTHORIZED' ? formatDate(request.authorizedAt) : request.status === 'APPROVED' ? t('awaitingHrAuthorization') : request.status === 'AUTHORIZATION_REJECTED' ? formatDate(request.authorizationRejectedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
                             </span>
                           )}
                         </TableCell>
@@ -463,6 +462,14 @@ export function LeaveRequestApprovalsPage() {
       </Dialog>
     </div>
   );
+}
+
+function leaveStatusLabel(status: LeaveRequest['status'], t: (key: any) => string) {
+  if (status === 'APPROVED') return t('awaitingHrAuthorization');
+  if (status === 'AUTHORIZED') return t('authorized');
+  if (status === 'AUTHORIZATION_REJECTED') return t('rejectedByHr');
+  if (status === 'REJECTED') return t('rejected');
+  return t('pendingRequests');
 }
 
 function isAnnualRequest(request: LeaveRequest) {

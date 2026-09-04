@@ -61,13 +61,9 @@ export function IfmisAttendancePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal">{t('ifmisAttendanceTitle')}</h1>
-          <p className="text-sm text-muted-foreground">{t('ifmisAttendanceDescription')}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Select value={String(payMonth)} onValueChange={(value) => setPayMonth(Number(value))}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
             <SelectContent>{MONTHS.map((month) => <SelectItem key={month} value={String(month)}>{t(`month${month}`)}</SelectItem>)}</SelectContent>
@@ -80,11 +76,11 @@ export function IfmisAttendancePage() {
             value={payYear}
             onChange={(event) => setPayYear(Number(event.target.value))}
           />
-          <Button variant="outline" onClick={() => preview.refetch()} disabled={preview.isFetching}>
-            <RefreshCw className={preview.isFetching ? 'size-4 animate-spin' : 'size-4'} />
-            {t('refreshPreview')}
-          </Button>
         </div>
+        <Button variant="outline" onClick={() => preview.refetch()} disabled={preview.isFetching} className="w-full lg:w-auto">
+          <RefreshCw className={preview.isFetching ? 'size-4 animate-spin' : 'size-4'} />
+          {t('refreshPreview')}
+        </Button>
       </div>
 
       {preview.isError ? (

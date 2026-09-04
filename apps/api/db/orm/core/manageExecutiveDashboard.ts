@@ -1,4 +1,4 @@
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -58,7 +58,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     }),
     db.query.leaveRequests.findMany({
       where: and(
-        eq(leaveRequests.status, 'APPROVED'),
+        eq(leaveRequests.status, 'AUTHORIZED'),
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
       ),
@@ -101,7 +101,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
       where: and(gte(manualPunchRequests.createdAt, monthRange.start), lte(manualPunchRequests.createdAt, monthRange.end)),
     }),
     db.query.leaveRequests.findMany({
-      where: eq(leaveRequests.status, 'PENDING'),
+      where: inArray(leaveRequests.status, ['PENDING', 'APPROVED']),
     }),
     db.query.leaveRequests.findMany({
       where: and(gte(leaveRequests.createdAt, monthRange.start), lte(leaveRequests.createdAt, monthRange.end)),
@@ -462,11 +462,11 @@ function buildHrPerformance(input: {
   activeEmployeeCount: number;
 }) {
   const resolvedRequests = [...input.monthManualRequests, ...input.monthLeaveRequests]
-    .filter((request) => ['APPROVED', 'REJECTED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED'].includes(request.status));
+    .filter((request) => ['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED', 'REJECTED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED'].includes(request.status));
   const averageApprovalTimeHours = average(
     resolvedRequests
       .map((request) => {
-        const resolvedAt = request.approvedAt ?? request.rejectedAt;
+        const resolvedAt = request.authorizedAt ?? request.authorizationRejectedAt ?? request.approvedAt ?? request.rejectedAt;
         if (!resolvedAt || !request.createdAt) return null;
         return (new Date(resolvedAt).getTime() - new Date(request.createdAt).getTime()) / (1000 * 60 * 60);
       })

@@ -147,7 +147,7 @@ export default function UserDetailPage() {
 
   if (loading) {
     return (
-      <div className="container max-w-6xl py-8">
+      <div className="w-full py-8">
         <div className="flex items-center justify-center h-[400px]">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="h-8 w-8 animate-spin" />
@@ -160,7 +160,7 @@ export default function UserDetailPage() {
 
   if (error) {
     return (
-      <div className="container max-w-6xl py-8">
+      <div className="w-full py-8">
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
@@ -178,7 +178,7 @@ export default function UserDetailPage() {
 
   if (!user) {
     return (
-      <div className="container max-w-6xl py-8">
+      <div className="w-full py-8">
         <div className="flex items-center justify-center h-[400px]">
           <div className="flex flex-col items-center gap-4">
             <p className="text-lg">User not found</p>
@@ -193,7 +193,7 @@ export default function UserDetailPage() {
   }
 
   return (
-    <div className="container max-w-6xl py-8">
+    <div className="w-full py-8">
       <div className="space-y-8">
         <div className="flex items-center justify-start gap-2">
           <Button variant="outline" onClick={handleRefresh} disabled={loading}>

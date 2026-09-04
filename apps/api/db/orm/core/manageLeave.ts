@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   annualLeaveRequestDates,
@@ -17,6 +17,7 @@ import {
 } from '../../schema';
 import type {
   BulkUpsertLeaveBalancesInput,
+  AuthorizeLeaveInput,
   ChangeLeaveRequestStatusInput,
   CreateLeaveInterruptionInput,
   CreateLeaveFiscalYearInput,
@@ -36,7 +37,7 @@ import {
 } from './manageSupervisorDelegations';
 import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
 
-export type LeaveBalanceView = 'self' | 'approvals' | 'management';
+export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
@@ -208,7 +209,7 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
 
 export async function getLeaveBalances(
   fiscalYearId?: string,
-  context: { scope?: EmployeeVisibilityScope; userId?: string; view?: LeaveBalanceView } = {},
+  context: { scope?: EmployeeVisibilityScope; userId?: string; view?: LeaveBalanceView; canAuthorize?: boolean } = {},
 ) {
   const balances = await db.query.leaveBalances.findMany({
     where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
@@ -228,6 +229,10 @@ export async function getLeaveBalances(
   if (!userId) return [];
   if (view === 'management') {
     if (scope?.type !== 'unrestricted' && scope?.type !== 'hr') throw new Error('Leave balance management access is required');
+    return balances;
+  }
+  if (view === 'authorizations') {
+    if (!context.canAuthorize) throw new Error('Leave authorization permission is required');
     return balances;
   }
   if (view === 'approvals') {
@@ -395,7 +400,7 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 
 export async function getLeaveRequests(
   kind?: 'annual' | 'other',
-  context: { userId?: string; view?: LeaveRequestView } = {},
+  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean } = {},
 ) {
   await ensureKnownLeaveTypes();
   await reconcileAnnualLeaveConsumption();
@@ -440,7 +445,7 @@ export async function reconcileAnnualLeaveConsumption(cutoffDate = yesterday()) 
 
     for (const annualDate of scheduledDates) {
       const request = annualDate.leaveRequest;
-      if (!request || request.status !== 'APPROVED' || !request.fiscalYearId) continue;
+      if (!request || request.status !== 'AUTHORIZED' || !request.fiscalYearId) continue;
       const days = numeric(annualDate.approvedDayValue);
       if (days <= 0) continue;
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
@@ -695,13 +700,8 @@ export async function changeLeaveRequestStatus(
       assertWithinAllowedDays(leaveType, days);
       if (numeric(balance.available) < days) throw new Error('Insufficient annual leave balance');
 
-      const consumedImmediately = approvedSelections
-        .filter((selection) => selection.date < today())
-        .reduce((sum, selection) => sum + selection.dayValue, 0);
-      const reservedDays = days - consumedImmediately;
       const [updatedBalance] = await tx.update(leaveBalances).set({
-        used: sql`${leaveBalances.used} + ${consumedImmediately}`,
-        reserved: sql`${leaveBalances.reserved} + ${reservedDays}`,
+        reserved: sql`${leaveBalances.reserved} + ${days}`,
         available: sql`${leaveBalances.available} - ${days}`,
         updatedBy: approvedBy,
         updatedAt: new Date(),
@@ -711,12 +711,7 @@ export async function changeLeaveRequestStatus(
       )).returning();
       if (!updatedBalance) throw new Error('Insufficient annual leave balance');
 
-      if (reservedDays > 0) {
-        await createBalanceTransaction(tx, updatedBalance, 'RESERVATION', reservedDays, approvedBy, 'Annual leave approved and reserved', request.id);
-      }
-      if (consumedImmediately > 0) {
-        await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', consumedImmediately, approvedBy, 'Past annual leave approved as consumed', request.id);
-      }
+      await createBalanceTransaction(tx, updatedBalance, 'RESERVATION', days, approvedBy, 'Annual leave supervisor-approved and reserved pending HR authorization', request.id);
 
       const approvedByDate = new Map(approvedSelections.map((selection) => [selection.date, selection.dayValue]));
       const requestDates = request.annualLeaveDates ?? [];
@@ -731,7 +726,7 @@ export async function changeLeaveRequestStatus(
           await tx.update(annualLeaveRequestDates).set({
             status: approvedDayValue ? 'APPROVED' : 'REJECTED',
             approvedDayValue: fixed(approvedDayValue ?? 0),
-            utilizationStatus: approvedDayValue && dateValue < today() ? 'CONSUMED' : approvedDayValue ? 'SCHEDULED' : 'CANCELLED',
+            utilizationStatus: approvedDayValue ? 'SCHEDULED' : 'CANCELLED',
             updatedAt: new Date(),
           } as any).where(eq(annualLeaveRequestDates.id, requestDate.id));
         }
@@ -747,7 +742,7 @@ export async function changeLeaveRequestStatus(
           approvedDayValue: fixed(selection.dayValue),
           status: 'APPROVED',
           source: 'ORIGINAL',
-          utilizationStatus: selection.date < today() ? 'CONSUMED' : 'SCHEDULED',
+          utilizationStatus: 'SCHEDULED',
         })) as any);
       }
 
@@ -766,6 +761,11 @@ export async function changeLeaveRequestStatus(
       rejectedBy: null,
       rejectedAt: null,
       rejectionReason: null,
+      authorizedBy: null,
+      authorizedAt: null,
+      authorizationRejectedBy: null,
+      authorizationRejectedAt: null,
+      authorizationRejectionReason: null,
       supervisorDelegationId: actionContext.supervisorDelegationId,
       updatedAt: new Date(),
     } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
@@ -784,6 +784,163 @@ export async function changeLeaveRequestStatusScoped(
   return changeLeaveRequestStatus(id, input);
 }
 
+export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInput) {
+  return db.transaction(async (tx) => {
+    const request = await getLeaveRequestById(id, tx);
+    if (!request) throw new Error('Leave request not found');
+    if (request.status === input.status) return request;
+    if (request.status !== 'APPROVED') throw new Error('Only supervisor-approved leave requests can be authorized');
+    await assertUserExists(input.actorUserId, tx);
+
+    const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
+    const approvedDates: AnnualLeaveDateSelection[] = (request.annualLeaveDates ?? [])
+      .filter((date: any) => date.status === 'APPROVED' && numeric(date.approvedDayValue) > 0)
+      .map((date: any) => ({ date: formatDateValue(date.leaveDate), dayValue: numeric(date.approvedDayValue) }));
+    const affectedDates = isAnnualLeaveType(leaveType)
+      ? approvedDates.map((date) => date.date)
+      : calendarDateRange(request.startDate, request.endDate);
+
+    if (input.status === 'AUTHORIZATION_REJECTED') {
+      if (!input.rejectionReason?.trim()) throw new Error('Authorization rejection reason is required');
+      if (isAnnualLeaveType(leaveType)) {
+        if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
+        const days = sumDaySelections(approvedDates);
+        const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
+        if (!balance || numeric(balance.reserved) < days) throw new Error('Reserved annual leave balance is inconsistent');
+        const [updatedBalance] = await tx.update(leaveBalances).set({
+          reserved: sql`${leaveBalances.reserved} - ${days}`,
+          available: sql`${leaveBalances.available} + ${days}`,
+          updatedBy: input.actorUserId,
+          updatedAt: new Date(),
+        } as any).where(and(eq(leaveBalances.id, balance.id), gte(leaveBalances.reserved, fixed(days)))).returning();
+        if (!updatedBalance) throw new Error('Reserved annual leave balance is inconsistent');
+        await createBalanceTransaction(tx, updatedBalance, 'REVERSAL', days, input.actorUserId, 'Annual leave reservation released after HR rejection', request.id);
+        await tx.update(annualLeaveRequestDates).set({
+          utilizationStatus: 'CANCELLED',
+          updatedAt: new Date(),
+        } as any).where(and(
+          eq(annualLeaveRequestDates.leaveRequestId, request.id),
+          eq(annualLeaveRequestDates.status, 'APPROVED'),
+        ));
+      }
+
+      const [updated] = await tx.update(leaveRequests).set({
+        status: 'AUTHORIZATION_REJECTED',
+        authorizationRejectedBy: input.actorUserId,
+        authorizationRejectedAt: new Date(),
+        authorizationRejectionReason: input.rejectionReason.trim(),
+        updatedAt: new Date(),
+      } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'APPROVED'))).returning();
+      if (!updated) throw new Error('Leave request authorization is already processed');
+      return getLeaveRequestById(updated.id, tx);
+    }
+
+    await assertNoAuthorizedLeaveConflict(request.employeeId, affectedDates, request.id, tx);
+    await assertNoPayrollReadyAttendanceDates(request.employeeId, affectedDates, tx);
+    if (isAnnualLeaveType(leaveType)) {
+      if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
+      if (approvedDates.length === 0) throw new Error('Annual leave request has no approved dates');
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedDates.map((date) => date.date), tx);
+      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedDates.map((date) => date.date), tx, request.id);
+      const days = sumDaySelections(approvedDates);
+      const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
+      if (!balance || numeric(balance.reserved) < days) throw new Error('Reserved annual leave balance is inconsistent');
+      const [updatedBalance] = await tx.update(leaveBalances).set({
+        reserved: sql`${leaveBalances.reserved} - ${days}`,
+        used: sql`${leaveBalances.used} + ${days}`,
+        updatedBy: input.actorUserId,
+        updatedAt: new Date(),
+      } as any).where(and(eq(leaveBalances.id, balance.id), gte(leaveBalances.reserved, fixed(days)))).returning();
+      if (!updatedBalance) throw new Error('Reserved annual leave balance is inconsistent');
+      await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', days, input.actorUserId, 'Annual leave consumed on HR authorization', request.id);
+      await tx.update(annualLeaveRequestDates).set({
+        utilizationStatus: 'CONSUMED',
+        updatedAt: new Date(),
+      } as any).where(and(
+        eq(annualLeaveRequestDates.leaveRequestId, request.id),
+        eq(annualLeaveRequestDates.status, 'APPROVED'),
+      ));
+    }
+
+    const [updated] = await tx.update(leaveRequests).set({
+      status: 'AUTHORIZED',
+      authorizedBy: input.actorUserId,
+      authorizedAt: new Date(),
+      authorizationRejectedBy: null,
+      authorizationRejectedAt: null,
+      authorizationRejectionReason: null,
+      updatedAt: new Date(),
+    } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'APPROVED'))).returning();
+    if (!updated) throw new Error('Leave request authorization is already processed');
+    return getLeaveRequestById(updated.id, tx);
+  });
+}
+
+export async function authorizeLeaveInterruption(id: string, input: AuthorizeLeaveInput) {
+  return db.transaction(async (tx) => {
+    const interruption = await getLeaveInterruptionById(id, tx);
+    if (!interruption) throw new Error('Leave interruption not found');
+    if (interruption.status === input.status) return getLeaveRequestById(interruption.leaveRequestId, tx);
+    if (interruption.status !== 'APPROVED') throw new Error('Only supervisor-approved leave interruptions can be authorized');
+    await assertUserExists(input.actorUserId, tx);
+    const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
+    if (!request || request.status !== 'AUTHORIZED') throw new Error('The original leave request is not authorized');
+
+    if (input.status === 'AUTHORIZATION_REJECTED') {
+      if (!input.rejectionReason?.trim()) throw new Error('Authorization rejection reason is required');
+      const [updated] = await tx.update(leaveInterruptions).set({
+        status: 'AUTHORIZATION_REJECTED',
+        authorizationRejectedBy: input.actorUserId,
+        authorizationRejectedAt: new Date(),
+        authorizationRejectionReason: input.rejectionReason.trim(),
+        updatedAt: new Date(),
+      } as any).where(and(eq(leaveInterruptions.id, id), eq(leaveInterruptions.status, 'APPROVED'))).returning();
+      if (!updated) throw new Error('Leave interruption authorization is already processed');
+      return getLeaveRequestById(request.id, tx);
+    }
+
+    const interrupted = approvedInterruptionSelections(interruption, 'INTERRUPTED_APPROVED');
+    const continuation = approvedInterruptionSelections(interruption, 'CONTINUATION_APPROVED');
+    await validateInterruptionPattern(request, interrupted, continuation, tx);
+    await assertNoAuthorizedLeaveConflict(request.employeeId, continuation.map((item) => item.date), request.id, tx);
+    await assertNoPayrollReadyAttendanceDates(request.employeeId, [...interrupted, ...continuation].map((item) => item.date), tx);
+
+    const annualDatesByDate = new Map(
+      (request.annualLeaveDates ?? []).map((date: any) => [formatDateValue(date.leaveDate), date]),
+    );
+    for (const selection of interrupted) {
+      const date: any = annualDatesByDate.get(selection.date);
+      await tx.update(annualLeaveRequestDates).set({ utilizationStatus: 'INTERRUPTED', updatedAt: new Date() } as any)
+        .where(eq(annualLeaveRequestDates.id, date.id));
+    }
+    await tx.insert(annualLeaveRequestDates).values(continuation.map((selection) => ({
+      leaveRequestId: request.id,
+      employeeId: request.employeeId,
+      leaveDate: selection.date,
+      requestedDayValue: fixed(selection.dayValue),
+      approvedDayValue: fixed(selection.dayValue),
+      status: 'APPROVED',
+      source: 'CONTINUATION',
+      utilizationStatus: 'CONSUMED',
+    })) as any);
+
+    const allDates = [...(request.annualLeaveDates ?? []).map((date: any) => formatDateValue(date.leaveDate)), ...continuation.map((date) => date.date)].sort();
+    await tx.update(leaveRequests).set({ startDate: allDates[0], endDate: allDates[allDates.length - 1], updatedAt: new Date() } as any)
+      .where(eq(leaveRequests.id, request.id));
+    const [updated] = await tx.update(leaveInterruptions).set({
+      status: 'AUTHORIZED',
+      authorizedBy: input.actorUserId,
+      authorizedAt: new Date(),
+      authorizationRejectedBy: null,
+      authorizationRejectedAt: null,
+      authorizationRejectionReason: null,
+      updatedAt: new Date(),
+    } as any).where(and(eq(leaveInterruptions.id, id), eq(leaveInterruptions.status, 'APPROVED'))).returning();
+    if (!updated) throw new Error('Leave interruption authorization is already processed');
+    return getLeaveRequestById(request.id, tx);
+  });
+}
+
 export async function createLeaveInterruptionScoped(input: CreateLeaveInterruptionInput, actorUserId: string) {
   const request = await getLeaveRequestById(input.leaveRequestId);
   if (!request) throw new Error('Leave request not found');
@@ -795,8 +952,8 @@ export async function createLeaveInterruption(input: CreateLeaveInterruptionInpu
   return db.transaction(async (tx) => {
     const request = await getLeaveRequestById(input.leaveRequestId, tx);
     if (!request) throw new Error('Leave request not found');
-    if (request.status !== 'APPROVED' || !isAnnualLeaveType(request.leaveType)) {
-      throw new Error('Only approved annual leave can be interrupted');
+    if (request.status !== 'AUTHORIZED' || !isAnnualLeaveType(request.leaveType)) {
+      throw new Error('Only authorized annual leave can be interrupted');
     }
     if (!input.requestedBy) throw new Error('Requested by is required');
     await assertUserExists(input.requestedBy, tx);
@@ -891,55 +1048,6 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
 
     await insertInterruptionDates(tx, interruption.id, 'INTERRUPTED_APPROVED', interrupted);
     await insertInterruptionDates(tx, interruption.id, 'CONTINUATION_APPROVED', continuation);
-
-    const annualDatesByDate = new Map(
-      (request.annualLeaveDates ?? []).map((date: any) => [formatDateValue(date.leaveDate), date]),
-    );
-    let reversedConsumedDays = 0;
-    for (const selection of interrupted) {
-      const date: any = annualDatesByDate.get(selection.date);
-      if (date.utilizationStatus === 'CONSUMED') reversedConsumedDays += selection.dayValue;
-      await tx.update(annualLeaveRequestDates).set({
-        utilizationStatus: 'INTERRUPTED',
-        updatedAt: new Date(),
-      } as any).where(eq(annualLeaveRequestDates.id, date.id));
-    }
-
-    await tx.insert(annualLeaveRequestDates).values(continuation.map((selection) => ({
-      leaveRequestId: request.id,
-      employeeId: request.employeeId,
-      leaveDate: selection.date,
-      requestedDayValue: fixed(selection.dayValue),
-      approvedDayValue: fixed(selection.dayValue),
-      status: 'APPROVED',
-      source: 'CONTINUATION',
-      utilizationStatus: selection.date < today() ? 'CONSUMED' : 'SCHEDULED',
-    })) as any);
-
-    if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
-    const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
-    if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
-    if (reversedConsumedDays > 0) {
-      if (numeric(balance.used) < reversedConsumedDays) throw new Error('Consumed leave balance is inconsistent');
-      const [updatedBalance] = await tx.update(leaveBalances).set({
-        used: sql`${leaveBalances.used} - ${reversedConsumedDays}`,
-        reserved: sql`${leaveBalances.reserved} + ${reversedConsumedDays}`,
-        updatedBy: input.reviewedBy,
-        updatedAt: new Date(),
-      } as any).where(and(
-        eq(leaveBalances.id, balance.id),
-        gte(leaveBalances.used, fixed(reversedConsumedDays)),
-      )).returning();
-      if (!updatedBalance) throw new Error('Consumed leave balance is inconsistent');
-      await createBalanceTransaction(tx, updatedBalance, 'REVERSAL', reversedConsumedDays, input.reviewedBy, 'Consumed leave reversed due to approved recall', request.id);
-    }
-
-    const allDates = [...(request.annualLeaveDates ?? []).map((date: any) => formatDateValue(date.leaveDate)), ...continuation.map((date) => date.date)].sort();
-    await tx.update(leaveRequests).set({
-      startDate: allDates[0],
-      endDate: allDates[allDates.length - 1],
-      updatedAt: new Date(),
-    } as any).where(eq(leaveRequests.id, request.id));
     const [reviewedInterruption] = await tx.update(leaveInterruptions).set({
       status: 'APPROVED',
       actualWorkStartDate: [...interrupted].sort((a, b) => a.date.localeCompare(b.date))[0].date,
@@ -947,6 +1055,11 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
       reviewedBy: input.reviewedBy,
       reviewedAt: new Date(),
       rejectionReason: null,
+      authorizedBy: null,
+      authorizedAt: null,
+      authorizationRejectedBy: null,
+      authorizationRejectedAt: null,
+      authorizationRejectionReason: null,
       supervisorDelegationId: actionContext.supervisorDelegationId,
       updatedAt: new Date(),
     } as any).where(and(
@@ -960,12 +1073,76 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
 
 async function filterLeaveRequestsForViewer(
   requests: any[],
-  context: { userId?: string; view?: LeaveRequestView } = {},
+  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean } = {},
 ) {
   const { userId, view = 'self' } = context;
   if (!userId) return [];
+  if (view === 'authorizations' && !context.canAuthorize) throw new Error('Leave authorization permission is required');
   const visibleEmployeeIds = view === 'approvals' ? await getPrimaryLeaveApprovalEmployeeIds(userId) : [];
   return filterLeaveRequestsByView(requests, view, userId, visibleEmployeeIds);
+}
+
+function approvedInterruptionSelections(interruption: any, kind: string): AnnualLeaveDateSelection[] {
+  return interruption.dates
+    .filter((date: any) => date.kind === kind)
+    .map((date: any) => ({ date: formatDateValue(date.leaveDate), dayValue: numeric(date.dayValue) }));
+}
+
+async function assertNoPayrollReadyAttendanceDates(employeeId: string, dates: string[], tx: DbClient) {
+  if (dates.length === 0) return;
+  const record = await tx.query.attendanceDailyRecords.findFirst({
+    where: and(
+      eq(attendanceDailyRecords.employeeId, employeeId),
+      inArray(attendanceDailyRecords.attendanceDate, dates),
+      eq(attendanceDailyRecords.status, 'HR_APPROVED'),
+    ),
+    columns: { attendanceDate: true },
+  });
+  if (record) {
+    throw new Error(`Attendance for ${formatDateValue(record.attendanceDate)} is already payroll-ready; correct or reopen attendance before authorizing leave`);
+  }
+}
+
+async function assertNoAuthorizedLeaveConflict(
+  employeeId: string,
+  dates: string[],
+  ignoreLeaveRequestId: string,
+  tx: DbClient,
+) {
+  if (dates.length === 0) return;
+  const requestedDates = new Set(dates);
+  const sortedDates = [...requestedDates].sort();
+  const candidates = await tx.query.leaveRequests.findMany({
+    where: and(
+      eq(leaveRequests.employeeId, employeeId),
+      eq(leaveRequests.status, 'AUTHORIZED'),
+      ne(leaveRequests.id, ignoreLeaveRequestId),
+      lte(leaveRequests.startDate, sortedDates[sortedDates.length - 1]),
+      gte(leaveRequests.endDate, sortedDates[0]),
+    ),
+    with: { leaveType: true, annualLeaveDates: true },
+  });
+
+  for (const candidate of candidates) {
+    const effectiveDates = isAnnualLeaveType(candidate.leaveType)
+      ? candidate.annualLeaveDates
+        .filter((date: any) => date.status === 'APPROVED' && !['INTERRUPTED', 'CANCELLED'].includes(date.utilizationStatus))
+        .map((date: any) => formatDateValue(date.leaveDate))
+      : calendarDateRange(formatDateValue(candidate.startDate), formatDateValue(candidate.endDate));
+    const conflictDate = effectiveDates.find((date: string) => requestedDates.has(date));
+    if (conflictDate) throw new Error(`Leave date ${conflictDate} conflicts with another authorized leave request`);
+  }
+}
+
+function calendarDateRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  const cursor = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  while (cursor <= end) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
 }
 
 async function validateInterruptionPattern(

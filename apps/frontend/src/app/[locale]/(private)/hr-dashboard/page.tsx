@@ -41,6 +41,7 @@ import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof HrDashboardSummary["widgets"]
 type HrDashboardMessageKey =
+  | "pendingAuthorizations"
   | "pendingManualRequests"
   | "recentReturnedCorrections"
   | "employeesOnLeave"
@@ -54,7 +55,7 @@ type HrDashboardMessageKey =
   | "syncStatus"
 
 const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ className?: string }>; group: "openItems" | "people" | "systems"; labelKey: HrDashboardMessageKey }> = {
-  pendingApprovals: { icon: ClipboardCheck, tone: "bg-slate-900 text-white", group: "openItems", labelKey: "pendingManualRequests" },
+  pendingApprovals: { icon: ClipboardCheck, tone: "bg-slate-900 text-white", group: "openItems", labelKey: "pendingAuthorizations" },
   correctionsReturned: { icon: RotateCcw, tone: "bg-rose-600 text-white", group: "openItems", labelKey: "recentReturnedCorrections" },
   manualAttendanceRequests: { icon: ClipboardList, tone: "bg-amber-500 text-white", group: "openItems", labelKey: "pendingManualRequests" },
   employeesOnLeave: { icon: CalendarClock, tone: "bg-indigo-600 text-white", group: "people", labelKey: "employeesOnLeave" },
@@ -220,7 +221,7 @@ function OperationalQueue({ dashboard }: { dashboard: HrDashboardSummary }) {
     ...dashboard.details.pendingLeaveRequests.map((request) => ({
       id: `leave-${request.id}`,
       employee: request.employee ?? null,
-      type: t("pendingLeaveRequests"),
+      type: t("pendingAuthorizations"),
       date: request.createdAt,
       note: request.reason,
     })),

@@ -13,6 +13,12 @@ import {
 export type WorkflowNotificationEvent =
   | 'LEAVE_REQUEST_SUBMITTED'
   | 'LEAVE_REQUEST_APPROVED'
+  | 'LEAVE_REQUEST_SUPERVISOR_APPROVED'
+  | 'LEAVE_REQUEST_AUTHORIZED'
+  | 'LEAVE_REQUEST_AUTHORIZATION_REJECTED'
+  | 'LEAVE_INTERRUPTION_SUPERVISOR_APPROVED'
+  | 'LEAVE_INTERRUPTION_AUTHORIZED'
+  | 'LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED'
   | 'LEAVE_REQUEST_REJECTED'
   | 'OVERTIME_REQUEST_SUBMITTED'
   | 'OVERTIME_REQUEST_APPROVED'
@@ -290,6 +296,10 @@ class NotificationService {
         : getSupervisorNotificationRecipients(employeeId);
     }
 
+    if (eventType === 'LEAVE_REQUEST_SUPERVISOR_APPROVED' || eventType === 'LEAVE_INTERRUPTION_SUPERVISOR_APPROVED') {
+      return getHrNotificationRecipients();
+    }
+
     if (eventType === 'ATTENDANCE_HR_APPROVED' || eventType === 'ATTENDANCE_RETURNED') {
       return getSupervisorNotificationRecipients(employeeId);
     }
@@ -337,6 +347,30 @@ function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payloa
     LEAVE_REQUEST_APPROVED: {
       subject: 'Leave request approved',
       message: `Your leave request${datePart} has been approved.`,
+    },
+    LEAVE_REQUEST_SUPERVISOR_APPROVED: {
+      subject: 'Leave request awaiting HR authorization',
+      message: `A supervisor-approved leave request${datePart} is waiting for HR authorization.`,
+    },
+    LEAVE_REQUEST_AUTHORIZED: {
+      subject: 'Leave request authorized',
+      message: `Your leave request${datePart} has been authorized by HR.`,
+    },
+    LEAVE_REQUEST_AUTHORIZATION_REJECTED: {
+      subject: 'Leave authorization rejected',
+      message: `HR rejected authorization for your leave request${datePart}.${reasonPart}`,
+    },
+    LEAVE_INTERRUPTION_SUPERVISOR_APPROVED: {
+      subject: 'Leave interruption awaiting HR authorization',
+      message: `A supervisor-approved leave interruption${datePart} is waiting for HR authorization.`,
+    },
+    LEAVE_INTERRUPTION_AUTHORIZED: {
+      subject: 'Leave interruption authorized',
+      message: `Your leave interruption and continuation pattern${datePart} has been authorized by HR.`,
+    },
+    LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED: {
+      subject: 'Leave interruption authorization rejected',
+      message: `HR rejected authorization for your leave interruption${datePart}.${reasonPart}`,
     },
     LEAVE_REQUEST_REJECTED: {
       subject: 'Leave request rejected',

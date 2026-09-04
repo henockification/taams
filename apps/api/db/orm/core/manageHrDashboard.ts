@@ -42,6 +42,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     dayPunches,
     approvedLeavesToday,
     upcomingLeaveRequests,
+    pendingLeaveAuthorizations,
     activeExemptions,
     workScheduleAssignments,
     pendingManualRequests,
@@ -63,7 +64,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     }),
     db.query.leaveRequests.findMany({
       where: and(
-        eq(leaveRequests.status, 'APPROVED'),
+        eq(leaveRequests.status, 'AUTHORIZED'),
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
       ),
@@ -71,12 +72,18 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     }),
     db.query.leaveRequests.findMany({
       where: and(
-        eq(leaveRequests.status, 'APPROVED'),
+        eq(leaveRequests.status, 'AUTHORIZED'),
         gte(leaveRequests.startDate, selectedDate),
         lte(leaveRequests.startDate, upcomingLeaveEnd),
       ),
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.startDate)],
+      limit: 20,
+    }),
+    db.query.leaveRequests.findMany({
+      where: eq(leaveRequests.status, 'APPROVED'),
+      with: { employee: { with: { department: true, position: true } }, leaveType: true },
+      orderBy: (table, { asc }) => [asc(table.approvedAt), asc(table.createdAt)],
       limit: 20,
     }),
     db.query.biometricExemptions.findMany({
@@ -154,7 +161,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const scopedUpcomingLeaveRequests = upcomingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedWorkScheduleAssignments = workScheduleAssignments.filter((assignment) => isVisibleEmployee(assignment.employeeId));
   const scopedPendingManualRequests = pendingManualRequests.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedPendingLeaveRequests: any[] = [];
+  const scopedPendingLeaveRequests = pendingLeaveAuthorizations.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedReturnedCorrections = returnedCorrections.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedUnprocessedPunches = unprocessedPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
   const exemptEmployeeIds = new Set(
@@ -226,8 +233,8 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       pendingApprovals: createWidget(
         'pending-approvals',
         'Pending Approvals',
-        scopedPendingManualRequests.length + scopedPendingLeaveRequests.length,
-        '/leave-request-approvals',
+        scopedPendingLeaveRequests.length,
+        '/leave-management/authorizations',
       ),
       correctionsReturned: createWidget(
         'corrections-returned',
@@ -245,7 +252,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         'employees-on-leave',
         'Employees on Leave',
         scopedApprovedLeavesToday.length,
-        '/leave-request-approvals',
+        '/reports/leave-requests?status=AUTHORIZED',
       ),
       employeesWithoutPunch: createWidget(
         'employees-without-punch',
@@ -275,7 +282,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         'upcoming-leave',
         'Upcoming Leave',
         scopedUpcomingLeaveRequests.length,
-        '/leave-request-approvals',
+        '/reports/leave-requests?status=AUTHORIZED',
       ),
       employeesNearLeaveExpiry: createWidget(
         'employees-near-leave-expiry',

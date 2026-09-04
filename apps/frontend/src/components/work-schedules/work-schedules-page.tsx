@@ -545,7 +545,7 @@ export function WorkSchedulesPage({
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <Tabs defaultValue={initialSection} className="gap-4">
         {!hideTabs ? (
         <TabsList>
@@ -555,16 +555,16 @@ export function WorkSchedulesPage({
         </TabsList>
         ) : null}
 
-        <TabsContent value="shifts" className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <TabsContent value="shifts" className="space-y-4">
+          <div className="flex w-full justify-end">
+            <Button onClick={openCreateShift} className="w-full lg:w-auto">
+              <Plus className="size-4" />
+              {t('addShift')}
+            </Button>
+          </div>
+          <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
           <Card className="rounded-lg">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>{t('shifts')}</CardTitle>
-                <CardDescription>{t('shiftsDescription')}</CardDescription>
-              </div>
-              <Button size="sm" onClick={openCreateShift}><Plus className="size-4" />{t('addShift')}</Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 pt-6">
               {shiftsLoading ? (
                 <p className="text-sm text-muted-foreground">{common('loading')}</p>
               ) : shifts.length === 0 ? (
@@ -623,18 +623,19 @@ export function WorkSchedulesPage({
               </CardContent>
             </Card>
           </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="work-schedules" className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <TabsContent value="work-schedules" className="space-y-4">
+          <div className="flex w-full justify-end">
+            <Button onClick={openCreateWorkSchedule} className="w-full lg:w-auto">
+              <Plus className="size-4" />
+              {t('addWorkSchedule')}
+            </Button>
+          </div>
+          <div className="grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
           <Card className="rounded-lg">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>{t('workSchedules')}</CardTitle>
-                <CardDescription>{t('workSchedulesDescription')}</CardDescription>
-              </div>
-              <Button size="sm" onClick={openCreateWorkSchedule}><Plus className="size-4" />{t('addWorkSchedule')}</Button>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 pt-6">
               {workSchedulesLoading ? (
                 <p className="text-sm text-muted-foreground">{common('loading')}</p>
               ) : workSchedules.length === 0 ? (
@@ -692,6 +693,7 @@ export function WorkSchedulesPage({
               })}
             </CardContent>
           </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="assignments" className="space-y-4">

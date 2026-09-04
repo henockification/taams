@@ -7,13 +7,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Command,
   CommandEmpty,
@@ -113,113 +107,112 @@ export default function AttendancePunchesPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <div className="grid gap-2 sm:grid-cols-3">
         <Summary label={t('records')} value={totalRecords} />
         <Summary label={t('page')} value={page} />
         <Summary label={t('pageSize')} value={pageSize} />
       </div>
 
-      <Card className="rounded-lg">
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle>{t('punchReview')}</CardTitle>
-            <CardDescription>{t('punchReviewDescription')}</CardDescription>
-          </div>
-          <div className="flex flex-col gap-2 lg:flex-row">
-            <Tabs
-              value={status}
-              onValueChange={(value) => {
-                setStatus(value as 'all' | 'processed' | 'unprocessed');
+      <div className="flex w-full flex-col gap-3">
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <Tabs
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value as 'all' | 'processed' | 'unprocessed');
+              resetToFirstPage();
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="all"><Clock3 className="size-4" />{t('allPunches')}</TabsTrigger>
+              <TabsTrigger value="unprocessed"><ListFilter className="size-4" />{t('unprocessed')}</TabsTrigger>
+              <TabsTrigger value="processed"><ListFilter className="size-4" />{t('processed')}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <EmployeeCombobox
+            value={employeeId}
+            onValueChange={(value) => {
+              setEmployeeId(value);
+              resetToFirstPage();
+            }}
+            employees={employees}
+            placeholder={t('selectEmployee')}
+            searchPlaceholder={t('searchEmployee')}
+            allLabel={t('allEmployees')}
+            emptyMessage={t('noMatchingEmployees')}
+          />
+          <Select
+            value={deviceId || allDevicesValue}
+            onValueChange={(value) => {
+              setDeviceId(value === allDevicesValue ? '' : value);
+              resetToFirstPage();
+            }}
+          >
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue placeholder={t('selectDevice')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={allDevicesValue}>{t('allDevices')}</SelectItem>
+              {devices.map((device) => (
+                <SelectItem key={device.id} value={device.id}>
+                  {device.deviceName} · {device.deviceCode}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Field label={t('startDate')} id="attendance-punches-date-from">
+            <Input
+              id="attendance-punches-date-from"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => {
+                setDateFrom(event.target.value);
                 resetToFirstPage();
               }}
-            >
-              <TabsList>
-                <TabsTrigger value="all"><Clock3 className="size-4" />{t('allPunches')}</TabsTrigger>
-                <TabsTrigger value="unprocessed"><ListFilter className="size-4" />{t('unprocessed')}</TabsTrigger>
-                <TabsTrigger value="processed"><ListFilter className="size-4" />{t('processed')}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <EmployeeCombobox
-              value={employeeId}
-              onValueChange={(value) => {
-                setEmployeeId(value);
-                resetToFirstPage();
-              }}
-              employees={employees}
-              placeholder={t('selectEmployee')}
-              searchPlaceholder={t('searchEmployee')}
-              allLabel={t('allEmployees')}
-              emptyMessage={t('noMatchingEmployees')}
+              className="w-full md:w-40"
             />
-            <Select
-              value={deviceId || allDevicesValue}
-              onValueChange={(value) => {
-                setDeviceId(value === allDevicesValue ? '' : value);
+          </Field>
+          <Field label={t('endDate')} id="attendance-punches-date-to">
+            <Input
+              id="attendance-punches-date-to"
+              type="date"
+              value={dateTo}
+              onChange={(event) => {
+                setDateTo(event.target.value);
                 resetToFirstPage();
               }}
-            >
-              <SelectTrigger className="w-full sm:w-64">
-                <SelectValue placeholder={t('selectDevice')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={allDevicesValue}>{t('allDevices')}</SelectItem>
-                {devices.map((device) => (
-                  <SelectItem key={device.id} value={device.id}>
-                    {device.deviceName} · {device.deviceCode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
+              className="w-full md:w-40"
+            />
+          </Field>
+          <Field label={t('startTime')} id="attendance-punches-time-from">
+            <Input
+              id="attendance-punches-time-from"
+              type="time"
+              value={timeFrom}
+              onChange={(event) => {
+                setTimeFrom(event.target.value);
+                resetToFirstPage();
+              }}
+              className="w-full md:w-36"
+            />
+          </Field>
+          <Field label={t('endTime')} id="attendance-punches-time-to">
+            <Input
+              id="attendance-punches-time-to"
+              type="time"
+              value={timeTo}
+              onChange={(event) => {
+                setTimeTo(event.target.value);
+                resetToFirstPage();
+              }}
+              className="w-full md:w-36"
+            />
+          </Field>
+        </div>
+      </div>
+
+      <Card className="rounded-lg">
         <CardContent>
-          <div className="mb-4 grid gap-3 lg:grid-cols-4">
-            <Field label={t('startDate')} id="attendance-punches-date-from">
-              <Input
-                id="attendance-punches-date-from"
-                type="date"
-                value={dateFrom}
-                onChange={(event) => {
-                  setDateFrom(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </Field>
-            <Field label={t('endDate')} id="attendance-punches-date-to">
-              <Input
-                id="attendance-punches-date-to"
-                type="date"
-                value={dateTo}
-                onChange={(event) => {
-                  setDateTo(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </Field>
-            <Field label={t('startTime')} id="attendance-punches-time-from">
-              <Input
-                id="attendance-punches-time-from"
-                type="time"
-                value={timeFrom}
-                onChange={(event) => {
-                  setTimeFrom(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </Field>
-            <Field label={t('endTime')} id="attendance-punches-time-to">
-              <Input
-                id="attendance-punches-time-to"
-                type="time"
-                value={timeTo}
-                onChange={(event) => {
-                  setTimeTo(event.target.value);
-                  resetToFirstPage();
-                }}
-              />
-            </Field>
-          </div>
           {punchesQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : punches.length === 0 ? (

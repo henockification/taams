@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -143,30 +143,26 @@ export function FiscalYearsSection() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchFiscalYears')} className="w-full md:max-w-sm" />
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+            <SelectTrigger className="w-full md:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allStatuses')}</SelectItem>
+              <SelectItem value="active">{t('active')}</SelectItem>
+              <SelectItem value="inactive">{t('inactive')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => openFiscalYearDialog()} className="w-full lg:w-auto">
+          <Plus className="size-4" />
+          {t('addFiscalYear')}
+        </Button>
+      </div>
       <Card className="rounded-lg">
-        <CardHeader className="flex w-full flex-row items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{t('fiscalYears')}</CardTitle>
-            <CardDescription>{t('fiscalYearsDescription')}</CardDescription>
-          </div>
-          <Button className="ml-auto shrink-0" onClick={() => openFiscalYearDialog()}>
-            <Plus className="size-4" />
-            {t('addFiscalYear')}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchFiscalYears')} />
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allStatuses')}</SelectItem>
-                <SelectItem value="active">{t('active')}</SelectItem>
-                <SelectItem value="inactive">{t('inactive')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent>
           <div className="overflow-hidden rounded-md border border-border">
             <Table>
               <TableHeader>
@@ -313,36 +309,32 @@ export function LeaveTypesSection() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchLeaveTypes')} className="w-full md:max-w-sm" />
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+            <SelectTrigger className="w-full md:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allStatuses')}</SelectItem>
+              <SelectItem value="active">{t('active')}</SelectItem>
+              <SelectItem value="inactive">{t('inactive')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => openLeaveTypeDialog()} className="w-full lg:w-auto">
+          <Plus className="size-4" />
+          {t('addLeaveType')}
+        </Button>
+      </div>
       <Card className="rounded-lg">
-        <CardHeader className="flex w-full flex-row items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{t('leaveTypes')}</CardTitle>
-            <CardDescription>{t('leaveTypesDescription')}</CardDescription>
-          </div>
-          <Button className="ml-auto shrink-0" onClick={() => openLeaveTypeDialog()}>
-            <Plus className="size-4" />
-            {t('addLeaveType')}
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          <div className="grid gap-2 sm:grid-cols-[1fr_14rem]">
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchLeaveTypes')} />
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allStatuses')}</SelectItem>
-                <SelectItem value="active">{t('active')}</SelectItem>
-                <SelectItem value="inactive">{t('inactive')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent>
           <div className="overflow-hidden rounded-md border border-border">
             <Table>
               <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('code')}</TableHead>
-                    <TableHead>{t('name')}</TableHead>
+                <TableRow>
+                  <TableHead>{t('code')}</TableHead>
+                  <TableHead>{t('name')}</TableHead>
                     <TableHead>{t('allowedDays')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
@@ -506,41 +498,37 @@ export function LeaveBalancesSection() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Select value={selectedFiscalYearId || noneValue} onValueChange={(value) => setSelectedFiscalYearId(value === noneValue ? '' : value)}>
+            <SelectTrigger className="w-full md:w-64"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
+              {fiscalYears.map((fiscalYear) => (
+                <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:max-w-sm" />
+          <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
+            <SelectTrigger className="w-full md:w-48"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
+              <SelectItem value="PERMANENT">PERMANENT</SelectItem>
+              <SelectItem value="CONTRACT">CONTRACT</SelectItem>
+              <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
+              <SelectItem value="DAILY">DAILY</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={() => openBalanceDialog()} className="w-full lg:w-auto">
+          <Plus className="size-4" />
+          {t('addLeaveBalance')}
+        </Button>
+      </div>
       <Card className="rounded-lg">
-        <CardHeader className="flex w-full flex-row items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{t('initialBalances')}</CardTitle>
-            <CardDescription>{t('initialBalancesDescription')}</CardDescription>
-          </div>
-          <Button className="ml-auto shrink-0" onClick={() => openBalanceDialog()}>
-            <Plus className="size-4" />
-            {t('addLeaveBalance')}
-          </Button>
-        </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 lg:grid-cols-[16rem_1fr_14rem]">
-            <Select value={selectedFiscalYearId || noneValue} onValueChange={(value) => setSelectedFiscalYearId(value === noneValue ? '' : value)}>
-              <SelectTrigger><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-                {fiscalYears.map((fiscalYear) => (
-                  <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} />
-            <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
-                <SelectItem value="PERMANENT">PERMANENT</SelectItem>
-                <SelectItem value="CONTRACT">CONTRACT</SelectItem>
-                <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
-                <SelectItem value="DAILY">DAILY</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           {!selectedFiscalYearId ? (
             <EmptyState icon={CalendarPlus} title={t('selectFiscalYear')} description={t('initialBalancesDescription')} />
           ) : employeesQuery.isLoading ? (
@@ -731,31 +719,27 @@ export function CarryForwardSection() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Select value={sourceFiscalYearId || noneValue} onValueChange={(value) => setSourceFiscalYearId(value === noneValue ? '' : value)}>
+            <SelectTrigger className="w-full md:w-64"><SelectValue placeholder={t('fromFiscalYear')} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={noneValue}>{t('fromFiscalYear')}</SelectItem>
+              {fiscalYears.map((fiscalYear) => (
+                <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:max-w-sm" />
+        </div>
+        <Button onClick={() => openTransferDialog()} className="w-full lg:w-auto">
+          <ArrowRightLeft className="size-4" />
+          {t('transferBalance')}
+        </Button>
+      </div>
       <Card className="rounded-lg">
-        <CardHeader className="flex w-full flex-row items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <CardTitle>{t('leaveTransfer')}</CardTitle>
-            <CardDescription>{t('leaveTransferDescription')}</CardDescription>
-          </div>
-          <Button className="ml-auto shrink-0" onClick={() => openTransferDialog()}>
-            <ArrowRightLeft className="size-4" />
-            {t('transferBalance')}
-          </Button>
-        </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-[16rem_1fr]">
-            <Select value={sourceFiscalYearId || noneValue} onValueChange={(value) => setSourceFiscalYearId(value === noneValue ? '' : value)}>
-              <SelectTrigger><SelectValue placeholder={t('fromFiscalYear')} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={noneValue}>{t('fromFiscalYear')}</SelectItem>
-                {fiscalYears.map((fiscalYear) => (
-                  <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchEmployees')} />
-          </div>
           {!sourceFiscalYearId ? (
             <EmptyState icon={ArrowRightLeft} title={t('fromFiscalYear')} description={t('leaveTransferDescription')} />
           ) : filteredSourceBalances.length === 0 ? (

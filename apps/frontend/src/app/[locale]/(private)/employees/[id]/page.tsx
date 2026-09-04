@@ -118,7 +118,7 @@ export default function EmployeeDetailPage() {
 
   if (!employee) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+      <div className="flex w-full flex-col gap-4">
         <Button variant="outline" asChild className="w-fit">
           <Link href={backHref}>
             <ArrowLeft className="size-4" />
@@ -135,7 +135,7 @@ export default function EmployeeDetailPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <div className="flex flex-col justify-between gap-3 rounded-lg border border-border bg-card p-4 lg:flex-row lg:items-center">
         <Button variant="outline" asChild className="w-fit">
           <Link href={backHref}>

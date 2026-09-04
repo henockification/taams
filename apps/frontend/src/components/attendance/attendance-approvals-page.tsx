@@ -7,13 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -199,25 +193,66 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal">{isHrMode ? t('hrAttendanceApproval') : t('attendanceApprovals')}</h1>
-          <p className="text-sm text-muted-foreground">{isHrMode ? t('hrAttendanceApprovalDescription') : t('attendanceApprovalsDescription')}</p>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Input
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
             className="w-full sm:w-44"
           />
-          <Button type="button" variant="outline" onClick={handleRefresh} disabled={generateRecords.isPending}>
+          <Input
+            type="search"
+            value={employeeSearch}
+            onChange={(event) => setEmployeeSearch(event.target.value)}
+            placeholder={t('searchEmployee')}
+            className="w-full md:max-w-xs"
+          />
+          <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
+            <SelectTrigger className="w-full md:w-48">
+              <SelectValue placeholder={t('approvalStatus')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
+              <SelectItem value="approved">{t('approved')}</SelectItem>
+              <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
+            </SelectContent>
+          </Select>
+          {isHrMode ? (
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger className="w-full md:w-64">
+                <SelectValue placeholder={t('selectDepartment')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={handleRefresh} disabled={generateRecords.isPending} className="w-full lg:w-auto">
             <RefreshCw className="size-4" />
             {t('generateDailyRecords')}
           </Button>
+          {!isHrMode ? (
+            <Button
+              type="button"
+              onClick={handleBatchApprove}
+              disabled={selectedApprovableRecords.length === 0 || supervisorApprove.isPending}
+              className="w-full lg:w-auto"
+            >
+              <CheckCircle2 className="size-4" />
+              {selectedApprovableRecords.length > 0
+                ? `${delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
+                : t('approveSelected')}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -229,56 +264,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       </div>
 
       <Card className="rounded-lg">
-        <CardHeader>
-          <CardTitle>{isHrMode ? t('hrAttendanceApproval') : t('attendanceApprovals')}</CardTitle>
-          <CardDescription>{t('attendanceDate')}: {formatDate(date)}</CardDescription>
-        </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
-            <Input
-              type="search"
-              value={employeeSearch}
-              onChange={(event) => setEmployeeSearch(event.target.value)}
-              placeholder={t('searchEmployee')}
-              className="md:max-w-xs"
-            />
-            <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
-              <SelectTrigger className="md:w-48">
-                <SelectValue placeholder={t('approvalStatus')} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
-                <SelectItem value="approved">{t('approved')}</SelectItem>
-                <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
-              </SelectContent>
-            </Select>
-            {isHrMode ? (
-              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                <SelectTrigger className="md:w-64">
-                  <SelectValue placeholder={t('selectDepartment')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
-                  {departments.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-            {!isHrMode ? (
-              <Button
-                type="button"
-                onClick={handleBatchApprove}
-                disabled={selectedApprovableRecords.length === 0 || supervisorApprove.isPending}
-                className="md:ml-auto"
-              >
-                <CheckCircle2 className="size-4" />
-                {selectedApprovableRecords.length > 0
-                  ? `${delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
-                  : t('approveSelected')}
-              </Button>
-            ) : null}
-          </div>
           {query.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : records.length === 0 ? (

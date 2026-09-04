@@ -17,6 +17,8 @@ import type {
   ChangeBiometricExemptionStatusInput,
   ChangeOvertimeRequestStatusInput,
   ChangeLeaveRequestStatusInput,
+  AuthorizeLeaveInterruptionInput,
+  AuthorizeLeaveRequestInput,
   CreateAttendancePunchInput,
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
@@ -633,6 +635,16 @@ export const coreApi = {
     }),
   changeLeaveRequestStatus: ({ leaveRequestId, ...input }: ChangeLeaveRequestStatusInput) =>
     coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}/status`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  authorizeLeaveRequest: ({ leaveRequestId, ...input }: AuthorizeLeaveRequestInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/requests/${leaveRequestId}/authorization`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  authorizeLeaveInterruption: ({ leaveInterruptionId, ...input }: AuthorizeLeaveInterruptionInput) =>
+    coreFetch<LeaveRequestResponse>(`/leave/interruptions/${leaveInterruptionId}/authorization`, {
       method: 'POST',
       body: JSON.stringify(input),
     }),

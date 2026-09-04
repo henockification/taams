@@ -6,13 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -190,30 +184,22 @@ export default function PermissionsPage() {
     getPermissionName(form.resource.trim(), form.action.trim());
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button onClick={handleOpenCreatePermission}>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
+            <KeyRound className="size-3.5 text-primary" />
+            {permissions.length} {t('permissionsCount')}
+          </Badge>
+        </div>
+        <Button onClick={handleOpenCreatePermission} className="w-full lg:w-auto">
           <Plus className="size-4" />
           {t('addPermission')}
         </Button>
-        <Badge variant="outline" className="gap-2 rounded-md px-3 py-1.5">
-          <KeyRound className="size-3.5 text-primary" />
-          {permissions.length} {t('permissionsCount')}
-        </Badge>
       </div>
 
       <Card className="rounded-lg">
-          <CardHeader className="gap-4 sm:flex sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
-            <CardTitle>{t('permissionsCatalog')}</CardTitle>
-            <CardDescription>{t('permissionsCatalogDescription')}</CardDescription>
-            </div>
-            <Button variant="outline" size="sm" onClick={handleOpenCreatePermission}>
-              <Plus className="size-4" />
-              {t('addPermission')}
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-6 pt-6">
             {isLoading ? (
               <p className="text-sm text-muted-foreground">{t('loadingSecurity')}</p>
             ) : Object.entries(permissionGroups).length === 0 ? (

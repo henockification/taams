@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import {
   BulkUpsertLeaveBalancesRequestSchema,
+  AuthorizeLeaveRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
   CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
@@ -15,6 +16,8 @@ import {
 } from '../../../../schemas/core.schema';
 import {
   bulkUpsertLeaveBalancesScoped,
+  authorizeLeaveInterruption,
+  authorizeLeaveRequest,
   changeLeaveRequestStatusScoped,
   createLeaveInterruptionScoped,
   createLeaveFiscalYear,
@@ -45,6 +48,7 @@ import {
   formatLeaveType,
 } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
+import { refreshAttendanceForAuthorizedLeave } from '../../../../db/orm/core/manageAttendanceApprovals';
 
 export async function getLeaveFiscalYearsHandler(c: Context) {
   try {
@@ -130,13 +134,17 @@ export async function getLeaveBalancesHandler(c: Context) {
     const fiscalYearId = c.req.query('fiscalYearId') || undefined;
     const view = c.req.query('view') === 'approvals'
       ? 'approvals'
-      : c.req.query('view') === 'management'
-        ? 'management'
-        : 'self';
+      : c.req.query('view') === 'authorizations'
+        ? 'authorizations'
+        : c.req.query('view') === 'management'
+          ? 'management'
+          : 'self';
+    const permissions = view === 'authorizations' ? await getUserPermissionNames(session.user.id) : [];
     const leaveBalances = await getLeaveBalances(fiscalYearId, {
       scope,
       userId: session.user.id,
       view,
+      canAuthorize: permissions.includes('leave-authorizations:approve'),
     });
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
@@ -202,7 +210,12 @@ export async function transferLeaveBalanceHandler(c: Context) {
 export async function getLeaveRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const view = c.req.query('view') === 'approvals' ? 'approvals' : 'self';
+    const view = c.req.query('view') === 'approvals'
+      ? 'approvals'
+      : c.req.query('view') === 'authorizations'
+        ? 'authorizations'
+        : 'self';
+    const permissions = view === 'authorizations' ? await getUserPermissionNames(session.user.id) : [];
     const kind = c.req.query('kind') === 'annual'
       ? 'annual'
       : c.req.query('kind') === 'other'
@@ -211,6 +224,7 @@ export async function getLeaveRequestsHandler(c: Context) {
     const leaveRequests = await getLeaveRequests(kind, {
       userId: session.user.id,
       view,
+      canAuthorize: permissions.includes('leave-authorizations:approve'),
     });
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
   } catch (error) {
@@ -272,7 +286,7 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
     const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload);
     // Notification trigger disabled until SMS/email provider credentials are available.
     await safeEnqueueWorkflowNotification(
-      leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_APPROVED' : 'LEAVE_REQUEST_REJECTED',
+      leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_SUPERVISOR_APPROVED' : 'LEAVE_REQUEST_REJECTED',
       {
         entityId: leaveRequest.id,
         employeeId: leaveRequest.employeeId,
@@ -283,6 +297,58 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request status');
+  }
+}
+
+export async function authorizeLeaveRequestHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    await assertLeaveAuthorizationPermission(session.user.id);
+    const parsed = AuthorizeLeaveRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const leaveRequest = await authorizeLeaveRequest(c.req.param('id'), {
+      ...parsed.data,
+      actorUserId: session.user.id,
+    });
+    if (leaveRequest.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
+    await safeEnqueueWorkflowNotification(
+      leaveRequest.status === 'AUTHORIZED' ? 'LEAVE_REQUEST_AUTHORIZED' : 'LEAVE_REQUEST_AUTHORIZATION_REJECTED',
+      {
+        entityId: leaveRequest.id,
+        employeeId: leaveRequest.employeeId,
+        date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+        reason: leaveRequest.authorizationRejectionReason ?? null,
+      },
+    );
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to authorize leave request');
+  }
+}
+
+export async function authorizeLeaveInterruptionHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    await assertLeaveAuthorizationPermission(session.user.id);
+    const parsed = AuthorizeLeaveRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const leaveRequest = await authorizeLeaveInterruption(c.req.param('id'), {
+      ...parsed.data,
+      actorUserId: session.user.id,
+    });
+    if (parsed.data.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
+    await safeEnqueueWorkflowNotification(
+      parsed.data.status === 'AUTHORIZED' ? 'LEAVE_INTERRUPTION_AUTHORIZED' : 'LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED',
+      {
+        entityId: c.req.param('id'),
+        employeeId: leaveRequest.employeeId,
+        date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+        reason: parsed.data.rejectionReason ?? null,
+      },
+    );
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to authorize leave interruption');
   }
 }
 
@@ -316,6 +382,13 @@ export async function reviewLeaveInterruptionHandler(c: Context) {
       ...parsed.data,
       reviewedBy,
     });
+    if (parsed.data.status === 'APPROVED') {
+      await safeEnqueueWorkflowNotification('LEAVE_INTERRUPTION_SUPERVISOR_APPROVED', {
+        entityId: c.req.param('id'),
+        employeeId: leaveRequest.employeeId,
+        date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+      });
+    }
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to review leave interruption');
@@ -345,4 +418,9 @@ async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByT
   if (!session?.user?.id) throw new Error('Authentication required');
   const assignedRoles = await getUserRoleNames(session.user.id);
   return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
+}
+
+async function assertLeaveAuthorizationPermission(userId: string) {
+  const permissions = await getUserPermissionNames(userId);
+  if (!permissions.includes('leave-authorizations:approve')) throw new Error('Leave authorization permission is required');
 }

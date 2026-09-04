@@ -172,7 +172,7 @@ export function ReportPage({ reportKey }: ReportPageProps) {
   };
 
   return (
-    <div className="report-page mx-auto flex w-full max-w-7xl flex-col gap-5">
+    <div className="report-page flex w-full flex-col gap-5">
       <style jsx global>{`
         @media print {
           body * {
@@ -200,10 +200,16 @@ export function ReportPage({ reportKey }: ReportPageProps) {
         }
       `}</style>
 
-      <div className="report-actions flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{configBase.title}</h1>
-          <p className="text-sm text-muted-foreground">{configBase.description}</p>
+      <div className="report-actions report-filters flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          {reportFilters.map((filter) => (
+            <FilterControl
+              key={filter.key}
+              filter={filter}
+              value={filters[filter.key] ?? ''}
+              onChange={(value) => updateFilter(filter.key, value)}
+            />
+          ))}
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => reportQuery.refetch()} disabled={reportQuery.isFetching}>
@@ -220,19 +226,6 @@ export function ReportPage({ reportKey }: ReportPageProps) {
           </Button>
         </div>
       </div>
-
-      <Card className="report-filters rounded-lg">
-        <CardContent className="flex flex-wrap items-end gap-2 p-3">
-          {reportFilters.map((filter) => (
-            <FilterControl
-              key={filter.key}
-              filter={filter}
-              value={filters[filter.key] ?? ''}
-              onChange={(value) => updateFilter(filter.key, value)}
-            />
-          ))}
-        </CardContent>
-      </Card>
 
       <Card className="report-card rounded-lg">
         <CardHeader className="space-y-4">
@@ -496,7 +489,7 @@ function formatReportValue(
 
 const attendanceStatuses = ['PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED', 'HR_APPROVED'].map((value) => ({ value, label: value }));
 const punchStatuses = [{ value: 'processed', label: 'Processed' }, { value: 'unprocessed', label: 'Unprocessed' }];
-const leaveStatuses = ['PENDING', 'APPROVED', 'REJECTED'].map((value) => ({ value, label: value }));
+const leaveStatuses = ['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED'].map((value) => ({ value, label: value }));
 const syncStatuses = ['STARTED', 'COMPLETED', 'FAILED', 'PARTIAL'].map((value) => ({ value, label: value }));
 const employmentTypes = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'].map((value) => ({ value, label: value }));
 const employmentStatuses = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'].map((value) => ({ value, label: value }));

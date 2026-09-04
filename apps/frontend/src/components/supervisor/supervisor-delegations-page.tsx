@@ -69,7 +69,6 @@ const initialForm = (): DelegationFormState => {
 };
 
 export function SupervisorDelegationsPage() {
-  const t = useTranslations('core');
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
   const session = useSession();
@@ -132,21 +131,12 @@ export function SupervisorDelegationsPage() {
 
   return (
     <div className="space-y-6">
+      <div className="flex w-full justify-end">
+        <Button type="button" onClick={() => setCreateOpen(true)} className="w-full lg:w-auto">
+          Delegate
+        </Button>
+      </div>
       <Card>
-        <CardHeader className="space-y-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <UserRoundCog className="h-5 w-5 text-primary" />
-                <CardTitle>{t('supervisorDelegation')}</CardTitle>
-              </div>
-              <CardDescription>{t('supervisorDelegationDescription')}</CardDescription>
-            </div>
-            <Button type="button" onClick={() => setCreateOpen(true)}>
-              Delegate
-            </Button>
-          </div>
-        </CardHeader>
         <CardContent>
           {activeDelegation ? (
             <div className="rounded-lg border bg-muted/30 p-4">

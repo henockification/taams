@@ -47,7 +47,7 @@ export default function BiometricDeviceSyncHistoryPage() {
   const rangeEnd = Math.min(page * pageSize, records.length);
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
+    <div className="w-full space-y-6">
       <Button asChild variant="ghost" className="-ml-3">
         <Link href="/biometric-devices">
           <ArrowLeft className="size-4" />

@@ -6,13 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -163,12 +157,12 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       {isSupervisor ? <DelegationBanner user={session.data?.user} /> : null}
 
       {!isSupervisor ? (
-        <div className="flex justify-end">
-          <Button onClick={openManualRequestDialog}>
+        <div className="flex w-full justify-end">
+          <Button onClick={openManualRequestDialog} className="w-full lg:w-auto">
             <ClipboardPlus className="size-4" />
             {t('requestAttendanceCorrection')}
           </Button>
@@ -176,14 +170,6 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
       ) : null}
 
       <Card className="rounded-lg">
-        <CardHeader className="gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle>{isSupervisor ? t('attendanceCorrectionApprovals') : t('manualPunchRequests')}</CardTitle>
-            <CardDescription>
-              {isSupervisor ? t('attendanceCorrectionApprovalsDescription') : t('manualPunchRequestsDescription')}
-            </CardDescription>
-          </div>
-        </CardHeader>
         <CardContent>
           {manualRequests.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>

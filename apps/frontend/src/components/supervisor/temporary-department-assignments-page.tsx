@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -169,44 +169,35 @@ export function TemporaryDepartmentAssignmentsPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal">{t('temporaryAssignments')}</h1>
-          <p className="text-sm text-muted-foreground">{t('temporaryAssignmentsDescription')}</p>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <Input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={t('searchTemporaryAssignments')}
+            className="w-full md:max-w-xs"
+          />
+          <Select value={filter} onValueChange={(value) => setFilter(value as AssignmentFilter)}>
+            <SelectTrigger className="w-full md:w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">{t('active')}</SelectItem>
+              <SelectItem value="history">{t('history')}</SelectItem>
+              <SelectItem value="all">{t('allStatuses')}</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Button type="button" onClick={openCreateDialog}>
+        <Button type="button" onClick={openCreateDialog} className="w-full lg:w-auto">
           <Plus className="size-4" />
           {t('addTemporaryAssignment')}
         </Button>
       </div>
 
       <Card className="rounded-lg">
-        <CardHeader>
-          <CardTitle>{t('temporaryAssignments')}</CardTitle>
-          <CardDescription>{t('temporaryAssignmentsTableDescription')}</CardDescription>
-        </CardHeader>
         <CardContent>
-          <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center">
-            <Input
-              type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('searchTemporaryAssignments')}
-              className="md:max-w-xs"
-            />
-            <Select value={filter} onValueChange={(value) => setFilter(value as AssignmentFilter)}>
-              <SelectTrigger className="md:w-48">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="active">{t('active')}</SelectItem>
-                <SelectItem value="history">{t('history')}</SelectItem>
-                <SelectItem value="all">{t('allStatuses')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {assignmentsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : filteredAssignments.length === 0 ? (

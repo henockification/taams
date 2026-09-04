@@ -34,8 +34,8 @@ function employeeName(employee?: LeaveRequest['employee'] | null) {
 }
 
 function statusVariant(status: LeaveRequest['status']) {
-  if (status === 'APPROVED') return 'default';
-  if (status === 'REJECTED') return 'destructive';
+  if (status === 'AUTHORIZED') return 'default';
+  if (status === 'REJECTED' || status === 'AUTHORIZATION_REJECTED') return 'destructive';
   return 'secondary';
 }
 
@@ -167,7 +167,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
+    <div className="flex w-full flex-col gap-5">
       {approvalMode ? <DelegationBanner user={session.data?.user} /> : null}
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -179,7 +179,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
           <p className="mt-1 text-sm text-muted-foreground">{employeeName(request.employee) || t('unknown')} · {request.employee?.employeeCode ?? '-'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant={statusVariant(request.status) as any}>{request.status}</Badge>
+          <Badge variant={statusVariant(request.status) as any}>{leaveStatusLabel(request.status, t)}</Badge>
           <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
           {canEdit ? (
             <Button type="button" variant="outline" asChild>
@@ -293,7 +293,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
             {request.interruptions.map((interruption) => (
               <div key={interruption.id} className="space-y-4 rounded-md border border-border p-4">
                 <div className="grid gap-4 md:grid-cols-4">
-                  <InfoBlock label={t('status')} value={interruption.status} />
+                  <InfoBlock label={t('status')} value={leaveStatusLabel(interruption.status, t)} />
                   <InfoBlock label={t('recallAuthority')} value={interruption.recallAuthority} />
                   <InfoBlock
                     label={t('actualWorkingPeriod')}
@@ -376,6 +376,14 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
       </Dialog>
     </div>
   );
+}
+
+function leaveStatusLabel(status: LeaveRequest['status'], t: (key: any) => string) {
+  if (status === 'APPROVED') return t('awaitingHrAuthorization');
+  if (status === 'AUTHORIZED') return t('authorized');
+  if (status === 'AUTHORIZATION_REJECTED') return t('rejectedByHr');
+  if (status === 'REJECTED') return t('rejected');
+  return t('pendingRequests');
 }
 
 function InfoCard({ label, value }: { label: string; value: string }) {

@@ -46,6 +46,7 @@ export type AppNavItem = {
     | 'leaveBalances'
     | 'leaveTransfer'
     | 'leaveRequestApprovals'
+    | 'leaveAuthorizations'
     | 'supervisorDelegation'
     | 'temporaryAssignments'
     | 'workSchedules'
@@ -215,6 +216,13 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'leave-transfer:read',
         legacyPermissions: ['leave-management:read'],
         icon: ArrowRightLeft,
+      },
+      {
+        titleKey: 'leaveAuthorizations',
+        url: '/leave-management/authorizations',
+        permissionResource: 'leave-authorizations',
+        requiredPermission: 'leave-authorizations:approve',
+        icon: ShieldCheck,
       },
     ],
   },
@@ -520,6 +528,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/department-head-dashboard' && hasSupervisorRole(user)) return true;
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
+  if (item.url === '/leave-management/authorizations') return userHasPermission(user, 'leave-authorizations:approve');
   if (item.url === '/temporary-assignments') return hasTemporaryAssignmentAccess(user);
   if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (item.url === '/overtime-assignments')
@@ -602,6 +611,7 @@ function isHrCapabilityPermission(permission: string) {
       'leave-fiscal-years',
       'leave-types',
       'leave-request-approvals',
+      'leave-authorizations',
       'biometric-exemptions',
       'attendance-punches',
       'work-schedules',
@@ -670,6 +680,8 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');
   if (pathname === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
+  if (pathname === '/leave-management/authorizations' || pathname.startsWith('/leave-management/authorizations/'))
+    return userHasPermission(user, 'leave-authorizations:approve');
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
 }

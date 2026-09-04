@@ -458,8 +458,11 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
     where: and(
       dateFrom(query) ? gte(leaveRequests.startDate, dateFrom(query)!) : undefined,
       dateTo(query) ? lte(leaveRequests.startDate, dateTo(query)!) : undefined,
-      scope.type === 'hr' ? eq(leaveRequests.status, 'APPROVED') : undefined,
-      query.get('status') ? eq(leaveRequests.status, query.get('status')!) : undefined,
+      query.get('status')
+        ? eq(leaveRequests.status, query.get('status')!)
+        : scope.type === 'hr'
+          ? eq(leaveRequests.status, 'AUTHORIZED')
+          : undefined,
       query.get('leaveTypeId') ? eq(leaveRequests.leaveTypeId, query.get('leaveTypeId')!) : undefined,
     ),
     with: {

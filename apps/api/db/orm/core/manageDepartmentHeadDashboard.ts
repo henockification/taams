@@ -79,7 +79,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     db.query.leaveRequests.findMany({
       where: and(
         inArray(leaveRequests.employeeId, departmentEmployeeIds),
-        eq(leaveRequests.status, 'APPROVED'),
+        eq(leaveRequests.status, 'AUTHORIZED'),
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
       ),

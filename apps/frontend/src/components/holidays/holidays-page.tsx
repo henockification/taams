@@ -149,7 +149,7 @@ export default function HolidaysPage() {
   const isSaving = createHoliday.isPending || updateHoliday.isPending;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-col gap-3 md:flex-row md:items-center">
           <Input

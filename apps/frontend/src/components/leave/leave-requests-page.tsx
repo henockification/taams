@@ -74,8 +74,8 @@ function employeeName(employee?: Employee | null) {
 }
 
 function statusVariant(status: LeaveRequest['status']) {
-  if (status === 'APPROVED') return 'default';
-  if (status === 'REJECTED') return 'destructive';
+  if (status === 'AUTHORIZED') return 'default';
+  if (status === 'REJECTED' || status === 'AUTHORIZATION_REJECTED') return 'destructive';
   return 'secondary';
 }
 
@@ -252,21 +252,63 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const isLoading = session.isPending || (session.data?.user?.id ? dashboardQuery.isLoading : false);
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            {t('leaveRequestSelfServiceDescription')}
-          </p>
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <Field label={t('requestDateFrom')} id="leave-request-date-from">
+            <Input
+              id="leave-request-date-from"
+              type="date"
+              value={requestDateFilters.fromDate}
+              onChange={(event) => setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }))}
+              className="w-full md:w-40"
+            />
+          </Field>
+          <Field label={t('requestDateTo')} id="leave-request-date-to">
+            <Input
+              id="leave-request-date-to"
+              type="date"
+              value={requestDateFilters.toDate}
+              onChange={(event) => setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }))}
+              className="w-full md:w-40"
+            />
+          </Field>
+          {kind === 'other' ? (
+            <Field label={t('leaveType')} id="leave-type-filter">
+              <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
+                <SelectTrigger id="leave-type-filter" className="w-full md:w-48">
+                  <SelectValue placeholder={t('allLeaveTypes')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={noneValue}>{t('allLeaveTypes')}</SelectItem>
+                  {selectableTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setRequestDateFilters({ fromDate: '', toDate: '' });
+              setLeaveTypeFilter(noneValue);
+            }}
+            disabled={!requestDateFilters.fromDate && !requestDateFilters.toDate && leaveTypeFilter === noneValue}
+          >
+            <X className="size-4" />
+            {t('clearFilters')}
+          </Button>
         </div>
         {kind === 'annual' ? (
           isLoading || !currentEmployee ? (
-            <Button disabled>
+            <Button disabled className="w-full lg:w-auto">
               <Plus className="size-4" />
               {t('requestLeave')}
             </Button>
           ) : (
-            <Button asChild>
+            <Button asChild className="w-full lg:w-auto">
               <Link href="/annual-leave-requests/new">
                 <Plus className="size-4" />
                 {t('requestLeave')}
@@ -274,7 +316,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
             </Button>
           )
         ) : (
-          <Button onClick={openDialog} disabled={isLoading || !currentEmployee}>
+          <Button onClick={openDialog} disabled={isLoading || !currentEmployee} className="w-full lg:w-auto">
             <Plus className="size-4" />
             {t('requestLeave')}
           </Button>
@@ -293,56 +335,9 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
             />
           ) : requests.length === 0 ? (
             <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsDescription')} />
+          ) : filteredRequests.length === 0 ? (
+            <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsForFilters')} />
           ) : (
-            <div className="space-y-4">
-              <div className={kind === 'other' ? 'grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto] md:items-end' : 'grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end'}>
-                <Field label={t('requestDateFrom')} id="leave-request-date-from">
-                  <Input
-                    id="leave-request-date-from"
-                    type="date"
-                    value={requestDateFilters.fromDate}
-                    onChange={(event) => setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }))}
-                  />
-                </Field>
-                <Field label={t('requestDateTo')} id="leave-request-date-to">
-                  <Input
-                    id="leave-request-date-to"
-                    type="date"
-                    value={requestDateFilters.toDate}
-                    onChange={(event) => setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }))}
-                  />
-                </Field>
-                {kind === 'other' ? (
-                  <Field label={t('leaveType')} id="leave-type-filter">
-                    <Select value={leaveTypeFilter} onValueChange={setLeaveTypeFilter}>
-                      <SelectTrigger id="leave-type-filter">
-                        <SelectValue placeholder={t('allLeaveTypes')} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={noneValue}>{t('allLeaveTypes')}</SelectItem>
-                        {selectableTypes.map((type) => (
-                          <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                ) : null}
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setRequestDateFilters({ fromDate: '', toDate: '' });
-                    setLeaveTypeFilter(noneValue);
-                  }}
-                  disabled={!requestDateFilters.fromDate && !requestDateFilters.toDate && leaveTypeFilter === noneValue}
-                >
-                  <X className="size-4" />
-                  {t('clearFilters')}
-                </Button>
-              </div>
-              {filteredRequests.length === 0 ? (
-                <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsForFilters')} />
-              ) : (
                 <div className="overflow-hidden rounded-md border border-border">
                   <Table>
                     <TableHeader>
@@ -360,6 +355,14 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     <TableBody>
                       {filteredRequests.map((request) => {
                         const isOwnRequest = request.requestedBy === session.data?.user?.id && request.employee?.userId === session.data?.user?.id;
+                        const canRequestInterruption = request.status === 'AUTHORIZED'
+                          && isAnnualRequest(request)
+                          && isOwnRequest
+                          && Boolean(request.annualLeaveDates?.some((date) => (
+                            date.status === 'APPROVED'
+                            && ['SCHEDULED', 'CONSUMED'].includes(date.utilizationStatus)
+                          )))
+                          && !request.interruptions?.some((interruption) => ['PENDING', 'APPROVED'].includes(interruption.status));
 
                         return (
                           <TableRow key={request.id}>
@@ -376,7 +379,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                             <TableCell>
                               <div>
                                 <p>{request.requestedDays}</p>
-                                {request.status === 'APPROVED' ? (
+                                {['APPROVED', 'AUTHORIZED', 'AUTHORIZATION_REJECTED'].includes(request.status) ? (
                                   <div className="text-xs text-muted-foreground">
                                     <p>{t('approvedDays')}: {request.approvedDays}{request.isPartialApproval ? ` · ${t('partialApproval')}` : ''}</p>
                                     {isAnnualRequest(request) ? <p>{t('consumedDays')}: {request.consumedDays} · {t('remainingDays')}: {request.remainingDays}</p> : null}
@@ -385,7 +388,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                                 ) : null}
                               </div>
                             </TableCell>
-                            <TableCell><Badge variant={statusVariant(request.status) as any}>{request.status}</Badge></TableCell>
+                            <TableCell><Badge variant={statusVariant(request.status) as any}>{leaveStatusLabel(request.status, t)}</Badge></TableCell>
                             <TableCell>
                               {kind === 'annual' ? (
                                 <div className="flex justify-end gap-2">
@@ -403,18 +406,15 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                                       </Link>
                                     </Button>
                                   ) : null}
+                                  {canRequestInterruption ? (
+                                    <Button type="button" size="sm" variant="outline" onClick={() => setInterruptionTarget(request)}>
+                                      {t('requestLeaveInterruption')}
+                                    </Button>
+                                  ) : null}
                                 </div>
-                              ) : request.status === 'APPROVED'
-                                && isAnnualRequest(request)
-                                && isOwnRequest
-                                && Number(request.remainingDays) > 0
-                                && !request.interruptions?.some((interruption) => interruption.status === 'PENDING') ? (
-                                <Button type="button" size="sm" variant="outline" onClick={() => setInterruptionTarget(request)}>
-                                  {t('requestLeaveInterruption')}
-                                </Button>
                               ) : (
                                 <span className="block text-right text-xs text-muted-foreground">
-                                  {request.status === 'APPROVED' ? formatDate(request.approvedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
+                                  {request.status === 'AUTHORIZED' ? formatDate(request.authorizedAt) : request.status === 'APPROVED' ? t('awaitingHrAuthorization') : request.status === 'AUTHORIZATION_REJECTED' ? formatDate(request.authorizationRejectedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
                                 </span>
                               )}
                             </TableCell>
@@ -424,8 +424,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </div>
           )}
         </CardContent>
       </Card>
@@ -587,6 +585,14 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
 
     </div>
   );
+}
+
+function leaveStatusLabel(status: LeaveRequest['status'], t: (key: any) => string) {
+  if (status === 'APPROVED') return t('awaitingHrAuthorization');
+  if (status === 'AUTHORIZED') return t('authorized');
+  if (status === 'AUTHORIZATION_REJECTED') return t('rejectedByHr');
+  if (status === 'REJECTED') return t('rejected');
+  return t('pendingRequests');
 }
 
 function BalancePreview({

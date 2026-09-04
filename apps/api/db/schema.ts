@@ -792,6 +792,11 @@ export const leaveRequests = pgTable('leave_requests', {
   requestedBy: text('requested_by').notNull().references(() => user.id),
   approvedBy: text('approved_by').references(() => user.id),
   approvedAt: timestamp('approved_at', { withTimezone: false }),
+  authorizedBy: text('authorized_by').references(() => user.id),
+  authorizedAt: timestamp('authorized_at', { withTimezone: false }),
+  authorizationRejectedBy: text('authorization_rejected_by').references(() => user.id),
+  authorizationRejectedAt: timestamp('authorization_rejected_at', { withTimezone: false }),
+  authorizationRejectionReason: text('authorization_rejection_reason'),
   rejectedBy: text('rejected_by').references(() => user.id),
   rejectedAt: timestamp('rejected_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
@@ -800,8 +805,9 @@ export const leaveRequests = pgTable('leave_requests', {
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
   leaveRequestDateRangeCheck: check('chk_leave_request_date_range', sql`${table.startDate} <= ${table.endDate}`),
-  leaveRequestStatusCheck: check('chk_leave_request_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  leaveRequestStatusCheck: check('chk_leave_request_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED')`),
   leaveRequestedDaysPositiveCheck: check('chk_leave_request_days_positive', sql`${table.requestedDays} > 0`),
+  statusIdx: index('idx_leave_requests_status').on(table.status),
 }));
 
 export const annualLeaveRequestDates = pgTable('annual_leave_request_dates', {
@@ -841,12 +847,17 @@ export const leaveInterruptions = pgTable('leave_interruptions', {
   reviewedBy: text('reviewed_by').references(() => user.id),
   reviewedAt: timestamp('reviewed_at', { withTimezone: false }),
   rejectionReason: text('rejection_reason'),
+  authorizedBy: text('authorized_by').references(() => user.id),
+  authorizedAt: timestamp('authorized_at', { withTimezone: false }),
+  authorizationRejectedBy: text('authorization_rejected_by').references(() => user.id),
+  authorizationRejectedAt: timestamp('authorization_rejected_at', { withTimezone: false }),
+  authorizationRejectionReason: text('authorization_rejection_reason'),
   supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
   actualWorkDateRangeCheck: check('chk_leave_interruption_actual_work_range', sql`${table.actualWorkStartDate} <= ${table.actualWorkEndDate}`),
-  statusCheck: check('chk_leave_interruption_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED')`),
+  statusCheck: check('chk_leave_interruption_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED')`),
   requestStatusIdx: index('idx_leave_interruptions_request_status').on(table.leaveRequestId, table.status),
 }));
 

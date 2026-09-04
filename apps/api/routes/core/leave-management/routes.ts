@@ -3,6 +3,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import {
   BulkUpsertLeaveBalancesRequestSchema,
+  AuthorizeLeaveRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
   CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
@@ -27,6 +28,8 @@ import {
 import { openApiApp } from '../../../lib/openapi';
 import {
   bulkUpsertLeaveBalancesHandler,
+  authorizeLeaveInterruptionHandler,
+  authorizeLeaveRequestHandler,
   changeLeaveRequestStatusHandler,
   createLeaveInterruptionHandler,
   createLeaveFiscalYearHandler,
@@ -122,7 +125,7 @@ export const getLeaveBalancesRoute = createRoute({
   summary: 'Get Leave Balances',
   request: { query: z.object({
     fiscalYearId: z.string().uuid().optional(),
-    view: z.enum(['self', 'approvals', 'management']).optional(),
+    view: z.enum(['self', 'approvals', 'authorizations', 'management']).optional(),
   }) },
   responses: { 200: { content: { 'application/json': { schema: LeaveBalancesResponseSchema } }, description: 'Leave balances' } },
 });
@@ -161,7 +164,7 @@ export const getLeaveRequestsRoute = createRoute({
   summary: 'Get Leave Requests',
   request: { query: z.object({
     kind: z.enum(['annual', 'other']).optional(),
-    view: z.enum(['self', 'approvals']).optional(),
+    view: z.enum(['self', 'approvals', 'authorizations']).optional(),
   }) },
   responses: { 200: { content: { 'application/json': { schema: LeaveRequestsResponseSchema } }, description: 'Leave requests' } },
 });
@@ -191,6 +194,24 @@ export const changeLeaveRequestStatusRoute = createRoute({
   summary: 'Approve or Reject Leave Request',
   request: { params: uuidParam, body: { content: { 'application/json': { schema: ChangeLeaveRequestStatusRequestSchema } } } },
   responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Updated leave request' } },
+});
+
+export const authorizeLeaveRequestRoute = createRoute({
+  method: 'post',
+  path: '/leave/requests/{id}/authorization',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Authorize or reject a supervisor-approved leave request',
+  request: { params: uuidParam, body: { content: { 'application/json': { schema: AuthorizeLeaveRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Authorized or rejected leave request' } },
+});
+
+export const authorizeLeaveInterruptionRoute = createRoute({
+  method: 'post',
+  path: '/leave/interruptions/{id}/authorization',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Authorize or reject a supervisor-approved leave interruption',
+  request: { params: uuidParam, body: { content: { 'application/json': { schema: AuthorizeLeaveRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Authorized or rejected leave interruption' } },
 });
 
 export const createLeaveInterruptionRoute = createRoute({
@@ -226,8 +247,10 @@ leaveManagementApp.get('/leave/requests', getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', createLeaveRequestHandler);
 leaveManagementApp.put('/leave/requests/:id', updateLeaveRequestHandler);
 leaveManagementApp.post('/leave/requests/:id/status', changeLeaveRequestStatusHandler);
+leaveManagementApp.post('/leave/requests/:id/authorization', authorizeLeaveRequestHandler);
 leaveManagementApp.post('/leave/requests/:id/interruptions', createLeaveInterruptionHandler);
 leaveManagementApp.post('/leave/interruptions/:id/review', reviewLeaveInterruptionHandler);
+leaveManagementApp.post('/leave/interruptions/:id/authorization', authorizeLeaveInterruptionHandler);
 
 openApiApp
   .openapi(getLeaveFiscalYearsRoute, getLeaveFiscalYearsHandler as any)
@@ -246,6 +269,8 @@ openApiApp
   .openapi(updateLeaveRequestRoute, updateLeaveRequestHandler as any)
   .openapi(changeLeaveRequestStatusRoute, changeLeaveRequestStatusHandler as any);
 openApiApp
+  .openapi(authorizeLeaveRequestRoute, authorizeLeaveRequestHandler as any)
+  .openapi(authorizeLeaveInterruptionRoute, authorizeLeaveInterruptionHandler as any)
   .openapi(createLeaveInterruptionRoute, createLeaveInterruptionHandler as any)
   .openapi(reviewLeaveInterruptionRoute, reviewLeaveInterruptionHandler as any);
 

@@ -329,7 +329,7 @@ export default function BiometricDevicesPage() {
   };
 
   return (
-    <div className="mx-auto grid w-full max-w-7xl gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid w-full gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="grid gap-2 sm:grid-cols-3">

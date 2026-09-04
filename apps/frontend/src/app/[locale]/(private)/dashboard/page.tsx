@@ -582,6 +582,7 @@ function PunchList({ title, punches, emptyText }: { title: string; punches: Atte
 
 function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
   const t = useTranslations("dashboard")
+  const coreT = useTranslations("core")
   const { formatDate } = useCalendarPreference()
   const recentRequests = requests.slice(0, 5)
 
@@ -610,8 +611,8 @@ function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
                     {formatDate(request.startDate)} - {formatDate(request.endDate)}
                   </p>
                 </div>
-                <Badge variant={request.status === "PENDING" ? "default" : request.status === "REJECTED" ? "destructive" : "secondary"}>
-                  {request.status}
+                <Badge variant={request.status === "PENDING" ? "default" : ["REJECTED", "AUTHORIZATION_REJECTED"].includes(request.status) ? "destructive" : "secondary"}>
+                  {leaveRequestStatusLabel(request.status, coreT)}
                 </Badge>
               </div>
               <p className="mt-3 line-clamp-2 text-sm leading-5 text-muted-foreground">{request.reason}</p>
@@ -703,6 +704,7 @@ function TeamRequestsList({
   emptyText: string
 }) {
   const t = useTranslations("dashboard")
+  const coreT = useTranslations("core")
   const { formatDate, formatDateTime } = useCalendarPreference()
 
   const isEmpty = manualRequests.length === 0 && leaveRequests.length === 0
@@ -751,7 +753,9 @@ function TeamRequestsList({
                           {request.leaveType?.nameEn ?? t("leaveRequestApprovals")}
                         </p>
                       </div>
-                      <Badge variant={request.status === "PENDING" ? "default" : "secondary"}>{request.status}</Badge>
+                      <Badge variant={request.status === "PENDING" ? "default" : ["REJECTED", "AUTHORIZATION_REJECTED"].includes(request.status) ? "destructive" : "secondary"}>
+                        {leaveRequestStatusLabel(request.status, coreT)}
+                      </Badge>
                     </div>
                     <p className="mt-3 text-sm leading-5 text-muted-foreground">
                       {formatDate(request.startDate)} - {formatDate(request.endDate)}
@@ -765,6 +769,14 @@ function TeamRequestsList({
       </CardContent>
     </Card>
   )
+}
+
+function leaveRequestStatusLabel(status: LeaveRequest["status"], t: (key: any) => string) {
+  if (status === "APPROVED") return t("awaitingHrAuthorization")
+  if (status === "AUTHORIZED") return t("authorized")
+  if (status === "AUTHORIZATION_REJECTED") return t("rejectedByHr")
+  if (status === "REJECTED") return t("rejected")
+  return t("pendingRequests")
 }
 
 function SchedulePreview({ days }: { days: WorkScheduleDayWithShift[] }) {
