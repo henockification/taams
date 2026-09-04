@@ -240,13 +240,13 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         'corrections-returned',
         'Corrections Returned',
         scopedReturnedCorrections.length,
-        '/manual-punch-requests',
+        '/attendance-corrections',
       ),
       manualAttendanceRequests: createWidget(
         'manual-attendance-requests',
         'Manual Attendance Requests',
         scopedPendingManualRequests.length,
-        '/manual-punch-requests',
+        '/attendance-corrections',
       ),
       employeesOnLeave: createWidget(
         'employees-on-leave',

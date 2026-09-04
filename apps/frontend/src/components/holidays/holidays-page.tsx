@@ -17,6 +17,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -295,20 +296,18 @@ export default function HolidaysPage() {
                 <Label htmlFor="holiday-active" className="text-sm">{t('active')}</Label>
               </div>
               <Field label={t('startDate')} id="holiday-start-date">
-                <Input
+                <CalendarDateField
                   id="holiday-start-date"
-                  type="date"
                   value={form.startDate}
-                  onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
+                  onChange={(startDate) => setForm((current) => ({ ...current, startDate }))}
                   required
                 />
               </Field>
               <Field label={t('endDate')} id="holiday-end-date">
-                <Input
+                <CalendarDateField
                   id="holiday-end-date"
-                  type="date"
                   value={form.endDate}
-                  onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))}
+                  onChange={(endDate) => setForm((current) => ({ ...current, endDate }))}
                   required
                 />
               </Field>

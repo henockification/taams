@@ -196,10 +196,10 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
   const currentDescription = getPageDescription();
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-svh overflow-hidden">
       <AppSidebar user={session.user} />
-      <SidebarInset>
-        <header className="sticky top-0 z-20 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:min-h-14">
+      <SidebarInset className="min-h-0 w-auto min-w-0 overflow-hidden">
+        <header className="z-20 flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:min-h-14">
           <div className="flex min-w-0 items-center gap-3">
             <SidebarTrigger className="-ml-1 text-primary hover:bg-accent hover:text-accent-foreground" />
             <Separator orientation="vertical" className="hidden h-5 sm:block" />
@@ -281,7 +281,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 sm:p-6">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-auto p-4 sm:p-6">
           {children}
         </main>
       </SidebarInset>

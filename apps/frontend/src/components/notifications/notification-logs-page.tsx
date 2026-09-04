@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useNotificationLogs } from '@/data/hooks/core.hooks';
@@ -66,8 +67,8 @@ export default function NotificationLogsPage() {
           </SelectContent>
         </Select>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} aria-label={t('dateFrom')} />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} aria-label={t('dateTo')} />
+          <CalendarDateField value={dateFrom} onChange={setDateFrom} aria-label={t('dateFrom')} />
+          <CalendarDateField value={dateTo} onChange={setDateTo} aria-label={t('dateTo')} />
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -161,27 +162,25 @@ export default function AttendancePunchesPage() {
             </SelectContent>
           </Select>
           <Field label={t('startDate')} id="attendance-punches-date-from">
-            <Input
+            <CalendarDateField
               id="attendance-punches-date-from"
-              type="date"
               value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
+              onChange={(value) => {
+                setDateFrom(value);
                 resetToFirstPage();
               }}
-              className="w-full md:w-40"
+              className="w-full md:w-44"
             />
           </Field>
           <Field label={t('endDate')} id="attendance-punches-date-to">
-            <Input
+            <CalendarDateField
               id="attendance-punches-date-to"
-              type="date"
               value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
+              onChange={(value) => {
+                setDateTo(value);
                 resetToFirstPage();
               }}
-              className="w-full md:w-40"
+              className="w-full md:w-44"
             />
           </Field>
           <Field label={t('startTime')} id="attendance-punches-time-from">

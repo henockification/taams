@@ -939,7 +939,7 @@ function getHeroInsight(
       secondaryLabel: t("requestsLabel"),
       secondaryValue: section?.manualPunchRequests.length ?? 0,
       actionLabel: canViewManualPunchRequests ? t("requestManualPunch") : "",
-      href: canViewManualPunchRequests ? "/manual-punch-requests" : null,
+      href: canViewManualPunchRequests ? "/attendance-corrections" : null,
     }
   }
 

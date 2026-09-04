@@ -1556,7 +1556,7 @@ export const TimeOperationItemSchema = z.object({
   description: z.string().openapi({ example: 'Oldest request needs approval or rejection.' }),
   count: z.number().int().nonnegative().openapi({ example: 3 }),
   actionLabel: z.string().openapi({ example: 'Review requests' }),
-  actionHref: z.string().openapi({ example: '/manual-punch-requests' }),
+  actionHref: z.string().openapi({ example: '/attendance-corrections' }),
   occurredAt: z.string().nullable().openapi({ example: '2026-06-09T08:15:00.000Z' }),
   metadata: z.record(z.any()).optional(),
 });
@@ -1596,7 +1596,7 @@ export const DashboardMetricSchema = z.object({
 export const DashboardQuickActionSchema = z.object({
   label: z.string().openapi({ example: 'Manual punch requests' }),
   description: z.string().openapi({ example: 'Approve or reject employee correction requests.' }),
-  href: z.string().openapi({ example: '/manual-punch-requests' }),
+  href: z.string().openapi({ example: '/attendance-corrections' }),
 });
 
 export const DashboardPlaceholderSchema = z.object({

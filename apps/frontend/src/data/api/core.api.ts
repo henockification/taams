@@ -483,23 +483,29 @@ export const coreApi = {
   },
   getEmployeeAttendancePunches: (employeeId: string) => coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
   getUnprocessedAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches/unprocessed'),
-  getSupervisorAttendanceDailyRecords: (params: { date?: string } = {}) => {
+  getSupervisorAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/supervisor${suffix}`);
   },
-  getHrAttendanceDailyRecords: (params: { date?: string } = {}) => {
+  getHrAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/hr${suffix}`);
   },
-  generateAttendanceDailyRecords: (params: { date?: string } = {}) => {
+  generateAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<GenerateAttendanceDailyRecordsResponse>(`/attendance-approvals/generate${suffix}`, {

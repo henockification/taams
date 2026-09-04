@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, type ReactNode, useState } from 'react';
-import { Check, ClipboardPlus, FileText, X } from 'lucide-react';
+import { Check, ClipboardPlus, FileText, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +18,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateTimeField } from '@/components/calendar/calendar-date-field';
 import {
   Select,
   SelectContent,
@@ -163,8 +164,8 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
       {!isSupervisor ? (
         <div className="flex w-full justify-end">
           <Button onClick={openManualRequestDialog} className="w-full lg:w-auto">
-            <ClipboardPlus className="size-4" />
-            {t('requestAttendanceCorrection')}
+            <Plus className="size-4" />
+            {common('add')}
           </Button>
         </div>
       ) : null}
@@ -268,7 +269,7 @@ export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervis
             <form className="space-y-4" onSubmit={saveManualRequest}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label={t('punchTime')} id="request-time">
-                  <Input id="request-time" type="datetime-local" value={form.requestedPunchTime} onChange={(event) => setForm((current) => ({ ...current, requestedPunchTime: event.target.value }))} required />
+                  <CalendarDateTimeField id="request-time" value={form.requestedPunchTime} onChange={(requestedPunchTime) => setForm((current) => ({ ...current, requestedPunchTime }))} required />
                 </Field>
                 <Field label={t('punchType')} id="request-type">
                   <Select value={form.requestedPunchType} onValueChange={(value) => setForm((current) => ({ ...current, requestedPunchType: value as PunchType }))}>

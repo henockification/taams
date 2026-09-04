@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
@@ -106,8 +107,8 @@ export function LeaveAuthorizationsPage() {
           <Select value={leaveType} onValueChange={setLeaveType}><SelectTrigger className="w-full md:w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ALL">{t('allLeaveTypes')}</SelectItem>{leaveTypes.map((type) => <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>)}</SelectContent></Select>
           <Select value={filter} onValueChange={(value) => setFilter(value as QueueFilter)}><SelectTrigger className="w-full md:w-56"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDING">{t('awaitingHrAuthorization')}</SelectItem><SelectItem value="AUTHORIZED">{t('authorized')}</SelectItem><SelectItem value="REJECTED">{t('rejectedByHr')}</SelectItem><SelectItem value="ALL">{t('allStatuses')}</SelectItem></SelectContent></Select>
           <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:w-auto">
-            <label className="space-y-1 text-sm"><span className="font-medium">{t('requestDateFrom')}</span><Input type="date" value={requestDateFilters.fromDate} onChange={(event) => setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }))} /></label>
-            <label className="space-y-1 text-sm"><span className="font-medium">{t('requestDateTo')}</span><Input type="date" value={requestDateFilters.toDate} onChange={(event) => setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }))} /></label>
+            <label className="space-y-1 text-sm"><span className="font-medium">{t('requestDateFrom')}</span><CalendarDateField value={requestDateFilters.fromDate} onChange={(fromDate) => setRequestDateFilters((current) => ({ ...current, fromDate }))} /></label>
+            <label className="space-y-1 text-sm"><span className="font-medium">{t('requestDateTo')}</span><CalendarDateField value={requestDateFilters.toDate} onChange={(toDate) => setRequestDateFilters((current) => ({ ...current, toDate }))} /></label>
           </div>
         </div>
       </div>

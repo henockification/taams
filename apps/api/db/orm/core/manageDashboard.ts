@@ -99,7 +99,7 @@ async function buildSuperAdminDashboard(user: DashboardUser, employee: any, gene
     quickActions: [
       createQuickAction('Employees', 'Maintain employee records and assignments.', '/employees'),
       createQuickAction('Devices', 'Review biometric device status and sync settings.', '/biometric-devices'),
-      createQuickAction('Manual punch requests', 'Approve or reject employee correction requests.', '/manual-punch-requests'),
+      createQuickAction('Manual punch requests', 'Approve or reject employee correction requests.', '/attendance-correction-approvals'),
       createQuickAction('Leave requests', 'Approve or reject employee leave requests.', '/leave-request-approvals'),
       createQuickAction('Attendance punches', 'Inspect raw and processed punch records.', '/attendance-punches'),
     ],
@@ -259,12 +259,12 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
     currentAnnualLeaveBalance,
     metrics: [
       createMetric('recent-punches', 'Recent punches', recentPunches.length, 'Latest attendance punches linked to your profile', '/attendance-punches'),
-      createMetric('manual-requests', 'Manual requests', manualPunchRequestItems.length, 'Your recent correction requests', '/manual-punch-requests'),
+      createMetric('manual-requests', 'Manual requests', manualPunchRequestItems.length, 'Your recent correction requests', '/attendance-corrections'),
       createMetric('annual-leave-balance', 'Annual leave balance', annualLeaveMetricValue, annualLeaveMetricDescription, '/annual-leave-requests'),
       createMetric('schedule-status', latestWorkSchedule ? 'Schedule assigned' : 'No schedule yet', latestWorkSchedule ? 'Active' : 'Setup needed', 'Latest work schedule assignment', '/work-schedules'),
     ],
     quickActions: [
-      createQuickAction('Request manual punch', 'Submit a correction request for a missed or wrong punch.', '/manual-punch-requests'),
+      createQuickAction('Request manual punch', 'Submit a correction request for a missed or wrong punch.', '/attendance-corrections'),
       createQuickAction('Request annual leave', 'Submit annual leave for supervisor approval.', '/annual-leave-requests'),
     ],
     sections: {

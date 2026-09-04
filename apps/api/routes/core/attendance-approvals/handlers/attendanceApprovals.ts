@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import {
   generateAttendanceDailyRecords,
+  generateAttendanceDailyRecordsInRange,
   getHrAttendanceDailyRecords,
   getSupervisorAttendanceDailyRecords,
   hrApproveAttendanceDailyRecord,
@@ -23,7 +24,11 @@ export async function generateAttendanceDailyRecordsHandler(c: Context) {
   try {
     await requireAuthenticatedUser(c);
     const date = c.req.query('date');
-    const records = await generateAttendanceDailyRecords(date);
+    const dateFrom = c.req.query('dateFrom');
+    const dateTo = c.req.query('dateTo');
+    const records = dateFrom || dateTo
+      ? await generateAttendanceDailyRecordsInRange(dateFrom, dateTo)
+      : await generateAttendanceDailyRecords(date);
 
     return c.json({
       success: true,
@@ -39,11 +44,15 @@ export async function getSupervisorAttendanceDailyRecordsHandler(c: Context) {
   try {
     const session = await requireAuthenticatedUser(c);
     const date = c.req.query('date');
+    const dateFrom = c.req.query('dateFrom');
+    const dateTo = c.req.query('dateTo');
     const scope = await resolveScope(session);
     const records = await getSupervisorAttendanceDailyRecords({
       userId: session.user.id,
       roles: session.user.role ?? [],
       date,
+      dateFrom,
+      dateTo,
       scope,
     });
 
@@ -66,8 +75,10 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     }
 
     const date = c.req.query('date');
+    const dateFrom = c.req.query('dateFrom');
+    const dateTo = c.req.query('dateTo');
     const scope = await resolveScope(session);
-    const records = await getHrAttendanceDailyRecords(date, scope);
+    const records = await getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo });
 
     return c.json({
       success: true,

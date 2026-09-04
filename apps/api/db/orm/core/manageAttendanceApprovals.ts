@@ -27,9 +27,14 @@ type DbClient = typeof db | any;
 type ApprovalScope = {
   userId: string;
   date?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
   roles?: string[] | null;
   scope?: EmployeeVisibilityScope;
 };
+
+const MAX_AUTO_GENERATE_DAYS = 7;
+const MAX_REFRESH_GENERATE_DAYS = 31;
 
 export async function generateAttendanceDailyRecords(date?: string | null) {
   const attendanceDate = normalizeDateParam(date);
@@ -167,14 +172,32 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
   )).filter(Boolean);
 }
 
+export async function generateAttendanceDailyRecordsInRange(dateFrom?: string | null, dateTo?: string | null) {
+  const range = resolveAttendanceDateRange({ dateFrom, dateTo });
+  const days = listDatesInclusive(range.dateFrom, clipDateToToday(range.dateTo));
+  if (days.length === 0) return generateAttendanceDailyRecords(clipDateToToday(range.dateTo));
+  if (days.length > MAX_REFRESH_GENERATE_DAYS) {
+    return generateAttendanceDailyRecords(days[days.length - 1]);
+  }
+
+  let generated: any[] = [];
+  for (const day of days) {
+    generated = await generateAttendanceDailyRecords(day);
+  }
+  return generated;
+}
+
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
-  const attendanceDate = normalizeDateParam(input.date);
-  await generateAttendanceDailyRecords(attendanceDate);
+  const range = resolveAttendanceDateRange(input);
+  await maybeGenerateAttendanceDailyRecordsForRange(range);
+
+  const referenceDate = clipDateToToday(range.dateTo);
+  const dateFilter = attendanceDateFilter(range.dateFrom, range.dateTo);
 
   if (input.scope?.type === 'unrestricted') {
     const records = await db.query.attendanceDailyRecords.findMany({
       where: and(
-        eq(attendanceDailyRecords.attendanceDate, attendanceDate),
+        dateFilter,
         inArray(attendanceDailyRecords.status, [
           'PENDING_SUPERVISOR',
           'RETURNED',
@@ -184,14 +207,14 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
       with: recordRelations,
       orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
     });
-    return attachEffectiveDepartmentContext(records, attendanceDate);
+    return attachEffectiveDepartmentContext(records, referenceDate);
   }
 
-  const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, attendanceDate);
+  const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, referenceDate);
 
   if (directReportIds.length === 0) return [];
 
-  return getAttendanceDailyRecordsByEmployeeIds(directReportIds, attendanceDate, [
+  return getAttendanceDailyRecordsByEmployeeIds(directReportIds, range.dateFrom, range.dateTo, [
     'PENDING_SUPERVISOR',
     'RETURNED',
     'SUPERVISOR_APPROVED',
@@ -211,20 +234,24 @@ export async function refreshAttendanceForAuthorizedLeave(request: any) {
   for (const record of records) await generateAttendanceDailyRecords(record.attendanceDate);
 }
 
-export async function getHrAttendanceDailyRecords(date?: string | null, scope?: EmployeeVisibilityScope) {
-  const attendanceDate = normalizeDateParam(date);
-  await generateAttendanceDailyRecords(attendanceDate);
+export async function getHrAttendanceDailyRecords(
+  date?: string | null,
+  scope?: EmployeeVisibilityScope,
+  rangeInput?: { dateFrom?: string | null; dateTo?: string | null },
+) {
+  const range = resolveAttendanceDateRange({ date, ...rangeInput });
+  await maybeGenerateAttendanceDailyRecordsForRange(range);
 
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
-      eq(attendanceDailyRecords.attendanceDate, attendanceDate),
+      attendanceDateFilter(range.dateFrom, range.dateTo),
       eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
     ),
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
 
-  const enriched = await attachEffectiveDepartmentContext(records, attendanceDate);
+  const enriched = await attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return enriched;
   return enriched.filter((record) => record.employee?.userId === scope.userId);
 }
@@ -420,19 +447,20 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
 
 async function getAttendanceDailyRecordsByEmployeeIds(
   employeeIds: string[],
-  attendanceDate: string,
+  dateFrom: string,
+  dateTo: string,
   statuses: AttendanceDailyRecordStatus[],
 ) {
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       inArray(attendanceDailyRecords.employeeId, employeeIds),
-      eq(attendanceDailyRecords.attendanceDate, attendanceDate),
+      attendanceDateFilter(dateFrom, dateTo),
       inArray(attendanceDailyRecords.status, statuses),
     ),
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
-  return attachEffectiveDepartmentContext(records, attendanceDate);
+  return attachEffectiveDepartmentContext(records, clipDateToToday(dateTo));
 }
 
 async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
@@ -444,16 +472,23 @@ async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
   return (await attachEffectiveDepartmentContext([record], record.attendanceDate, tx))[0] ?? record;
 }
 
-async function attachEffectiveDepartmentContext(records: any[], attendanceDate: string, tx: DbClient = db) {
+async function attachEffectiveDepartmentContext(records: any[], attendanceDate?: string, tx: DbClient = db) {
   if (records.length === 0) return records;
   const employeeIds = [...new Set(records.map((record) => record.employeeId).filter(Boolean))];
-  const activeAssignments = employeeIds.length > 0
+  const recordDates = records.map((record) => record.attendanceDate).filter(Boolean) as string[];
+  const dateFrom = recordDates.length > 0
+    ? recordDates.reduce((min, date) => (date < min ? date : min))
+    : attendanceDate;
+  const dateTo = recordDates.length > 0
+    ? recordDates.reduce((max, date) => (date > max ? date : max))
+    : attendanceDate;
+  const activeAssignments = employeeIds.length > 0 && dateFrom && dateTo
     ? await tx.query.temporaryDepartmentAssignments.findMany({
       where: and(
         inArray(temporaryDepartmentAssignments.employeeId, employeeIds),
         eq(temporaryDepartmentAssignments.isActive, true),
-        lte(temporaryDepartmentAssignments.effectiveFrom, attendanceDate),
-        gte(temporaryDepartmentAssignments.effectiveTo, attendanceDate),
+        lte(temporaryDepartmentAssignments.effectiveFrom, dateTo),
+        gte(temporaryDepartmentAssignments.effectiveTo, dateFrom),
       ),
       with: {
         employee: { with: { department: true, position: true } },
@@ -463,9 +498,22 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate: 
       },
     })
     : [];
-  const assignmentByEmployee = new Map<string, any>(activeAssignments.map((assignment: any) => [assignment.employeeId, assignment]));
+  const assignmentsByEmployee = new Map<string, any[]>();
+  for (const assignment of activeAssignments as any[]) {
+    const current = assignmentsByEmployee.get(assignment.employeeId) ?? [];
+    current.push(assignment);
+    assignmentsByEmployee.set(assignment.employeeId, current);
+  }
+  const assignmentForRecord = (record: any) => {
+    const matches = (assignmentsByEmployee.get(record.employeeId) ?? []).filter((assignment) => (
+      assignment.effectiveFrom <= record.attendanceDate
+      && assignment.effectiveTo >= record.attendanceDate
+    ));
+    if (matches.length === 0) return null;
+    return [...matches].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+  };
   const effectiveDepartmentIds = [...new Set(records.map((record) => {
-    const assignment = assignmentByEmployee.get(record.employeeId);
+    const assignment = assignmentForRecord(record);
     return assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null;
   }).filter(Boolean))] as string[];
   const effectiveDepartments = effectiveDepartmentIds.length > 0
@@ -476,7 +524,7 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate: 
   const departmentById = new Map(effectiveDepartments.map((department: any) => [department.id, department]));
 
   return records.map((record) => {
-    const assignment = assignmentByEmployee.get(record.employeeId) ?? null;
+    const assignment = assignmentForRecord(record);
     const effectiveDepartmentId = assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null;
     return {
       ...record,
@@ -486,9 +534,56 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate: 
   });
 }
 
+function isYmd(value?: string | null): value is string {
+  return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
+}
+
 function normalizeDateParam(date?: string | null) {
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
+  if (isYmd(date)) return date;
   return new Date().toISOString().slice(0, 10);
+}
+
+function resolveAttendanceDateRange(input: { date?: string | null; dateFrom?: string | null; dateTo?: string | null }) {
+  const fallback = normalizeDateParam(input.date);
+  const dateFrom = isYmd(input.dateFrom) ? input.dateFrom : fallback;
+  const dateTo = isYmd(input.dateTo) ? input.dateTo : (isYmd(input.dateFrom) ? input.dateFrom : fallback);
+  return dateFrom <= dateTo ? { dateFrom, dateTo } : { dateFrom: dateTo, dateTo: dateFrom };
+}
+
+function clipDateToToday(date: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  return date < today ? date : today;
+}
+
+function listDatesInclusive(dateFrom: string, dateTo: string) {
+  if (dateFrom > dateTo) return [];
+  const dates: string[] = [];
+  const cursor = new Date(`${dateFrom}T00:00:00`);
+  const end = new Date(`${dateTo}T00:00:00`);
+  while (cursor <= end) {
+    const year = cursor.getFullYear();
+    const month = String(cursor.getMonth() + 1).padStart(2, '0');
+    const day = String(cursor.getDate()).padStart(2, '0');
+    dates.push(`${year}-${month}-${day}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+function attendanceDateFilter(dateFrom: string, dateTo: string) {
+  if (dateFrom === dateTo) return eq(attendanceDailyRecords.attendanceDate, dateFrom);
+  return and(
+    gte(attendanceDailyRecords.attendanceDate, dateFrom),
+    lte(attendanceDailyRecords.attendanceDate, dateTo),
+  );
+}
+
+async function maybeGenerateAttendanceDailyRecordsForRange(range: { dateFrom: string; dateTo: string }) {
+  const days = listDatesInclusive(range.dateFrom, clipDateToToday(range.dateTo));
+  if (days.length === 0 || days.length > MAX_AUTO_GENERATE_DAYS) return;
+  for (const day of days) {
+    await generateAttendanceDailyRecords(day);
+  }
 }
 
 function getDayRange(date: string) {

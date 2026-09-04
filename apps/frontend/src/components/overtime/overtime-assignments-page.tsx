@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { MultiSelect } from '@/components/ui/multi-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -128,8 +129,8 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
 
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="h-9 w-40" />
-          <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="h-9 w-40" />
+          <CalendarDateField value={dateFrom} onChange={setDateFrom} className="h-9 w-44" />
+          <CalendarDateField value={dateTo} onChange={setDateTo} className="h-9 w-44" />
           <Select value={status || allStatuses} onValueChange={(value) => setStatus(value === allStatuses ? '' : value)}>
             <SelectTrigger className="h-9 w-40">
               <SelectValue />
@@ -382,7 +383,11 @@ function Field({ label, value, type, onChange }: { label: string; value: string;
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
-      <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} required />
+      {type === 'date' ? (
+        <CalendarDateField value={value} onChange={onChange} required />
+      ) : (
+        <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} required />
+      )}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import {
   leaveInterruptions,
   leaveRequests,
   leaveTypes,
+  holidays,
   user,
   workScheduleDays,
 } from '../../schema';
@@ -534,7 +535,7 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   fiscalYear = await getActiveLeaveFiscalYear();
   if (!fiscalYear) throw new Error('Active leave fiscal year is required');
 
-  const requestedDays = calculateCalendarDays(input.startDate, input.endDate);
+  const requestedDays = await calculateWorkingDays(input.employeeId, input.startDate, input.endDate);
   assertWithinAllowedDays(leaveType, requestedDays);
 
   const [request] = await db.insert(leaveRequests).values({
@@ -608,7 +609,7 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
     }
 
     if (!input.startDate || !input.endDate) throw new Error('Start date and end date are required');
-    const requestedDays = calculateCalendarDays(input.startDate, input.endDate);
+    const requestedDays = await calculateWorkingDays(request.employeeId, input.startDate, input.endDate, tx);
     assertWithinAllowedDays(leaveType, requestedDays);
 
     const [updated] = await tx.update(leaveRequests).set({
@@ -1429,20 +1430,39 @@ async function calculateWorkingDays(employeeId: string, startDate: string, endDa
     ),
     orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom)],
   });
-  if (!assignment) throw new Error('Employee work schedule is required to calculate annual leave days');
+  if (!assignment) throw new Error('Employee work schedule is required to calculate leave days');
 
-  const days = await tx.select().from(workScheduleDays).where(
-    and(
-      eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
-      eq(workScheduleDays.isActive, true),
+  const [days, overlappingHolidays] = await Promise.all([
+    tx.select().from(workScheduleDays).where(
+      and(
+        eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
+        eq(workScheduleDays.isActive, true),
+      ),
     ),
-  );
+    tx.query.holidays.findMany({
+      where: and(
+        eq(holidays.isActive, true),
+        lte(holidays.startDate, endDate),
+        gte(holidays.endDate, startDate),
+      ),
+    }),
+  ]);
   const workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => day.dayOfWeek));
   if (workDays.size === 0) throw new Error('Employee work schedule has no working days configured');
 
+  const holidayDates = new Set<string>();
+  for (const holiday of overlappingHolidays) {
+    for (const date of dateRange(formatDateValue(holiday.startDate), formatDateValue(holiday.endDate))) {
+      holidayDates.add(date.toISOString().slice(0, 10));
+    }
+  }
+
   let count = 0;
   for (const date of dateRange(startDate, endDate)) {
-    if (workDays.has(dayOfWeek(date))) count += 1;
+    const iso = date.toISOString().slice(0, 10);
+    if (!workDays.has(dayOfWeek(date))) continue;
+    if (holidayDates.has(iso)) continue;
+    count += 1;
   }
   if (count <= 0) throw new Error('Leave request does not include any scheduled working days');
   return count;
@@ -1501,11 +1521,6 @@ function assertTransferWindow(fromFiscalYear: any, toFiscalYear: any) {
   if (toStart - fromEnd > maxCarryForwardMs) {
     throw new Error('Annual leave cannot be carried forward beyond two fiscal years');
   }
-}
-
-function calculateCalendarDays(startDate: string, endDate: string) {
-  assertDateRange(startDate, endDate);
-  return dateRange(startDate, endDate).length;
 }
 
 function dateRange(startDate: string, endDate: string) {

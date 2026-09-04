@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
+import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -91,7 +92,7 @@ export default function ExecutiveDashboardPage() {
         <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("date")}
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full sm:w-44" />
+            <CalendarDateField value={date} onChange={setDate} className="w-full sm:w-44" />
           </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("month")}

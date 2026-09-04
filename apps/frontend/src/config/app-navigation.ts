@@ -312,7 +312,7 @@ export const appNavGroups: AppNavGroup[] = [
       },
       {
         titleKey: 'manualPunchRequests',
-        url: '/manual-punch-requests',
+        url: '/attendance-corrections',
         permissionResource: 'manual-punch-requests',
         requiredPermission: 'manual-punch-requests:read',
         icon: ClipboardPlus,
@@ -549,7 +549,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
     item.url === '/annual-leave-requests' ||
     item.url === '/other-leave-requests' ||
     item.url === '/overtime-requests' ||
-    item.url === '/manual-punch-requests'
+    item.url === '/attendance-corrections'
   )
     return Boolean(user);
   return (
@@ -674,7 +674,8 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
     return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
-  if (pathname === '/manual-punch-requests') return Boolean(user);
+  if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
+  if (pathname === '/manual-punch-requests' || pathname.startsWith('/manual-punch-requests/')) return Boolean(user);
   if (pathname === '/notification-logs' || pathname.startsWith('/notification-logs/')) return Boolean(user);
   if (pathname === '/temporary-assignments' || pathname.startsWith('/temporary-assignments/')) return hasTemporaryAssignmentAccess(user);
   if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');

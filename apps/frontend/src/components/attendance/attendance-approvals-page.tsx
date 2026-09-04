@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { CheckCircle2, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import {
   Select,
   SelectContent,
@@ -49,10 +51,50 @@ import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
 type ApprovalFilter = 'all' | 'approved' | 'unapproved';
+type DateFilter = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 const allDepartmentsValue = '__all_departments';
 
+function dateToYmd(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function today() {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  return dateToYmd(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string; toDate: string }) {
+  if (dateFilter === 'CUSTOM') return custom;
+
+  const now = new Date();
+  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(todayDate);
+
+  if (dateFilter === 'TODAY') {
+    return { fromDate: dateToYmd(todayDate), toDate: dateToYmd(end) };
+  }
+
+  if (dateFilter === 'THIS_WEEK') {
+    const mondayOffset = (todayDate.getDay() + 6) % 7;
+    const start = new Date(todayDate);
+    start.setDate(todayDate.getDate() - mondayOffset);
+    const weekEnd = new Date(start);
+    weekEnd.setDate(start.getDate() + 6);
+    return { fromDate: dateToYmd(start), toDate: dateToYmd(weekEnd) };
+  }
+
+  if (dateFilter === 'THIS_MONTH') {
+    const start = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+    end.setMonth(todayDate.getMonth() + 1, 0);
+    return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
+  }
+
+  const start = new Date(todayDate.getFullYear(), 0, 1);
+  end.setMonth(11, 31);
+  return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
 }
 
 function employeeName(employee?: Employee | null) {
@@ -64,7 +106,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const t = useTranslations('core');
   const common = useTranslations('common');
   const { formatDate, formatDateTime } = useCalendarPreference();
-  const [date, setDate] = useState(today());
+  const [dateFilter, setDateFilter] = useState<DateFilter>('TODAY');
+  const [customDateFilters, setCustomDateFilters] = useState({ fromDate: today(), toDate: today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
@@ -72,8 +115,14 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
 
-  const supervisorQuery = useSupervisorAttendanceDailyRecords(date);
-  const hrQuery = useHrAttendanceDailyRecords(date);
+  const dateBounds = getDateFilterBounds(dateFilter, customDateFilters);
+  const dateRange = {
+    dateFrom: dateBounds.fromDate,
+    dateTo: dateBounds.toDate,
+  };
+  const hasDateRange = Boolean(dateRange.dateFrom && dateRange.dateTo);
+  const supervisorQuery = useSupervisorAttendanceDailyRecords(dateRange, mode === 'supervisor' && hasDateRange);
+  const hrQuery = useHrAttendanceDailyRecords(dateRange, mode === 'hr' && hasDateRange);
   const generateRecords = useGenerateAttendanceDailyRecords();
   const supervisorApprove = useSupervisorApproveAttendanceDailyRecord();
   const hrApprove = useHrApproveAttendanceDailyRecord();
@@ -124,7 +173,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
 
   async function handleRefresh() {
     try {
-      await generateRecords.mutateAsync({ date });
+      await generateRecords.mutateAsync(dateRange);
       setSelectedRecordIds([]);
       notifications.show({ title: common('success'), message: t('dailyRecordsRefreshed'), color: 'green' });
     } catch (error) {
@@ -197,46 +246,98 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
 
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className="w-full sm:w-44"
-          />
-          <Input
-            type="search"
-            value={employeeSearch}
-            onChange={(event) => setEmployeeSearch(event.target.value)}
-            placeholder={t('searchEmployee')}
-            className="w-full md:max-w-xs"
-          />
-          <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
-            <SelectTrigger className="w-full md:w-48">
-              <SelectValue placeholder={t('approvalStatus')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
-              <SelectItem value="approved">{t('approved')}</SelectItem>
-              <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
-            </SelectContent>
-          </Select>
-          {isHrMode ? (
-            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-full md:w-64">
-                <SelectValue placeholder={t('selectDepartment')} />
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <FilterField label={t('attendanceDate')} htmlFor="attendance-approval-date-filter">
+            <Select
+              value={dateFilter}
+              onValueChange={(value) => {
+                const nextFilter = value as DateFilter;
+                setDateFilter(nextFilter);
+                setSelectedRecordIds([]);
+                if (nextFilter === 'CUSTOM') {
+                  const current = today();
+                  setCustomDateFilters({ fromDate: current, toDate: current });
+                }
+              }}
+            >
+              <SelectTrigger id="attendance-approval-date-filter" className="w-full md:w-44">
+                <SelectValue placeholder={t('today')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
-                {departments.map((department) => (
-                  <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
-                ))}
+                <SelectItem value="TODAY">{t('today')}</SelectItem>
+                <SelectItem value="THIS_WEEK">{t('thisWeek')}</SelectItem>
+                <SelectItem value="THIS_MONTH">{t('thisMonth')}</SelectItem>
+                <SelectItem value="THIS_YEAR">{t('thisYear')}</SelectItem>
+                <SelectItem value="CUSTOM">{t('customRange')}</SelectItem>
               </SelectContent>
             </Select>
+          </FilterField>
+          {dateFilter === 'CUSTOM' ? (
+            <>
+              <FilterField label={t('dateFrom')} htmlFor="attendance-approval-date-from">
+                <CalendarDateField
+                  id="attendance-approval-date-from"
+                  value={customDateFilters.fromDate}
+                  onChange={(fromDate) => {
+                    setCustomDateFilters((current) => ({ ...current, fromDate }));
+                    setSelectedRecordIds([]);
+                  }}
+                  className="w-full sm:w-44"
+                />
+              </FilterField>
+              <FilterField label={t('dateTo')} htmlFor="attendance-approval-date-to">
+                <CalendarDateField
+                  id="attendance-approval-date-to"
+                  value={customDateFilters.toDate}
+                  onChange={(toDate) => {
+                    setCustomDateFilters((current) => ({ ...current, toDate }));
+                    setSelectedRecordIds([]);
+                  }}
+                  className="w-full sm:w-44"
+                />
+              </FilterField>
+            </>
+          ) : null}
+          <FilterField label={t('employeeSearch')} htmlFor="attendance-approval-employee-search">
+            <Input
+              id="attendance-approval-employee-search"
+              type="search"
+              value={employeeSearch}
+              onChange={(event) => setEmployeeSearch(event.target.value)}
+              placeholder={t('searchEmployee')}
+              className="w-full md:max-w-xs"
+            />
+          </FilterField>
+          <FilterField label={t('approvalStatus')} htmlFor="attendance-approval-status-filter">
+            <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
+              <SelectTrigger id="attendance-approval-status-filter" className="w-full md:w-48">
+                <SelectValue placeholder={t('approvalStatus')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
+                <SelectItem value="approved">{t('approved')}</SelectItem>
+                <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterField>
+          {isHrMode ? (
+            <FilterField label={t('department')} htmlFor="attendance-approval-department-filter">
+              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <SelectTrigger id="attendance-approval-department-filter" className="w-full md:w-64">
+                  <SelectValue placeholder={t('selectDepartment')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                  {departments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FilterField>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={handleRefresh} disabled={generateRecords.isPending} className="w-full lg:w-auto">
+          <Button type="button" variant="outline" onClick={handleRefresh} disabled={!hasDateRange || generateRecords.isPending} className="w-full lg:w-auto">
             <RefreshCw className="size-4" />
             {t('generateDailyRecords')}
           </Button>
@@ -439,6 +540,15 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function FilterField({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
     </div>
   );
 }

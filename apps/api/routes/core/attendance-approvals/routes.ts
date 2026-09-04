@@ -25,8 +25,12 @@ const uuidParam = z.object({
   id: z.string().uuid().openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
 });
 
-const dateQuery = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().openapi({ example: '2026-06-09' }),
+const ymdDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const dateRangeQuery = z.object({
+  date: ymdDate.optional().openapi({ example: '2026-06-09' }),
+  dateFrom: ymdDate.optional().openapi({ example: '2026-06-01' }),
+  dateTo: ymdDate.optional().openapi({ example: '2026-06-30' }),
 });
 
 export const generateAttendanceDailyRecordsRoute = createRoute({
@@ -34,7 +38,7 @@ export const generateAttendanceDailyRecordsRoute = createRoute({
   path: '/attendance-approvals/generate',
   tags: ['Core', 'Attendance Approvals'],
   summary: 'Generate Attendance Daily Records',
-  request: { query: dateQuery },
+  request: { query: dateRangeQuery },
   responses: {
     200: {
       content: { 'application/json': { schema: GenerateAttendanceDailyRecordsResponseSchema } },
@@ -48,7 +52,7 @@ export const getSupervisorAttendanceDailyRecordsRoute = createRoute({
   path: '/attendance-approvals/supervisor',
   tags: ['Core', 'Attendance Approvals'],
   summary: 'Get Supervisor Attendance Approvals',
-  request: { query: dateQuery },
+  request: { query: dateRangeQuery },
   responses: {
     200: {
       content: { 'application/json': { schema: AttendanceDailyRecordsResponseSchema } },
@@ -62,7 +66,7 @@ export const getHrAttendanceDailyRecordsRoute = createRoute({
   path: '/attendance-approvals/hr',
   tags: ['Core', 'Attendance Approvals'],
   summary: 'Get HR Attendance Approvals',
-  request: { query: dateQuery },
+  request: { query: dateRangeQuery },
   responses: {
     200: {
       content: { 'application/json': { schema: AttendanceDailyRecordsResponseSchema } },

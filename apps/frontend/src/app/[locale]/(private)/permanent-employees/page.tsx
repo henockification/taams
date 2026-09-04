@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileSpreadsheet, UploadCloud } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -29,7 +29,7 @@ import {
   useEmployees,
   useImportPermanentEmployees,
 } from '@/data/hooks/core.hooks';
-import type { PermanentEmployeeImportResponse } from '@/data/types/core.types';
+import type { Employee, PermanentEmployeeImportResponse } from '@/data/types/core.types';
 import { useRouter } from '@/i18n';
 
 const employmentStatusOptions = [
@@ -39,6 +39,20 @@ const employmentStatusOptions = [
 ] as const;
 
 type EmploymentStatusFilter = 'ALL' | (typeof employmentStatusOptions)[number]['value'];
+const allDepartmentsValue = '__all_departments';
+
+function employeeDepartmentOption(employee: Employee) {
+  if (employee.department?.id) {
+    return { id: employee.department.id, name: employee.department.nameEn };
+  }
+  if (employee.departmentId) {
+    return { id: employee.departmentId, name: employee.sourceDepartmentName ?? employee.departmentId };
+  }
+  if (employee.sourceDepartmentName) {
+    return { id: `source:${employee.sourceDepartmentName}`, name: employee.sourceDepartmentName };
+  }
+  return null;
+}
 
 export default function PermanentEmployeesPage() {
   const t = useTranslations('core');
@@ -51,12 +65,22 @@ export default function PermanentEmployeesPage() {
   const [result, setResult] = useState<PermanentEmployeeImportResponse | null>(null);
   const [search, setSearch] = useState('');
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState<EmploymentStatusFilter>('ALL');
+  const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
 
   const permanentEmployees = useMemo(() => (
     (employeesResponse?.employees ?? []).filter((employee) => employee.employmentType === 'PERMANENT')
   ), [employeesResponse?.employees]);
+
+  const departments = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const employee of permanentEmployees) {
+      const department = employeeDepartmentOption(employee);
+      if (department) byId.set(department.id, department);
+    }
+    return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [permanentEmployees]);
 
   const filteredPermanentEmployees = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -68,6 +92,10 @@ export default function PermanentEmployeesPage() {
         if (!selected || !selected.matches.some((match) => sourceStatus.includes(normalizeText(match)))) {
           return false;
         }
+      }
+
+      if (departmentFilter !== allDepartmentsValue) {
+        if (employeeDepartmentOption(employee)?.id !== departmentFilter) return false;
       }
 
       if (!query) return true;
@@ -87,7 +115,7 @@ export default function PermanentEmployeesPage() {
 
       return haystack.includes(query);
     });
-  }, [employmentStatusFilter, permanentEmployees, search]);
+  }, [departmentFilter, employmentStatusFilter, permanentEmployees, search]);
 
   const totalRecords = filteredPermanentEmployees.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
@@ -103,7 +131,7 @@ export default function PermanentEmployeesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [employmentStatusFilter, pageSize, search]);
+  }, [departmentFilter, employmentStatusFilter, pageSize, search]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     setSelectedFile(event.target.files?.[0] ?? null);
@@ -135,37 +163,55 @@ export default function PermanentEmployeesPage() {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t('searchPermanentEmployees')}
-            className="min-w-64 flex-1 md:max-w-sm"
-          />
-          <Select
-            value={employmentStatusFilter}
-            onValueChange={(value) => setEmploymentStatusFilter(value as EmploymentStatusFilter)}
-          >
-            <SelectTrigger className="w-full sm:w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">{t('allEmploymentStatuses')}</SelectItem>
-              {employmentStatusOptions.map((status) => (
-                <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <FilterField label={t('employeeSearch')} htmlFor="permanent-employee-search">
+            <Input
+              id="permanent-employee-search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('searchPermanentEmployees')}
+              className="min-w-64 flex-1 md:max-w-sm"
+            />
+          </FilterField>
+          <FilterField label={t('employmentStatus')} htmlFor="permanent-employee-status-filter">
+            <Select
+              value={employmentStatusFilter}
+              onValueChange={(value) => setEmploymentStatusFilter(value as EmploymentStatusFilter)}
+            >
+              <SelectTrigger id="permanent-employee-status-filter" className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">{t('allEmploymentStatuses')}</SelectItem>
+                {employmentStatusOptions.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterField>
+          <FilterField label={t('department')} htmlFor="permanent-employee-department-filter">
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger id="permanent-employee-department-filter" className="w-full sm:w-64">
+                <SelectValue placeholder={t('selectDepartment')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FilterField>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => setImportDialogOpen(true)}>
             <UploadCloud className="size-4" />
-            {t('importPermanentEmployees')}
+            {common('import')}
           </Button>
           <div className="rounded-md border border-border px-3 py-2">
             <p className="text-[11px] leading-none text-muted-foreground">{t('totalPermanentEmployees')}</p>
-            <p className="text-base font-semibold">{permanentEmployees.length}</p>
+            <p className="text-base font-semibold">{totalRecords}</p>
           </div>
         </div>
       </div>
@@ -239,11 +285,11 @@ export default function PermanentEmployeesPage() {
                     key={employee.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/employees/${employee.id}?from=permanent-employees`)}
+                    onClick={() => router.push(`/permanent-employees/${employee.id}`)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
-                        router.push(`/employees/${employee.id}?from=permanent-employees`);
+                        router.push(`/permanent-employees/${employee.id}`);
                       }
                     }}
                     className="grid cursor-pointer grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -339,12 +385,21 @@ export default function PermanentEmployeesPage() {
               </Button>
               <Button type="submit" disabled={!selectedFile || importPermanentEmployees.isPending}>
                 <UploadCloud className="size-4" />
-                {importPermanentEmployees.isPending ? t('importingPermanentEmployees') : t('importPermanentEmployees')}
+                {importPermanentEmployees.isPending ? t('importingPermanentEmployees') : common('import')}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function FilterField({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      {children}
     </div>
   );
 }

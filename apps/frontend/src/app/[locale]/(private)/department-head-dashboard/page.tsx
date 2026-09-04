@@ -19,7 +19,7 @@ import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
@@ -85,7 +85,7 @@ export default function DepartmentHeadDashboardPage() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="grid w-full gap-1.5 text-sm font-medium text-foreground sm:w-auto">
             {t("date")}
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full sm:w-44" />
+            <CalendarDateField value={date} onChange={setDate} className="w-full sm:w-44" />
           </label>
           <Badge variant="outline" className="mb-1">
             {dashboard.department?.nameEn ?? t("department")}

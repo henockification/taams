@@ -22,7 +22,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { getAccessibleNavGroups, getFirstAccessiblePath, type AppNavItem } from "@/config/app-navigation"
+import { getAccessibleNavGroups, getFirstAccessiblePath, getNavItemForPath, type AppNavItem } from "@/config/app-navigation"
 import { useTimeOperationsSummary } from "@/data/hooks/core.hooks"
 import { Link, usePathname } from "@/i18n"
 import { cn } from "@/lib/utils"
@@ -257,7 +257,7 @@ export function AppSidebar({ user, ...props }: AppSidebarProps) {
 function SidebarNavItem({ item }: { item: AppNavItem }) {
   const pathname = usePathname()
   const t = useTranslations("navigation")
-  const isActive = pathname === item.url || pathname.startsWith(`${item.url}/`)
+  const isActive = getNavItemForPath(pathname)?.url === item.url
 
   return (
     <SidebarMenuItem>
@@ -311,8 +311,9 @@ function getActiveGroupKey(
   navGroups: ReturnType<typeof getAccessibleNavGroups>,
   pathname: string,
 ) {
+  const activeUrl = getNavItemForPath(pathname)?.url
   const activeGroup = navGroups.find((group) =>
-    group.items.some((item) => pathname === item.url || pathname.startsWith(`${item.url}/`)),
+    group.items.some((item) => item.url === activeUrl),
   )
 
   return activeGroup?.labelKey ?? navGroups.find((group) => group.labelKey === "workspace")?.labelKey ?? navGroups[0]?.labelKey ?? null
@@ -322,9 +323,10 @@ function getActiveSectionKey(
   navGroups: ReturnType<typeof getAccessibleNavGroups>,
   pathname: string,
 ) {
+  const activeUrl = getNavItemForPath(pathname)?.url
   for (const group of navGroups) {
     const section = group.sections?.find((candidate) =>
-      candidate.items.some((item) => pathname === item.url || pathname.startsWith(`${item.url}/`)),
+      candidate.items.some((item) => item.url === activeUrl),
     )
     if (section) return `${group.labelKey}:${section.labelKey}`
   }

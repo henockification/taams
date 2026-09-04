@@ -19,6 +19,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
@@ -214,10 +215,10 @@ export function FiscalYearsSection() {
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t('startsAt')} id="fy-start">
-                <Input id="fy-start" type="date" value={fiscalYearForm.startsAt} onChange={(event) => setFiscalYearForm((current) => ({ ...current, startsAt: event.target.value }))} required />
+                <CalendarDateField id="fy-start" value={fiscalYearForm.startsAt} onChange={(startsAt) => setFiscalYearForm((current) => ({ ...current, startsAt }))} required />
               </Field>
               <Field label={t('endsAt')} id="fy-end">
-                <Input id="fy-end" type="date" value={fiscalYearForm.endsAt} onChange={(event) => setFiscalYearForm((current) => ({ ...current, endsAt: event.target.value }))} required />
+                <CalendarDateField id="fy-end" value={fiscalYearForm.endsAt} onChange={(endsAt) => setFiscalYearForm((current) => ({ ...current, endsAt }))} required />
               </Field>
             </div>
             <div className="flex min-h-10 items-center gap-2 rounded-md border border-border px-3 py-2">

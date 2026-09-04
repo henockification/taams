@@ -102,8 +102,16 @@ export const coreQueryKeys = {
   attendancePunchesPaginated: (params: { page: number; pageSize: number; employeeId: string; deviceId: string; status: string; dateFrom: string; dateTo: string; timeFrom: string; timeTo: string }) => [...coreQueryKeys.attendancePunches(), 'paginated', params] as const,
   employeeAttendancePunches: (id: string) => [...coreQueryKeys.attendancePunches(), 'employee', id] as const,
   unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
-  supervisorAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', date] as const,
-  hrAttendanceDailyRecords: (date: string) => [...coreQueryKeys.all, 'attendance-approvals', 'hr', date] as const,
+  supervisorAttendanceDailyRecords: (range?: { dateFrom: string; dateTo: string }) => (
+    range
+      ? [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', range.dateFrom, range.dateTo] as const
+      : [...coreQueryKeys.all, 'attendance-approvals', 'supervisor'] as const
+  ),
+  hrAttendanceDailyRecords: (range?: { dateFrom: string; dateTo: string }) => (
+    range
+      ? [...coreQueryKeys.all, 'attendance-approvals', 'hr', range.dateFrom, range.dateTo] as const
+      : [...coreQueryKeys.all, 'attendance-approvals', 'hr'] as const
+  ),
   manualPunchRequests: (params?: { mine?: boolean }) => [...coreQueryKeys.all, 'manual-punch-requests', params ?? {}] as const,
   overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
@@ -433,11 +441,12 @@ export function useUpdateWorkScheduleDay() {
   });
 }
 
-export function useHolidays() {
+export function useHolidays(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: coreQueryKeys.holidays(),
     queryFn: () => coreApi.getHolidays(),
     staleTime: 60 * 1000,
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -984,10 +993,10 @@ export function useChangeBiometricExemptionStatus() {
         queryKey: coreQueryKeys.biometricExemptions(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(''),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(''),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
     },
   });
@@ -1099,18 +1108,20 @@ export function useCreateAttendancePunch() {
   });
 }
 
-export function useSupervisorAttendanceDailyRecords(date: string) {
+export function useSupervisorAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
   return useQuery({
-    queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(date),
-    queryFn: () => coreApi.getSupervisorAttendanceDailyRecords({ date }),
+    queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(range),
+    queryFn: () => coreApi.getSupervisorAttendanceDailyRecords(range),
+    enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
   });
 }
 
-export function useHrAttendanceDailyRecords(date: string) {
+export function useHrAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
   return useQuery({
-    queryKey: coreQueryKeys.hrAttendanceDailyRecords(date),
-    queryFn: () => coreApi.getHrAttendanceDailyRecords({ date }),
+    queryKey: coreQueryKeys.hrAttendanceDailyRecords(range),
+    queryFn: () => coreApi.getHrAttendanceDailyRecords(range),
+    enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
   });
 }
@@ -1119,19 +1130,19 @@ export function useGenerateAttendanceDailyRecords() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: { date: string }) => coreApi.generateAttendanceDailyRecords(input),
+    mutationFn: (input: { date?: string; dateFrom?: string; dateTo?: string }) => coreApi.generateAttendanceDailyRecords(input),
     onSuccess: (_data, input) => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(input.date),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(input.date),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.departmentHeadDashboardSummary(input.date),
+        queryKey: coreQueryKeys.departmentHeadDashboardSummary(input.dateTo ?? input.date ?? ''),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrDashboardSummary(input.date),
+        queryKey: coreQueryKeys.hrDashboardSummary(input.dateTo ?? input.date ?? ''),
       });
     },
   });
@@ -1145,10 +1156,10 @@ export function useSupervisorApproveAttendanceDailyRecord() {
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.departmentHeadDashboardSummary(date),
@@ -1168,10 +1179,10 @@ export function useUpdateSupervisorAttendanceDailyRecordPayroll() {
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.departmentHeadDashboardSummary(date),
@@ -1191,10 +1202,10 @@ export function useHrApproveAttendanceDailyRecord() {
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.hrDashboardSummary(date),
@@ -1211,10 +1222,10 @@ export function useReturnAttendanceDailyRecord() {
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.hrAttendanceDailyRecords(date),
+        queryKey: coreQueryKeys.hrAttendanceDailyRecords(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.departmentHeadDashboardSummary(date),

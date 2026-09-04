@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -327,26 +328,24 @@ export function TemporaryDepartmentAssignmentsPage() {
               </div>
               <div className="space-y-2">
                 <Label>{t('startDate')}</Label>
-                <Input
-                  type="date"
+                <CalendarDateField
                   value={form.effectiveFrom}
-                  onChange={(event) =>
+                  onChange={(effectiveFrom) =>
                     setForm((current) => ({
                       ...current,
-                      effectiveFrom: event.target.value,
+                      effectiveFrom,
                     }))
                   }
                 />
               </div>
               <div className="space-y-2">
                 <Label>{t('endDate')}</Label>
-                <Input
-                  type="date"
+                <CalendarDateField
                   value={form.effectiveTo}
-                  onChange={(event) =>
+                  onChange={(effectiveTo) =>
                     setForm((current) => ({
                       ...current,
-                      effectiveTo: event.target.value,
+                      effectiveTo,
                     }))
                   }
                 />

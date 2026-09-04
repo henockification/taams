@@ -1,7 +1,6 @@
-'use client';
+import { redirect } from '@/i18n';
 
-import { ManualPunchRequestsPage } from '@/components/attendance/manual-punch-requests-page';
-
-export default function EmployeeManualPunchRequestsPage() {
-  return <ManualPunchRequestsPage mode="employee" />;
+export default async function ManualPunchRequestsRedirect({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  redirect({ href: '/attendance-corrections', locale });
 }

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/command';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
@@ -337,6 +338,14 @@ function FilterControl({
         <Checkbox checked={value === 'true'} onCheckedChange={(checked) => onChange(checked ? 'true' : '')} />
         {filter.label}
       </label>
+    );
+  }
+
+  if (filter.type === 'date') {
+    return (
+      <FilterShell filter={filter}>
+        <CalendarDateField value={value} onChange={onChange} className="h-8 text-xs" />
+      </FilterShell>
     );
   }
 

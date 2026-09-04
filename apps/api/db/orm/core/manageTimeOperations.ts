@@ -408,7 +408,7 @@ function buildEmployeeManualPunchItem(countValue: number, requests: any[]): Time
     description: 'Your correction request is waiting for supervisor approval.',
     count: countValue,
     actionLabel: 'View my requests',
-    actionHref: '/manual-punch-requests',
+    actionHref: '/attendance-corrections',
     occurredAt: firstRequest?.createdAt ?? null,
     metadata: {
       previewIds: requests.map((request) => request.id),

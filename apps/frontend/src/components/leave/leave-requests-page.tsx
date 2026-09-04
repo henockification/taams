@@ -20,8 +20,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import {
   Select,
   SelectContent,
@@ -47,6 +47,7 @@ import {
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
+  useHolidays,
   useLeaveTypes,
   useWorkScheduleDays,
 } from '@/data/hooks/core.hooks';
@@ -55,6 +56,13 @@ import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
+import {
+  clampLeaveEndDate,
+  holidayIsoDates,
+  leaveWorkingDates,
+  maxEndDateForAllowedDays,
+  parseAllowedDays,
+} from '@/components/leave/leave-working-days';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
@@ -120,6 +128,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const scheduledWorkingDays = useMemo(() => new Set(
     (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
   ), [workScheduleDaysQuery.data?.days]);
+  const holidaysQuery = useHolidays({ enabled: kind === 'other' });
   const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(kind === 'annual' && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
   const filteredRequests = useMemo(() => {
@@ -158,6 +167,33 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const requiresFiscalYearBalance = selectedLeaveType?.code.trim().toUpperCase() === 'ANNUAL';
   const annualRequestedTotal = useMemo(() => sumAnnualDates(annualDates), [annualDates]);
   const annualBalanceAvailable = Number(selectedYearBalance?.available ?? 0);
+  const holidayDates = useMemo(
+    () => holidayIsoDates(holidaysQuery.data?.holidays ?? []),
+    [holidaysQuery.data?.holidays],
+  );
+  const allowedDays = kind === 'other' ? parseAllowedDays(selectedLeaveType?.allowedDays) : null;
+  const selectedWorkingDates = useMemo(
+    () => (kind === 'other' ? leaveWorkingDates(form.startDate, form.endDate, scheduledWorkingDays, holidayDates) : []),
+    [form.endDate, form.startDate, holidayDates, kind, scheduledWorkingDays],
+  );
+  const maxEndDate = kind === 'other' && allowedDays
+    ? maxEndDateForAllowedDays(form.startDate, allowedDays, scheduledWorkingDays, holidayDates)
+    : null;
+  const selectedWorkingDayCount = selectedWorkingDates.length;
+  const otherLeaveScheduleReady = Boolean(currentEmployee?.id && scheduledWorkingDays.size > 0);
+  const otherLeaveDatesLoading = kind === 'other' && (
+    holidaysQuery.isLoading
+    || employeeSchedulesQuery.isLoading
+    || workScheduleDaysQuery.isLoading
+  );
+  const otherLeaveDatesInvalid = kind === 'other' && (
+    otherLeaveDatesLoading
+    || !form.startDate
+    || !form.endDate
+    || !otherLeaveScheduleReady
+    || selectedWorkingDayCount <= 0
+    || (allowedDays !== null && selectedWorkingDayCount > allowedDays)
+  );
 
   const openDialog = () => {
     const defaultFiscalYearId = kind === 'annual'
@@ -167,7 +203,15 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       leaveTypeId: kind === 'annual' ? annualType?.id ?? '' : selectableTypes[0]?.id ?? '',
       fiscalYearId: defaultFiscalYearId,
       startDate: today(),
-      endDate: today(),
+      endDate: kind === 'other'
+        ? clampLeaveEndDate(
+          today(),
+          today(),
+          parseAllowedDays(selectableTypes[0]?.allowedDays),
+          scheduledWorkingDays,
+          holidayDates,
+        )
+        : today(),
       reason: '',
     });
     setAnnualDates([]);
@@ -182,6 +226,25 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     if (!currentEmployee?.id) {
       notifications.show({ title: common('error'), message: t('currentEmployeeRequired'), color: 'red' });
       return;
+    }
+
+    if (kind === 'other') {
+      if (!otherLeaveScheduleReady) {
+        notifications.show({ title: common('error'), message: t('otherLeaveScheduleRequired'), color: 'red' });
+        return;
+      }
+      if (selectedWorkingDayCount <= 0) {
+        notifications.show({ title: common('error'), message: t('otherLeaveNoWorkingDays'), color: 'red' });
+        return;
+      }
+      if (allowedDays !== null && selectedWorkingDayCount > allowedDays) {
+        notifications.show({
+          title: common('error'),
+          message: t('otherLeaveExceedsAllowedDays', { allowed: allowedDays, count: selectedWorkingDayCount }),
+          color: 'red',
+        });
+        return;
+      }
     }
 
     try {
@@ -256,21 +319,19 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-wrap items-end gap-2">
           <Field label={t('requestDateFrom')} id="leave-request-date-from">
-            <Input
+            <CalendarDateField
               id="leave-request-date-from"
-              type="date"
               value={requestDateFilters.fromDate}
-              onChange={(event) => setRequestDateFilters((current) => ({ ...current, fromDate: event.target.value }))}
-              className="w-full md:w-40"
+              onChange={(fromDate) => setRequestDateFilters((current) => ({ ...current, fromDate }))}
+              className="w-full md:w-44"
             />
           </Field>
           <Field label={t('requestDateTo')} id="leave-request-date-to">
-            <Input
+            <CalendarDateField
               id="leave-request-date-to"
-              type="date"
               value={requestDateFilters.toDate}
-              onChange={(event) => setRequestDateFilters((current) => ({ ...current, toDate: event.target.value }))}
-              className="w-full md:w-40"
+              onChange={(toDate) => setRequestDateFilters((current) => ({ ...current, toDate }))}
+              className="w-full md:w-44"
             />
           </Field>
           {kind === 'other' ? (
@@ -429,29 +490,115 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t('requestLeave')}</DialogTitle>
             <DialogDescription>{t('leaveRequestFormDescription')}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveRequest}>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label={t('leaveType')} id="leave-type">
-                <Select
-                  value={(kind === 'annual' ? annualType?.id : form.leaveTypeId) || noneValue}
-                  onValueChange={(value) => setForm((current) => ({ ...current, leaveTypeId: value === noneValue ? '' : value }))}
-                  disabled={kind === 'annual'}
-                >
-                  <SelectTrigger id="leave-type"><SelectValue placeholder={t('selectLeaveType')} /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={noneValue}>{t('selectLeaveType')}</SelectItem>
-                    {selectableTypes.map((type) => (
-                      <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              {kind === 'annual' ? (
+            {kind === 'other' ? (
+              <>
+                <Field label={t('leaveType')} id="leave-type">
+                  <Select
+                    value={form.leaveTypeId || noneValue}
+                    onValueChange={(value) => {
+                      const leaveTypeId = value === noneValue ? '' : value;
+                      const nextAllowedDays = parseAllowedDays(
+                        leaveTypes.find((type) => type.id === leaveTypeId)?.allowedDays,
+                      );
+                      setForm((current) => ({
+                        ...current,
+                        leaveTypeId,
+                        endDate: clampLeaveEndDate(
+                          current.startDate,
+                          current.endDate,
+                          nextAllowedDays,
+                          scheduledWorkingDays,
+                          holidayDates,
+                        ),
+                      }));
+                    }}
+                  >
+                    <SelectTrigger id="leave-type"><SelectValue placeholder={t('selectLeaveType')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={noneValue}>{t('selectLeaveType')}</SelectItem>
+                      {selectableTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {allowedDays !== null ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t('otherLeaveAllowedDaysHint', { count: allowedDays })}
+                    </p>
+                  ) : null}
+                </Field>
+                <div className="grid gap-4">
+                  <Field label={t('startDate')} id="leave-start">
+                    <DualCalendarDateField
+                      id="leave-start"
+                      value={form.startDate}
+                      onChange={(startDate) => setForm((current) => ({
+                        ...current,
+                        startDate,
+                        endDate: clampLeaveEndDate(
+                          startDate,
+                          current.endDate,
+                          allowedDays,
+                          scheduledWorkingDays,
+                          holidayDates,
+                        ),
+                      }))}
+                      required
+                    />
+                  </Field>
+                  <Field label={t('endDate')} id="leave-end">
+                    <DualCalendarDateField
+                      id="leave-end"
+                      value={form.endDate}
+                      min={form.startDate}
+                      max={maxEndDate ?? undefined}
+                      onChange={(endDate) => setForm((current) => ({
+                        ...current,
+                        endDate: clampLeaveEndDate(
+                          current.startDate,
+                          endDate,
+                          allowedDays,
+                          scheduledWorkingDays,
+                          holidayDates,
+                        ),
+                      }))}
+                      required
+                    />
+                  </Field>
+                </div>
+                <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                  <p>{t('otherLeaveSelectedWorkingDays', { count: selectedWorkingDayCount })}</p>
+                  <p className="mt-1 text-xs">{t('otherLeaveWorkingDaysNote')}</p>
+                  {!otherLeaveScheduleReady ? (
+                    <p className="mt-1 text-xs text-destructive">{t('otherLeaveScheduleRequired')}</p>
+                  ) : selectedWorkingDayCount <= 0 ? (
+                    <p className="mt-1 text-xs text-destructive">{t('otherLeaveNoWorkingDays')}</p>
+                  ) : null}
+                </div>
+              </>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t('leaveType')} id="leave-type">
+                  <Select
+                    value={annualType?.id || noneValue}
+                    onValueChange={(value) => setForm((current) => ({ ...current, leaveTypeId: value === noneValue ? '' : value }))}
+                    disabled
+                  >
+                    <SelectTrigger id="leave-type"><SelectValue placeholder={t('selectLeaveType')} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={noneValue}>{t('selectLeaveType')}</SelectItem>
+                      {selectableTypes.map((type) => (
+                        <SelectItem key={type.id} value={type.id}>{type.nameEn}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
                 <Field label={t('selectFiscalYear')} id="leave-fiscal-year">
                   <Select value={form.fiscalYearId || noneValue} onValueChange={(value) => setForm((current) => ({ ...current, fiscalYearId: value === noneValue ? '' : value }))}>
                     <SelectTrigger id="leave-fiscal-year"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
@@ -472,18 +619,8 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     />
                   ) : null}
                 </Field>
-              ) : null}
-              {kind !== 'annual' ? (
-                <>
-                  <Field label={t('startDate')} id="leave-start">
-                    <DualCalendarDateField id="leave-start" value={form.startDate} onChange={(startDate) => setForm((current) => ({ ...current, startDate }))} required />
-                  </Field>
-                  <Field label={t('endDate')} id="leave-end">
-                    <DualCalendarDateField id="leave-end" value={form.endDate} onChange={(endDate) => setForm((current) => ({ ...current, endDate }))} required />
-                  </Field>
-                </>
-              ) : null}
-            </div>
+              </div>
+            )}
             {kind === 'annual' ? (
               <div className="space-y-3 rounded-md border border-border p-3">
                 <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -564,7 +701,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   || !currentEmployee?.id
                   || !selectedLeaveTypeId
                   || (requiresFiscalYearBalance && (!form.fiscalYearId || !selectedYearBalance))
-                  || (kind === 'annual' ? annualDates.length === 0 || annualRequestedTotal > annualBalanceAvailable : (!form.startDate || !form.endDate))
+                  || (kind === 'annual' ? annualDates.length === 0 || annualRequestedTotal > annualBalanceAvailable : otherLeaveDatesInvalid)
                   || !form.reason.trim()
                 }
               >

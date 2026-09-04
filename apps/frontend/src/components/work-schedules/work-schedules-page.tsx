@@ -25,6 +25,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import {
   Command,
   CommandEmpty,
@@ -871,21 +872,19 @@ export function WorkSchedulesPage({
               </Field>
 
               <Field label={t('effectiveFrom')} id="assignment-effective-from">
-                <Input
+                <CalendarDateField
                   id="assignment-effective-from"
-                  type="date"
                   value={employeeWorkScheduleForm.effectiveFrom}
-                  onChange={(event) => setEmployeeWorkScheduleForm((current) => ({ ...current, effectiveFrom: event.target.value }))}
+                  onChange={(effectiveFrom) => setEmployeeWorkScheduleForm((current) => ({ ...current, effectiveFrom }))}
                   required
                 />
               </Field>
 
               <Field label={t('effectiveTo')} id="assignment-effective-to">
-                <Input
+                <CalendarDateField
                   id="assignment-effective-to"
-                  type="date"
                   value={employeeWorkScheduleForm.effectiveTo}
-                  onChange={(event) => setEmployeeWorkScheduleForm((current) => ({ ...current, effectiveTo: event.target.value }))}
+                  onChange={(effectiveTo) => setEmployeeWorkScheduleForm((current) => ({ ...current, effectiveTo }))}
                 />
               </Field>
             </div>

@@ -22,8 +22,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CalendarDateTimeField } from '@/components/calendar/calendar-date-field';
 import {
   Select,
   SelectContent,
@@ -269,19 +269,17 @@ export function SupervisorDelegationsPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Starts at</Label>
-                <Input
-                  type="datetime-local"
+                <CalendarDateTimeField
                   value={form.startsAt}
-                  onChange={(event) => setForm((current) => ({ ...current, startsAt: event.target.value }))}
+                  onChange={(startsAt) => setForm((current) => ({ ...current, startsAt }))}
                   required
                 />
               </div>
               <div className="space-y-2">
                 <Label>Ends at</Label>
-                <Input
-                  type="datetime-local"
+                <CalendarDateTimeField
                   value={form.endsAt}
-                  onChange={(event) => setForm((current) => ({ ...current, endsAt: event.target.value }))}
+                  onChange={(endsAt) => setForm((current) => ({ ...current, endsAt }))}
                   required
                 />
               </div>
