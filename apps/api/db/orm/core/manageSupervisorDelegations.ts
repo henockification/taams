@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or } from 'drizzle-o
 import { db } from '../../db';
 import { employeeSupervisors, employees, supervisorDelegations, temporaryDepartmentAssignments, user } from '../../schema';
 import { getUserRoleNames } from '../rbac/manageRbac';
+import { effectivePrimaryEmployeeIds } from './leaveVisibility';
 
 type DbClient = typeof db | any;
 
@@ -136,6 +137,72 @@ export async function getVisibleEmployeeIdsForSupervisorActor(
   }
 
   return [...visibleIds];
+}
+
+/**
+ * Leave approvals deliberately use a narrower relationship than the general
+ * supervisor visibility helpers: only currently-effective primary assignments
+ * are eligible, plus those inherited through an active delegation.
+ */
+export async function getPrimaryLeaveApprovalEmployeeIds(
+  actorUserId: string,
+  tx: DbClient = db,
+  referenceDate = today(),
+): Promise<string[]> {
+  const visibleIds = new Set<string>(await getPrimaryAssignedEmployeeIds(actorUserId, tx, referenceDate));
+  const delegations = await getActiveDelegatedSupervisorCapabilities(actorUserId, tx);
+
+  for (const delegation of delegations) {
+    const delegatedIds = await getPrimaryAssignedEmployeeIds(delegation.supervisorUserId, tx, referenceDate);
+    delegatedIds.forEach((employeeId) => visibleIds.add(employeeId));
+  }
+
+  return [...visibleIds];
+}
+
+export async function resolveLeaveApprovalActionContext(input: {
+  actorUserId: string;
+  targetEmployeeId: string;
+  tx?: DbClient;
+  referenceDate?: string;
+}): Promise<SupervisorDelegationActionContext> {
+  const tx = input.tx ?? db;
+  const referenceDate = input.referenceDate ?? today();
+  const directIds = await getPrimaryAssignedEmployeeIds(input.actorUserId, tx, referenceDate);
+
+  if (directIds.includes(input.targetEmployeeId)) {
+    return {
+      supervisorDelegationId: null,
+      effectiveSupervisorUserId: input.actorUserId,
+      effectiveSupervisorEmployeeId: (await getEmployeeByUserId(input.actorUserId, tx))?.id ?? null,
+    };
+  }
+
+  const delegations = await getActiveDelegatedSupervisorCapabilities(input.actorUserId, tx);
+  for (const delegation of delegations) {
+    const delegatedIds = await getPrimaryAssignedEmployeeIds(delegation.supervisorUserId, tx, referenceDate);
+    if (delegatedIds.includes(input.targetEmployeeId)) {
+      return {
+        supervisorDelegationId: delegation.id,
+        effectiveSupervisorUserId: delegation.supervisorUserId,
+        effectiveSupervisorEmployeeId: delegation.supervisorEmployeeId,
+      };
+    }
+  }
+
+  throw new Error('Only the active primary supervisor or an active delegate can review this leave request');
+}
+
+async function getPrimaryAssignedEmployeeIds(userId: string, tx: DbClient, referenceDate: string): Promise<string[]> {
+  const supervisor = await getEmployeeByUserId(userId, tx);
+  if (!supervisor) return [];
+
+  const assignments = await tx.query.employeeSupervisors.findMany({
+    where: eq(employeeSupervisors.supervisorId, supervisor.id),
+    columns: { employeeId: true, isPrimary: true, effectiveFrom: true, effectiveTo: true },
+  });
+
+  return effectivePrimaryEmployeeIds(assignments, referenceDate);
 }
 
 export async function resolveSupervisorActionContext(input: {

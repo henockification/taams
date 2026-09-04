@@ -44,8 +44,8 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
   const common = useTranslations('common');
   const { formatDate } = useCalendarPreference();
   const session = useSession();
-  const leaveRequestsQuery = useLeaveRequests(approvalMode ? undefined : 'annual');
-  const leaveBalancesQuery = useLeaveBalances();
+  const leaveRequestsQuery = useLeaveRequests(approvalMode ? undefined : 'annual', approvalMode ? 'approvals' : 'self');
+  const leaveBalancesQuery = useLeaveBalances(undefined, { view: approvalMode ? 'approvals' : 'self' });
   const changeStatus = useChangeLeaveRequestStatus();
   const reviewInterruption = useReviewLeaveInterruption();
   const [interruptionReviewTarget, setInterruptionReviewTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
@@ -59,7 +59,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
     if (!request?.fiscalYearId) return null;
     return balances.find((item) => item.employeeId === request.employeeId && item.fiscalYearId === request.fiscalYearId) ?? null;
   }, [balances, request]);
-  const isOwnRequest = request?.requestedBy === session.data?.user?.id || request?.employee?.userId === session.data?.user?.id;
+  const isOwnRequest = request?.requestedBy === session.data?.user?.id && request?.employee?.userId === session.data?.user?.id;
   const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'leave-request-approvals:approve');
   const canEdit = Boolean(request && request.status === 'PENDING' && isOwnRequest);
   const pendingInterruption = request?.interruptions?.find((interruption) => interruption.status === 'PENDING') ?? null;

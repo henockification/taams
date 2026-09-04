@@ -62,11 +62,13 @@ import type {
   NotificationLogsResponse,
   PermanentEmployeeImportResponse,
   LeaveBalanceResponse,
+  LeaveBalanceView,
   LeaveBalancesResponse,
   LeaveBalanceTransferResponse,
   LeaveFiscalYearResponse,
   LeaveFiscalYearsResponse,
   LeaveRequestResponse,
+  LeaveRequestView,
   LeaveRequestsResponse,
   LeaveTypeResponse,
   LeaveTypesResponse,
@@ -594,7 +596,11 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
-  getLeaveBalances: (fiscalYearId?: string) => coreFetch<LeaveBalancesResponse>(`/leave/balances${fiscalYearId ? `?fiscalYearId=${fiscalYearId}` : ''}`),
+  getLeaveBalances: (fiscalYearId?: string, view: LeaveBalanceView = 'self') => {
+    const query = new URLSearchParams({ view });
+    if (fiscalYearId) query.set('fiscalYearId', fiscalYearId);
+    return coreFetch<LeaveBalancesResponse>(`/leave/balances?${query.toString()}`);
+  },
   upsertLeaveBalance: (input: UpsertLeaveBalanceInput) =>
     coreFetch<LeaveBalanceResponse>('/leave/balances', {
       method: 'POST',
@@ -610,7 +616,11 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
-  getLeaveRequests: (kind?: 'annual' | 'other') => coreFetch<LeaveRequestsResponse>(`/leave/requests${kind ? `?kind=${kind}` : ''}`),
+  getLeaveRequests: (kind?: 'annual' | 'other', view: LeaveRequestView = 'self') => {
+    const query = new URLSearchParams({ view });
+    if (kind) query.set('kind', kind);
+    return coreFetch<LeaveRequestsResponse>(`/leave/requests?${query.toString()}`);
+  },
   createLeaveRequest: (input: CreateLeaveRequestInput) =>
     coreFetch<LeaveRequestResponse>('/leave/requests', {
       method: 'POST',

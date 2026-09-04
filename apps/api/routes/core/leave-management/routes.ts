@@ -120,6 +120,10 @@ export const getLeaveBalancesRoute = createRoute({
   path: '/leave/balances',
   tags: ['Core', 'Leave Management'],
   summary: 'Get Leave Balances',
+  request: { query: z.object({
+    fiscalYearId: z.string().uuid().optional(),
+    view: z.enum(['self', 'approvals', 'management']).optional(),
+  }) },
   responses: { 200: { content: { 'application/json': { schema: LeaveBalancesResponseSchema } }, description: 'Leave balances' } },
 });
 
@@ -155,6 +159,10 @@ export const getLeaveRequestsRoute = createRoute({
   path: '/leave/requests',
   tags: ['Core', 'Leave Management'],
   summary: 'Get Leave Requests',
+  request: { query: z.object({
+    kind: z.enum(['annual', 'other']).optional(),
+    view: z.enum(['self', 'approvals']).optional(),
+  }) },
   responses: { 200: { content: { 'application/json': { schema: LeaveRequestsResponseSchema } }, description: 'Leave requests' } },
 });
 

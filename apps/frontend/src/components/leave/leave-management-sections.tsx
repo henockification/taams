@@ -456,7 +456,7 @@ export function LeaveBalancesSection() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBalance, setEditingBalance] = useState<LeaveBalance | null>(null);
   const [balanceForm, setBalanceForm] = useState(initialBalanceForm);
-  const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined);
+  const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined, { view: 'management' });
   const employeesQuery = useEmployeesPaginated(page, pageSize, balanceSearch);
 
   useEffect(() => {
@@ -684,7 +684,7 @@ export function CarryForwardSection() {
   const [search, setSearch] = useState('');
   const [sourceFiscalYearId, setSourceFiscalYearId] = useState('');
   const [transferForm, setTransferForm] = useState(initialTransferForm);
-  const balancesQuery = useLeaveBalances(sourceFiscalYearId || undefined);
+  const balancesQuery = useLeaveBalances(sourceFiscalYearId || undefined, { view: 'management' });
   const sourceBalances = balancesQuery.data?.leaveBalances ?? [];
 
   const filteredSourceBalances = useMemo(() => {

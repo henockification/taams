@@ -248,6 +248,9 @@ export type NotificationLogFilters = {
   limit?: number;
 };
 
+export type LeaveRequestView = 'self' | 'approvals';
+export type LeaveBalanceView = 'self' | 'approvals' | 'management';
+
 export type EmployeeSupervisor = {
   id: string;
   employeeId: string;

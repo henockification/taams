@@ -30,6 +30,8 @@ import type {
   CreateLeaveInterruptionInput,
   CreateLeaveRequestInput,
   LeaveRequest,
+  LeaveRequestView,
+  LeaveBalanceView,
   CreateLeaveTypeInput,
   NotificationLogFilters,
   ReportKey,
@@ -104,8 +106,10 @@ export const coreQueryKeys = {
   overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
-  leaveBalances: (fiscalYearId?: string) => [...coreQueryKeys.all, 'leave', 'balances', fiscalYearId ?? 'all'] as const,
-  leaveRequests: (kind?: 'annual' | 'other') => [...coreQueryKeys.all, 'leave', 'requests', kind ?? 'all'] as const,
+  leaveBalancesRoot: () => [...coreQueryKeys.all, 'leave', 'balances'] as const,
+  leaveBalances: (fiscalYearId?: string, view: LeaveBalanceView = 'self') => [...coreQueryKeys.leaveBalancesRoot(), view, fiscalYearId ?? 'all'] as const,
+  leaveRequestsRoot: () => [...coreQueryKeys.all, 'leave', 'requests'] as const,
+  leaveRequests: (kind?: 'annual' | 'other', view: LeaveRequestView = 'self') => [...coreQueryKeys.leaveRequestsRoot(), view, kind ?? 'all'] as const,
   leaveRequest: (id: string) => [...coreQueryKeys.all, 'leave', 'requests', 'detail', id] as const,
   timeOperationsSummary: () => [...coreQueryKeys.all, 'time-operations', 'summary'] as const,
   report: (key: ReportKey, params: Record<string, string>) => [...coreQueryKeys.all, 'reports', key, params] as const,
@@ -1351,7 +1355,7 @@ export function useUpdateLeaveFiscalYear() {
         queryKey: coreQueryKeys.leaveFiscalYears(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
@@ -1403,16 +1407,17 @@ export function useUpdateLeaveType() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveTypes() });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
     },
   });
 }
 
-export function useLeaveBalances(fiscalYearId?: string, options?: { enabled?: boolean }) {
+export function useLeaveBalances(fiscalYearId?: string, options?: { enabled?: boolean; view?: LeaveBalanceView }) {
+  const view = options?.view ?? 'self';
   return useQuery({
-    queryKey: coreQueryKeys.leaveBalances(fiscalYearId),
-    queryFn: () => coreApi.getLeaveBalances(fiscalYearId),
+    queryKey: coreQueryKeys.leaveBalances(fiscalYearId, view),
+    queryFn: () => coreApi.getLeaveBalances(fiscalYearId, view),
     enabled: options?.enabled ?? true,
     staleTime: 60 * 1000,
   });
@@ -1425,13 +1430,13 @@ export function useUpsertLeaveBalance() {
     mutationFn: (input: UpsertLeaveBalanceInput) => coreApi.upsertLeaveBalance(input),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(variables.fiscalYearId),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
@@ -1447,10 +1452,10 @@ export function useBulkUpsertLeaveBalances() {
     mutationFn: (input: BulkUpsertLeaveBalancesInput) => coreApi.bulkUpsertLeaveBalances(input),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
@@ -1466,7 +1471,7 @@ export function useTransferLeaveBalance() {
     mutationFn: (input: TransferLeaveBalanceInput) => coreApi.transferLeaveBalance(input),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
@@ -1475,10 +1480,10 @@ export function useTransferLeaveBalance() {
   });
 }
 
-export function useLeaveRequests(kind?: 'annual' | 'other') {
+export function useLeaveRequests(kind?: 'annual' | 'other', view: LeaveRequestView = 'self') {
   return useQuery({
-    queryKey: coreQueryKeys.leaveRequests(kind),
-    queryFn: () => coreApi.getLeaveRequests(kind),
+    queryKey: coreQueryKeys.leaveRequests(kind, view),
+    queryFn: () => coreApi.getLeaveRequests(kind, view),
     staleTime: 60 * 1000,
   });
 }
@@ -1637,13 +1642,13 @@ export function useChangeLeaveRequestStatus() {
     mutationFn: (input: ChangeLeaveRequestStatusInput) => coreApi.changeLeaveRequestStatus(input),
     onSuccess: (data) => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.leaveBalances(data.leaveRequest.fiscalYearId ?? undefined),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.timeOperationsSummary(),
@@ -1661,10 +1666,10 @@ export function useCreateLeaveInterruption() {
     mutationFn: (input: CreateLeaveInterruptionInput) => coreApi.createLeaveInterruption(input),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
@@ -1679,10 +1684,10 @@ export function useReviewLeaveInterruption() {
     mutationFn: (input: ReviewLeaveInterruptionInput) => coreApi.reviewLeaveInterruption(input),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveRequests(),
+        queryKey: coreQueryKeys.leaveRequestsRoot(),
       });
       queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalances(),
+        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),

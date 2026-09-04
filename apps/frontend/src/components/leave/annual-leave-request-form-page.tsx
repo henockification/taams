@@ -53,7 +53,7 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
   const { formatDate } = useCalendarPreference();
   const router = useRouter();
   const session = useSession();
-  const requestsQuery = useLeaveRequests('annual');
+  const requestsQuery = useLeaveRequests('annual', 'self');
   const dashboardQuery = useDashboardSummary(session.data?.user?.id);
   const fiscalYearsQuery = useLeaveFiscalYears();
   const leaveTypesQuery = useLeaveTypes();
@@ -139,8 +139,8 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
     || (mode === 'edit' && requestsQuery.isLoading);
   const isEditable = mode === 'create' || editingRequest?.status === 'PENDING';
   const isOwner = !editingRequest
-    || editingRequest.requestedBy === session.data?.user?.id
-    || editingRequest.employee?.userId === session.data?.user?.id;
+    || (editingRequest.requestedBy === session.data?.user?.id
+      && editingRequest.employee?.userId === session.data?.user?.id);
 
   const addAnnualDate = (date: string, dayValue = '1.00') => {
     if (!date) return;

@@ -86,16 +86,16 @@ export default function ExecutiveDashboardPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+        <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("date")}
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-44" />
+            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full sm:w-44" />
           </label>
-          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("month")}
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-44" />
+            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-full sm:w-44" />
           </label>
           {isFetching ? (
             <Badge variant="secondary" className="mb-1 gap-2">
@@ -104,8 +104,8 @@ export default function ExecutiveDashboardPage() {
             </Badge>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-muted-foreground">{t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 size-4" />
             {t("refresh")}
@@ -154,16 +154,16 @@ function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   ]
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
       {items.map((item) => (
-        <Card key={item.label}>
-          <CardContent className="flex items-center gap-4 p-4">
-            <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-md", item.tone)}>
-              <item.icon className="size-5" />
+        <Card key={item.label} className="min-w-0 gap-3 py-3 sm:gap-6 sm:py-6">
+          <CardContent className="flex min-w-0 items-center gap-2 px-3 sm:gap-4 sm:px-4">
+            <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md sm:size-11", item.tone)}>
+              <item.icon className="size-4 sm:size-5" />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-muted-foreground">{item.label}</p>
-              <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{item.value}</p>
+              <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{item.label}</p>
+              <p className="mt-1 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{item.value}</p>
             </div>
           </CardContent>
         </Card>
@@ -181,7 +181,7 @@ function WorkforceDistribution({ dashboard }: { dashboard: ExecutiveDashboardSum
         <CardTitle>{t("workforceDistribution")}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <ChartContainer config={distributionChartConfig} className="min-h-64">
+        <ChartContainer config={distributionChartConfig} className="min-h-52 sm:min-h-64">
           <PieChart>
             <ChartTooltip content={<ChartTooltipContent nameKey="label" />} />
             <Pie data={dashboard.workforceDistribution} dataKey="count" nameKey="label" innerRadius={58} outerRadius={92} paddingAngle={2}>
@@ -196,7 +196,7 @@ function WorkforceDistribution({ dashboard }: { dashboard: ExecutiveDashboardSum
             <div key={segment.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: distributionColors[index % distributionColors.length] }} />
-                <span className="truncate text-sm font-medium text-foreground">{segment.label}</span>
+                <span className="break-words text-sm font-medium leading-tight text-foreground">{segment.label}</span>
               </div>
               <span className="text-sm text-muted-foreground">{segment.percentage}%</span>
             </div>
@@ -216,12 +216,12 @@ function DepartmentRanking({ dashboard }: { dashboard: ExecutiveDashboardSummary
       <CardHeader>
         <CardTitle>{t("departmentAttendanceRanking")}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={rankingChartConfig} className="min-h-72">
-          <BarChart data={data} layout="vertical" margin={{ left: 12, right: 36 }}>
+      <CardContent className="px-3 sm:px-6">
+        <ChartContainer config={rankingChartConfig} className="min-h-60 sm:min-h-72">
+          <BarChart data={data} layout="vertical" margin={{ left: 0, right: 30 }}>
             <CartesianGrid horizontal={false} />
             <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
-            <YAxis dataKey="department" type="category" width={120} tickLine={false} axisLine={false} />
+            <YAxis dataKey="department" type="category" width={88} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
             <ChartTooltip content={<ChartTooltipContent />} />
             <Bar dataKey="attendanceRate" fill="var(--color-attendanceRate)" radius={4}>
               <LabelList dataKey="attendanceRate" position="right" formatter={(value) => `${value ?? 0}%`} />
@@ -248,12 +248,12 @@ function CompoundStatus({ dashboard }: { dashboard: ExecutiveDashboardSummary })
       </CardHeader>
       <CardContent className="grid gap-3">
         {items.map((item) => (
-          <div key={item.label} className="flex items-center justify-between gap-3 rounded-md border border-border p-4">
+          <div key={item.label} className="flex items-center justify-between gap-3 rounded-md border border-border p-3 sm:p-4">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <item.icon className="size-5" />
               </div>
-              <span className="truncate text-sm font-medium text-foreground">{item.label}</span>
+              <span className="text-sm font-medium leading-tight text-foreground">{item.label}</span>
             </div>
             <span className="text-2xl font-semibold text-foreground">{item.value}</span>
           </div>
@@ -272,7 +272,7 @@ function LiveTimeline({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
         <CardTitle>{t("liveAttendanceTimeline")}</CardTitle>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={timelineChartConfig} className="min-h-72">
+        <ChartContainer config={timelineChartConfig} className="min-h-60 sm:min-h-72">
           <LineChart data={dashboard.liveAttendanceTimeline}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="time" tickLine={false} axisLine={false} minTickGap={20} />
@@ -307,7 +307,7 @@ function LeaveAndHrSummary({ dashboard }: { dashboard: ExecutiveDashboardSummary
             <p className="text-sm text-muted-foreground">{t("noData")}</p>
           ) : dashboard.leaveSummary.map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-              <span className="truncate text-sm font-medium text-foreground">{item.label}</span>
+              <span className="min-w-0 break-words text-sm font-medium leading-tight text-foreground">{item.label}</span>
               <span className="text-xl font-semibold text-foreground">{item.count}</span>
             </div>
           ))}
@@ -338,8 +338,8 @@ function DepartmentPerformance({ dashboard }: { dashboard: ExecutiveDashboardSum
       <CardHeader>
         <CardTitle>{t("departmentPerformance")}</CardTitle>
       </CardHeader>
-      <CardContent>
-        <Table className="table-fixed">
+      <CardContent className="overflow-x-auto">
+        <Table className="min-w-[48rem] table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead className="w-[34%]">{t("department")}</TableHead>
@@ -389,17 +389,17 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: ExecutiveDash
         <CardTitle>{t("attendanceReportingDiscipline")}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
           {items.map(([label, value, description]) => (
             <div key={label} className="rounded-md border border-border p-3">
               <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+              <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{value}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
             </div>
           ))}
         </div>
         <div className="overflow-x-auto">
-          <Table className="table-fixed">
+          <Table className="min-w-[48rem] table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[30%]">{t("department")}</TableHead>
@@ -442,7 +442,7 @@ function MonthlyTrend({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
         <CardTitle>{t("monthlyAttendanceTrend")}</CardTitle>
       </CardHeader>
       <CardContent>
-        <ChartContainer config={trendChartConfig} className="min-h-72">
+        <ChartContainer config={trendChartConfig} className="min-h-60 sm:min-h-72">
           <LineChart data={dashboard.monthlyAttendanceTrend}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="month" tickLine={false} axisLine={false} />
@@ -529,17 +529,17 @@ function AlertRow({ severity, title, description }: { severity: ExecutiveDashboa
 
 function ExecutiveDashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <div className="flex justify-between gap-3">
-        <div className="flex gap-3">
-          <Skeleton className="h-10 w-44" />
-          <Skeleton className="h-10 w-44" />
+    <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row">
+        <div className="grid grid-cols-2 gap-3">
+          <Skeleton className="h-10 w-full sm:w-44" />
+          <Skeleton className="h-10 w-full sm:w-44" />
         </div>
         <Skeleton className="h-10 w-40" />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {Array.from({ length: 8 }).map((_, index) => (
-          <Skeleton key={index} className="h-28 rounded-xl" />
+          <Skeleton key={index} className="h-24 rounded-xl sm:h-28" />
         ))}
       </div>
       <div className="grid gap-5 xl:grid-cols-2">

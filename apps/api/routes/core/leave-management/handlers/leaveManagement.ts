@@ -126,13 +126,17 @@ export async function updateLeaveTypeHandler(c: Context) {
 export async function getLeaveBalancesHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const fiscalYearId = c.req.query('fiscalYearId') || undefined;
+    const view = c.req.query('view') === 'approvals'
+      ? 'approvals'
+      : c.req.query('view') === 'management'
+        ? 'management'
+        : 'self';
     const leaveBalances = await getLeaveBalances(fiscalYearId, {
       scope,
       userId: session.user.id,
-      roles,
+      view,
     });
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
@@ -198,17 +202,15 @@ export async function transferLeaveBalanceHandler(c: Context) {
 export async function getLeaveRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const roles = await resolveRoleNames(session);
-    const scope = await resolveScope(session);
+    const view = c.req.query('view') === 'approvals' ? 'approvals' : 'self';
     const kind = c.req.query('kind') === 'annual'
       ? 'annual'
       : c.req.query('kind') === 'other'
         ? 'other'
         : undefined;
     const leaveRequests = await getLeaveRequests(kind, {
-      scope,
       userId: session.user.id,
-      roles,
+      view,
     });
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
   } catch (error) {
@@ -219,14 +221,11 @@ export async function getLeaveRequestsHandler(c: Context) {
 export async function createLeaveRequestHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const scope = await resolveScope(session);
     const parsed = CreateLeaveRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
+    const requestedBy = session.user.id;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
-    if (scope.type !== 'unrestricted') {
-      await assertCanAccessEmployee(parsed.data.employeeId, scope);
-    }
+    await assertCanAccessEmployee(parsed.data.employeeId, { type: 'self', userId: requestedBy });
     const leaveRequest = await createLeaveRequest({ ...parsed.data, requestedBy });
     // Notification trigger disabled until SMS/email provider credentials are available.
     await safeEnqueueWorkflowNotification('LEAVE_REQUEST_SUBMITTED', {
@@ -244,12 +243,11 @@ export async function createLeaveRequestHandler(c: Context) {
 export async function updateLeaveRequestHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const scope = await resolveScope(session);
     const parsed = UpdateLeaveRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const updatedBy = session.user.id ?? c.user?.id ?? parsed.data.updatedBy;
+    const updatedBy = session.user.id;
     if (!updatedBy) return validationErrorResponse(c, 'updatedBy is required');
-    const leaveRequest = await updateLeaveRequestScoped(c.req.param('id'), { ...parsed.data, updatedBy }, scope);
+    const leaveRequest = await updateLeaveRequestScoped(c.req.param('id'), { ...parsed.data, updatedBy }, updatedBy);
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request');
@@ -259,21 +257,19 @@ export async function updateLeaveRequestHandler(c: Context) {
 export async function changeLeaveRequestStatusHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const scope = await resolveScope(session);
-    const roles = await resolveRoleNames(session);
     const parsed = ChangeLeaveRequestStatusRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const payload = { ...parsed.data };
 
     if (payload.status === 'APPROVED') {
-      payload.approvedBy = session.user.id ?? c.user?.id ?? payload.approvedBy;
+      payload.approvedBy = session.user.id;
       if (!payload.approvedBy) return validationErrorResponse(c, 'approvedBy is required when approving a leave request');
     } else {
-      payload.rejectedBy = session.user.id ?? c.user?.id ?? payload.rejectedBy;
+      payload.rejectedBy = session.user.id;
       if (!payload.rejectedBy) return validationErrorResponse(c, 'rejectedBy is required when rejecting a leave request');
     }
 
-    const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload, scope, { roles });
+    const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload);
     // Notification trigger disabled until SMS/email provider credentials are available.
     await safeEnqueueWorkflowNotification(
       leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_APPROVED' : 'LEAVE_REQUEST_REJECTED',
@@ -293,16 +289,15 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
 export async function createLeaveInterruptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const scope = await resolveScope(session);
     const parsed = CreateLeaveInterruptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
+    const requestedBy = session.user.id;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
     const leaveRequest = await createLeaveInterruptionScoped({
       leaveRequestId: c.req.param('id'),
       ...parsed.data,
       requestedBy,
-    }, scope);
+    }, requestedBy);
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create leave interruption');
@@ -312,17 +307,15 @@ export async function createLeaveInterruptionHandler(c: Context) {
 export async function reviewLeaveInterruptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
-    const scope = await resolveScope(session);
-    const roles = await resolveRoleNames(session);
     const parsed = ReviewLeaveInterruptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const reviewedBy = session.user.id ?? c.user?.id ?? parsed.data.reviewedBy;
+    const reviewedBy = session.user.id;
     if (!reviewedBy) return validationErrorResponse(c, 'reviewedBy is required');
     const leaveRequest = await reviewLeaveInterruptionScoped({
       leaveInterruptionId: c.req.param('id'),
       ...parsed.data,
       reviewedBy,
-    }, scope, { roles });
+    });
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to review leave interruption');

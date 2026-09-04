@@ -31,9 +31,12 @@ import type {
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import {
-  getVisibleEmployeeIdsForSupervisorActor,
-  resolveSupervisorActionContext,
+  getPrimaryLeaveApprovalEmployeeIds,
+  resolveLeaveApprovalActionContext,
 } from './manageSupervisorDelegations';
+import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
+
+export type LeaveBalanceView = 'self' | 'approvals' | 'management';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
@@ -205,7 +208,7 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
 
 export async function getLeaveBalances(
   fiscalYearId?: string,
-  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+  context: { scope?: EmployeeVisibilityScope; userId?: string; view?: LeaveBalanceView } = {},
 ) {
   const balances = await db.query.leaveBalances.findMany({
     where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
@@ -221,14 +224,17 @@ export async function getLeaveBalances(
     orderBy: (table, { asc }) => [asc(table.createdAt)],
   });
 
-  const { scope, userId, roles } = context;
-  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return balances;
-  const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
-  const visibleEmployeeIds = new Set(managedEmployeeIds);
-  return balances.filter((balance) => (
-    balance.employee?.userId === userId
-    || visibleEmployeeIds.has(balance.employeeId)
-  ));
+  const { scope, userId, view = 'self' } = context;
+  if (!userId) return [];
+  if (view === 'management') {
+    if (scope?.type !== 'unrestricted' && scope?.type !== 'hr') throw new Error('Leave balance management access is required');
+    return balances;
+  }
+  if (view === 'approvals') {
+    const visibleEmployeeIds = new Set(await getPrimaryLeaveApprovalEmployeeIds(userId));
+    return balances.filter((balance) => visibleEmployeeIds.has(balance.employeeId));
+  }
+  return balances.filter((balance) => balance.employee?.userId === userId);
 }
 
 export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbClient = db) {
@@ -389,7 +395,7 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 
 export async function getLeaveRequests(
   kind?: 'annual' | 'other',
-  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+  context: { userId?: string; view?: LeaveRequestView } = {},
 ) {
   await ensureKnownLeaveTypes();
   await reconcileAnnualLeaveConsumption();
@@ -613,35 +619,33 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
   });
 }
 
-export async function updateLeaveRequestScoped(id: string, input: UpdateLeaveRequestInput, scope: EmployeeVisibilityScope) {
+export async function updateLeaveRequestScoped(id: string, input: UpdateLeaveRequestInput, actorUserId: string) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
-  await assertCanAccessEmployee(request.employeeId, scope);
+  assertLeaveRequestOwner(request, actorUserId);
   return updateLeaveRequest(id, input);
 }
 
 export async function changeLeaveRequestStatus(
   id: string,
   input: ChangeLeaveRequestStatusInput,
-  context: { roles?: string[] | null } = {},
 ) {
   return db.transaction(async (tx) => {
     const request = await getLeaveRequestById(id, tx);
     if (!request) throw new Error('Leave request not found');
-    if (request.status !== 'PENDING') throw new Error('Leave request is already processed');
 
     if (input.status === 'REJECTED') {
       const rejectedBy = input.rejectedBy;
       if (!rejectedBy) throw new Error('Rejected by is required when rejecting a leave request');
       if (!input.rejectionReason?.trim()) throw new Error('Rejection reason is required');
       await assertUserExists(rejectedBy, tx);
-      const actionContext = await resolveSupervisorActionContext({
+      const actionContext = await resolveLeaveApprovalActionContext({
         actorUserId: rejectedBy,
-        roles: context.roles,
         targetEmployeeId: request.employeeId,
         tx,
       });
       if (request.requestedBy === rejectedBy) throw new Error('A requester cannot review their own leave request');
+      if (request.status !== 'PENDING') throw new Error('Leave request is already processed');
 
       if (isAnnualLeaveType(request.leaveType)) {
         await tx.update(annualLeaveRequestDates).set({
@@ -670,13 +674,13 @@ export async function changeLeaveRequestStatus(
     const approvedBy = input.approvedBy;
     if (!approvedBy) throw new Error('Approved by is required when approving a leave request');
     await assertUserExists(approvedBy, tx);
-    const actionContext = await resolveSupervisorActionContext({
+    const actionContext = await resolveLeaveApprovalActionContext({
       actorUserId: approvedBy,
-      roles: context.roles,
       targetEmployeeId: request.employeeId,
       tx,
     });
     if (request.requestedBy === approvedBy) throw new Error('A requester cannot review their own leave request');
+    if (request.status !== 'PENDING') throw new Error('Leave request is already processed');
 
     const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
     if (isAnnualLeaveType(leaveType)) {
@@ -774,18 +778,16 @@ export async function changeLeaveRequestStatus(
 export async function changeLeaveRequestStatusScoped(
   id: string,
   input: ChangeLeaveRequestStatusInput,
-  _scope: EmployeeVisibilityScope,
-  context: { roles?: string[] | null } = {},
 ) {
   const request = await getLeaveRequestById(id);
   if (!request) throw new Error('Leave request not found');
-  return changeLeaveRequestStatus(id, input, context);
+  return changeLeaveRequestStatus(id, input);
 }
 
-export async function createLeaveInterruptionScoped(input: CreateLeaveInterruptionInput, scope: EmployeeVisibilityScope) {
+export async function createLeaveInterruptionScoped(input: CreateLeaveInterruptionInput, actorUserId: string) {
   const request = await getLeaveRequestById(input.leaveRequestId);
   if (!request) throw new Error('Leave request not found');
-  await assertCanAccessEmployee(request.employeeId, scope);
+  assertLeaveRequestOwner(request, actorUserId);
   return createLeaveInterruption(input);
 }
 
@@ -823,35 +825,38 @@ export async function createLeaveInterruption(input: CreateLeaveInterruptionInpu
 
 export async function reviewLeaveInterruptionScoped(
   input: ReviewLeaveInterruptionInput,
-  _scope: EmployeeVisibilityScope,
-  context: { roles?: string[] | null } = {},
 ) {
   const interruption = await getLeaveInterruptionById(input.leaveInterruptionId);
   if (!interruption) throw new Error('Leave interruption not found');
   const request = await getLeaveRequestById(interruption.leaveRequestId);
   if (!request) throw new Error('Leave request not found');
-  return reviewLeaveInterruption(input, context);
+  return reviewLeaveInterruption(input);
 }
 
-export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInput, context: { roles?: string[] | null } = {}) {
+function assertLeaveRequestOwner(request: any, actorUserId: string) {
+  if (request.requestedBy !== actorUserId || request.employee?.userId !== actorUserId) {
+    throw new Error('Leave request not found');
+  }
+}
+
+export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInput) {
   return db.transaction(async (tx) => {
     const interruption = await getLeaveInterruptionById(input.leaveInterruptionId, tx);
     if (!interruption) throw new Error('Leave interruption not found');
-    if (interruption.status !== 'PENDING') throw new Error('Leave interruption is already processed');
     if (!input.reviewedBy) throw new Error('Reviewed by is required');
     await assertUserExists(input.reviewedBy, tx);
 
     const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
     if (!request) throw new Error('Leave request not found');
-    const actionContext = await resolveSupervisorActionContext({
+    const actionContext = await resolveLeaveApprovalActionContext({
       actorUserId: input.reviewedBy,
-      roles: context.roles,
       targetEmployeeId: request.employeeId,
       tx,
     });
     if (interruption.requestedBy === input.reviewedBy) {
       throw new Error('A requester cannot review their own leave interruption');
     }
+    if (interruption.status !== 'PENDING') throw new Error('Leave interruption is already processed');
 
     if (input.status === 'REJECTED') {
       if (!input.rejectionReason?.trim()) throw new Error('Rejection reason is required');
@@ -955,20 +960,12 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
 
 async function filterLeaveRequestsForViewer(
   requests: any[],
-  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[] | null } = {},
+  context: { userId?: string; view?: LeaveRequestView } = {},
 ) {
-  const { scope, userId, roles } = context;
-  if (!scope || scope.type === 'unrestricted') return requests;
-
-  if (scope.type === 'hr') return requests.filter((request) => request.status === 'APPROVED');
-
-  const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
-  const visibleEmployeeIds = new Set(managedEmployeeIds);
-  return requests.filter((request) => (
-    request.employee?.userId === userId
-    || request.requestedBy === userId
-    || visibleEmployeeIds.has(request.employeeId)
-  ));
+  const { userId, view = 'self' } = context;
+  if (!userId) return [];
+  const visibleEmployeeIds = view === 'approvals' ? await getPrimaryLeaveApprovalEmployeeIds(userId) : [];
+  return filterLeaveRequestsByView(requests, view, userId, visibleEmployeeIds);
 }
 
 async function validateInterruptionPattern(

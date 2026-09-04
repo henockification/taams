@@ -117,8 +117,8 @@ export function LeaveRequestApprovalsPage() {
   const [interruptionRejectTarget, setInterruptionRejectTarget] = useState<{ request: LeaveRequest; interruption: LeaveInterruption } | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
-  const leaveBalancesQuery = useLeaveBalances();
-  const leaveRequestsQuery = useLeaveRequests();
+  const leaveBalancesQuery = useLeaveBalances(undefined, { view: 'approvals' });
+  const leaveRequestsQuery = useLeaveRequests(undefined, 'approvals');
   const reviewInterruption = useReviewLeaveInterruption();
 
   const requests = leaveRequestsQuery.data?.leaveRequests ?? [];
@@ -367,7 +367,7 @@ export function LeaveRequestApprovalsPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredRequests.map((request) => {
-                    const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+                    const isOwnRequest = request.requestedBy === session.data?.user?.id && request.employee?.userId === session.data?.user?.id;
                     const pendingInterruption = request.interruptions?.find((interruption) => interruption.status === 'PENDING') ?? null;
 
                     return (

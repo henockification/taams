@@ -80,7 +80,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {dashboard.role === "EMPLOYEE" ? null : <DashboardHero dashboard={dashboard} canViewManualPunchRequests={canViewManualPunchRequests} />}
       {dashboard.role === "SUPER_ADMIN" ? <SuperAdminDashboard dashboard={dashboard} /> : null}
       {dashboard.role === "MANAGER" ? <ManagerDashboard dashboard={dashboard} /> : null}
@@ -101,7 +101,7 @@ function DashboardHero({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="relative grid gap-6 p-6 md:grid-cols-[1fr_auto] md:p-7">
+      <div className="relative grid gap-4 p-4 sm:gap-6 sm:p-6 md:grid-cols-[minmax(0,1fr)_minmax(18rem,22rem)] md:p-7">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.14),transparent_34%),linear-gradient(135deg,hsl(var(--accent)/0.65),transparent_40%)]" />
         <div className="relative space-y-4">
           <Badge className="gap-2" variant="secondary">
@@ -109,7 +109,7 @@ function DashboardHero({
             {roleLabel(dashboard.role, t)}
           </Badge>
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+            <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl md:text-3xl">
               {dashboard.setupRequired ? t("setupHeroTitle") : t("heroTitle", { name: dashboard.user.name ?? t("there") })}
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
@@ -135,7 +135,7 @@ function HeroInsightCard({
   const insight = getHeroInsight(dashboard, t, canViewManualPunchRequests)
 
   return (
-    <div className="relative grid min-w-72 gap-4 rounded-xl border border-border bg-background/85 p-4 shadow-sm backdrop-blur">
+    <div className="relative grid w-full min-w-0 gap-3 rounded-xl border border-border bg-background/85 p-3 shadow-sm backdrop-blur sm:gap-4 sm:p-4">
       <div className="flex items-start gap-3">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <insight.icon className="size-5" />
@@ -148,11 +148,11 @@ function HeroInsightCard({
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{insight.primaryLabel}</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{insight.primaryValue}</p>
+          <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{insight.primaryValue}</p>
         </div>
         <div className="rounded-lg border border-border bg-card p-3">
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{insight.secondaryLabel}</p>
-          <p className="mt-1 text-2xl font-semibold text-foreground">{insight.secondaryValue}</p>
+          <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{insight.secondaryValue}</p>
         </div>
       </div>
       {dashboard.currentAnnualLeaveBalance ? (
@@ -171,7 +171,7 @@ function HeroInsightCard({
           </div>
         </div>
       ) : null}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
         <p className="text-[11px] text-muted-foreground">
           {t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}
         </p>
@@ -206,7 +206,7 @@ function SuperAdminDashboard({ dashboard }: { dashboard: DashboardSummary }) {
           </CardHeader>
           <CardContent>
             {section ? (
-              <div className="grid gap-3 sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
                 {[
                   ["total", t("total"), section.deviceHealth.total],
                   ["online", t("online"), section.deviceHealth.online],
@@ -214,7 +214,7 @@ function SuperAdminDashboard({ dashboard }: { dashboard: DashboardSummary }) {
                   ["error", t("error"), section.deviceHealth.error],
                   ["unknown", t("unknown"), section.deviceHealth.unknown],
                 ].map(([key, label, value]) => (
-                  <div key={key} className="rounded-xl border border-border bg-background p-4">
+                  <div key={key} className="min-w-0 rounded-xl border border-border bg-background p-3 sm:p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
                     <p className="mt-2 text-2xl font-semibold text-foreground">{value}</p>
                   </div>
@@ -276,10 +276,10 @@ function EmployeeDashboard({
   const isPermanentEmployee = section?.profile.employmentType === "PERMANENT"
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="space-y-4 sm:space-y-6">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <Card className="overflow-hidden">
-          <CardHeader className="border-b border-border">
+          <CardHeader className="border-b border-border px-4 sm:px-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle>{t("todaysAttendance")}</CardTitle>
@@ -293,7 +293,7 @@ function EmployeeDashboard({
               </Badge>
             </div>
           </CardHeader>
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-3">
+          <CardContent className="grid gap-2 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4">
             <AttendanceStat
               icon={LogIn}
               label={t("checkIn")}
@@ -316,19 +316,19 @@ function EmployeeDashboard({
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="px-4 sm:px-6">
             <CardTitle className="flex items-center gap-2">
               <Wallet className="size-5 text-primary" />
               {t("leaveBalance")}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 px-4 sm:px-6">
             {leaveBalances.length === 0 ? (
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {isPermanentEmployee ? t("previousFiscalYearBalances") : t("currentFiscalYearBalance")}
                 </p>
-                <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">{t("notAvailable")}</p>
+                <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-foreground sm:text-4xl">{t("notAvailable")}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {isPermanentEmployee ? t("previousFiscalYears") : t("currentFiscalYear")}
                 </p>
@@ -340,7 +340,7 @@ function EmployeeDashboard({
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       {isPermanentEmployee ? t("previousFiscalYearBalance") : t("currentFiscalYearBalance")}
                     </p>
-                    <p className="mt-2 text-4xl font-semibold tracking-tight text-foreground">
+                    <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-4xl">
                       {formatLeaveDays(balance.available)}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
@@ -400,17 +400,17 @@ function AttendanceStat({
   detail: string
 }) {
   return (
-    <div className="rounded-xl border border-border bg-background p-4">
+    <div className="min-w-0 rounded-xl border border-border bg-background p-3 sm:p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+          <p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{value}</p>
         </div>
         <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
           <Icon className="size-5" />
         </div>
       </div>
-      <p className="mt-3 truncate text-xs text-muted-foreground">{detail}</p>
+      <p className="mt-3 break-words text-xs text-muted-foreground">{detail}</p>
     </div>
   )
 }
@@ -437,7 +437,7 @@ function SetupRequiredDashboard({ dashboard }: { dashboard: DashboardSummary }) 
 
 function MetricGrid({ metrics }: { metrics: DashboardMetric[] }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
       {metrics.map((metric) => (
         <MetricCard key={metric.id} metric={metric} />
       ))}
@@ -447,14 +447,14 @@ function MetricGrid({ metrics }: { metrics: DashboardMetric[] }) {
 
 function MetricCard({ metric }: { metric: DashboardMetric }) {
   const content = (
-    <Card className="h-full transition hover:border-primary/40 hover:shadow-sm">
-      <CardContent className="space-y-3 p-5">
+    <Card className="h-full min-w-0 gap-3 py-3 transition hover:border-primary/40 hover:shadow-sm sm:gap-6 sm:py-6">
+      <CardContent className="space-y-2 px-3 sm:space-y-3 sm:px-5">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-medium text-muted-foreground">{metric.label}</p>
+          <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{metric.label}</p>
           <Activity className="size-4 text-primary" />
         </div>
-        <p className="text-3xl font-semibold tracking-tight text-foreground">{metric.value}</p>
-        <p className="text-sm leading-5 text-muted-foreground">{metric.description}</p>
+        <p className="break-words text-xl font-semibold tracking-tight text-foreground sm:text-3xl">{metric.value}</p>
+        <p className="text-xs leading-4 text-muted-foreground sm:text-sm sm:leading-5">{metric.description}</p>
       </CardContent>
     </Card>
   )
@@ -481,7 +481,7 @@ function QuickActions({ actions }: { actions: DashboardQuickAction[] }) {
           <Link
             key={action.href}
             href={action.href}
-            className="group rounded-xl border border-border bg-background p-4 transition hover:border-primary/50 hover:bg-accent/50"
+            className="group rounded-xl border border-border bg-background p-3 transition hover:border-primary/50 hover:bg-accent/50 sm:p-4"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
@@ -562,7 +562,7 @@ function PunchList({ title, punches, emptyText }: { title: string; punches: Atte
           <EmptyLine text={emptyText} />
         ) : (
           punches.map((punch) => (
-            <div key={punch.id} className="flex items-start justify-between gap-4 rounded-xl border border-border bg-background p-4">
+            <div key={punch.id} className="flex flex-col items-start gap-2 rounded-xl border border-border bg-background p-3 sm:flex-row sm:justify-between sm:gap-4 sm:p-4">
               <div className="space-y-1">
                 <p className="font-medium text-foreground">
                   {punch.employee ? employeeName(punch.employee) : punch.biometricId}
@@ -603,7 +603,7 @@ function LeaveRequestsPanel({ requests }: { requests: LeaveRequest[] }) {
               href={leaveRequestHref(request)}
               className="block rounded-xl border border-border bg-background p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
             >
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-4">
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">{request.leaveType?.nameEn ?? t("leaveRequests")}</p>
                   <p className="text-sm text-muted-foreground">
@@ -673,7 +673,7 @@ function ManualRequestsList({
         ) : (
           requests.map((request) => (
             <div key={request.id} className="rounded-xl border border-border bg-background p-4">
-              <div className="flex items-start justify-between gap-4">
+              <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-4">
                 <div className="space-y-1">
                   <p className="font-medium text-foreground">
                     {request.employee ? employeeName(request.employee) : request.requestedPunchType}
@@ -722,7 +722,7 @@ function TeamRequestsList({
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("myManualRequests")}</p>
                 {manualRequests.map((request) => (
                   <div key={request.id} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-4">
                       <div className="space-y-1">
                         <p className="font-medium text-foreground">
                           {request.employee ? employeeName(request.employee) : request.requestedPunchType}
@@ -742,7 +742,7 @@ function TeamRequestsList({
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("leaveRequests")}</p>
                 {leaveRequests.map((request) => (
                   <div key={request.id} className="rounded-xl border border-border bg-background p-4">
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between sm:gap-4">
                       <div className="space-y-1">
                         <p className="font-medium text-foreground">
                           {request.employee ? employeeName(request.employee) : t("requestsLabel")}
@@ -836,11 +836,11 @@ function EmptyLine({ text }: { text: string }) {
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6">
-      <Skeleton className="h-48 rounded-2xl" />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="space-y-4 sm:space-y-6">
+      <Skeleton className="h-40 rounded-2xl sm:h-48" />
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
         {[0, 1, 2, 3].map((item) => (
-          <Skeleton key={item} className="h-36 rounded-xl" />
+          <Skeleton key={item} className="h-28 rounded-xl sm:h-36" />
         ))}
       </div>
       <div className="grid gap-6 xl:grid-cols-2">

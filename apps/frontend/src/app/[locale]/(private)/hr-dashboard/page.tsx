@@ -91,12 +91,12 @@ export default function HrDashboardPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1.5 text-sm font-medium text-foreground">
+          <label className="grid w-full gap-1.5 text-sm font-medium text-foreground sm:w-auto">
             {t("date")}
-            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-44" />
+            <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="w-full sm:w-44" />
           </label>
           {isFetching ? (
             <Badge variant="secondary" className="mb-1 gap-2">
@@ -105,8 +105,8 @@ export default function HrDashboardPage() {
             </Badge>
           ) : null}
         </div>
-        <div className="flex items-center gap-3">
-          <p className="text-xs text-muted-foreground">{t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="min-w-0 text-xs text-muted-foreground">{t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="mr-2 size-4" />
             {t("refresh")}
@@ -141,7 +141,7 @@ export default function HrDashboardPage() {
 
 function WidgetGrid({ dashboard }: { dashboard: HrDashboardSummary }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
       {(Object.entries(dashboard.widgets) as Array<[WidgetKey, HrDashboardWidget]>).map(([key, widget]) => (
         <WidgetCard key={key} widgetKey={key} widget={widget} />
       ))}
@@ -155,16 +155,16 @@ function WidgetCard({ widgetKey, widget }: { widgetKey: WidgetKey; widget: HrDas
   const Icon = meta.icon
 
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-4">
-        <div className={cn("flex size-11 shrink-0 items-center justify-center rounded-md", meta.tone)}>
-          <Icon className="size-5" />
+    <Card className="min-w-0 gap-3 py-3 sm:gap-6 sm:py-6">
+      <CardContent className="flex min-w-0 items-center gap-2 px-3 sm:gap-4 sm:px-4">
+        <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md sm:size-11", meta.tone)}>
+          <Icon className="size-4 sm:size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-muted-foreground">{t(meta.labelKey)}</p>
-          <p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{widget.count}</p>
+          <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{t(meta.labelKey)}</p>
+          <p className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{widget.count}</p>
         </div>
-        <Button variant="ghost" size="icon" asChild>
+        <Button className="size-7 shrink-0 sm:size-9" variant="ghost" size="icon" asChild>
           <Link href={widget.href as any} aria-label={t(meta.labelKey)}>
             <RefreshCw className="size-4" />
           </Link>
@@ -179,14 +179,14 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
 
   return (
     <Card>
-      <CardContent className="flex h-full min-h-36 flex-col justify-between gap-4 p-4">
+      <CardContent className="flex h-full flex-col justify-between gap-3 p-3 sm:min-h-36 sm:gap-4 sm:p-4">
         <div className="flex items-start gap-3">
           <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-teal-700 text-white">
             <WalletCards className="size-5" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-medium text-muted-foreground">{t("myLeaveBalance")}</p>
-            <p className="mt-1 text-3xl font-semibold tracking-tight text-foreground">
+            <p className="mt-1 break-words text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
               {balance ? formatDays(balance.available) : t("notAvailable")}
             </p>
           </div>
@@ -198,7 +198,7 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
           </div>
           <div>
             <p className="text-muted-foreground">{t("fiscalYear")}</p>
-            <p className="truncate font-medium text-foreground">{balance?.fiscalYear?.name ?? "-"}</p>
+            <p className="break-words font-medium text-foreground">{balance?.fiscalYear?.name ?? "-"}</p>
           </div>
         </div>
       </CardContent>
@@ -289,11 +289,11 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: HrDashboardSu
         <CardTitle>{t("attendanceReportingDiscipline")}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
           {items.map(([label, value, description]) => (
             <div key={label} className="rounded-md border border-border p-3">
               <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+              <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{value}</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
             </div>
           ))}
@@ -482,7 +482,7 @@ function SimpleTable({ headers, emptyLabel, children }: { headers: string[]; emp
   const rows = React.Children.toArray(children).filter(Boolean)
 
   return (
-    <Table>
+    <Table className="min-w-[42rem]">
       <TableHeader>
         <TableRow>
           {headers.map((header) => (
@@ -505,14 +505,14 @@ function SimpleTable({ headers, emptyLabel, children }: { headers: string[]; emp
 
 function HrDashboardSkeleton() {
   return (
-    <div className="space-y-5">
-      <div className="flex justify-between gap-3">
-        <Skeleton className="h-10 w-44" />
+    <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row">
+        <Skeleton className="h-10 w-full sm:w-44" />
         <Skeleton className="h-10 w-40" />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
         {Array.from({ length: 12 }).map((_, index) => (
-          <Skeleton key={index} className="h-28 rounded-xl" />
+          <Skeleton key={index} className="h-24 rounded-xl sm:h-28" />
         ))}
       </div>
       <div className="grid gap-5 xl:grid-cols-2">

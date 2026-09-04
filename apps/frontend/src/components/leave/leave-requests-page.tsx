@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { CalendarCheck, Check, Eye, Pencil, Plus, X } from 'lucide-react';
+import { CalendarCheck, Eye, Pencil, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -38,10 +38,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { AnnualLeaveApprovalDialog } from '@/components/leave/annual-leave-approval-dialog';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
 import {
-  useChangeLeaveRequestStatus,
   useCreateLeaveRequest,
   useCreateLeaveInterruption,
   useDashboardSummary,
@@ -53,7 +51,6 @@ import {
   useWorkScheduleDays,
 } from '@/data/hooks/core.hooks';
 import type { Employee, LeaveBalance, LeaveRequest } from '@/data/types/core.types';
-import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
@@ -93,10 +90,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const { formatDate } = useCalendarPreference();
   const session = useSession();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
-  const [approvalTarget, setApprovalTarget] = useState<LeaveRequest | null>(null);
   const [interruptionTarget, setInterruptionTarget] = useState<LeaveRequest | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [annualDates, setAnnualDates] = useState<AnnualDateSelection[]>([]);
   const [annualDateInput, setAnnualDateInput] = useState(today());
   const [annualRange, setAnnualRange] = useState({ startDate: today(), endDate: today() });
@@ -110,12 +104,11 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     reason: '',
   });
 
-  const requestsQuery = useLeaveRequests(kind);
+  const requestsQuery = useLeaveRequests(kind, 'self');
   const dashboardQuery = useDashboardSummary(session.data?.user?.id);
   const fiscalYearsQuery = useLeaveFiscalYears();
   const leaveTypesQuery = useLeaveTypes();
   const createRequest = useCreateLeaveRequest(kind);
-  const changeStatus = useChangeLeaveRequestStatus();
   const createInterruption = useCreateLeaveInterruption();
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
@@ -138,7 +131,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       return true;
     });
   }, [kind, leaveTypeFilter, requestDateFilters.fromDate, requestDateFilters.toDate, requests]);
-  const canReviewRequests = hasSupervisorApprovalAccess(session.data?.user, 'leave-request-approvals:approve');
   const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
   const annualType = leaveTypes.find((type) => type.code.toUpperCase() === 'ANNUAL');
   const selectableTypes = kind === 'annual'
@@ -212,93 +204,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       notifications.show({ title: common('success'), message: t('leaveRequestCreated'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  };
-
-  const approveRequest = async (request: LeaveRequest) => {
-    if (isAnnualRequest(request) && request.annualLeaveDates?.length) {
-      setApprovalTarget(request);
-      return;
-    }
-
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: request.id,
-        status: 'APPROVED',
-        approvedBy: session.data?.user?.id ?? undefined,
-        approvedAt: new Date().toISOString(),
-      });
-
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestApproved'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
-  };
-
-  const submitAnnualApproval = async (request: LeaveRequest, approvedDates: Array<{ date: string; dayValue: string }>) => {
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: request.id,
-        status: 'APPROVED',
-        approvedBy: session.data?.user?.id ?? undefined,
-        approvedAt: new Date().toISOString(),
-        approvedDates,
-      });
-
-      setApprovalTarget(null);
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestApproved'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
-  };
-
-  const openRejectDialog = (request: LeaveRequest) => {
-    setRejectTarget(request);
-    setRejectionReason('');
-  };
-
-  const submitRejection = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!rejectTarget) return;
-
-    try {
-      await changeStatus.mutateAsync({
-        leaveRequestId: rejectTarget.id,
-        status: 'REJECTED',
-        rejectedBy: session.data?.user?.id ?? undefined,
-        rejectedAt: new Date().toISOString(),
-        rejectionReason: rejectionReason.trim() || null,
-      });
-
-      setRejectTarget(null);
-      setRejectionReason('');
-      notifications.show({
-        title: common('success'),
-        message: t('leaveRequestRejected'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
     }
   };
 
@@ -454,7 +359,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                     </TableHeader>
                     <TableBody>
                       {filteredRequests.map((request) => {
-                        const isOwnRequest = request.requestedBy === session.data?.user?.id || request.employee?.userId === session.data?.user?.id;
+                        const isOwnRequest = request.requestedBy === session.data?.user?.id && request.employee?.userId === session.data?.user?.id;
 
                         return (
                           <TableRow key={request.id}>
@@ -498,28 +403,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                                       </Link>
                                     </Button>
                                   ) : null}
-                                </div>
-                              ) : request.status === 'PENDING' && !isOwnRequest && canReviewRequests ? (
-                                <div className="flex justify-end gap-2">
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={() => approveRequest(request)}
-                                    disabled={changeStatus.isPending}
-                                  >
-                                    <Check className="size-4" />
-                                    {t('approve')}
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openRejectDialog(request)}
-                                    disabled={changeStatus.isPending}
-                                  >
-                                    <X className="size-4" />
-                                    {t('reject')}
-                                  </Button>
                                 </div>
                               ) : request.status === 'APPROVED'
                                 && isAnnualRequest(request)
@@ -694,14 +577,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
         </DialogContent>
       </Dialog>
 
-      <AnnualLeaveApprovalDialog
-        request={approvalTarget}
-        open={Boolean(approvalTarget)}
-        isSaving={changeStatus.isPending}
-        onOpenChange={(open) => !open && setApprovalTarget(null)}
-        onApprove={submitAnnualApproval}
-      />
-
       <LeaveInterruptionDialog
         request={interruptionTarget}
         open={Boolean(interruptionTarget)}
@@ -710,30 +585,6 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
         onSubmit={submitInterruption}
       />
 
-      <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => !open && setRejectTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('reject')}</DialogTitle>
-            <DialogDescription>{t('rejectionReason')}</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={submitRejection}>
-            <Textarea
-              value={rejectionReason}
-              onChange={(event) => setRejectionReason(event.target.value)}
-              placeholder={t('rejectionReason')}
-              rows={4}
-            />
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>
-                {common('cancel')}
-              </Button>
-              <Button type="submit" disabled={changeStatus.isPending || !rejectionReason.trim()}>
-                {changeStatus.isPending ? t('saving') : common('save')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
