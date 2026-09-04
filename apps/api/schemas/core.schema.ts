@@ -206,6 +206,8 @@ export const EmployeeSchema = z.object({
   sourcePositionCode: z.string().nullable().openapi({ example: 'K-1062' }),
   salary: z.string().nullable().openapi({ example: '12000.00' }),
   salaryStep: z.string().nullable().openapi({ example: 'III' }),
+  nationalId: z.string().nullable().openapi({ example: '0045678901' }),
+  paidByIfmis: z.boolean().openapi({ example: true }),
   sourceImportedAt: z.string().nullable().openapi({ example: '2026-07-06T09:30:00.000Z' }),
   sourceRawPayload: z
     .record(z.any())
@@ -684,6 +686,24 @@ export const CreateEmployeeWorkScheduleRequestSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+export const BulkCreateEmployeeWorkScheduleRequestSchema = z.object({
+  employeeIds: z.array(UuidSchema).min(1),
+  workScheduleId: UuidSchema,
+  effectiveFrom: RequiredDateSchema,
+  effectiveTo: OptionalDateSchema,
+  isActive: z.boolean().optional(),
+});
+
+export const BulkCreateEmployeeWorkScheduleResponseSchema = z.object({
+  success: z.boolean(),
+  created: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  errors: z.array(z.object({
+    employeeId: UuidSchema,
+    message: z.string(),
+  })),
+});
+
 export const UpdateEmployeeWorkScheduleRequestSchema = CreateEmployeeWorkScheduleRequestSchema.partial();
 
 export const CreateEmployeeRequestSchema = z.object({
@@ -715,6 +735,8 @@ export const CreateEmployeeRequestSchema = z.object({
   sourcePositionCode: z.string().max(50).nullable().optional(),
   salary: z.union([z.string(), z.number()]).nullable().optional(),
   salaryStep: z.string().max(50).nullable().optional(),
+  nationalId: z.string().max(50).nullable().optional(),
+  paidByIfmis: z.boolean().optional(),
   sourceImportedAt: z.string().datetime().nullable().optional(),
   sourceRawPayload: z.record(z.any()).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -1590,7 +1612,7 @@ export const DashboardMetricSchema = z.object({
   label: z.string().openapi({ example: 'Total employees' }),
   value: z.union([z.string(), z.number()]).openapi({ example: 128 }),
   description: z.string().openapi({ example: 'People registered in the organization' }),
-  href: z.string().optional().openapi({ example: '/employees' }),
+  href: z.string().optional().openapi({ example: '/contract-employees' }),
 });
 
 export const DashboardQuickActionSchema = z.object({

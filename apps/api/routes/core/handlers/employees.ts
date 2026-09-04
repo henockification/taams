@@ -3,6 +3,7 @@ import {
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   CreateEmployeeWorkScheduleRequestSchema,
+  BulkCreateEmployeeWorkScheduleRequestSchema,
   UpdateEmployeeRequestSchema,
   UpdateEmployeeWorkScheduleRequestSchema,
 } from '../../../schemas/core.schema';
@@ -26,6 +27,7 @@ import {
 } from '../../../lib/employees/excel-import';
 import {
   createEmployeeWorkScheduleScoped,
+  bulkCreateEmployeeWorkSchedulesScoped,
   deleteEmployeeWorkScheduleScoped,
   getAllEmployeeWorkSchedulesScoped,
   getEmployeeWorkSchedulesScoped,
@@ -79,7 +81,18 @@ export async function getEmployeesPaginatedHandler(c: Context) {
     const page = Number(c.req.query('page') || 1);
     const pageSize = Number(c.req.query('pageSize') || 50);
     const search = c.req.query('search') || '';
-    const result = await getEmployeesPaginated({ page, pageSize, search, scope });
+    const employmentType = (c.req.query('employmentType') || undefined) as 'PERMANENT' | 'CONTRACT' | 'TEMPORARY' | 'DAILY' | undefined;
+    const excludeEmploymentType = (c.req.query('excludeEmploymentType') || undefined) as 'PERMANENT' | 'CONTRACT' | 'TEMPORARY' | 'DAILY' | undefined;
+    const departmentId = c.req.query('departmentId') || undefined;
+    const result = await getEmployeesPaginated({
+      page,
+      pageSize,
+      search,
+      employmentType,
+      excludeEmploymentType,
+      departmentId,
+      scope,
+    });
 
     return c.json({
       success: true,
@@ -283,6 +296,29 @@ export async function createEmployeeWorkScheduleHandler(c: Context) {
     }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to assign employee work schedule');
+  }
+}
+
+export async function bulkCreateEmployeeWorkSchedulesHandler(c: Context) {
+  try {
+    const scope = await resolveScope(c);
+    const body = await c.req.json();
+    const parsed = BulkCreateEmployeeWorkScheduleRequestSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return validationErrorResponse(c, parsed.error.message);
+    }
+
+    const result = await bulkCreateEmployeeWorkSchedulesScoped(parsed.data, scope);
+
+    return c.json({
+      success: true,
+      created: result.created.length,
+      failed: result.failed,
+      errors: result.errors,
+    }, 201);
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to assign employee work schedules');
   }
 }
 

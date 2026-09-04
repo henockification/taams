@@ -174,7 +174,7 @@ export const appNavGroups: AppNavGroup[] = [
       },
       {
         titleKey: 'employees',
-        url: '/employees',
+        url: '/contract-employees',
         permissionResource: 'employees',
         requiredPermission: 'employees:read',
         icon: FileSpreadsheet,
@@ -683,6 +683,10 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
   if (pathname === '/leave-management/authorizations' || pathname.startsWith('/leave-management/authorizations/'))
     return userHasPermission(user, 'leave-authorizations:approve');
+  if (pathname === '/employees' || pathname.startsWith('/employees/')) {
+    const contractEmployeesItem = appNavGroups.flatMap((group) => group.items).find((item) => item.url === '/contract-employees');
+    return contractEmployeesItem ? userCanAccessNavItem(user, contractEmployeesItem) : true;
+  }
   const navItem = getNavItemForPath(pathname);
   return navItem ? userCanAccessNavItem(user, navItem) : true;
 }

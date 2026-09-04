@@ -1,8 +1,8 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
-import { useEffect, useState } from 'react';
-import { BriefcaseBusiness, CalendarDays, Check, ChevronsUpDown, Pencil, Plus, Timer, Trash2, UserRoundCog } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarDays, Pencil, Plus, Timer, Trash2, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -26,19 +27,6 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -59,14 +47,14 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import {
   useAllEmployeeWorkSchedules,
+  useBulkCreateEmployeeWorkSchedules,
   useCreateShift,
   useCreateShiftSegment,
-  useCreateEmployeeWorkSchedule,
   useCreateWorkSchedule,
   useCreateWorkScheduleDay,
   useDeleteEmployeeWorkSchedule,
+  useDepartments,
   useEmployees,
-  usePositions,
   useShiftSegments,
   useShifts,
   useUpdateShift,
@@ -79,7 +67,6 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { DayOfWeek, Employee, EmployeeWorkSchedule, Shift, ShiftSegment, WorkSchedule, WorkScheduleDay } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
-import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const dayOptions: DayOfWeek[] = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -120,14 +107,13 @@ const workScheduleDayInitialForm = {
 
 const employeeWorkScheduleInitialForm = {
   employeeId: '',
-  positionId: '',
   workScheduleId: '',
   effectiveFrom: '',
   effectiveTo: '',
   isActive: true,
 };
 
-type AssignmentMode = 'employee' | 'position';
+const allDepartmentsValue = '__all_departments';
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);
@@ -162,16 +148,15 @@ export function WorkSchedulesPage({
   const { data: shiftsResponse, isLoading: shiftsLoading } = useShifts();
   const { data: workSchedulesResponse, isLoading: workSchedulesLoading } = useWorkSchedules();
   const { data: employeesResponse, isLoading: employeesLoading } = useEmployees();
-  const { data: positionsResponse, isLoading: positionsLoading } = usePositions();
+  const { data: departmentsResponse } = useDepartments();
 
   const shifts = shiftsResponse?.shifts ?? [];
   const workSchedules = workSchedulesResponse?.workSchedules ?? [];
   const employees = employeesResponse?.employees ?? [];
-  const positions = positionsResponse?.positions ?? [];
+  const departments = departmentsResponse?.departments ?? [];
 
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [selectedWorkScheduleId, setSelectedWorkScheduleId] = useState('');
-  const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>('employee');
   const selectedShift = shifts.find((shift) => shift.id === selectedShiftId);
   const selectedWorkSchedule = workSchedules.find((schedule) => schedule.id === selectedWorkScheduleId);
 
@@ -181,13 +166,6 @@ export function WorkSchedulesPage({
     ...employeeWorkScheduleInitialForm,
     effectiveFrom: todayInput(),
   });
-  const selectedAssignmentEmployee = employees.find((employee) => employee.id === employeeWorkScheduleForm.employeeId);
-  const selectedAssignmentPosition = positions.find((position) => position.id === employeeWorkScheduleForm.positionId);
-  const positionEmployees = employees.filter((employee) => (
-    employee.positionId === employeeWorkScheduleForm.positionId &&
-    employee.employmentStatus === 'ACTIVE' &&
-    employee.isActive
-  ));
   const { data: allEmployeeWorkSchedulesResponse, isLoading: allEmployeeWorkSchedulesLoading } = useAllEmployeeWorkSchedules();
   const shiftSegments = shiftSegmentsResponse?.shiftSegments ?? [];
   const workScheduleDays = workScheduleDaysResponse?.days ?? [];
@@ -197,7 +175,7 @@ export function WorkSchedulesPage({
   const updateShift = useUpdateShift();
   const createShiftSegment = useCreateShiftSegment();
   const updateShiftSegment = useUpdateShiftSegment();
-  const createEmployeeWorkSchedule = useCreateEmployeeWorkSchedule();
+  const bulkCreateEmployeeWorkSchedules = useBulkCreateEmployeeWorkSchedules();
   const updateEmployeeWorkSchedule = useUpdateEmployeeWorkSchedule();
   const deleteEmployeeWorkSchedule = useDeleteEmployeeWorkSchedule();
   const createWorkSchedule = useCreateWorkSchedule();
@@ -211,6 +189,10 @@ export function WorkSchedulesPage({
   const [workScheduleDayDialogOpen, setWorkScheduleDayDialogOpen] = useState(false);
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [assignmentSearch, setAssignmentSearch] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [assignmentPage, setAssignmentPage] = useState(1);
+  const [assignmentPageSize, setAssignmentPageSize] = useState(50);
   const [editingEmployeeWorkSchedule, setEditingEmployeeWorkSchedule] = useState<EmployeeWorkSchedule | null>(null);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
   const [editingShiftSegment, setEditingShiftSegment] = useState<ShiftSegment | null>(null);
@@ -220,6 +202,52 @@ export function WorkSchedulesPage({
   const [shiftSegmentForm, setShiftSegmentForm] = useState(shiftSegmentInitialForm);
   const [workScheduleForm, setWorkScheduleForm] = useState(workScheduleInitialForm);
   const [workScheduleDayForm, setWorkScheduleDayForm] = useState(workScheduleDayInitialForm);
+
+  const assignmentByEmployeeId = useMemo(() => {
+    const map = new Map<string, EmployeeWorkSchedule>();
+    const sorted = [...allEmployeeWorkSchedules].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom));
+    for (const assignment of sorted) {
+      if (!assignment.isActive) continue;
+      if (!map.has(assignment.employeeId)) map.set(assignment.employeeId, assignment);
+    }
+    return map;
+  }, [allEmployeeWorkSchedules]);
+
+  const filteredEmployees = useMemo(() => {
+    const query = assignmentSearch.trim().toLowerCase();
+    return employees.filter((employee) => {
+      if (departmentFilter !== allDepartmentsValue) {
+        const departmentId = employee.department?.id ?? employee.departmentId;
+        if (departmentId !== departmentFilter) return false;
+      }
+
+      if (!query) return true;
+
+      const haystack = [
+        employee.firstNameEn,
+        employee.middleNameEn,
+        employee.lastNameEn,
+        employee.employeeCode,
+        employee.department?.nameEn,
+        employee.sourceDepartmentName,
+        employee.position?.nameEn,
+        employee.positionName,
+        employee.sourcePositionName,
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      return haystack.includes(query);
+    });
+  }, [assignmentSearch, departmentFilter, employees]);
+
+  const assignmentTotal = filteredEmployees.length;
+  const assignmentTotalPages = Math.max(1, Math.ceil(assignmentTotal / assignmentPageSize));
+  const assignmentCurrentPage = Math.min(assignmentPage, assignmentTotalPages);
+  const assignmentStartIndex = (assignmentCurrentPage - 1) * assignmentPageSize;
+  const paginatedEmployees = filteredEmployees.slice(assignmentStartIndex, assignmentStartIndex + assignmentPageSize);
+  const filteredEmployeeIds = useMemo(() => filteredEmployees.map((employee) => employee.id), [filteredEmployees]);
+  const selectedFilteredCount = filteredEmployeeIds.filter((id) => selectedEmployeeIds.has(id)).length;
+  const allFilteredSelected = filteredEmployeeIds.length > 0 && selectedFilteredCount === filteredEmployeeIds.length;
+  const editingAssignmentEmployee = employees.find((employee) => employee.id === (editingEmployeeWorkSchedule?.employeeId ?? employeeWorkScheduleForm.employeeId));
 
   useEffect(() => {
     if (shifts.length === 0) {
@@ -243,23 +271,20 @@ export function WorkSchedulesPage({
 
   useEffect(() => {
     setEmployeeWorkScheduleForm((current) => {
-      const next = { ...current };
-
-      if (!next.workScheduleId && workSchedules[0]) {
-        next.workScheduleId = workSchedules[0].id;
-      }
-
-      if (!next.employeeId && employees[0]) {
-        next.employeeId = employees[0].id;
-      }
-
-      if (!next.positionId && positions[0]) {
-        next.positionId = positions[0].id;
-      }
-
-      return next;
+      if (current.workScheduleId || !workSchedules[0]) return current;
+      return { ...current, workScheduleId: workSchedules[0].id };
     });
-  }, [employees, positions, workSchedules]);
+  }, [workSchedules]);
+
+  useEffect(() => {
+    setAssignmentPage(1);
+  }, [assignmentPageSize, assignmentSearch, departmentFilter]);
+
+  useEffect(() => {
+    if (assignmentCurrentPage !== assignmentPage) {
+      setAssignmentPage(assignmentCurrentPage);
+    }
+  }, [assignmentCurrentPage, assignmentPage]);
 
   const openCreateShift = () => {
     setEditingShift(null);
@@ -325,27 +350,47 @@ export function WorkSchedulesPage({
   };
 
   const openAssignmentDialog = () => {
+    if (selectedEmployeeIds.size === 0) return;
     setEditingEmployeeWorkSchedule(null);
     setEmployeeWorkScheduleForm((current) => ({
-      ...current,
-      effectiveFrom: current.effectiveFrom || todayInput(),
+      ...employeeWorkScheduleInitialForm,
+      workScheduleId: current.workScheduleId || workSchedules[0]?.id || '',
+      effectiveFrom: todayInput(),
+      isActive: true,
     }));
-    setAssignmentMode('employee');
     setAssignmentDialogOpen(true);
   };
 
   const openEditEmployeeWorkSchedule = (assignment: EmployeeWorkSchedule) => {
     setEditingEmployeeWorkSchedule(assignment);
-    setAssignmentMode('employee');
     setEmployeeWorkScheduleForm({
       employeeId: assignment.employeeId,
-      positionId: '',
       workScheduleId: assignment.workScheduleId,
       effectiveFrom: assignment.effectiveFrom,
       effectiveTo: assignment.effectiveTo ?? '',
       isActive: assignment.isActive,
     });
     setAssignmentDialogOpen(true);
+  };
+
+  const toggleEmployeeSelection = (employeeId: string, checked: boolean) => {
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(employeeId);
+      else next.delete(employeeId);
+      return next;
+    });
+  };
+
+  const toggleFilteredSelection = (checked: boolean) => {
+    setSelectedEmployeeIds((current) => {
+      const next = new Set(current);
+      for (const employeeId of filteredEmployeeIds) {
+        if (checked) next.add(employeeId);
+        else next.delete(employeeId);
+      }
+      return next;
+    });
   };
 
   const removeEmployeeWorkSchedule = async (assignment: EmployeeWorkSchedule) => {
@@ -491,34 +536,22 @@ export function WorkSchedulesPage({
         return;
       }
 
-      if (assignmentMode === 'employee') {
-        if (!employeeWorkScheduleForm.employeeId) return;
-        await createEmployeeWorkSchedule.mutateAsync({
-          employeeId: employeeWorkScheduleForm.employeeId,
-          ...payload,
-        });
-        setAssignmentDialogOpen(false);
-        notifications.show({ title: common('success'), message: t('employeeWorkScheduleAssigned'), color: 'green' });
-        return;
-      }
+      const employeeIds = [...selectedEmployeeIds];
+      if (employeeIds.length === 0) return;
 
-      const results = await Promise.allSettled(
-        positionEmployees.map((employee) => createEmployeeWorkSchedule.mutateAsync({
-          employeeId: employee.id,
-          ...payload,
-        }))
-      );
-      const assignedCount = results.filter((result) => result.status === 'fulfilled').length;
-      const failedCount = results.length - assignedCount;
-
-      notifications.show({
-        title: failedCount > 0 ? common('error') : common('success'),
-        message: failedCount > 0
-          ? t('positionWorkSchedulePartiallyAssigned', { assignedCount, failedCount })
-          : t('positionWorkScheduleAssigned', { count: assignedCount }),
-        color: failedCount > 0 ? 'yellow' : 'green',
+      const result = await bulkCreateEmployeeWorkSchedules.mutateAsync({
+        employeeIds,
+        ...payload,
       });
-      if (assignedCount > 0) setAssignmentDialogOpen(false);
+      setAssignmentDialogOpen(false);
+      setSelectedEmployeeIds(new Set());
+      notifications.show({
+        title: result.failed > 0 ? common('error') : common('success'),
+        message: result.failed > 0
+          ? t('positionWorkSchedulePartiallyAssigned', { assignedCount: result.created, failedCount: result.failed })
+          : t('positionWorkScheduleAssigned', { count: result.created }),
+        color: result.failed > 0 ? 'yellow' : 'green',
+      });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
     }
@@ -528,22 +561,7 @@ export function WorkSchedulesPage({
   const shiftSegmentSaving = createShiftSegment.isPending || updateShiftSegment.isPending;
   const workScheduleSaving = createWorkSchedule.isPending || updateWorkSchedule.isPending;
   const workScheduleDaySaving = createWorkScheduleDay.isPending || updateWorkScheduleDay.isPending;
-  const employeeWorkScheduleSaving = createEmployeeWorkSchedule.isPending || updateEmployeeWorkSchedule.isPending || deleteEmployeeWorkSchedule.isPending;
-  const filteredAssignments = allEmployeeWorkSchedules.filter((assignment) => {
-    const employee = assignment.employee;
-    const haystack = [
-      assignment.workSchedule?.nameEn,
-      employee?.employeeCode,
-      employee?.firstNameEn,
-      employee?.middleNameEn,
-      employee?.lastNameEn,
-      employee?.department?.nameEn,
-      employee?.position?.nameEn,
-      employee?.positionName,
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return haystack.includes(assignmentSearch.trim().toLowerCase());
-  });
+  const employeeWorkScheduleSaving = bulkCreateEmployeeWorkSchedules.isPending || updateEmployeeWorkSchedule.isPending || deleteEmployeeWorkSchedule.isPending;
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -698,82 +716,151 @@ export function WorkSchedulesPage({
         </TabsContent>
 
         <TabsContent value="assignments" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Input
-              value={assignmentSearch}
-              onChange={(event) => setAssignmentSearch(event.target.value)}
-              placeholder={t('searchAssignments')}
-              className="max-w-md"
-            />
-            <Button onClick={openAssignmentDialog}>
+          <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div className="flex flex-1 flex-wrap items-end gap-2">
+              <Field label={t('employeeSearch')} id="assignment-search">
+                <Input
+                  id="assignment-search"
+                  value={assignmentSearch}
+                  onChange={(event) => setAssignmentSearch(event.target.value)}
+                  placeholder={t('searchEmployees')}
+                  className="min-w-64 md:max-w-sm"
+                />
+              </Field>
+              <Field label={t('department')} id="assignment-department">
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                  <SelectTrigger id="assignment-department" className="w-full sm:w-64">
+                    <SelectValue placeholder={t('selectDepartment')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                    {departments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <Button onClick={openAssignmentDialog} disabled={selectedEmployeeIds.size === 0}>
               <Plus className="size-4" />
               {t('assignWorkSchedule')}
+              {selectedEmployeeIds.size > 0 ? ` (${selectedEmployeeIds.size})` : ''}
             </Button>
           </div>
 
           <Card className="rounded-lg">
             <CardContent className="p-0">
-              {allEmployeeWorkSchedulesLoading ? (
+              {employeesLoading || allEmployeeWorkSchedulesLoading ? (
                 <p className="p-6 text-sm text-muted-foreground">{common('loading')}</p>
-              ) : filteredAssignments.length === 0 ? (
+              ) : filteredEmployees.length === 0 ? (
                 <div className="p-6">
-                  <EmptyState icon={CalendarDays} title={t('noEmployeeWorkSchedules')} description={t('noEmployeeWorkSchedulesDescription')} />
+                  <EmptyState
+                    icon={UserRoundCog}
+                    title={employees.length === 0 ? t('noEmployees') : t('noMatchingEmployees')}
+                    description={employees.length === 0 ? t('noEmployeesDescription') : t('noMatchingEmployeesDescription')}
+                  />
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('employee')}</TableHead>
-                        <TableHead>{t('workSchedule')}</TableHead>
-                        <TableHead>{t('department')}</TableHead>
-                        <TableHead>{t('position')}</TableHead>
-                        <TableHead>{t('effectiveFrom')}</TableHead>
-                        <TableHead>{t('effectiveTo')}</TableHead>
-                        <TableHead>{t('status')}</TableHead>
-                        <TableHead className="text-right">{t('actions')}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredAssignments.map((assignment) => {
-                        const employee = assignment.employee;
-                        const employeeName = employee
-                          ? `${employee.firstNameEn} ${employee.middleNameEn ?? ''} ${employee.lastNameEn}`.replace(/\s+/g, ' ').trim()
-                          : '-';
+                <div className="space-y-3 p-4">
+                  <div className="overflow-x-auto rounded-md border border-border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-10">
+                            <Checkbox
+                              checked={allFilteredSelected ? true : selectedFilteredCount > 0 ? 'indeterminate' : false}
+                              onCheckedChange={(checked) => toggleFilteredSelection(checked === true)}
+                              aria-label={t('selectAll')}
+                            />
+                          </TableHead>
+                          <TableHead>{t('employee')}</TableHead>
+                          <TableHead>{t('department')}</TableHead>
+                          <TableHead>{t('position')}</TableHead>
+                          <TableHead>{t('workSchedule')}</TableHead>
+                          <TableHead>{t('effectiveFrom')}</TableHead>
+                          <TableHead>{t('effectiveTo')}</TableHead>
+                          <TableHead>{t('status')}</TableHead>
+                          <TableHead className="text-right">{t('actions')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {paginatedEmployees.map((employee) => {
+                          const assignment = assignmentByEmployeeId.get(employee.id) ?? null;
+                          const employeeName = `${employee.firstNameEn} ${employee.middleNameEn ?? ''} ${employee.lastNameEn}`.replace(/\s+/g, ' ').trim();
 
-                        return (
-                          <TableRow key={assignment.id}>
-                            <TableCell>
-                              <div className="min-w-48">
-                                <p className="font-medium text-foreground">{employeeName}</p>
-                                <p className="text-xs text-muted-foreground">{employee?.employeeCode ?? '-'}</p>
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-medium">{assignment.workSchedule?.nameEn ?? '-'}</TableCell>
-                            <TableCell>{employee?.department?.nameEn ?? employee?.sourceDepartmentName ?? '-'}</TableCell>
-                            <TableCell>{employee?.position?.nameEn ?? employee?.positionName ?? employee?.sourcePositionName ?? '-'}</TableCell>
-                            <TableCell className="whitespace-nowrap">{formatDate(assignment.effectiveFrom)}</TableCell>
-                            <TableCell className="whitespace-nowrap">{assignment.effectiveTo ? formatDate(assignment.effectiveTo) : t('openEnded')}</TableCell>
-                            <TableCell>
-                              <Badge variant={assignment.isActive ? 'default' : 'secondary'}>
-                                {assignment.isActive ? t('active') : t('inactive')}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex justify-end gap-1">
-                                <Button type="button" variant="ghost" size="icon" onClick={() => openEditEmployeeWorkSchedule(assignment)}>
-                                  <Pencil className="size-4" />
-                                </Button>
-                                <Button type="button" variant="ghost" size="icon" onClick={() => removeEmployeeWorkSchedule(assignment)} disabled={deleteEmployeeWorkSchedule.isPending}>
-                                  <Trash2 className="size-4 text-destructive" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                          return (
+                            <TableRow key={employee.id}>
+                              <TableCell>
+                                <Checkbox
+                                  checked={selectedEmployeeIds.has(employee.id)}
+                                  onCheckedChange={(checked) => toggleEmployeeSelection(employee.id, checked === true)}
+                                  aria-label={employeeName}
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <div className="min-w-48">
+                                  <p className="font-medium text-foreground">{employeeName}</p>
+                                  <p className="text-xs text-muted-foreground">{employee.employeeCode}</p>
+                                </div>
+                              </TableCell>
+                              <TableCell>{employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'}</TableCell>
+                              <TableCell>{employee.position?.nameEn ?? employee.positionName ?? employee.sourcePositionName ?? '-'}</TableCell>
+                              <TableCell className="font-medium">{assignment?.workSchedule?.nameEn ?? '-'}</TableCell>
+                              <TableCell className="whitespace-nowrap">{assignment ? formatDate(assignment.effectiveFrom) : '-'}</TableCell>
+                              <TableCell className="whitespace-nowrap">{assignment ? (assignment.effectiveTo ? formatDate(assignment.effectiveTo) : t('openEnded')) : '-'}</TableCell>
+                              <TableCell>
+                                {assignment ? (
+                                  <Badge variant={assignment.isActive ? 'default' : 'secondary'}>
+                                    {assignment.isActive ? t('active') : t('inactive')}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex justify-end gap-1">
+                                  <Button type="button" variant="ghost" size="icon" disabled={!assignment} onClick={() => assignment && openEditEmployeeWorkSchedule(assignment)}>
+                                    <Pencil className="size-4" />
+                                  </Button>
+                                  <Button type="button" variant="ghost" size="icon" disabled={!assignment || deleteEmployeeWorkSchedule.isPending} onClick={() => assignment && removeEmployeeWorkSchedule(assignment)}>
+                                    <Trash2 className="size-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      {assignmentTotal === 0
+                        ? t('noEmployees')
+                        : `Showing ${assignmentStartIndex + 1}-${Math.min(assignmentStartIndex + assignmentPageSize, assignmentTotal)} of ${assignmentTotal}`}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Select value={String(assignmentPageSize)} onValueChange={(value) => setAssignmentPageSize(Number(value))}>
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[25, 50, 100].map((size) => (
+                            <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" onClick={() => setAssignmentPage((current) => Math.max(1, current - 1))} disabled={assignmentCurrentPage <= 1}>
+                        {common('previous')}
+                      </Button>
+                      <span className="min-w-20 text-center text-sm text-muted-foreground">
+                        {assignmentCurrentPage} / {assignmentTotalPages}
+                      </span>
+                      <Button type="button" variant="outline" onClick={() => setAssignmentPage((current) => Math.min(assignmentTotalPages, current + 1))} disabled={assignmentCurrentPage >= assignmentTotalPages}>
+                        {common('next')}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -788,73 +875,28 @@ export function WorkSchedulesPage({
           if (!open) setEditingEmployeeWorkSchedule(null);
         }}
       >
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editingEmployeeWorkSchedule ? t('editWorkScheduleAssignment') : t('assignWorkSchedule')}</DialogTitle>
-            <DialogDescription>{t('assignWorkScheduleDescription')}</DialogDescription>
+            <DialogDescription>
+              {editingEmployeeWorkSchedule
+                ? t('assignWorkScheduleDescription')
+                : t('selectedEmployeesPreview', { count: selectedEmployeeIds.size })}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-5" onSubmit={saveEmployeeWorkSchedule}>
-            {!editingEmployeeWorkSchedule ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                className="rounded-md border border-border p-4 text-left transition-colors hover:bg-accent data-[active=true]:border-primary data-[active=true]:bg-primary/5"
-                data-active={assignmentMode === 'employee'}
-                onClick={() => setAssignmentMode('employee')}
-              >
-                <UserRoundCog className="mb-3 size-5 text-primary" />
-                <p className="font-medium">{t('assignByEmployee')}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{t('assignByEmployeeDescription')}</p>
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-border p-4 text-left transition-colors hover:bg-accent data-[active=true]:border-primary data-[active=true]:bg-primary/5"
-                data-active={assignmentMode === 'position'}
-                onClick={() => setAssignmentMode('position')}
-              >
-                <BriefcaseBusiness className="mb-3 size-5 text-primary" />
-                <p className="font-medium">{t('assignByPosition')}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{t('assignByPositionDescription')}</p>
-              </button>
-            </div>
-            ) : null}
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              {assignmentMode === 'employee' ? (
+            <div className="grid gap-4">
+              {editingEmployeeWorkSchedule ? (
                 <Field label={t('employee')} id="assignment-employee">
-                  <SearchableSelect
+                  <Input
                     id="assignment-employee"
-                    value={employeeWorkScheduleForm.employeeId}
-                    onValueChange={(value) => setEmployeeWorkScheduleForm((current) => ({ ...current, employeeId: value }))}
-                    options={employees.map((employee) => ({
-                      value: employee.id,
-                      label: `${employee.firstNameEn} ${employee.middleNameEn ?? ''} ${employee.lastNameEn}`.replace(/\s+/g, ' ').trim(),
-                      description: [employee.employeeCode, employee.email, employee.position?.nameEn].filter(Boolean).join(' · '),
-                    }))}
-                    placeholder={t('selectEmployee')}
-                    searchPlaceholder={t('searchEmployees')}
-                    emptyMessage={t('noEmployees')}
-                    disabled={employeesLoading}
+                    value={editingAssignmentEmployee
+                      ? `${editingAssignmentEmployee.firstNameEn} ${editingAssignmentEmployee.middleNameEn ?? ''} ${editingAssignmentEmployee.lastNameEn}`.replace(/\s+/g, ' ').trim()
+                      : editingEmployeeWorkSchedule.employeeId}
+                    disabled
                   />
                 </Field>
-              ) : (
-                <Field label={t('position')} id="assignment-position">
-                  <SearchableSelect
-                    id="assignment-position"
-                    value={employeeWorkScheduleForm.positionId}
-                    onValueChange={(value) => setEmployeeWorkScheduleForm((current) => ({ ...current, positionId: value }))}
-                    options={positions.map((position) => ({
-                      value: position.id,
-                      label: position.nameEn,
-                      description: position.code ?? undefined,
-                    }))}
-                    placeholder={t('selectPosition')}
-                    searchPlaceholder={t('searchPositions')}
-                    emptyMessage={t('noPositions')}
-                    disabled={positionsLoading}
-                  />
-                </Field>
-              )}
+              ) : null}
 
               <Field label={t('workSchedule')} id="assignment-work-schedule">
                 <Select
@@ -891,21 +933,6 @@ export function WorkSchedulesPage({
 
             <SwitchRow label={t('active')} checked={employeeWorkScheduleForm.isActive} onCheckedChange={(checked) => setEmployeeWorkScheduleForm((current) => ({ ...current, isActive: checked }))} />
 
-            {assignmentMode === 'position' ? (
-              <div className="rounded-md border border-border bg-accent/40 p-3 text-sm text-muted-foreground">
-                {t('positionAssignmentPreview', {
-                  count: positionEmployees.length,
-                  position: selectedAssignmentPosition?.nameEn ?? t('selectedPosition'),
-                })}
-              </div>
-            ) : selectedAssignmentEmployee ? (
-              <div className="rounded-md border border-border bg-accent/40 p-3 text-sm text-muted-foreground">
-                {t('employeeAssignmentPreview', {
-                  employee: `${selectedAssignmentEmployee.firstNameEn} ${selectedAssignmentEmployee.lastNameEn}`,
-                })}
-              </div>
-            ) : null}
-
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAssignmentDialogOpen(false)}>{common('cancel')}</Button>
               <Button
@@ -914,17 +941,14 @@ export function WorkSchedulesPage({
                   employeeWorkScheduleSaving ||
                   !employeeWorkScheduleForm.workScheduleId ||
                   !employeeWorkScheduleForm.effectiveFrom ||
-                  (assignmentMode === 'employee' && !employeeWorkScheduleForm.employeeId) ||
-                  (assignmentMode === 'position' && positionEmployees.length === 0)
+                  (!editingEmployeeWorkSchedule && selectedEmployeeIds.size === 0)
                 }
               >
                 {employeeWorkScheduleSaving
                   ? t('saving')
                   : editingEmployeeWorkSchedule
                     ? common('save')
-                    : assignmentMode === 'position'
-                      ? t('assignToPosition')
-                      : t('assignToEmployee')}
+                    : t('assignWorkSchedule')}
               </Button>
             </DialogFooter>
           </form>
@@ -1020,82 +1044,6 @@ function Field({ id, label, children }: { id: string; label: string; children: R
       <Label htmlFor={id}>{label}</Label>
       {children}
     </div>
-  );
-}
-
-type SearchableSelectOption = {
-  value: string;
-  label: string;
-  description?: string;
-};
-
-function SearchableSelect({
-  id,
-  value,
-  onValueChange,
-  options,
-  placeholder,
-  searchPlaceholder,
-  emptyMessage,
-  disabled,
-}: {
-  id: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  options: SearchableSelectOption[];
-  placeholder: string;
-  searchPlaceholder: string;
-  emptyMessage: string;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedOption = options.find((option) => option.value === value);
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between font-normal"
-        >
-          <span className="truncate">{selectedOption?.label ?? placeholder}</span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <CommandGroup>
-              {options.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={`${option.label} ${option.description ?? ''}`}
-                  onSelect={() => {
-                    onValueChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn('size-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{option.label}</span>
-                    {option.description ? (
-                      <span className="block truncate text-xs text-muted-foreground">{option.description}</span>
-                    ) : null}
-                  </span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }
 

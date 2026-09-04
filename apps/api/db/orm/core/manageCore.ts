@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { and, asc, count, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, employeeSupervisors, employees, positions, roles, user, userRoles } from '../../schema';
 import {
@@ -12,6 +12,7 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreatePositionInput,
+  EmploymentType,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdatePositionInput,
@@ -123,11 +124,17 @@ export async function getEmployeesPaginated({
   page = 1,
   pageSize = 50,
   search = '',
+  employmentType,
+  excludeEmploymentType,
+  departmentId,
   scope,
 }: {
   page?: number;
   pageSize?: number;
   search?: string;
+  employmentType?: EmploymentType;
+  excludeEmploymentType?: EmploymentType;
+  departmentId?: string;
   scope?: EmployeeVisibilityScope;
 }) {
   const offset = (page - 1) * pageSize;
@@ -141,8 +148,14 @@ export async function getEmployeesPaginated({
       )
     : undefined;
 
+  const employmentTypeCondition = employmentType
+    ? eq(employees.employmentType, employmentType)
+    : excludeEmploymentType
+      ? ne(employees.employmentType, excludeEmploymentType)
+      : undefined;
+  const departmentCondition = departmentId ? eq(employees.departmentId, departmentId) : undefined;
   const scopeCondition = scope ? scopedEmployeeWhere(scope) : undefined;
-  const whereClause = and(searchCondition, scopeCondition);
+  const whereClause = and(searchCondition, employmentTypeCondition, departmentCondition, scopeCondition);
 
   const totalQuery = db.select({ value: count() }).from(employees);
   const employeeQuery = db.query.employees.findMany({
@@ -615,6 +628,8 @@ function normalizeEmployeeInput(input: UpdateEmployeeInput) {
     sourcePositionCode: input.sourcePositionCode,
     salary: input.salary === null || input.salary === undefined ? input.salary : String(input.salary),
     salaryStep: input.salaryStep,
+    nationalId: input.nationalId,
+    paidByIfmis: input.paidByIfmis,
     sourceImportedAt,
     sourceRawPayload: input.sourceRawPayload,
     isActive: input.isActive,

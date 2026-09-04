@@ -170,7 +170,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     supervisor,
     currentAnnualLeaveBalance,
     widgets: {
-      todaysStaff: createWidget('todays-staff', "Today's Staff", departmentEmployees.length, '/employees'),
+      todaysStaff: createWidget('todays-staff', "Today's Staff", departmentEmployees.length, '/contract-employees'),
       present: createWidget('present', 'Present', presentEmployeeIds.size, '/attendance-punches'),
       absent: createWidget('absent', 'Absent', absentEmployees.length, '/attendance-punches'),
       leave: createWidget('leave', 'Leave', leaveEmployeeIds.size, '/leave-request-approvals'),
@@ -204,7 +204,7 @@ function createEmptySummary(input: { generatedAt: Date; selectedDate: string; su
     supervisor: input.supervisor,
     currentAnnualLeaveBalance: null,
     widgets: {
-      todaysStaff: createWidget('todays-staff', "Today's Staff", 0, '/employees'),
+      todaysStaff: createWidget('todays-staff', "Today's Staff", 0, '/contract-employees'),
       present: createWidget('present', 'Present', 0, '/attendance-punches'),
       absent: createWidget('absent', 'Absent', 0, '/attendance-punches'),
       leave: createWidget('leave', 'Leave', 0, '/leave-request-approvals'),

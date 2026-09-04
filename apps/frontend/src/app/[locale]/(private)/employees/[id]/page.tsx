@@ -1,25 +1,18 @@
-'use client';
+import { redirect } from '@/i18n';
 
-import { useEffect } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+export default async function EmployeesDetailRedirect({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string; id: string }>;
+  searchParams: Promise<{ from?: string }>;
+}) {
+  const { locale, id } = await params;
+  const { from } = await searchParams;
 
-import { EmployeeDetailPage } from '@/components/employees/employee-detail-page';
-import { useRouter } from '@/i18n';
+  if (from === 'permanent-employees') {
+    redirect({ href: `/permanent-employees/${id}`, locale });
+  }
 
-export default function ContractEmployeeDetailRoute() {
-  const params = useParams();
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const employeeId = params.id as string;
-  const fromPermanentEmployees = searchParams.get('from') === 'permanent-employees';
-
-  useEffect(() => {
-    if (fromPermanentEmployees) {
-      router.replace(`/permanent-employees/${employeeId}`);
-    }
-  }, [employeeId, fromPermanentEmployees, router]);
-
-  if (fromPermanentEmployees) return null;
-
-  return <EmployeeDetailPage employeeId={employeeId} backHref="/employees" />;
+  redirect({ href: `/contract-employees/${id}`, locale });
 }

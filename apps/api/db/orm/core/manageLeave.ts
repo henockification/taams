@@ -246,7 +246,9 @@ export async function getLeaveBalances(
 export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbClient = db) {
   const employee = await getEmployeeById(input.employeeId, tx);
   if (!employee) throw new Error('Employee not found');
-  await assertLeaveFiscalYearExists(input.fiscalYearId, tx);
+  const fiscalYear = await getLeaveFiscalYearById(input.fiscalYearId, tx);
+  if (!fiscalYear) throw new Error('Leave fiscal year not found');
+  await assertLeaveBalanceFiscalYearAllowed(employee, fiscalYear, tx);
   if (input.createdBy) await assertUserExists(input.createdBy, tx);
   if (input.updatedBy) await assertUserExists(input.updatedBy, tx);
 
@@ -1229,6 +1231,32 @@ function insertInterruptionDates(
 }
 
 async function assertAnnualFiscalYearAllowed(employee: any, fiscalYear: any, tx: DbClient = db) {
+  await assertFiscalYearMatchesEmploymentType(
+    employee,
+    fiscalYear,
+    tx,
+    'Permanent employees can request annual leave only from previous fiscal-year balances',
+    'Contract and non-permanent employees can request annual leave only from the current fiscal year',
+  );
+}
+
+async function assertLeaveBalanceFiscalYearAllowed(employee: any, fiscalYear: any, tx: DbClient = db) {
+  await assertFiscalYearMatchesEmploymentType(
+    employee,
+    fiscalYear,
+    tx,
+    'Permanent employees can have leave balances only for previous fiscal years',
+    'Contract and non-permanent employees can have leave balances only for the current fiscal year',
+  );
+}
+
+async function assertFiscalYearMatchesEmploymentType(
+  employee: any,
+  fiscalYear: any,
+  tx: DbClient,
+  permanentError: string,
+  nonPermanentError: string,
+) {
   const activeFiscalYear = await tx.query.leaveFiscalYears.findFirst({
     where: eq(leaveFiscalYears.isActive, true),
     columns: { id: true },
@@ -1238,13 +1266,13 @@ async function assertAnnualFiscalYearAllowed(employee: any, fiscalYear: any, tx:
 
   if (employee.employmentType === 'PERMANENT') {
     if (fiscalYear.id === activeFiscalYear.id) {
-      throw new Error('Permanent employees can request annual leave only from previous fiscal-year balances');
+      throw new Error(permanentError);
     }
     return;
   }
 
   if (fiscalYear.id !== activeFiscalYear.id) {
-    throw new Error('Contract and non-permanent employees can request annual leave only from the current fiscal year');
+    throw new Error(nonPermanentError);
   }
 }
 

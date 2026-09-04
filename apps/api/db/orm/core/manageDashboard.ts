@@ -90,14 +90,14 @@ async function buildSuperAdminDashboard(user: DashboardUser, employee: any, gene
     employee: null,
     currentAnnualLeaveBalance,
     metrics: [
-      createMetric('total-employees', 'Total employees', totalEmployees, 'People registered in the organization', '/employees'),
-      createMetric('active-employees', 'Active employees', activeEmployees, 'Employees currently marked active', '/employees'),
+      createMetric('total-employees', 'Total employees', totalEmployees, 'People registered in the organization', '/contract-employees'),
+      createMetric('active-employees', 'Active employees', activeEmployees, 'Employees currently marked active', '/contract-employees'),
       createMetric('departments', 'Departments', totalDepartments, 'Organizational units configured', '/organization-structure'),
       createMetric('positions', 'Positions', totalPositions, 'Job positions available', '/positions'),
       createMetric('pending-leave-requests', 'Pending leave requests', pendingLeaveRequests, 'Leave requests awaiting approval', '/leave-request-approvals'),
     ],
     quickActions: [
-      createQuickAction('Employees', 'Maintain employee records and assignments.', '/employees'),
+      createQuickAction('Employees', 'Maintain employee records and assignments.', '/contract-employees'),
       createQuickAction('Devices', 'Review biometric device status and sync settings.', '/biometric-devices'),
       createQuickAction('Manual punch requests', 'Approve or reject employee correction requests.', '/attendance-correction-approvals'),
       createQuickAction('Leave requests', 'Approve or reject employee leave requests.', '/leave-request-approvals'),
@@ -171,7 +171,7 @@ async function buildManagerDashboard(
     employee,
     currentAnnualLeaveBalance,
     metrics: [
-      createMetric('direct-reports', 'Direct reports', directReports.length, 'Employees assigned to your supervision', '/employees'),
+      createMetric('direct-reports', 'Direct reports', directReports.length, 'Employees assigned to your supervision', '/contract-employees'),
       createMetric('pending-requests', 'Pending requests', pendingManualPunchRequests.length, 'Manual punch requests awaiting supervisor action', '/attendance-correction-approvals'),
       createMetric('pending-leave-requests', 'Pending leave requests', pendingLeaveRequests.length, 'Leave requests awaiting supervisor action', '/leave-request-approvals'),
       createMetric('recent-team-punches', 'Recent team punches', recentTeamPunches.length, 'Latest punch records from your team', '/attendance-punches'),
@@ -294,7 +294,7 @@ function buildSetupRequiredDashboard(user: DashboardUser, generatedAt: Date) {
     currentAnnualLeaveBalance: null,
     metrics: [],
     quickActions: [
-      createQuickAction('Complete employee setup', 'Link this user to an employee record to unlock the dashboard.', '/employees'),
+      createQuickAction('Complete employee setup', 'Link this user to an employee record to unlock the dashboard.', '/contract-employees'),
     ],
     sections: {
       setup: {

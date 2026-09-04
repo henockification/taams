@@ -6,6 +6,8 @@ import {
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   CreateEmployeeWorkScheduleRequestSchema,
+  BulkCreateEmployeeWorkScheduleRequestSchema,
+  BulkCreateEmployeeWorkScheduleResponseSchema,
   CreatePositionRequestSchema,
   DepartmentResponseSchema,
   DepartmentsResponseSchema,
@@ -16,6 +18,7 @@ import {
   EmployeeWorkSchedulesResponseSchema,
   EmployeesResponseSchema,
   EmployeesPaginatedResponseSchema,
+  EmploymentTypeSchema,
   PermanentEmployeeImportResponseSchema,
   PositionResponseSchema,
   PositionsResponseSchema,
@@ -44,7 +47,7 @@ import workSchedulesApp from './work-schedules/routes';
 import ifmisAttendanceApp from './ifmis-attendance/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
-import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
+import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 
 const coreApp = new Hono();
 
@@ -233,6 +236,9 @@ export const getEmployeesPaginatedRoute = createRoute({
       page: z.coerce.number().int().positive().optional(),
       pageSize: z.coerce.number().int().positive().optional(),
       search: z.string().optional(),
+      employmentType: EmploymentTypeSchema.optional(),
+      excludeEmploymentType: EmploymentTypeSchema.optional(),
+      departmentId: z.string().uuid().optional(),
     }),
   },
   responses: {
@@ -461,6 +467,34 @@ export const getAllEmployeeWorkSchedulesRoute = createRoute({
   },
 });
 
+export const bulkCreateEmployeeWorkSchedulesRoute = createRoute({
+  method: 'post',
+  path: '/employees/work-schedules/bulk',
+  tags: ['Core', 'Employees'],
+  summary: 'Assign Work Schedule To Multiple Employees',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: BulkCreateEmployeeWorkScheduleRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    201: {
+      content: {
+        'application/json': { schema: BulkCreateEmployeeWorkScheduleResponseSchema },
+      },
+      description: 'Bulk employee work schedule assignment result',
+    },
+    400: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Invalid request or all assignments failed',
+    },
+  },
+});
+
 export const updateEmployeeWorkScheduleRoute = createRoute({
   method: 'put',
   path: '/employees/work-schedules/{id}',
@@ -524,6 +558,7 @@ coreApp.get('/employees/paginated', getEmployeesPaginatedHandler);
 coreApp.post('/employees/permanent/import', importPermanentEmployeesHandler);
 coreApp.post('/employees/contract/import', importContractEmployeesHandler);
 coreApp.get('/employees/work-schedules', getAllEmployeeWorkSchedulesHandler);
+coreApp.post('/employees/work-schedules/bulk', bulkCreateEmployeeWorkSchedulesHandler);
 coreApp.put('/employees/work-schedules/:id', updateEmployeeWorkScheduleHandler);
 coreApp.delete('/employees/work-schedules/:id', deleteEmployeeWorkScheduleHandler);
 coreApp.get('/employees/:id', getEmployeeHandler);
@@ -569,6 +604,7 @@ openApiApp
   .openapi(createEmployeeWorkScheduleRoute, createEmployeeWorkScheduleHandler as any)
   .openapi(getEmployeeWorkSchedulesRoute, getEmployeeWorkSchedulesHandler as any)
   .openapi(getAllEmployeeWorkSchedulesRoute, getAllEmployeeWorkSchedulesHandler as any)
+  .openapi(bulkCreateEmployeeWorkSchedulesRoute, bulkCreateEmployeeWorkSchedulesHandler as any)
   .openapi(updateEmployeeWorkScheduleRoute, updateEmployeeWorkScheduleHandler as any)
   .openapi(deleteEmployeeWorkScheduleRoute, deleteEmployeeWorkScheduleHandler as any);
 

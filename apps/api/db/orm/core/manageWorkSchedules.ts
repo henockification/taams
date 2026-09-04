@@ -8,6 +8,7 @@ import {
   workSchedules,
 } from '../../schema';
 import type {
+  BulkCreateEmployeeWorkScheduleInput,
   CreateEmployeeWorkScheduleInput,
   CreateWorkScheduleDayInput,
   CreateWorkScheduleInput,
@@ -152,6 +153,40 @@ export async function createEmployeeWorkSchedule(input: CreateEmployeeWorkSchedu
 export async function createEmployeeWorkScheduleScoped(input: CreateEmployeeWorkScheduleInput, scope: EmployeeVisibilityScope) {
   await assertCanAccessEmployee(input.employeeId, scope);
   return createEmployeeWorkSchedule(input);
+}
+
+export async function bulkCreateEmployeeWorkSchedulesScoped(
+  input: BulkCreateEmployeeWorkScheduleInput,
+  scope: EmployeeVisibilityScope,
+) {
+  await assertWorkScheduleExists(input.workScheduleId);
+
+  const employeeIds = [...new Set(input.employeeIds)];
+  const created: Awaited<ReturnType<typeof createEmployeeWorkSchedule>>[] = [];
+  const errors: Array<{ employeeId: string; message: string }> = [];
+
+  for (const employeeId of employeeIds) {
+    try {
+      created.push(await createEmployeeWorkScheduleScoped({
+        employeeId,
+        workScheduleId: input.workScheduleId,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: input.effectiveTo,
+        isActive: input.isActive,
+      }, scope));
+    } catch (error) {
+      errors.push({
+        employeeId,
+        message: error instanceof Error ? error.message : 'Failed to assign employee work schedule',
+      });
+    }
+  }
+
+  return {
+    created,
+    failed: errors.length,
+    errors,
+  };
 }
 
 export async function updateEmployeeWorkSchedule(id: string, input: UpdateEmployeeWorkScheduleInput) {

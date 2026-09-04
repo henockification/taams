@@ -277,6 +277,8 @@ export const employees = pgTable('employees', {
   sourcePositionCode: varchar('source_position_code', { length: 50 }),
   salary: numeric('salary', { precision: 14, scale: 2 }),
   salaryStep: varchar('salary_step', { length: 50 }),
+  nationalId: varchar('national_id', { length: 50 }),
+  paidByIfmis: boolean('paid_by_ifmis').notNull().default(true),
   sourceImportedAt: timestamp('source_imported_at', { withTimezone: true, precision: 6 }),
   sourceRawPayload: jsonb('source_raw_payload'),
   isActive: boolean('is_active').notNull().default(true),

@@ -103,7 +103,7 @@ export function buildIfmisAttendancePreview(
     rows.push({
       employeeId: employee.id,
       ifmisNo: null,
-      nationalId: null,
+      nationalId: nullableText(employee.nationalId),
       orgId: null,
       firstName: employee.firstNameEn,
       fatherName: nullableText(employee.middleNameEn),

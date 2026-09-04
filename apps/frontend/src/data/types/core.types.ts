@@ -123,6 +123,8 @@ export type Employee = {
   sourcePositionCode: string | null;
   salary: string | null;
   salaryStep: string | null;
+  nationalId: string | null;
+  paidByIfmis: boolean;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;
@@ -1031,6 +1033,14 @@ export type WorkScheduleDayResponse = {
   day: WorkScheduleDay;
 };
 export type EmployeesResponse = { success: boolean; employees: Employee[] };
+export type EmployeesPaginatedParams = {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  employmentType?: EmploymentType;
+  excludeEmploymentType?: EmploymentType;
+  departmentId?: string;
+};
 export type EmployeesPaginatedResponse = {
   success: boolean;
   employees: Employee[];
@@ -1502,6 +1512,8 @@ export type CreateEmployeeInput = {
   sourcePositionCode?: string | null;
   salary?: string | number | null;
   salaryStep?: string | null;
+  nationalId?: string | null;
+  paidByIfmis?: boolean;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;
@@ -1525,6 +1537,21 @@ export type CreateEmployeeWorkScheduleInput = {
   effectiveFrom: string;
   effectiveTo?: string | null;
   isActive?: boolean;
+};
+
+export type BulkCreateEmployeeWorkScheduleInput = {
+  employeeIds: string[];
+  workScheduleId: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isActive?: boolean;
+};
+
+export type BulkCreateEmployeeWorkScheduleResponse = {
+  success: boolean;
+  created: number;
+  failed: number;
+  errors: Array<{ employeeId: string; message: string }>;
 };
 
 export type UpdateEmployeeWorkScheduleInput = Partial<CreateEmployeeWorkScheduleInput> & {

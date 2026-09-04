@@ -144,6 +144,8 @@ export type CreateEmployeeInput = {
   sourcePositionCode?: string | null;
   salary?: string | number | null;
   salaryStep?: string | null;
+  nationalId?: string | null;
+  paidByIfmis?: boolean;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;
@@ -248,6 +250,14 @@ export type CreateEmployeeWorkScheduleInput = {
   isActive?: boolean;
 };
 
+export type BulkCreateEmployeeWorkScheduleInput = {
+  employeeIds: string[];
+  workScheduleId: string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+  isActive?: boolean;
+};
+
 export type UpdateEmployeeWorkScheduleInput = Partial<CreateEmployeeWorkScheduleInput>;
 
 export type Employee = {
@@ -280,6 +290,8 @@ export type Employee = {
   sourcePositionCode: string | null;
   salary: string | null;
   salaryStep: string | null;
+  nationalId: string | null;
+  paidByIfmis: boolean;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;

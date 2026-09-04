@@ -13,6 +13,8 @@ import type {
   BiometricExemptionResponse,
   BiometricExemptionsResponse,
   BulkUpsertLeaveBalancesInput,
+  BulkCreateEmployeeWorkScheduleInput,
+  BulkCreateEmployeeWorkScheduleResponse,
   ChangeManualPunchRequestStatusInput,
   ChangeBiometricExemptionStatusInput,
   ChangeOvertimeRequestStatusInput,
@@ -52,6 +54,7 @@ import type {
   EmployeeWorkScheduleResponse,
   EmployeeWorkSchedulesResponse,
   EmployeesResponse,
+  EmployeesPaginatedParams,
   EmployeesPaginatedResponse,
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
@@ -312,11 +315,14 @@ export const coreApi = {
     return coreFetch<NotificationLogsResponse>(`/notification-logs${suffix}`);
   },
   getEmployees: () => coreFetch<EmployeesResponse>('/employees'),
-  getEmployeesPaginated: (params: { page?: number; pageSize?: number; search?: string } = {}) => {
+  getEmployeesPaginated: (params: EmployeesPaginatedParams = {}) => {
     const query = new URLSearchParams();
     if (params.page) query.set('page', String(params.page));
     if (params.pageSize) query.set('pageSize', String(params.pageSize));
     if (params.search) query.set('search', params.search);
+    if (params.employmentType) query.set('employmentType', params.employmentType);
+    if (params.excludeEmploymentType) query.set('excludeEmploymentType', params.excludeEmploymentType);
+    if (params.departmentId) query.set('departmentId', params.departmentId);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<EmployeesPaginatedResponse>(`/employees/paginated${suffix}`);
@@ -385,6 +391,11 @@ export const coreApi = {
   getAllEmployeeWorkSchedules: () => coreFetch<EmployeeWorkSchedulesResponse>('/employees/work-schedules'),
   createEmployeeWorkSchedule: ({ employeeId, ...input }: CreateEmployeeWorkScheduleInput) =>
     coreFetch<EmployeeWorkScheduleResponse>(`/employees/${employeeId}/work-schedules`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  bulkCreateEmployeeWorkSchedules: (input: BulkCreateEmployeeWorkScheduleInput) =>
+    coreFetch<BulkCreateEmployeeWorkScheduleResponse>('/employees/work-schedules/bulk', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

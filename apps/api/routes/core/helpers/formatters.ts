@@ -212,6 +212,8 @@ export function formatEmployee(employee: any) {
     sourcePositionCode: employee.sourcePositionCode ?? null,
     salary: employee.salary ?? null,
     salaryStep: employee.salaryStep ?? null,
+    nationalId: employee.nationalId ?? null,
+    paidByIfmis: employee.paidByIfmis ?? true,
     sourceImportedAt: formatTimestamp(employee.sourceImportedAt),
     sourceRawPayload: employee.sourceRawPayload ?? null,
     isActive: employee.isActive,

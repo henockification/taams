@@ -26,6 +26,7 @@ test('builds a ready bilingual row and calculates schedule-relative late days', 
   assert.equal(preview.rows[0].absenteeism, 0.5);
   assert.equal(preview.rows[0].late, 0.1);
   assert.equal(preview.rows[0].firstNameAmharic, 'ሀና');
+  assert.equal(preview.rows[0].nationalId, '0045678901');
   assert.equal(preview.rows[0].ifmisNo, null);
   assert.equal(preview.rows[0].approved, 'YES');
 });
@@ -65,6 +66,7 @@ function makeEmployee(id: string) {
     firstNameEn: 'Hana', middleNameEn: 'Bekele', lastNameEn: 'Abebe',
     firstNameAm: 'ሀና', middleNameAm: 'በቀለ', lastNameAm: 'አበበ',
     employmentStatus: 'ACTIVE',
+    nationalId: '0045678901',
   };
 }
 

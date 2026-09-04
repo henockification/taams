@@ -952,7 +952,7 @@ function getHeroInsight(
     secondaryLabel: t("profileLabel"),
     secondaryValue: t("missingLabel"),
     actionLabel: t("openEmployees"),
-    href: "/employees",
+    href: "/contract-employees",
   }
 }
 

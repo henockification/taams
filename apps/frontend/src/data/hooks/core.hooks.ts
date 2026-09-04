@@ -17,7 +17,9 @@ import type {
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
+  BulkCreateEmployeeWorkScheduleInput,
   CreateHolidayInput,
+  EmployeesPaginatedParams,
   CreatePositionInput,
   CreateSupervisorDelegationInput,
   CreateTemporaryDepartmentAssignmentInput,
@@ -84,7 +86,7 @@ export const coreQueryKeys = {
   holidays: () => [...coreQueryKeys.all, 'holidays'] as const,
   notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
-  employeesPaginated: (page: number, pageSize: number, search: string) => [...coreQueryKeys.all, 'employees', 'paginated', page, pageSize, search] as const,
+  employeesPaginated: (params: EmployeesPaginatedParams) => [...coreQueryKeys.all, 'employees', 'paginated', params] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
   supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
@@ -495,10 +497,10 @@ function invalidateHolidayDependentQueries(queryClient: ReturnType<typeof useQue
   });
 }
 
-export function useEmployeesPaginated(page: number, pageSize: number, search = '') {
+export function useEmployeesPaginated(params: EmployeesPaginatedParams) {
   return useQuery({
-    queryKey: coreQueryKeys.employeesPaginated(page, pageSize, search),
-    queryFn: () => coreApi.getEmployeesPaginated({ page, pageSize, search }),
+    queryKey: coreQueryKeys.employeesPaginated(params),
+    queryFn: () => coreApi.getEmployeesPaginated(params),
     staleTime: 60 * 1000,
     placeholderData: keepPreviousData,
   });
@@ -724,6 +726,27 @@ export function useCreateEmployeeWorkSchedule() {
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.allEmployeeWorkSchedules(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: coreQueryKeys.dashboardSummary(),
+      });
+    },
+  });
+}
+
+export function useBulkCreateEmployeeWorkSchedules() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: BulkCreateEmployeeWorkScheduleInput) => coreApi.bulkCreateEmployeeWorkSchedules(input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: coreQueryKeys.allEmployeeWorkSchedules(),
+      });
+      variables.employeeIds.forEach((employeeId) => {
+        queryClient.invalidateQueries({
+          queryKey: coreQueryKeys.employeeWorkSchedules(employeeId),
+        });
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),

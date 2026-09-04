@@ -190,6 +190,13 @@
       "when": 1788480000000,
       "tag": "0030_leave_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788541200000,
+      "tag": "0031_employee_national_id_paid_by_ifmis",
+      "breakpoints": true
     }
   ]
 }

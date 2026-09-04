@@ -2,12 +2,12 @@
 
 import { ImportedEmployeesPage } from '@/components/employees/imported-employees-page';
 
-export default function PermanentEmployeesPage() {
+export default function ContractEmployeesPage() {
   return (
     <ImportedEmployeesPage
-      kind="permanent"
-      employmentType="PERMANENT"
-      detailBasePath="/permanent-employees"
+      kind="contract"
+      employmentType="CONTRACT"
+      detailBasePath="/contract-employees"
     />
   );
 }

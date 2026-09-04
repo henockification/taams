@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   useCreateLeaveFiscalYear,
   useCreateLeaveType,
+  useDepartments,
   useEmployees,
   useLeaveBalances,
   useLeaveFiscalYears,
@@ -44,6 +45,7 @@ import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
+const allDepartmentsValue = '__all_departments';
 const initialFiscalYearForm = {
   name: '',
   startsAt: '',
@@ -434,33 +436,77 @@ export function LeaveTypesSection() {
   );
 }
 
+function fiscalYearsForEmploymentType(
+  fiscalYears: LeaveFiscalYear[],
+  employmentType: 'all' | Employee['employmentType'] = 'all',
+) {
+  const inactive = fiscalYears
+    .filter((fiscalYear) => !fiscalYear.isActive)
+    .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
+  const active = fiscalYears.filter((fiscalYear) => fiscalYear.isActive);
+  if (employmentType === 'PERMANENT') return inactive;
+  if (employmentType === 'all') return [...inactive, ...active];
+  return active;
+}
+
 export function LeaveBalancesSection() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const fiscalYearsQuery = useLeaveFiscalYears();
+  const departmentsQuery = useDepartments();
   const saveBalance = useUpsertLeaveBalance();
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
-  const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
+  const departments = departmentsQuery.data?.departments ?? [];
   const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
   const [employmentTypeFilter, setEmploymentTypeFilter] = useState<'all' | Employee['employmentType']>('all');
+  const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingBalance, setEditingBalance] = useState<LeaveBalance | null>(null);
   const [balanceForm, setBalanceForm] = useState(initialBalanceForm);
+
+  const visibleFiscalYears = useMemo(
+    () => fiscalYearsForEmploymentType(fiscalYears, employmentTypeFilter),
+    [employmentTypeFilter, fiscalYears],
+  );
+  const selectedFiscalYear = visibleFiscalYears.find((fiscalYear) => fiscalYear.id === selectedFiscalYearId);
+  const employeeListFilters = useMemo(() => {
+    const departmentId = departmentFilter === allDepartmentsValue ? undefined : departmentFilter;
+    if (employmentTypeFilter !== 'all') {
+      return { employmentType: employmentTypeFilter, departmentId };
+    }
+    if (selectedFiscalYear?.isActive) {
+      return { excludeEmploymentType: 'PERMANENT' as const, departmentId };
+    }
+    if (selectedFiscalYearId) {
+      return { employmentType: 'PERMANENT' as const, departmentId };
+    }
+    return { departmentId };
+  }, [departmentFilter, employmentTypeFilter, selectedFiscalYear?.isActive, selectedFiscalYearId]);
+
   const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined, { view: 'management' });
-  const employeesQuery = useEmployeesPaginated(page, pageSize, balanceSearch);
+  const employeesQuery = useEmployeesPaginated({
+    page,
+    pageSize,
+    search: balanceSearch,
+    ...employeeListFilters,
+  });
 
   useEffect(() => {
-    if (!selectedFiscalYearId && activeFiscalYear?.id) {
-      setSelectedFiscalYearId(activeFiscalYear.id);
+    if (visibleFiscalYears.length === 0) {
+      if (selectedFiscalYearId) setSelectedFiscalYearId('');
+      return;
     }
-  }, [activeFiscalYear?.id, selectedFiscalYearId]);
+    if (!visibleFiscalYears.some((fiscalYear) => fiscalYear.id === selectedFiscalYearId)) {
+      setSelectedFiscalYearId(visibleFiscalYears[0].id);
+    }
+  }, [selectedFiscalYearId, visibleFiscalYears]);
 
   useEffect(() => {
     setPage(1);
-  }, [balanceSearch, pageSize, selectedFiscalYearId]);
+  }, [balanceSearch, departmentFilter, employmentTypeFilter, pageSize, selectedFiscalYearId]);
 
   const leaveBalances = balancesQuery.data?.leaveBalances ?? [];
   const balanceByEmployee = useMemo(() => new Map(leaveBalances.map((balance) => [balance.employeeId, balance])), [leaveBalances]);
@@ -470,12 +516,26 @@ export function LeaveBalancesSection() {
   const totalPages = Math.max(1, Math.ceil(totalEmployees / pageSize));
   const startIndex = totalEmployees === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, totalEmployees);
+  const selectedDialogEmployee = employeePageRows.find((employee) => employee.id === balanceForm.employeeId);
+  const dialogFiscalYears = fiscalYearsForEmploymentType(
+    fiscalYears,
+    selectedDialogEmployee?.employmentType ?? employmentTypeFilter,
+  );
+
+  const eligibleFiscalYearId = (
+    employee: Employee | undefined,
+    preferredFiscalYearId: string,
+  ) => {
+    const years = fiscalYearsForEmploymentType(fiscalYears, employee?.employmentType ?? employmentTypeFilter);
+    if (years.some((fiscalYear) => fiscalYear.id === preferredFiscalYearId)) return preferredFiscalYearId;
+    return years[0]?.id ?? '';
+  };
 
   const openBalanceDialog = (employee?: Employee, balance?: LeaveBalance | null) => {
     setEditingBalance(balance ?? null);
     setBalanceForm({
       employeeId: employee?.id ?? '',
-      fiscalYearId: selectedFiscalYearId || (activeFiscalYear?.id ?? ''),
+      fiscalYearId: eligibleFiscalYearId(employee, selectedFiscalYearId),
       opening: balance?.opening ?? '',
     });
     setDialogOpen(true);
@@ -501,27 +561,44 @@ export function LeaveBalancesSection() {
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Select value={selectedFiscalYearId || noneValue} onValueChange={(value) => setSelectedFiscalYearId(value === noneValue ? '' : value)}>
-            <SelectTrigger className="w-full md:w-64"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-              {fiscalYears.map((fiscalYear) => (
-                <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:max-w-sm" />
-          <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
-            <SelectTrigger className="w-full md:w-48"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
-              <SelectItem value="PERMANENT">PERMANENT</SelectItem>
-              <SelectItem value="CONTRACT">CONTRACT</SelectItem>
-              <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
-              <SelectItem value="DAILY">DAILY</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-1 flex-wrap items-end gap-2">
+          <Field label={t('selectFiscalYear')} id="leave-balance-fiscal-year">
+            <Select value={selectedFiscalYearId || noneValue} onValueChange={(value) => setSelectedFiscalYearId(value === noneValue ? '' : value)}>
+              <SelectTrigger id="leave-balance-fiscal-year" className="w-full md:w-64"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
+                {visibleFiscalYears.map((fiscalYear) => (
+                  <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label={t('employeeSearch')} id="leave-balance-search">
+            <Input id="leave-balance-search" value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:min-w-64 md:max-w-sm" />
+          </Field>
+          <Field label={t('employmentType')} id="leave-balance-employment-type">
+            <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
+              <SelectTrigger id="leave-balance-employment-type" className="w-full md:w-48"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
+                <SelectItem value="PERMANENT">PERMANENT</SelectItem>
+                <SelectItem value="CONTRACT">CONTRACT</SelectItem>
+                <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
+                <SelectItem value="DAILY">DAILY</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label={t('department')} id="leave-balance-department">
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger id="leave-balance-department" className="w-full md:w-64"><SelectValue placeholder={t('selectDepartment')} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
         </div>
         <Button onClick={() => openBalanceDialog()} className="w-full lg:w-auto">
           <Plus className="size-4" />
@@ -534,7 +611,7 @@ export function LeaveBalancesSection() {
             <EmptyState icon={CalendarPlus} title={t('selectFiscalYear')} description={t('initialBalancesDescription')} />
           ) : employeesQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
-          ) : employeePageRows.filter((employee) => employmentTypeFilter === 'all' || employee.employmentType === employmentTypeFilter).length === 0 ? (
+          ) : employeePageRows.length === 0 ? (
             <EmptyState icon={CalendarPlus} title={t('noEmployees')} description={t('noEmployeesDescription')} />
           ) : (
             <>
@@ -553,9 +630,7 @@ export function LeaveBalancesSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {employeePageRows
-                      .filter((employee) => employmentTypeFilter === 'all' || employee.employmentType === employmentTypeFilter)
-                      .map((employee) => {
+                    {employeePageRows.map((employee) => {
                       const balance = balanceByEmployee.get(employee.id);
                       return (
                         <TableRow key={employee.id}>
@@ -621,7 +696,18 @@ export function LeaveBalancesSection() {
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveBalanceForm}>
             <Field label={t('employee')} id="balance-employee">
-              <Select value={balanceForm.employeeId || noneValue} onValueChange={(value) => setBalanceForm((current) => ({ ...current, employeeId: value === noneValue ? '' : value }))}>
+              <Select
+                value={balanceForm.employeeId || noneValue}
+                onValueChange={(value) => {
+                  const employeeId = value === noneValue ? '' : value;
+                  const employee = employeePageRows.find((item) => item.id === employeeId);
+                  setBalanceForm((current) => ({
+                    ...current,
+                    employeeId,
+                    fiscalYearId: eligibleFiscalYearId(employee, current.fiscalYearId || selectedFiscalYearId),
+                  }));
+                }}
+              >
                 <SelectTrigger id="balance-employee"><SelectValue placeholder={t('selectEmployee')} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={noneValue}>{t('selectEmployee')}</SelectItem>
@@ -636,7 +722,7 @@ export function LeaveBalancesSection() {
                 <SelectTrigger id="balance-fiscal-year"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-                  {fiscalYears.map((fiscalYear) => (
+                  {dialogFiscalYears.map((fiscalYear) => (
                     <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
                   ))}
                 </SelectContent>
