@@ -21,6 +21,12 @@ import {
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
+import {
+  diffChanges,
+  employeeAuditFields,
+  formatEmployeeLabel,
+  writeAuditEvent,
+} from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -41,10 +47,9 @@ type ApprovalScope = {
   scope?: EmployeeVisibilityScope;
 };
 
-const MAX_AUTO_GENERATE_DAYS = 7;
 const MAX_REFRESH_GENERATE_DAYS = 31;
 
-export async function generateAttendanceDailyRecords(date?: string | null) {
+export async function generateAttendanceDailyRecords(date?: string | null, options?: { recordAudit?: boolean }) {
   const attendanceDate = normalizeDateParam(date);
   if (attendanceDate < new Date().toISOString().slice(0, 10)) {
     await reconcileAnnualLeaveConsumption(attendanceDate);
@@ -103,9 +108,7 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
     target.set(leave.employeeId, Math.min(1, (target.get(leave.employeeId) ?? 0) + leaveDays));
   }
 
-  const records = [];
-
-  for (const employee of activeEmployees) {
+  const dailyRecordRows = activeEmployees.map((employee) => {
     const employeePunches = punchesByEmployee.get(employee.id) ?? [];
     const firstPunch = employeePunches[0] ?? null;
     const lastPunch = employeePunches[employeePunches.length - 1] ?? null;
@@ -124,80 +127,91 @@ export async function generateAttendanceDailyRecords(date?: string | null) {
       isBiometricExempt,
     });
 
-    const [record] = await db
-      .insert(attendanceDailyRecords)
-      .values({
-        employeeId: employee.id,
-        attendanceDate,
-        firstPunchId: firstPunch?.id ?? null,
-        lastPunchId: lastPunch?.id ?? null,
-        checkInAt: firstPunch?.punchTime ?? null,
-        checkOutAt,
-        totalPunches: employeePunches.length,
-        attendanceDays: formatDayValue(attendanceDays),
-        leaveDays: formatDayValue(leaveDays),
-        holidayId: activeHoliday?.id ?? null,
-        holidayDays: formatDayValue(holidayDays),
-        isHoliday: Boolean(activeHoliday),
-        payableDays: formatDayValue(payroll.payableDays),
-        absenceDays: formatDayValue(payroll.absenceDays),
-        isBiometricExempt,
-        payrollNote: payroll.note,
-        status: 'PENDING_SUPERVISOR',
-      } as any)
+    return {
+      employeeId: employee.id,
+      attendanceDate,
+      firstPunchId: firstPunch?.id ?? null,
+      lastPunchId: lastPunch?.id ?? null,
+      checkInAt: firstPunch?.punchTime ?? null,
+      checkOutAt,
+      totalPunches: employeePunches.length,
+      attendanceDays: formatDayValue(attendanceDays),
+      leaveDays: formatDayValue(leaveDays),
+      holidayId: activeHoliday?.id ?? null,
+      holidayDays: formatDayValue(holidayDays),
+      isHoliday: Boolean(activeHoliday),
+      payableDays: formatDayValue(payroll.payableDays),
+      absenceDays: formatDayValue(payroll.absenceDays),
+      isBiometricExempt,
+      payrollNote: payroll.note,
+      status: 'PENDING_SUPERVISOR',
+    };
+  });
+
+  const records: Array<{ id: string }> = [];
+  for (const rows of chunk(dailyRecordRows, 1000)) {
+    const upserted = await db.insert(attendanceDailyRecords)
+      .values(rows as any)
       .onConflictDoUpdate({
         target: [attendanceDailyRecords.employeeId, attendanceDailyRecords.attendanceDate],
         set: {
-          firstPunchId: firstPunch?.id ?? null,
-          lastPunchId: lastPunch?.id ?? null,
-          checkInAt: firstPunch?.punchTime ?? null,
-          checkOutAt,
-          totalPunches: employeePunches.length,
-          attendanceDays: formatDayValue(attendanceDays),
-          leaveDays: formatDayValue(leaveDays),
-          holidayId: activeHoliday?.id ?? null,
-          holidayDays: formatDayValue(holidayDays),
-          isHoliday: Boolean(activeHoliday),
-          payableDays: formatDayValue(payroll.payableDays),
-          absenceDays: formatDayValue(payroll.absenceDays),
-          isBiometricExempt,
-          payrollNote: payroll.note,
-          updatedAt: new Date(),
+          firstPunchId: sql.raw('excluded."first_punch_id"'),
+          lastPunchId: sql.raw('excluded."last_punch_id"'),
+          checkInAt: sql.raw('excluded."check_in_at"'),
+          checkOutAt: sql.raw('excluded."check_out_at"'),
+          totalPunches: sql.raw('excluded."total_punches"'),
+          attendanceDays: sql.raw('excluded."attendance_days"'),
+          leaveDays: sql.raw('excluded."leave_days"'),
+          holidayId: sql.raw('excluded."holiday_id"'),
+          holidayDays: sql.raw('excluded."holiday_days"'),
+          isHoliday: sql.raw('excluded."is_holiday"'),
+          payableDays: sql.raw('excluded."payable_days"'),
+          absenceDays: sql.raw('excluded."absence_days"'),
+          isBiometricExempt: sql.raw('excluded."is_biometric_exempt"'),
+          payrollNote: sql.raw('excluded."payroll_note"'),
+          updatedAt: sql`CURRENT_TIMESTAMP`,
         } as any,
-        setWhere: ne(attendanceDailyRecords.status, 'HR_APPROVED'),
+        setWhere: inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
       })
-      .returning();
-
-    if (record) {
-      records.push(record);
-    }
+      .returning({ id: attendanceDailyRecords.id });
+    records.push(...upserted);
   }
 
   await syncApprovedOvertimeForDate(attendanceDate);
 
-  return (await Promise.all(
-    records.map((record) => getAttendanceDailyRecordById(record.id)),
-  )).filter(Boolean);
+  const generated = await getAttendanceDailyRecordsByIds(records.map((record) => record.id));
+
+  if (options?.recordAudit) {
+    await writeAuditEvent(db, {
+      action: 'ATTENDANCE_DAILY_RECORDS_GENERATED',
+      resourceType: 'attendance_daily_record',
+      resourceLabel: `Daily attendance generated for ${attendanceDate}`,
+      metadata: { date: attendanceDate, recordCount: generated.length },
+    });
+  }
+
+  return generated;
 }
 
-export async function generateAttendanceDailyRecordsInRange(dateFrom?: string | null, dateTo?: string | null) {
+export async function generateAttendanceDailyRecordsInRange(dateFrom?: string | null, dateTo?: string | null, options?: { recordAudit?: boolean }) {
   const range = resolveAttendanceDateRange({ dateFrom, dateTo });
   const days = listDatesInclusive(range.dateFrom, clipDateToToday(range.dateTo));
-  if (days.length === 0) return generateAttendanceDailyRecords(clipDateToToday(range.dateTo));
+  if (days.length === 0) return generateAttendanceDailyRecords(clipDateToToday(range.dateTo), options);
   if (days.length > MAX_REFRESH_GENERATE_DAYS) {
-    return generateAttendanceDailyRecords(days[days.length - 1]);
+    return generateAttendanceDailyRecords(days[days.length - 1], options);
   }
 
   let generated: any[] = [];
   for (const day of days) {
-    generated = await generateAttendanceDailyRecords(day);
+    generated = await generateAttendanceDailyRecords(day, options);
   }
   return generated;
 }
 
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
   const range = resolveAttendanceDateRange(input);
-  await maybeGenerateAttendanceDailyRecordsForRange(range);
+  // Listing approvals must remain read-only. Record generation is intentionally
+  // handled by the explicit refresh endpoint and scheduled ingestion workflows.
 
   const referenceDate = clipDateToToday(range.dateTo);
   const dateFilter = attendanceDateFilter(range.dateFrom, range.dateTo);
@@ -248,7 +262,7 @@ export async function getHrAttendanceDailyRecords(
   rangeInput?: { dateFrom?: string | null; dateTo?: string | null },
 ) {
   const range = resolveAttendanceDateRange({ date, ...rangeInput });
-  await maybeGenerateAttendanceDailyRecordsForRange(range);
+  // Do not regenerate every employee/day while serving a grid read request.
 
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
@@ -312,6 +326,15 @@ export async function supervisorApproveAttendanceDailyRecords(
         inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
       )).returning({ id: attendanceDailyRecords.id });
       if (!updated) throw new Error('Attendance record was already processed');
+      await writeAuditEvent(tx, {
+        action: 'ATTENDANCE_SUPERVISOR_APPROVED',
+        resourceType: 'attendance_daily_record',
+        resourceId: records[index].id,
+        resourceLabel: `${formatEmployeeLabel(records[index].employee)} attendance ${records[index].attendanceDate}`,
+        ...employeeAuditFields(records[index].employee),
+        supervisorDelegationId: approvalContexts[index].supervisorDelegationId,
+        changes: { status: { from: records[index].status, to: 'SUPERVISOR_APPROVED' } },
+      });
     }
 
     const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
@@ -387,6 +410,31 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
       } as any)
       .where(eq(attendanceDailyRecords.id, id));
 
+    await writeAuditEvent(tx, {
+      action: 'ATTENDANCE_PAYROLL_ADJUSTED',
+      resourceType: 'attendance_daily_record',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      changes: diffChanges(
+        {
+          attendanceDays: record.attendanceDays,
+          leaveDays: record.leaveDays,
+          payableDays: record.payableDays,
+          absenceDays: record.absenceDays,
+          payrollNote: record.payrollNote,
+        },
+        {
+          attendanceDays: formatDayValue(attendanceDays),
+          leaveDays: formatDayValue(leaveDays),
+          payableDays: formatDayValue(payableDays),
+          absenceDays: formatDayValue(absenceDays),
+          payrollNote,
+        },
+      ),
+    });
+
     return getAttendanceDailyRecordById(id, tx);
   });
 }
@@ -427,6 +475,17 @@ export async function hrApproveAttendanceDailyRecords(
     )).returning({ id: attendanceDailyRecords.id });
     if (updated.length !== recordIds.length) throw new Error('One or more attendance records were already processed');
 
+    for (const record of records) {
+      await writeAuditEvent(tx, {
+        action: 'ATTENDANCE_HR_APPROVED',
+        resourceType: 'attendance_daily_record',
+        resourceId: record.id,
+        resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+        ...employeeAuditFields(record.employee),
+        changes: { status: { from: record.status, to: 'HR_APPROVED' } },
+      });
+    }
+
     const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
     return buildAttendanceApprovalBatch(updatedRecords);
   });
@@ -452,6 +511,14 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
     : { supervisorDelegationId: null };
 
   if (!isSupervisorReturn && !input.canHrReturn) {
+    await writeAuditEvent(db, {
+      action: 'ATTENDANCE_RETURNED',
+      outcome: 'DENIED',
+      resourceType: 'attendance_daily_record',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+    });
     throw new Error('You do not have permission to return this attendance record');
   }
 
@@ -479,7 +546,18 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
     } as any)
     .where(eq(attendanceDailyRecords.id, id));
 
-  return getAttendanceDailyRecordById(id);
+  const returned = await getAttendanceDailyRecordById(id);
+  await writeAuditEvent(db, {
+    action: 'ATTENDANCE_RETURNED',
+    resourceType: 'attendance_daily_record',
+    resourceId: id,
+    resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+    ...employeeAuditFields(record.employee),
+    supervisorDelegationId: supervisorActionContext.supervisorDelegationId,
+    changes: { status: { from: record.status, to: 'RETURNED' } },
+    metadata: { reason: input.reason },
+  });
+  return returned;
 }
 
 async function getAttendanceDailyRecordsByEmployeeIds(
@@ -557,11 +635,22 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate?:
         lte(temporaryDepartmentAssignments.effectiveFrom, dateTo),
         gte(temporaryDepartmentAssignments.effectiveTo, dateFrom),
       ),
+      columns: {
+        id: true,
+        employeeId: true,
+        sourceDepartmentId: true,
+        targetDepartmentId: true,
+        effectiveFrom: true,
+        effectiveTo: true,
+        reason: true,
+        isActive: true,
+        createdBy: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       with: {
-        employee: { with: { department: true, position: true } },
         sourceDepartment: true,
         targetDepartment: true,
-        creator: true,
       },
     })
     : [];
@@ -637,20 +726,20 @@ function listDatesInclusive(dateFrom: string, dateTo: string) {
   return dates;
 }
 
+function chunk<T>(values: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function attendanceDateFilter(dateFrom: string, dateTo: string) {
   if (dateFrom === dateTo) return eq(attendanceDailyRecords.attendanceDate, dateFrom);
   return and(
     gte(attendanceDailyRecords.attendanceDate, dateFrom),
     lte(attendanceDailyRecords.attendanceDate, dateTo),
   );
-}
-
-async function maybeGenerateAttendanceDailyRecordsForRange(range: { dateFrom: string; dateTo: string }) {
-  const days = listDatesInclusive(range.dateFrom, clipDateToToday(range.dateTo));
-  if (days.length === 0 || days.length > MAX_AUTO_GENERATE_DAYS) return;
-  for (const day of days) {
-    await generateAttendanceDailyRecords(day);
-  }
 }
 
 function getDayRange(date: string) {
@@ -759,8 +848,41 @@ function parseHolidayDays(value: string | number | null | undefined) {
 }
 
 const recordRelations = {
-  employee: { with: { department: true, position: true } },
-  firstPunch: true,
-  lastPunch: true,
-  holiday: true,
+  employee: {
+    columns: {
+      id: true,
+      userId: true,
+      employeeCode: true,
+      payrollId: true,
+      biometricId: true,
+      firstNameEn: true,
+      middleNameEn: true,
+      lastNameEn: true,
+      firstNameAm: true,
+      middleNameAm: true,
+      lastNameAm: true,
+      departmentId: true,
+      positionName: true,
+      employmentStatus: true,
+      employmentType: true,
+      sourceDepartmentName: true,
+      sourcePositionName: true,
+      sourcePositionCode: true,
+      isActive: true,
+    },
+    with: { department: true },
+  },
+  holiday: {
+    columns: {
+      id: true,
+      nameEn: true,
+      nameAm: true,
+      type: true,
+      durationDays: true,
+      startDate: true,
+      endDate: true,
+      description: true,
+      isActive: true,
+    },
+  },
 } as const;

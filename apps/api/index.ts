@@ -4,6 +4,7 @@ import { logger } from 'hono/logger';
 import { prettyJSON } from 'hono/pretty-json';
 import { apiReference } from '@scalar/hono-api-reference';
 import dotenv from 'dotenv';
+import { requireAuthUnlessPublic } from './middleware/auth';
 
 // Import centralized OpenAPI app
 import { openApiApp } from './lib/openapi';
@@ -78,6 +79,12 @@ app.use('*', cors({
 
 app.use('*', logger());
 app.use('*', prettyJSON());
+app.use('*', async (c, next) => {
+  const requestId = c.req.header('x-request-id') ?? crypto.randomUUID();
+  c.set('requestId', requestId);
+  c.header('x-request-id', requestId);
+  await next();
+});
 
 // Mount auth app FIRST - before middleware to avoid interference
 app.route('/api/auth', authApp);
@@ -108,6 +115,8 @@ app.doc('/api/openapi.json', {
     },
   ],
 });
+
+app.use('/api/*', requireAuthUnlessPublic);
 
 // Mount feature modules
 app.route('/api', usersApp);

@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   FileCheck2,
   Fingerprint,
+  History,
   HeartPulse,
   KeyRound,
   Landmark,
@@ -72,7 +73,8 @@ export type AppNavItem = {
     | 'leaveBalancesReport'
     | 'leaveRequestsReport'
     | 'employeeRosterReport'
-    | 'deviceSyncReport';
+    | 'deviceSyncReport'
+    | 'auditReport';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -462,6 +464,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'reports-device-sync',
         requiredPermission: 'reports-device-sync:read',
         icon: Sheet,
+      },
+      {
+        titleKey: 'auditReport',
+        url: '/reports/audit',
+        permissionResource: 'reports-audit',
+        requiredPermission: 'reports-audit:read',
+        icon: History,
       },
     ],
   },

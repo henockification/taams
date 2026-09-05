@@ -87,6 +87,7 @@ import type {
   PositionsResponse,
   ReportKey,
   ReportResponse,
+  AuditEventsResponse,
   ReviewLeaveInterruptionInput,
   ShiftBreakResponse,
   ShiftBreaksResponse,
@@ -211,6 +212,14 @@ export const coreApi = {
     });
     const suffix = query.toString() ? `?${query.toString()}` : '';
     return coreBlobFetch(`/reports/${key}/excel${suffix}`);
+  },
+  getAuditEvents: (params: Record<string, string> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([paramKey, value]) => {
+      if (value) query.set(paramKey, value);
+    });
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return coreFetch<AuditEventsResponse>(`/audit-events${suffix}`);
   },
   getDepartments: () => coreFetch<DepartmentsResponse>('/departments'),
   createDepartment: (input: CreateDepartmentInput) =>

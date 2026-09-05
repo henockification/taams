@@ -876,6 +876,37 @@ export const leaveInterruptionDates = pgTable('leave_interruption_dates', {
   dayValueCheck: check('chk_leave_interruption_dates_day_value', sql`${table.dayValue} IN (0.50, 1.00)`),
 }));
 
+export const auditEvents = pgTable('audit_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  occurredAt: timestamp('occurred_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  actorUserId: text('actor_user_id').references(() => user.id, { onDelete: 'set null' }),
+  actorName: text('actor_name'),
+  actorEmail: text('actor_email'),
+  actorType: varchar('actor_type', { length: 20 }).notNull().default('USER'),
+  action: varchar('action', { length: 80 }).notNull(),
+  outcome: varchar('outcome', { length: 20 }).notNull().default('SUCCESS'),
+  resourceType: varchar('resource_type', { length: 80 }).notNull(),
+  resourceId: text('resource_id'),
+  resourceLabel: text('resource_label'),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  departmentId: uuid('department_id').references(() => departments.id, { onDelete: 'set null' }),
+  supervisorDelegationId: uuid('supervisor_delegation_id').references(() => supervisorDelegations.id, { onDelete: 'set null' }),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  requestId: text('request_id'),
+  changes: jsonb('changes'),
+  metadata: jsonb('metadata'),
+}, (table) => ({
+  actorTypeCheck: check('chk_audit_events_actor_type', sql`${table.actorType} IN ('USER', 'SYSTEM', 'DEVICE')`),
+  outcomeCheck: check('chk_audit_events_outcome', sql`${table.outcome} IN ('SUCCESS', 'DENIED', 'FAILED')`),
+  occurredAtIdx: index('idx_audit_events_occurred_at').on(table.occurredAt),
+  actorOccurredIdx: index('idx_audit_events_actor_occurred_at').on(table.actorUserId, table.occurredAt),
+  resourceIdx: index('idx_audit_events_resource').on(table.resourceType, table.resourceId),
+  actionOccurredIdx: index('idx_audit_events_action_occurred_at').on(table.action, table.occurredAt),
+  employeeOccurredIdx: index('idx_audit_events_employee_occurred_at').on(table.employeeId, table.occurredAt),
+  departmentOccurredIdx: index('idx_audit_events_department_occurred_at').on(table.departmentId, table.occurredAt),
+}));
+
 export const userRelations = relations(user, ({ one, many }) => ({
   credential: one(authCredentials),
   sessions: many(authSessions),
@@ -884,6 +915,7 @@ export const userRelations = relations(user, ({ one, many }) => ({
   createdTemporaryDepartmentAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentCreator' }),
   supervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationSupervisorUser' }),
   delegatedSupervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationDelegateUser' }),
+  auditEvents: many(auditEvents, { relationName: 'auditEventActor' }),
 }));
 
 export const authCredentialsRelations = relations(authCredentials, ({ one }) => ({
@@ -943,6 +975,7 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
   employees: many(employees),
   temporarySourceAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentSource' }),
   temporaryTargetAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentTarget' }),
+  auditEvents: many(auditEvents, { relationName: 'auditEventDepartment' }),
 }));
 
 export const positionsRelations = relations(positions, ({ many }) => ({
@@ -1036,6 +1069,7 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   }),
   temporaryDepartmentAssignments: many(temporaryDepartmentAssignments),
   workSchedules: many(employeeWorkSchedules),
+  auditEvents: many(auditEvents, { relationName: 'auditEventEmployee' }),
 }));
 
 export const employeeSupervisorsRelations = relations(employeeSupervisors, ({ one }) => ({
@@ -1410,6 +1444,24 @@ export const leaveInterruptionDatesRelations = relations(leaveInterruptionDates,
   }),
 }));
 
+export const auditEventsRelations = relations(auditEvents, ({ one }) => ({
+  actor: one(user, {
+    fields: [auditEvents.actorUserId],
+    references: [user.id],
+    relationName: 'auditEventActor',
+  }),
+  employee: one(employees, {
+    fields: [auditEvents.employeeId],
+    references: [employees.id],
+    relationName: 'auditEventEmployee',
+  }),
+  department: one(departments, {
+    fields: [auditEvents.departmentId],
+    references: [departments.id],
+    relationName: 'auditEventDepartment',
+  }),
+}));
+
 // Export all tables for easy access
 export const allTables = {
   user,
@@ -1452,4 +1504,5 @@ export const allTables = {
   annualLeaveRequestDates,
   leaveInterruptions,
   leaveInterruptionDates,
+  auditEvents,
 };

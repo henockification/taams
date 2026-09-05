@@ -28,8 +28,8 @@ export async function generateAttendanceDailyRecordsHandler(c: Context) {
     const dateFrom = c.req.query('dateFrom');
     const dateTo = c.req.query('dateTo');
     const records = dateFrom || dateTo
-      ? await generateAttendanceDailyRecordsInRange(dateFrom, dateTo)
-      : await generateAttendanceDailyRecords(date);
+      ? await generateAttendanceDailyRecordsInRange(dateFrom, dateTo, { recordAudit: true })
+      : await generateAttendanceDailyRecords(date, { recordAudit: true });
 
     return c.json({
       success: true,
@@ -69,7 +69,8 @@ export async function getSupervisorAttendanceDailyRecordsHandler(c: Context) {
 export async function getHrAttendanceDailyRecordsHandler(c: Context) {
   try {
     const session = await requireAuthenticatedUser(c);
-    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    const permissions = await getUserPermissionNames(session.user.id);
+    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? [], permissions);
 
     if (!hasPermission) {
       return c.json({ success: false, error: 'You do not have permission to approve HR attendance' }, 403);
@@ -78,7 +79,7 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     const date = c.req.query('date');
     const dateFrom = c.req.query('dateFrom');
     const dateTo = c.req.query('dateTo');
-    const scope = await resolveScope(session);
+    const scope = await resolveScope(session, permissions);
     const records = await getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo });
 
     return c.json({
@@ -144,14 +145,15 @@ export async function updateSupervisorAttendanceDailyRecordPayrollHandler(c: Con
 export async function hrApproveAttendanceDailyRecordHandler(c: Context) {
   try {
     const session = await requireAuthenticatedUser(c);
-    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    const permissions = await getUserPermissionNames(session.user.id);
+    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? [], permissions);
 
     if (!hasPermission) {
       return c.json({ success: false, error: 'You do not have permission to approve HR attendance' }, 403);
     }
 
     const id = c.req.param('id');
-    const scope = await resolveScope(session);
+    const scope = await resolveScope(session, permissions);
     const result = await hrApproveAttendanceDailyRecords([id], { userId: session.user.id, scope });
     await sendAttendanceApprovalNotification('ATTENDANCE_HR_APPROVED', result, session.user);
 
@@ -167,11 +169,12 @@ export async function hrApproveAttendanceDailyRecordHandler(c: Context) {
 export async function hrApproveAttendanceDailyRecordsHandler(c: Context) {
   try {
     const session = await requireAuthenticatedUser(c);
-    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    const permissions = await getUserPermissionNames(session.user.id);
+    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? [], permissions);
     if (!hasPermission) return c.json({ success: false, error: 'You do not have permission to approve HR attendance' }, 403);
     const parsed = AttendanceApprovalBatchRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const scope = await resolveScope(session);
+    const scope = await resolveScope(session, permissions);
     const result = await hrApproveAttendanceDailyRecords(parsed.data.attendanceDailyRecordIds, { userId: session.user.id, scope });
     await sendAttendanceApprovalNotification('ATTENDANCE_HR_APPROVED', result, session.user);
     return c.json(formatAttendanceBatchResponse(result));
@@ -191,7 +194,8 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    const canHrReturn = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    const permissions = await getUserPermissionNames(session.user.id);
+    const canHrReturn = await canUseHrApproval(session.user.id, session.user.role ?? [], permissions);
     if (!canHrReturn) {
       return c.json({
         success: false,
@@ -199,7 +203,7 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
       }, 403);
     }
 
-    const scope = await resolveScope(session);
+    const scope = await resolveScope(session, permissions);
     const record = await returnAttendanceDailyRecord(id, {
       userId: session.user.id,
       roles: session.user.role ?? [],
@@ -224,9 +228,12 @@ export async function returnAttendanceDailyRecordHandler(c: Context) {
   }
 }
 
-async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+async function resolveScope(
+  session: Awaited<ReturnType<typeof getSessionByToken>>,
+  permissionNames?: string[],
+) {
   if (!session?.user?.id) throw new Error('Authentication required');
-  const permissions = await getUserPermissionNames(session.user.id);
+  const permissions = permissionNames ?? await getUserPermissionNames(session.user.id);
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
     roles: session.user.role ?? [],
@@ -287,7 +294,7 @@ async function requireAuthenticatedUser(c: Context) {
   return session;
 }
 
-async function canUseHrApproval(userId: string, roles: string[]) {
+async function canUseHrApproval(userId: string, roles: string[], permissionNames?: string[]) {
   const normalizedRoles = roles.map((role) => role.toLowerCase());
 
   if (
@@ -300,5 +307,7 @@ async function canUseHrApproval(userId: string, roles: string[]) {
     return true;
   }
 
-  return userHasPermission(userId, 'hr-attendance-approvals:approve');
+  return permissionNames
+    ? permissionNames.includes('hr-attendance-approvals:approve')
+    : userHasPermission(userId, 'hr-attendance-approvals:approve');
 }

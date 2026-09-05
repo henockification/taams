@@ -18,6 +18,11 @@ import {
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
+import {
+  employeeAuditFields,
+  formatEmployeeLabel,
+  writeAuditEvent,
+} from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 const HR_ROLE_NAMES = ['human_resource'];
@@ -77,6 +82,15 @@ export async function createOvertimeRequests(
           requestedSupervisorDelegationId: actionContext.supervisorDelegationId,
         } as any)
         .returning();
+      await writeAuditEvent(tx, {
+        action: 'OVERTIME_ASSIGNED',
+        resourceType: 'overtime_request',
+        resourceId: request.id,
+        resourceLabel: `Overtime ${overtimeDate}`,
+        employeeId,
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        metadata: { overtimeDate, requestedMinutes },
+      });
       rows.push(request);
     }
     return rows;
@@ -180,7 +194,17 @@ export async function changeOvertimeRequestStatus(
         .where(eq(overtimeRequests.id, id));
 
       await syncApprovedOvertimeToDailyRecord(request.employeeId, request.overtimeDate, tx);
-      return getOvertimeRequestById(id, tx);
+      const approved = await getOvertimeRequestById(id, tx);
+      await writeAuditEvent(tx, {
+        action: 'OVERTIME_APPROVED',
+        resourceType: 'overtime_request',
+        resourceId: id,
+        resourceLabel: `${formatEmployeeLabel(request.employee)} overtime ${request.overtimeDate}`,
+        ...employeeAuditFields(request.employee),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        changes: { status: { from: request.status, to: 'APPROVED' } },
+      });
+      return approved;
     }
 
     const rejectedAt = input.rejectedAt ? new Date(input.rejectedAt) : new Date();
@@ -201,7 +225,17 @@ export async function changeOvertimeRequestStatus(
       .where(eq(overtimeRequests.id, id));
 
     await syncApprovedOvertimeToDailyRecord(request.employeeId, request.overtimeDate, tx);
-    return getOvertimeRequestById(id, tx);
+    const rejected = await getOvertimeRequestById(id, tx);
+    await writeAuditEvent(tx, {
+      action: 'OVERTIME_REJECTED',
+      resourceType: 'overtime_request',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(request.employee)} overtime ${request.overtimeDate}`,
+      ...employeeAuditFields(request.employee),
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      changes: { status: { from: request.status, to: 'REJECTED' } },
+    });
+    return rejected;
   });
 
   if (updated?.status === 'APPROVED') {

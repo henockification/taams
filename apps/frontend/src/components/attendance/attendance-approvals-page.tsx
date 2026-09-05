@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
-import { CheckCircle2, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
+import { CheckCircle2, History, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
+import { AuditTimeline } from '@/components/audit/audit-timeline';
 import {
   Table,
   TableBody,
@@ -112,6 +113,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const [dateFilter, setDateFilter] = useState<DateFilter>('TODAY');
   const [customDateFilters, setCustomDateFilters] = useState({ fromDate: today(), toDate: today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
+  const [historyRecord, setHistoryRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
@@ -514,6 +516,15 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           <Button
                             type="button"
                             size="sm"
+                            variant="ghost"
+                            onClick={() => setHistoryRecord(record)}
+                          >
+                            <History className="size-4" />
+                            {t('viewAuditHistory')}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
                             onClick={() => handleApprove(record)}
                             disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
                           >
@@ -599,6 +610,17 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               {returnRecord.isPending ? t('saving') : isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(historyRecord)} onOpenChange={(open) => { if (!open) setHistoryRecord(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('auditHistory')}</DialogTitle>
+          </DialogHeader>
+          {historyRecord ? (
+            <AuditTimeline resourceType="attendance_daily_record" resourceId={historyRecord.id} />
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

@@ -8,6 +8,7 @@ import type {
 } from '../../../types/core.types';
 import { resolveEmployeeBiometricExemptions } from '../../../lib/biometric-exemptions';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { employeeAuditFields, formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
@@ -73,7 +74,15 @@ export async function createBiometricExemption(input: CreateBiometricExemptionIn
     } as any)
     .returning();
 
-  return getBiometricExemptionById(created.id, tx);
+  const createdExemption = await getBiometricExemptionById(created.id, tx);
+  await writeAuditEvent(tx, {
+    action: 'BIOMETRIC_EXEMPTION_SUBMITTED',
+    resourceType: 'biometric_exemption',
+    resourceId: created.id,
+    resourceLabel: createdExemption?.employee ? `${formatEmployeeLabel(createdExemption.employee)} biometric exemption` : 'Position biometric exemption',
+    ...employeeAuditFields(createdExemption?.employee),
+  });
+  return createdExemption;
 }
 
 export async function createBiometricExemptionScoped(input: CreateBiometricExemptionInput, scope: EmployeeVisibilityScope, tx: DbClient = db) {
@@ -121,7 +130,15 @@ export async function updateBiometricExemption(
     } as any)
     .where(eq(biometricExemptions.id, id));
 
-  return getBiometricExemptionById(id, tx);
+  const updated = await getBiometricExemptionById(id, tx);
+  await writeAuditEvent(tx, {
+    action: 'BIOMETRIC_EXEMPTION_UPDATED',
+    resourceType: 'biometric_exemption',
+    resourceId: id,
+    resourceLabel: existing.employee ? `${formatEmployeeLabel(existing.employee)} biometric exemption` : 'Position biometric exemption',
+    ...employeeAuditFields(existing.employee),
+  });
+  return updated;
 }
 
 export async function updateBiometricExemptionScoped(
@@ -154,9 +171,17 @@ export async function deactivateBiometricExemption(id: string, updatedBy?: strin
       updatedBy: updatedBy ?? null,
       updatedAt: new Date(),
     })
-    .where(eq(biometricExemptions.id, id));
+      .where(eq(biometricExemptions.id, id));
 
-  return getBiometricExemptionById(id, tx);
+  const deactivated = await getBiometricExemptionById(id, tx);
+  await writeAuditEvent(tx, {
+    action: 'BIOMETRIC_EXEMPTION_DEACTIVATED',
+    resourceType: 'biometric_exemption',
+    resourceId: id,
+    resourceLabel: deactivated?.employee ? `${formatEmployeeLabel(deactivated.employee)} biometric exemption` : 'Position biometric exemption',
+    ...employeeAuditFields(deactivated?.employee),
+  });
+  return deactivated;
 }
 
 export async function changeBiometricExemptionStatus(
@@ -215,7 +240,16 @@ export async function changeBiometricExemptionStatus(
       .where(eq(biometricExemptions.id, id));
   }
 
-  return getBiometricExemptionById(id, tx);
+  const reviewed = await getBiometricExemptionById(id, tx);
+  await writeAuditEvent(tx, {
+    action: input.status === 'APPROVED' ? 'BIOMETRIC_EXEMPTION_APPROVED' : 'BIOMETRIC_EXEMPTION_REJECTED',
+    resourceType: 'biometric_exemption',
+    resourceId: id,
+    resourceLabel: existing.employee ? `${formatEmployeeLabel(existing.employee)} biometric exemption` : 'Position biometric exemption',
+    ...employeeAuditFields(existing.employee),
+    changes: { status: { from: existing.status, to: input.status } },
+  });
+  return reviewed;
 }
 
 export async function deactivateBiometricExemptionScoped(

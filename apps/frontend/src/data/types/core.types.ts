@@ -1383,7 +1383,7 @@ export type DepartmentHeadDashboardSummaryResponse = {
   departmentHeadDashboard: DepartmentHeadDashboardSummary;
 };
 
-export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync';
+export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit';
 
 export type ReportColumn = {
   key: string;
@@ -1402,6 +1402,32 @@ export type ReportResponse = {
       totalRows: number;
     };
   };
+};
+
+export type AuditEvent = {
+  id: string;
+  occurredAt: string;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorType: 'USER' | 'SYSTEM' | 'DEVICE';
+  action: string;
+  actionLabel: string;
+  outcome: 'SUCCESS' | 'DENIED' | 'FAILED';
+  resourceType: string;
+  resourceId?: string | null;
+  resourceLabel?: string | null;
+  employeeName?: string;
+  employeeCode?: string;
+  department?: string;
+  delegated: boolean;
+  changesSummary: string;
+  changes?: Record<string, { from: unknown; to: unknown }> | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type AuditEventsResponse = {
+  success: boolean;
+  auditEvents: AuditEvent[];
 };
 
 export type CreateDepartmentInput = {

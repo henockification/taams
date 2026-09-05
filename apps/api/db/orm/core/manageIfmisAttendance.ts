@@ -9,6 +9,7 @@ import {
 } from '../../schema';
 import { buildIfmisAttendancePreview, getGregorianMonthRange, type IfmisAttendanceRow } from '../../../lib/ifmis/attendance';
 import { pushIfmisAttendanceRows } from '../../../lib/ifmis/oracle';
+import { writeAuditEvent } from '../../../lib/audit';
 
 export async function getIfmisAttendancePreview(payMonth: number, payYear: number) {
   const source = await loadSource(payMonth, payYear);
@@ -38,6 +39,13 @@ export async function pushIfmisAttendance(payMonth: number, payYear: number, pus
       errorMessage: null,
       updatedAt: completedAt,
     }).where(eq(ifmisExportBatches.id, batch.id)).returning();
+    await writeAuditEvent(db, {
+      action: 'IFMIS_PUSHED',
+      resourceType: 'ifmis_export_batch',
+      resourceId: completed.id,
+      resourceLabel: `IFMIS ${payMonth}/${payYear}`,
+      metadata: { payMonth, payYear, status: completed.status, rowCount: preview.rows.length },
+    });
     return formatBatch(completed);
   } catch (error) {
     if (batchId) {

@@ -55,6 +55,7 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('reports-leave-requests:read', 'reports-leave-requests', 'read', 'View leave requests report'),
   ('reports-employees:read', 'reports-employees', 'read', 'View employee roster report'),
   ('reports-device-sync:read', 'reports-device-sync', 'read', 'View device sync report'),
+  ('reports-audit:read', 'reports-audit', 'read', 'View audit trail reports'),
   ('users:read', 'users', 'read', 'View users'),
   ('users:create', 'users', 'create', 'Create users'),
   ('users:update', 'users', 'update', 'Update users'),
@@ -96,7 +97,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
     'executive-dashboard:read', 'hr-dashboard:read', 'department-head-dashboard:read',
     'reports-attendance-daily:read', 'reports-attendance-punches:read', 'reports-late-attendance:read',
     'reports-overtime:read', 'reports-leave-balances:read', 'reports-leave-requests:read',
-    'reports-employees:read', 'reports-device-sync:read', 'notification-logs:read'
+    'reports-employees:read', 'reports-device-sync:read', 'reports-audit:read', 'notification-logs:read'
   ]),
   ('human_resource', 'Human resources user with employee, leave, attendance, schedule, and report access', ARRAY[
     'hr-dashboard:read', 'employees:read', 'employees:create', 'employees:update', 'permanent-employees:read',
@@ -110,7 +111,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
     'attendance-punches:read', 'hr-attendance-approvals:approve',
     'reports-attendance-daily:read', 'reports-attendance-punches:read', 'reports-late-attendance:read',
     'reports-overtime:read', 'reports-leave-balances:read', 'reports-leave-requests:read',
-    'reports-employees:read', 'reports-device-sync:read', 'notification-logs:read'
+    'reports-employees:read', 'reports-device-sync:read', 'reports-audit:read', 'notification-logs:read'
   ]),
   ('finance', 'Finance user with IFMIS attendance review and export access', ARRAY[
     'ifmis-attendance:read', 'ifmis-attendance:push'

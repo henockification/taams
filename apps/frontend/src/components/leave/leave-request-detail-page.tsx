@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import { AnnualLeaveApprovalEditor } from '@/components/leave/annual-leave-approval-editor';
 import { LeaveInterruptionDialog } from '@/components/leave/leave-interruption-dialog';
+import { AuditTimeline } from '@/components/audit/audit-timeline';
 import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/components/supervisor/delegation-context';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -285,6 +286,8 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
           </div>
         </CardContent>
       </Card>
+
+      <AuditTimeline resourceType="leave_request" resourceId={request.id} />
 
       {request.interruptions?.length ? (
         <Card className="rounded-lg">

@@ -1,5 +1,8 @@
 import { Context } from 'hono';
+import { db } from '../../../db/db';
 import { authenticateEmailPassword, createSessionForUser } from '../../../db/orm/auth/manageAuth';
+import { writeAuditEvent } from '../../../lib/audit';
+import { getRequestClientIp } from '../../../middleware/auth';
 import { formatAuthUser, setSessionCookie } from './helpers';
 
 export async function signInEmailHandler(c: Context) {
@@ -15,6 +18,20 @@ export async function signInEmailHandler(c: Context) {
     const authResult = await authenticateEmailPassword(email, password);
 
     if (!authResult.success) {
+      await writeAuditEvent(db, {
+        action: 'AUTH_SIGN_IN',
+        outcome: 'FAILED',
+        resourceType: 'auth_session',
+        resourceLabel: email,
+        actorUserId: authResult.reason === 'PASSWORD_NOT_SET' ? authResult.user?.id ?? null : null,
+        actorName: authResult.reason === 'PASSWORD_NOT_SET' ? authResult.user?.name ?? null : null,
+        actorEmail: email,
+        actorType: 'USER',
+        ipAddress: getRequestClientIp(c),
+        userAgent: c.req.header('user-agent') ?? null,
+        requestId: c.get('requestId') ?? null,
+        metadata: { reason: authResult.reason },
+      });
       const message =
         authResult.reason === 'PASSWORD_NOT_SET'
           ? 'Password has not been set. Please reset your password to continue.'
@@ -25,8 +42,22 @@ export async function signInEmailHandler(c: Context) {
 
     const session = await createSessionForUser({
       userId: authResult.user.id,
-      ipAddress: c.req.header('x-forwarded-for') ?? undefined,
+      ipAddress: getRequestClientIp(c) ?? undefined,
       userAgent: c.req.header('user-agent') ?? undefined,
+    });
+
+    await writeAuditEvent(db, {
+      action: 'AUTH_SIGN_IN',
+      resourceType: 'auth_session',
+      resourceId: session.id,
+      resourceLabel: authResult.user.email,
+      actorUserId: authResult.user.id,
+      actorName: authResult.user.name,
+      actorEmail: authResult.user.email,
+      actorType: 'USER',
+      ipAddress: session.ipAddress,
+      userAgent: session.userAgent,
+      requestId: c.get('requestId') ?? null,
     });
 
     setSessionCookie(c, session.token, session.expiresAt);

@@ -37,11 +37,42 @@ import {
   resolveLeaveApprovalActionContext,
 } from './manageSupervisorDelegations';
 import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
+import {
+  diffChanges,
+  employeeAuditFields,
+  formatEmployeeLabel,
+  runWithAuditContext,
+  writeAuditEvent,
+  type AuditAction,
+} from '../../../lib/audit';
 
 export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
+
+async function auditLeaveRequest(
+  tx: DbClient,
+  action: AuditAction,
+  request: any,
+  extra: {
+    changes?: Record<string, { from: unknown; to: unknown }> | null;
+    supervisorDelegationId?: string | null;
+    metadata?: Record<string, unknown> | null;
+  } = {},
+) {
+  await writeAuditEvent(tx, {
+    action,
+    resourceType: 'leave_request',
+    resourceId: request?.id,
+    resourceLabel: `${formatEmployeeLabel(request?.employee)} leave ${request?.startDate ?? ''}–${request?.endDate ?? ''}`.trim(),
+    ...employeeAuditFields(request?.employee),
+    supervisorDelegationId: extra.supervisorDelegationId ?? request?.supervisorDelegationId ?? null,
+    changes: extra.changes ?? null,
+    metadata: extra.metadata ?? null,
+  });
+}
+
 const KNOWN_LEAVE_TYPES = [
   {
     code: 'ANNUAL',
@@ -275,7 +306,16 @@ export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbC
       .returning();
 
     await createBalanceTransaction(tx, updated, 'INITIAL', opening, input.updatedBy ?? input.createdBy ?? null, 'Initial balance updated');
-    return getLeaveBalanceById(updated.id, tx);
+    const updatedBalance = await getLeaveBalanceById(updated.id, tx);
+    await writeAuditEvent(tx, {
+      action: 'LEAVE_BALANCE_UPSERTED',
+      resourceType: 'leave_balance',
+      resourceId: updated.id,
+      resourceLabel: `${formatEmployeeLabel(employee)} leave balance`,
+      ...employeeAuditFields(employee),
+      changes: { opening: { from: existing.opening, to: fixed(opening) } },
+    });
+    return updatedBalance;
   }
 
   const [created] = await tx.insert(leaveBalances).values({
@@ -292,7 +332,16 @@ export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbC
   } as any).returning();
 
   await createBalanceTransaction(tx, created, 'INITIAL', opening, input.createdBy ?? null, 'Initial balance created');
-  return getLeaveBalanceById(created.id, tx);
+  const createdBalance = await getLeaveBalanceById(created.id, tx);
+  await writeAuditEvent(tx, {
+    action: 'LEAVE_BALANCE_UPSERTED',
+    resourceType: 'leave_balance',
+    resourceId: created.id,
+    resourceLabel: `${formatEmployeeLabel(employee)} leave balance`,
+    ...employeeAuditFields(employee),
+    changes: { opening: { from: null, to: fixed(opening) } },
+  });
+  return createdBalance;
 }
 
 export async function bulkUpsertLeaveBalances(input: BulkUpsertLeaveBalancesInput) {
@@ -393,6 +442,18 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
       .set({ linkedTransactionId: inTx.id } as any)
       .where(eq(leaveBalanceTransactions.id, outTx.id));
 
+    await writeAuditEvent(tx, {
+      action: 'LEAVE_BALANCE_TRANSFERRED',
+      resourceType: 'leave_balance',
+      resourceId: updatedTo.id,
+      resourceLabel: `${formatEmployeeLabel(employee)} leave transfer`,
+      ...employeeAuditFields(employee),
+      metadata: {
+        days,
+        fromFiscalYearId: input.fromFiscalYearId,
+        toFiscalYearId: input.toFiscalYearId,
+      },
+    });
     return {
       fromBalance: await getLeaveBalanceById(updatedFrom.id, tx),
       toBalance: await getLeaveBalanceById(updatedTo.id, tx),
@@ -435,7 +496,7 @@ export async function getLeaveRequests(
 }
 
 export async function reconcileAnnualLeaveConsumption(cutoffDate = yesterday()) {
-  return db.transaction(async (tx) => {
+  return runWithAuditContext({ actorType: 'SYSTEM' }, () => db.transaction(async (tx) => {
     const scheduledDates = await tx.query.annualLeaveRequestDates.findMany({
       where: and(
         eq(annualLeaveRequestDates.status, 'APPROVED'),
@@ -474,8 +535,17 @@ export async function reconcileAnnualLeaveConsumption(cutoffDate = yesterday()) 
       )).returning();
       if (!updatedBalance) throw new Error('Reserved annual leave balance is inconsistent');
       await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', days, null, `Annual leave consumed on ${formatDateValue(annualDate.leaveDate)}`, request.id);
+      await writeAuditEvent(tx, {
+        action: 'LEAVE_BALANCE_CONSUMED',
+        actorType: 'SYSTEM',
+        resourceType: 'leave_request',
+        resourceId: request.id,
+        resourceLabel: `Annual leave consumed on ${formatDateValue(annualDate.leaveDate)}`,
+        employeeId: request.employeeId,
+        metadata: { leaveDate: formatDateValue(annualDate.leaveDate), days },
+      });
     }
-  });
+  }));
 }
 
 export async function createLeaveRequest(input: CreateLeaveRequestInput) {
@@ -528,7 +598,9 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
         }))
       );
 
-      return getLeaveRequestById(request.id, tx);
+      const created = await getLeaveRequestById(request.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_REQUEST_SUBMITTED', created);
+      return created;
     });
   }
 
@@ -540,18 +612,22 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   const requestedDays = await calculateWorkingDays(input.employeeId, input.startDate, input.endDate);
   assertWithinAllowedDays(leaveType, requestedDays);
 
-  const [request] = await db.insert(leaveRequests).values({
-    employeeId: input.employeeId,
-    leaveTypeId: input.leaveTypeId,
-    fiscalYearId: fiscalYear?.id ?? null,
-    startDate: input.startDate,
-    endDate: input.endDate,
-    requestedDays: fixed(requestedDays),
-    reason: input.reason,
-    requestedBy: input.requestedBy,
-  } as any).returning();
+  return db.transaction(async (tx) => {
+    const [request] = await tx.insert(leaveRequests).values({
+      employeeId: input.employeeId,
+      leaveTypeId: input.leaveTypeId,
+      fiscalYearId: fiscalYear?.id ?? null,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      requestedDays: fixed(requestedDays),
+      reason: input.reason,
+      requestedBy: input.requestedBy,
+    } as any).returning();
 
-  return getLeaveRequestById(request.id);
+    const created = await getLeaveRequestById(request.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_REQUEST_SUBMITTED', created);
+    return created;
+  });
 }
 
 export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestInput) {
@@ -607,7 +683,14 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
         }))
       );
 
-      return getLeaveRequestById(id, tx);
+      const updatedRequest = await getLeaveRequestById(id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_REQUEST_UPDATED', updatedRequest, {
+        changes: diffChanges(
+          { startDate: request.startDate, endDate: request.endDate, requestedDays: request.requestedDays, reason: request.reason },
+          { startDate: updatedRequest?.startDate, endDate: updatedRequest?.endDate, requestedDays: updatedRequest?.requestedDays, reason: updatedRequest?.reason },
+        ),
+      });
+      return updatedRequest;
     }
 
     if (!input.startDate || !input.endDate) throw new Error('Start date and end date are required');
@@ -623,7 +706,14 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
     } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
     if (!updated) throw new Error('Leave request is already processed');
 
-    return getLeaveRequestById(id, tx);
+    const updatedRequest = await getLeaveRequestById(id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_REQUEST_UPDATED', updatedRequest, {
+      changes: diffChanges(
+        { startDate: request.startDate, endDate: request.endDate, requestedDays: request.requestedDays, reason: request.reason },
+        { startDate: updatedRequest?.startDate, endDate: updatedRequest?.endDate, requestedDays: updatedRequest?.requestedDays, reason: updatedRequest?.reason },
+      ),
+    });
+    return updatedRequest;
   });
 }
 
@@ -676,7 +766,13 @@ export async function changeLeaveRequestStatus(
       } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
       if (!updated) throw new Error('Leave request is already processed');
 
-      return getLeaveRequestById(updated.id, tx);
+      const rejected = await getLeaveRequestById(updated.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_REQUEST_REJECTED', rejected, {
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        changes: { status: { from: request.status, to: 'REJECTED' } },
+        metadata: { rejectionReason: input.rejectionReason.trim() },
+      });
+      return rejected;
     }
 
     const approvedBy = input.approvedBy;
@@ -774,7 +870,12 @@ export async function changeLeaveRequestStatus(
     } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'PENDING'))).returning();
     if (!updated) throw new Error('Leave request is already processed');
 
-    return getLeaveRequestById(updated.id, tx);
+    const approved = await getLeaveRequestById(updated.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_REQUEST_APPROVED', approved, {
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      changes: { status: { from: request.status, to: 'APPROVED' } },
+    });
+    return approved;
   });
 }
 
@@ -835,7 +936,12 @@ export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInp
         updatedAt: new Date(),
       } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'APPROVED'))).returning();
       if (!updated) throw new Error('Leave request authorization is already processed');
-      return getLeaveRequestById(updated.id, tx);
+      const rejectedAuth = await getLeaveRequestById(updated.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_REQUEST_AUTHORIZATION_REJECTED', rejectedAuth, {
+        changes: { status: { from: request.status, to: 'AUTHORIZATION_REJECTED' } },
+        metadata: { rejectionReason: input.rejectionReason.trim() },
+      });
+      return rejectedAuth;
     }
 
     await assertNoAuthorizedLeaveConflict(request.employeeId, affectedDates, request.id, tx);
@@ -875,7 +981,11 @@ export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInp
       updatedAt: new Date(),
     } as any).where(and(eq(leaveRequests.id, id), eq(leaveRequests.status, 'APPROVED'))).returning();
     if (!updated) throw new Error('Leave request authorization is already processed');
-    return getLeaveRequestById(updated.id, tx);
+    const authorized = await getLeaveRequestById(updated.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_REQUEST_AUTHORIZED', authorized, {
+      changes: { status: { from: request.status, to: 'AUTHORIZED' } },
+    });
+    return authorized;
   });
 }
 
@@ -899,7 +1009,11 @@ export async function authorizeLeaveInterruption(id: string, input: AuthorizeLea
         updatedAt: new Date(),
       } as any).where(and(eq(leaveInterruptions.id, id), eq(leaveInterruptions.status, 'APPROVED'))).returning();
       if (!updated) throw new Error('Leave interruption authorization is already processed');
-      return getLeaveRequestById(request.id, tx);
+      const rejectedInterruptionAuth = await getLeaveRequestById(request.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED', rejectedInterruptionAuth, {
+        metadata: { interruptionId: id, rejectionReason: input.rejectionReason.trim() },
+      });
+      return rejectedInterruptionAuth;
     }
 
     const interrupted = approvedInterruptionSelections(interruption, 'INTERRUPTED_APPROVED');
@@ -940,7 +1054,11 @@ export async function authorizeLeaveInterruption(id: string, input: AuthorizeLea
       updatedAt: new Date(),
     } as any).where(and(eq(leaveInterruptions.id, id), eq(leaveInterruptions.status, 'APPROVED'))).returning();
     if (!updated) throw new Error('Leave interruption authorization is already processed');
-    return getLeaveRequestById(request.id, tx);
+    const authorizedInterruption = await getLeaveRequestById(request.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_INTERRUPTION_AUTHORIZED', authorizedInterruption, {
+      metadata: { interruptionId: id },
+    });
+    return authorizedInterruption;
   });
 }
 
@@ -979,7 +1097,11 @@ export async function createLeaveInterruption(input: CreateLeaveInterruptionInpu
 
     await insertInterruptionDates(tx, interruption.id, 'INTERRUPTED_PROPOSED', interrupted);
     await insertInterruptionDates(tx, interruption.id, 'CONTINUATION_PROPOSED', continuation);
-    return getLeaveRequestById(request.id, tx);
+    const createdInterruption = await getLeaveRequestById(request.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_INTERRUPTION_SUBMITTED', createdInterruption, {
+      metadata: { interruptionId: interruption.id },
+    });
+    return createdInterruption;
   });
 }
 
@@ -1032,7 +1154,12 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
         eq(leaveInterruptions.status, 'PENDING'),
       )).returning();
       if (!rejectedInterruption) throw new Error('Leave interruption is already processed');
-      return getLeaveRequestById(request.id, tx);
+      const rejectedInterruptionRequest = await getLeaveRequestById(request.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_INTERRUPTION_REJECTED', rejectedInterruptionRequest, {
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        metadata: { interruptionId: interruption.id, rejectionReason: input.rejectionReason.trim() },
+      });
+      return rejectedInterruptionRequest;
     }
 
     const proposedInterrupted = interruption.dates
@@ -1070,7 +1197,12 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
       eq(leaveInterruptions.status, 'PENDING'),
     )).returning();
     if (!reviewedInterruption) throw new Error('Leave interruption is already processed');
-    return getLeaveRequestById(request.id, tx);
+    const reviewedRequest = await getLeaveRequestById(request.id, tx);
+    await auditLeaveRequest(tx, 'LEAVE_INTERRUPTION_APPROVED', reviewedRequest, {
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      metadata: { interruptionId: interruption.id },
+    });
+    return reviewedRequest;
   });
 }
 

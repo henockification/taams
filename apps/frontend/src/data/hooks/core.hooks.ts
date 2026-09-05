@@ -40,6 +40,7 @@ import type {
   LeaveBalanceView,
   CreateLeaveTypeInput,
   NotificationLogFilters,
+  AuditEventsResponse,
   ReportKey,
   ReviewLeaveInterruptionInput,
   TransferLeaveBalanceInput,
@@ -87,6 +88,7 @@ export const coreQueryKeys = {
   workScheduleDays: (id: string) => [...coreQueryKeys.workSchedule(id), 'days'] as const,
   holidays: () => [...coreQueryKeys.all, 'holidays'] as const,
   notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
+  auditEvents: (params: Record<string, string>) => [...coreQueryKeys.all, 'audit-events', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
   employeesPaginated: (params: EmployeesPaginatedParams) => [...coreQueryKeys.all, 'employees', 'paginated', params] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
@@ -183,6 +185,15 @@ export function useReport(key: ReportKey, params: Record<string, string>) {
     queryFn: () => coreApi.getReport(key, params),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
+  });
+}
+
+export function useAuditEvents(params: Record<string, string>, enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.auditEvents(params),
+    queryFn: () => coreApi.getAuditEvents(params),
+    enabled,
+    staleTime: 15 * 1000,
   });
 }
 

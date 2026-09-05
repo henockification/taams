@@ -11,6 +11,11 @@ import {
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
+import {
+  employeeAuditFields,
+  formatEmployeeLabel,
+  writeAuditEvent,
+} from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 const HR_ROLE_NAMES = ['human_resource'];
@@ -47,7 +52,15 @@ export async function createManualPunchRequest(input: CreateManualPunchRequestIn
     } as any)
     .returning();
 
-  return getManualPunchRequestById(request.id);
+  const created = await getManualPunchRequestById(request.id);
+  await writeAuditEvent(db, {
+    action: 'MANUAL_PUNCH_SUBMITTED',
+    resourceType: 'manual_punch_request',
+    resourceId: request.id,
+    resourceLabel: `${formatEmployeeLabel(created?.employee)} attendance correction`,
+    ...employeeAuditFields(created?.employee),
+  });
+  return created;
 }
 
 export async function getManualPunchRequests(input: {
@@ -133,8 +146,17 @@ export async function changeManualPunchRequestStatus(
         })
         .where(eq(manualPunchRequests.id, id));
 
+      const reviewed = await getManualPunchRequestById(id, tx);
+      await writeAuditEvent(tx, {
+        action: input.status === 'HR_REJECTED' ? 'MANUAL_PUNCH_HR_REJECTED' : 'MANUAL_PUNCH_HR_REVIEWED',
+        resourceType: 'manual_punch_request',
+        resourceId: id,
+        resourceLabel: `${formatEmployeeLabel(request.employee)} attendance correction`,
+        ...employeeAuditFields(request.employee),
+        changes: { status: { from: request.status, to: input.status } },
+      });
       return {
-        manualPunchRequest: await getManualPunchRequestById(id, tx),
+        manualPunchRequest: reviewed,
         attendancePunch: null,
       };
     }
@@ -202,8 +224,18 @@ export async function changeManualPunchRequestStatus(
         })
         .where(eq(manualPunchRequests.id, id));
 
+      const approvedRequest = await getManualPunchRequestById(id, tx);
+      await writeAuditEvent(tx, {
+        action: 'MANUAL_PUNCH_APPROVED',
+        resourceType: 'manual_punch_request',
+        resourceId: id,
+        resourceLabel: `${formatEmployeeLabel(request.employee)} attendance correction`,
+        ...employeeAuditFields(request.employee),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        changes: { status: { from: request.status, to: 'SUPERVISOR_APPROVED' } },
+      });
       return {
-        manualPunchRequest: await getManualPunchRequestById(id, tx),
+        manualPunchRequest: approvedRequest,
         attendancePunch,
       };
     }
@@ -243,8 +275,18 @@ export async function changeManualPunchRequestStatus(
         })
         .where(eq(manualPunchRequests.id, id));
 
+      const rejectedRequest = await getManualPunchRequestById(id, tx);
+      await writeAuditEvent(tx, {
+        action: 'MANUAL_PUNCH_REJECTED',
+        resourceType: 'manual_punch_request',
+        resourceId: id,
+        resourceLabel: `${formatEmployeeLabel(request.employee)} attendance correction`,
+        ...employeeAuditFields(request.employee),
+        supervisorDelegationId: actionContext.supervisorDelegationId,
+        changes: { status: { from: request.status, to: 'SUPERVISOR_REJECTED' } },
+      });
       return {
-        manualPunchRequest: await getManualPunchRequestById(id, tx),
+        manualPunchRequest: rejectedRequest,
         attendancePunch: null,
       };
     }

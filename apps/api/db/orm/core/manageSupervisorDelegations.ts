@@ -3,6 +3,7 @@ import { db } from '../../db';
 import { employeeSupervisors, employees, supervisorDelegations, temporaryDepartmentAssignments, user } from '../../schema';
 import { getUserRoleNames } from '../rbac/manageRbac';
 import { effectivePrimaryEmployeeIds } from './leaveVisibility';
+import { formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -101,6 +102,18 @@ export async function createSupervisorDelegation(input: {
         with: delegationRelations,
       })
       : [];
+    await writeAuditEvent(innerTx, {
+      action: 'SUPERVISOR_DELEGATION_CREATED',
+      resourceType: 'supervisor_delegation',
+      resourceId: created.id,
+      resourceLabel: `Delegation to ${formatEmployeeLabel(delegate)}`,
+      employeeId: delegate.id,
+      metadata: {
+        supervisorUserId: input.supervisorUserId,
+        delegateUserId: delegate.userId,
+        revokedCount: revokedRows.length,
+      },
+    });
     return { supervisorDelegation, revokedDelegations };
   });
 }
@@ -111,6 +124,13 @@ export async function revokeSupervisorDelegation(id: string, revokedBy: string, 
   if (existing.supervisorUserId !== revokedBy) {
     const roles = await resolveUserRoles(revokedBy, tx);
     if (!roles.some((role) => ['super_admin', 'superadmin', 'admin'].includes(role))) {
+      await writeAuditEvent(tx, {
+        action: 'SUPERVISOR_DELEGATION_REVOKED',
+        outcome: 'DENIED',
+        resourceType: 'supervisor_delegation',
+        resourceId: id,
+        resourceLabel: 'Supervisor delegation',
+      });
       throw new Error('Only the supervisor or an admin can revoke this delegation');
     }
   }
@@ -122,6 +142,16 @@ export async function revokeSupervisorDelegation(id: string, revokedBy: string, 
     .set({ revokedAt: now, revokedBy, updatedAt: now } as any)
     .where(and(eq(supervisorDelegations.id, id), isNull(supervisorDelegations.revokedAt)))
     .returning();
+
+  if (updated) {
+    await writeAuditEvent(tx, {
+      action: 'SUPERVISOR_DELEGATION_REVOKED',
+      resourceType: 'supervisor_delegation',
+      resourceId: id,
+      resourceLabel: 'Supervisor delegation',
+      employeeId: existing.delegateEmployeeId,
+    });
+  }
 
   return {
     supervisorDelegation: await getSupervisorDelegationById(updated?.id ?? id, tx),

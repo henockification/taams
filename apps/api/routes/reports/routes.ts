@@ -16,6 +16,8 @@ import {
   leaveTypes,
   overtimeRequests,
 } from '../../db/schema';
+import { listAuditEvents, auditActionLabel } from '../../db/orm/core/manageAuditEvents';
+import { summarizeChanges, type AuditChanges } from '../../lib/audit';
 import { getSessionByToken } from '../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../db/orm/rbac/manageRbac';
 import {
@@ -33,7 +35,8 @@ type ReportKey =
   | 'leave-balances'
   | 'leave-requests'
   | 'employees'
-  | 'device-sync';
+  | 'device-sync'
+  | 'audit';
 
 type ReportColumn = {
   key: string;
@@ -204,6 +207,23 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'errorMessage', label: 'Error' },
     ],
     buildRows: buildDeviceSyncRows,
+  },
+  audit: {
+    title: 'Audit Trail',
+    permission: 'reports-audit:read',
+    columns: [
+      { key: 'occurredAt', label: 'Time' },
+      { key: 'actorName', label: 'Actor' },
+      { key: 'actorType', label: 'Actor type' },
+      { key: 'actionLabel', label: 'Action' },
+      { key: 'outcome', label: 'Outcome' },
+      { key: 'resourceLabel', label: 'Resource' },
+      { key: 'employeeName', label: 'Employee' },
+      { key: 'department', label: 'Department' },
+      { key: 'delegated', label: 'Delegated' },
+      { key: 'changesSummary', label: 'Changes' },
+    ],
+    buildRows: buildAuditRows,
   },
 };
 
@@ -675,6 +695,38 @@ function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: Em
   if (query.get('departmentId') && employee.departmentId !== query.get('departmentId')) return false;
   if (query.get('employeeId') && employee.id !== query.get('employeeId')) return false;
   return true;
+}
+
+async function buildAuditRows({ query }: ReportInput) {
+  const events = await listAuditEvents({
+    dateFrom: dateFrom(query),
+    dateTo: dateTo(query),
+    actorUserId: query.get('actorUserId'),
+    actorSearch: query.get('actorSearch'),
+    action: query.get('action'),
+    resourceType: query.get('resourceType'),
+    employeeId: query.get('employeeId'),
+    departmentId: query.get('departmentId'),
+    outcome: query.get('outcome'),
+    delegatedOnly: query.get('delegatedOnly') === 'true',
+  });
+
+  return events.map((event) => ({
+    occurredAt: event.occurredAt ? new Date(event.occurredAt).toISOString() : '',
+    actorName: event.actorName ?? (event.actorType === 'SYSTEM' ? 'System' : ''),
+    actorType: event.actorType,
+    action: event.action,
+    actionLabel: auditActionLabel(event.action),
+    outcome: event.outcome,
+    resourceType: event.resourceType,
+    resourceLabel: event.resourceLabel ?? '',
+    employeeName: event.employee
+      ? [event.employee.firstNameEn, event.employee.lastNameEn].filter(Boolean).join(' ')
+      : '',
+    department: event.department?.nameEn ?? '',
+    delegated: event.supervisorDelegationId ? 'Yes' : 'No',
+    changesSummary: summarizeChanges(event.changes as AuditChanges | null),
+  }));
 }
 
 function employeeName(employee: any) {

@@ -7,6 +7,7 @@ import type {
 } from '../../../types/core.types';
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
+import { employeeAuditFields, formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -54,7 +55,7 @@ export async function createTemporaryDepartmentAssignment(input: CreateTemporary
     await assertCanManageEmployeeAssignment(employee.id, effectiveFrom, context, tx);
     await assertNoOverlap(employee.id, effectiveFrom, effectiveTo, null, tx);
 
-    const [created] = await tx.insert(temporaryDepartmentAssignments).values({
+    const [createdRow] = await tx.insert(temporaryDepartmentAssignments).values({
       employeeId: employee.id,
       sourceDepartmentId: employee.departmentId,
       targetDepartmentId: input.targetDepartmentId,
@@ -64,7 +65,16 @@ export async function createTemporaryDepartmentAssignment(input: CreateTemporary
       createdBy: context.userId,
     } as any).returning();
 
-    return getTemporaryDepartmentAssignmentById(created.id, tx);
+    const created = await getTemporaryDepartmentAssignmentById(createdRow.id, tx);
+    await writeAuditEvent(tx, {
+      action: 'TEMPORARY_ASSIGNMENT_CREATED',
+      resourceType: 'temporary_department_assignment',
+      resourceId: createdRow.id,
+      resourceLabel: `${formatEmployeeLabel(created?.employee)} temporary assignment`,
+      ...employeeAuditFields(created?.employee ?? employee),
+      departmentId: input.targetDepartmentId,
+    });
+    return created;
   });
 }
 
@@ -106,7 +116,16 @@ export async function updateTemporaryDepartmentAssignment(
       } as any)
       .where(eq(temporaryDepartmentAssignments.id, id));
 
-    return getTemporaryDepartmentAssignmentById(id, tx);
+    const updated = await getTemporaryDepartmentAssignmentById(id, tx);
+    await writeAuditEvent(tx, {
+      action: 'TEMPORARY_ASSIGNMENT_UPDATED',
+      resourceType: 'temporary_department_assignment',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(existing.employee)} temporary assignment`,
+      ...employeeAuditFields(existing.employee),
+      departmentId: targetDepartmentId,
+    });
+    return updated;
   });
 }
 
@@ -120,7 +139,15 @@ export async function deactivateTemporaryDepartmentAssignment(id: string, contex
       .set({ isActive: false, updatedAt: new Date() } as any)
       .where(eq(temporaryDepartmentAssignments.id, id));
 
-    return getTemporaryDepartmentAssignmentById(id, tx);
+    const deactivated = await getTemporaryDepartmentAssignmentById(id, tx);
+    await writeAuditEvent(tx, {
+      action: 'TEMPORARY_ASSIGNMENT_DEACTIVATED',
+      resourceType: 'temporary_department_assignment',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(existing.employee)} temporary assignment`,
+      ...employeeAuditFields(existing.employee),
+    });
+    return deactivated;
   });
 }
 

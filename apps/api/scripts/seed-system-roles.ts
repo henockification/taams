@@ -295,6 +295,12 @@ const PERMISSIONS = [
     description: 'View device sync report',
   },
   {
+    name: 'reports-audit:read',
+    resource: 'reports-audit',
+    action: 'read',
+    description: 'View audit trail reports',
+  },
+  {
     name: 'users:read',
     resource: 'users',
     action: 'read',
@@ -431,6 +437,7 @@ const SYSTEM_ROLES = [
       'reports-leave-requests:read',
       'reports-employees:read',
       'reports-device-sync:read',
+      'reports-audit:read',
       'notification-logs:read',
     ],
   },
@@ -477,6 +484,7 @@ const SYSTEM_ROLES = [
       'reports-leave-requests:read',
       'reports-employees:read',
       'reports-device-sync:read',
+      'reports-audit:read',
       'notification-logs:read',
     ],
   },

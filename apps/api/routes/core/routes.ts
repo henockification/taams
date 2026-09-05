@@ -45,6 +45,7 @@ import dashboardApp from './dashboard/routes';
 import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
 import ifmisAttendanceApp from './ifmis-attendance/routes';
+import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
@@ -584,6 +585,7 @@ coreApp.route('/', timeOperationsApp);
 coreApp.route('/', shiftsApp);
 coreApp.route('/', workSchedulesApp);
 coreApp.route('/', ifmisAttendanceApp);
+coreApp.route('/', auditEventsApp);
 
 openApiApp
   .openapi(createDepartmentRoute, createDepartmentHandler as any)

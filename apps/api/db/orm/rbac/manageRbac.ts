@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
+import { diffChanges, writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 const RESERVED_ROLE_NAMES = new Set(['super_admin', 'admin', 'executive', 'human_resource', 'supervisor', 'employee']);
@@ -76,6 +77,12 @@ export async function createPermission(input: CreatePermissionInput) {
     })
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'PERMISSION_CREATED',
+    resourceType: 'permission',
+    resourceId: permission.id,
+    resourceLabel: permission.name,
+  });
   return permission;
 }
 
@@ -98,6 +105,13 @@ export async function updatePermission(permissionId: string, input: UpdatePermis
       .where(eq(permissions.id, permissionId))
       .returning();
 
+    await writeAuditEvent(db, {
+      action: 'PERMISSION_UPDATED',
+      resourceType: 'permission',
+      resourceId: permission.id,
+      resourceLabel: permission.name,
+      changes: diffChanges({}, updateData),
+    });
     return permission;
   }
 
@@ -129,7 +143,14 @@ export async function createRole(input: CreateRoleInput) {
       );
     }
 
-    return getRoleById(role.id, tx);
+    const createdRole = await getRoleById(role.id, tx);
+    await writeAuditEvent(tx, {
+      action: 'ROLE_CREATED',
+      resourceType: 'role',
+      resourceId: role.id,
+      resourceLabel: role.name,
+    });
+    return createdRole;
   });
 }
 
@@ -154,7 +175,15 @@ export async function updateRole(roleId: string, input: UpdateRoleInput) {
         .where(eq(roles.id, roleId));
     }
 
-    return getRoleById(roleId, tx);
+    const updatedRole = await getRoleById(roleId, tx);
+    await writeAuditEvent(tx, {
+      action: 'ROLE_UPDATED',
+      resourceType: 'role',
+      resourceId: roleId,
+      resourceLabel: updatedRole?.name ?? roleId,
+      changes: Object.keys(updateData).length ? diffChanges({}, updateData) : null,
+    });
+    return updatedRole;
   });
 }
 
@@ -179,7 +208,15 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
 
     await tx.update(roles).set({ updatedAt: new Date() }).where(eq(roles.id, roleId));
 
-    return getRoleById(roleId, tx);
+    const role = await getRoleById(roleId, tx);
+    await writeAuditEvent(tx, {
+      action: 'ROLE_PERMISSIONS_ASSIGNED',
+      resourceType: 'role',
+      resourceId: roleId,
+      resourceLabel: role?.name ?? roleId,
+      metadata: { permissionIds },
+    });
+    return role;
   });
 }
 
@@ -208,7 +245,15 @@ export async function createUserWithRoles(input: CreateUserInput) {
       );
     }
 
-    return getUserWithRoles(createdUser.id, tx);
+    const created = await getUserWithRoles(createdUser.id, tx);
+    await writeAuditEvent(tx, {
+      action: 'USER_CREATED',
+      resourceType: 'user',
+      resourceId: createdUser.id,
+      resourceLabel: createdUser.email,
+      metadata: { roleIds: input.roleIds ?? [] },
+    });
+    return created;
   });
 }
 
@@ -248,7 +293,16 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
         .where(eq(user.id, userId));
     }
 
-    return getUserWithRoles(userId, tx);
+    const updatedUser = await getUserWithRoles(userId, tx);
+    await writeAuditEvent(tx, {
+      action: input.roleIds !== undefined ? 'USER_ROLES_ASSIGNED' : 'USER_UPDATED',
+      resourceType: 'user',
+      resourceId: userId,
+      resourceLabel: updatedUser?.email ?? userId,
+      changes: Object.keys(updateData).length ? diffChanges({}, updateData) : null,
+      metadata: input.roleIds !== undefined ? { roleIds: input.roleIds } : null,
+    });
+    return updatedUser;
   });
 }
 

@@ -18,6 +18,12 @@ import type {
   UpdatePositionInput,
 } from '../../../types/core.types';
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
+import {
+  diffChanges,
+  employeeAuditFields,
+  formatEmployeeLabel,
+  writeAuditEvent,
+} from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -31,6 +37,13 @@ export async function createDepartment(input: CreateDepartmentInput) {
     .values(normalizeDepartmentInput(input) as any)
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'DEPARTMENT_CREATED',
+    resourceType: 'department',
+    resourceId: department.id,
+    resourceLabel: department.nameEn,
+    departmentId: department.id,
+  });
   return department;
 }
 
@@ -60,6 +73,14 @@ export async function updateDepartment(id: string, input: UpdateDepartmentInput)
     .where(eq(departments.id, id))
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'DEPARTMENT_UPDATED',
+    resourceType: 'department',
+    resourceId: department.id,
+    resourceLabel: department.nameEn,
+    departmentId: department.id,
+    changes: diffChanges({}, updateData as Record<string, unknown>),
+  });
   return department;
 }
 
@@ -69,6 +90,12 @@ export async function createPosition(input: CreatePositionInput) {
     .values(normalizePositionInput(input) as any)
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'POSITION_CREATED',
+    resourceType: 'position',
+    resourceId: position.id,
+    resourceLabel: position.nameEn,
+  });
   return position;
 }
 
@@ -91,6 +118,13 @@ export async function updatePosition(id: string, input: UpdatePositionInput) {
     .where(eq(positions.id, id))
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'POSITION_UPDATED',
+    resourceType: 'position',
+    resourceId: position.id,
+    resourceLabel: position.nameEn,
+    changes: diffChanges({}, updateData as Record<string, unknown>),
+  });
   return position;
 }
 
@@ -102,7 +136,15 @@ export async function createEmployee(input: CreateEmployeeInput) {
     .values(normalizeEmployeeInput(input) as any)
     .returning();
 
-  return getEmployeeById(employee.id);
+  const createdEmployee = await getEmployeeById(employee.id);
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_CREATED',
+    resourceType: 'employee',
+    resourceId: employee.id,
+    resourceLabel: formatEmployeeLabel(createdEmployee),
+    ...employeeAuditFields(createdEmployee),
+  });
+  return createdEmployee;
 }
 
 export async function createEmployeeScoped(input: CreateEmployeeInput, scope: EmployeeVisibilityScope) {
@@ -212,7 +254,16 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
     .set({ ...updateData, updatedAt: new Date() })
     .where(eq(employees.id, id));
 
-  return getEmployeeById(id);
+  const updatedEmployee = await getEmployeeById(id);
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_UPDATED',
+    resourceType: 'employee',
+    resourceId: id,
+    resourceLabel: formatEmployeeLabel(updatedEmployee),
+    ...employeeAuditFields(updatedEmployee),
+    changes: diffChanges({}, updateData as Record<string, unknown>),
+  });
+  return updatedEmployee;
 }
 
 export async function updateEmployeeScoped(id: string, input: UpdateEmployeeInput, scope: EmployeeVisibilityScope) {
@@ -320,6 +371,17 @@ export async function upsertPermanentEmployees(
     })
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_IMPORTED',
+    resourceType: 'employee',
+    resourceLabel: 'Employee import',
+    metadata: {
+      created: employeeValues.length - updated,
+      updated,
+      skipped,
+      employmentType: options.employmentType ?? 'PERMANENT',
+    },
+  });
   return {
     created: employeeValues.length - updated,
     updated,
@@ -347,7 +409,16 @@ export async function createEmployeeSupervisor(employeeId: string, input: Create
     } as any)
     .returning();
 
-  return getEmployeeSupervisorById(assignment.id);
+  const createdAssignment = await getEmployeeSupervisorById(assignment.id);
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_SUPERVISOR_ASSIGNED',
+    resourceType: 'employee',
+    resourceId: employeeId,
+    resourceLabel: `Supervisor assignment`,
+    employeeId,
+    metadata: { supervisorId: input.supervisorId, isPrimary: input.isPrimary ?? true },
+  });
+  return createdAssignment;
 }
 
 export async function getEmployeeSupervisors(employeeId: string) {

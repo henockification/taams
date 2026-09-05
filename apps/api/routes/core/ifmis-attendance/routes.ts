@@ -8,6 +8,8 @@ import {
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import { openApiApp } from '../../../lib/openapi';
 import { requirePermission } from '../../../middleware/rbac';
+import { db } from '../../../db/db';
+import { writeAuditEvent } from '../../../lib/audit';
 import { getIfmisAttendancePreview, IfmisExportError, pushIfmisAttendance } from '../../../db/orm/core/manageIfmisAttendance';
 
 const ifmisAttendanceApp = new Hono();
@@ -42,6 +44,12 @@ export async function previewIfmisAttendanceHandler(c: any) {
   if (!parsed.success) return c.json({ success: false, error: 'Invalid payroll period' }, 400);
   try {
     const preview = await getIfmisAttendancePreview(parsed.data.payMonth, parsed.data.payYear);
+    await writeAuditEvent(db, {
+      action: 'IFMIS_PREVIEWED',
+      resourceType: 'ifmis_export_batch',
+      resourceLabel: `IFMIS preview ${parsed.data.payMonth}/${parsed.data.payYear}`,
+      metadata: { payMonth: parsed.data.payMonth, payYear: parsed.data.payYear, ready: preview.ready },
+    });
     return c.json({ success: true, ...preview });
   } catch {
     return c.json({ success: false, error: 'Failed to prepare IFMIS attendance preview' }, 500);

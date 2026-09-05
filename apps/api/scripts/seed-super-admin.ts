@@ -40,6 +40,7 @@ const DEFAULT_PERMISSIONS = [
   { name: 'reports-leave-requests:read', resource: 'reports-leave-requests', action: 'read', description: 'View leave requests report' },
   { name: 'reports-employees:read', resource: 'reports-employees', action: 'read', description: 'View employee roster report' },
   { name: 'reports-device-sync:read', resource: 'reports-device-sync', action: 'read', description: 'View device sync report' },
+  { name: 'reports-audit:read', resource: 'reports-audit', action: 'read', description: 'View audit trail reports' },
   { name: 'biometric-provisioning:read', resource: 'biometric-provisioning', action: 'read', description: 'View biometric provisioning jobs and previews' },
   { name: 'biometric-provisioning:execute', resource: 'biometric-provisioning', action: 'execute', description: 'Preview, confirm, and retry biometric provisioning' },
   { name: 'holidays:read', resource: 'holidays', action: 'read', description: 'View holidays and institution off days' },
