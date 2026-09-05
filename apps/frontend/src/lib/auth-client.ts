@@ -38,11 +38,11 @@ async function authFetch(path: string, init?: RequestInit) {
 
 export const authClient = {
   signIn: {
-    email: async ({ email, password, fetchOptions, callbackURL }: any) => {
+    email: async ({ email, password, otp, fetchOptions, callbackURL }: any) => {
       return authFetch("/sign-in/email", {
         method: "POST",
         headers: fetchOptions?.headers,
-        body: JSON.stringify({ email, password, callbackURL }),
+        body: JSON.stringify({ email, password, otp, callbackURL }),
       });
     },
     social: async (_input?: any) => ({

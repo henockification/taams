@@ -25,6 +25,7 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState('');
+  const [testingMode, setTestingMode] = useState(false);
 
   const {
     register,
@@ -41,7 +42,7 @@ export default function ForgotPasswordPage() {
     setError(null);
 
     try {
-      const { error } = await authClient.requestPasswordReset({
+      const { data: result, error } = await authClient.requestPasswordReset({
         email: data.email,
       });
 
@@ -49,10 +50,13 @@ export default function ForgotPasswordPage() {
         setError(error.message || t('requestResetFailed'));
       } else {
         setSubmittedEmail(data.email);
+        setTestingMode(Boolean(result?.testingMode));
         setSuccess(true);
         notifications.show({
           title: t('requestResetSuccessTitle'),
-          message: t('requestResetSuccessMessage'),
+          message: result?.testingMode
+            ? t('otpTestingMode')
+            : t('requestResetSuccessMessage'),
           color: 'green',
         });
       }
@@ -79,10 +83,10 @@ export default function ForgotPasswordPage() {
         <Card className="border-border/80 shadow-sm">
           <CardContent className="space-y-4 pt-6">
             <p className="text-center text-sm leading-6 text-muted-foreground">
-              {t('forgotPasswordSuccessHelp')}
+              {testingMode ? t('otpTestingMode') : t('forgotPasswordSuccessHelp')}
             </p>
             <Button className="w-full" asChild>
-              <Link href={`/auth/reset-password?email=${encodeURIComponent(submittedEmail)}`}>
+              <Link href={`/auth/reset-password?email=${encodeURIComponent(submittedEmail)}${testingMode ? '&testingMode=1' : ''}`}>
                 {t('setNewPassword')}
               </Link>
             </Button>

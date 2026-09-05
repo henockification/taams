@@ -166,6 +166,27 @@ export async function getEmployeeNotificationRecipient(employeeId: string): Prom
   return employee ? mapEmployeeToRecipient(employee) : null;
 }
 
+export async function getNotificationRecipientByEmail(email: string): Promise<NotificationRecipient | null> {
+  const foundUser = await db.query.user.findFirst({
+    where: sql`lower(${user.email}) = ${email.trim().toLowerCase()}`,
+  });
+  if (!foundUser) return null;
+
+  const employee = await db.query.employees.findFirst({
+    where: eq(employees.userId, foundUser.id),
+    with: { user: true },
+  });
+  if (employee) return mapEmployeeToRecipient(employee);
+
+  return {
+    userId: foundUser.id,
+    employeeId: null,
+    name: foundUser.name,
+    email: foundUser.email,
+    phoneNumber: null,
+  };
+}
+
 export async function getSupervisorNotificationRecipients(employeeId: string): Promise<NotificationRecipient[]> {
   const assignments = await db.query.employeeSupervisors.findMany({
     where: and(

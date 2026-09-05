@@ -15,10 +15,10 @@ import { useForm } from 'react-hook-form';
 import { notifications } from '@/lib/notifications';
 import { AlertCircle, Check } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
+import { OtpVerificationDialog } from '@/components/auth/OtpVerificationDialog';
 
 interface ResetPasswordFormData {
   email: string;
-  otp: string;
   password: string;
   confirmPassword: string;
 }
@@ -28,6 +28,11 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [otpOpen, setOtpOpen] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [testingMode, setTestingMode] = useState(false);
+  const [pendingReset, setPendingReset] = useState<ResetPasswordFormData | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -42,7 +47,6 @@ export default function ResetPasswordPage() {
     mode: 'onChange',
     defaultValues: {
       email,
-      otp: '',
       password: '',
       confirmPassword: '',
     },
@@ -50,27 +54,32 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     setError(null);
-  }, []);
+    setTestingMode(searchParams.get('testingMode') === '1');
+  }, [searchParams]);
 
   const onSubmit = async (data: ResetPasswordFormData) => {
-    if (!data.email || !data.otp) {
-      setError(t('emailAndOtpRequired'));
-      return;
-    }
-
-    setLoading(true);
     setError(null);
+    setOtpError(null);
+    setPendingReset(data);
+    setOtpOpen(true);
+  };
+
+  const verifyResetOtp = async (otp: string) => {
+    if (!pendingReset) return;
+    setLoading(true);
+    setOtpError(null);
 
     try {
       const { error } = await authClient.resetPassword({
-        email: data.email,
-        otp: data.otp,
-        newPassword: data.password,
+        email: pendingReset.email,
+        otp,
+        newPassword: pendingReset.password,
       });
 
       if (error) {
-        setError(error.message || t('resetPasswordFailed'));
+        setOtpError(error.message || t('resetPasswordFailed'));
       } else {
+        setOtpOpen(false);
         setSuccess(true);
         notifications.show({
           title: t('resetPasswordSuccessTitle'),
@@ -85,10 +94,37 @@ export default function ResetPasswordPage() {
         }, 2000);
       }
     } catch (err) {
-      setError(t('resetPasswordFailed'));
+      setOtpError(t('resetPasswordFailed'));
       console.error('Reset password error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const resendResetOtp = async () => {
+    if (!pendingReset) return;
+    setResendingOtp(true);
+    setOtpError(null);
+
+    try {
+      const { data, error } = await authClient.requestPasswordReset({
+        email: pendingReset.email,
+      });
+      if (error) {
+        setOtpError(error.message || t('requestResetFailed'));
+        return;
+      }
+      setTestingMode(Boolean(data?.testingMode));
+      notifications.show({
+        title: t('otpResentTitle'),
+        message: t('otpResent'),
+        color: 'green',
+      });
+    } catch (err) {
+      setOtpError(t('requestResetFailed'));
+      console.error('Resend reset OTP error:', err);
+    } finally {
+      setResendingOtp(false);
     }
   };
 
@@ -133,26 +169,6 @@ export default function ResetPasswordPage() {
                   />
                   {errors.email && (
                     <p className="text-sm text-destructive">{errors.email.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="otp">{t('verificationCode')}</Label>
-                  <Input
-                    id="otp"
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder={t('otpPlaceholder')}
-                    {...register('otp', {
-                      required: t('validation.otpRequired'),
-                      minLength: {
-                        value: 6,
-                        message: t('validation.otpTooShort'),
-                      },
-                    })}
-                  />
-                  {errors.otp && (
-                    <p className="text-sm text-destructive">{errors.otp.message}</p>
                   )}
                 </div>
 
@@ -207,6 +223,21 @@ export default function ResetPasswordPage() {
               {t('signIn')}
             </Link>
           </p>
+
+          <OtpVerificationDialog
+            open={otpOpen}
+            email={pendingReset?.email ?? email}
+            loading={loading}
+            resending={resendingOtp}
+            error={otpError}
+            testingMode={testingMode}
+            onOpenChange={(open) => {
+              setOtpOpen(open);
+              if (!open) setOtpError(null);
+            }}
+            onVerify={verifyResetOtp}
+            onResend={resendResetOtp}
+          />
         </>
       )}
     </AuthShell>

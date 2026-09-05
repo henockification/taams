@@ -2,7 +2,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { randomBytes } from 'crypto';
 import { db } from '../../db';
 import { authCredentials, authSessions, authVerificationTokens, user } from '../../schema';
-import { hashOtp, OtpPurpose, verifyOtp } from '../../../lib/otp';
+import { generateOtpCode, hashOtp, OTP_TTL_MINUTES, OtpPurpose, verifyOtp } from '../../../lib/otp';
 import { hashPassword, runDummyPasswordHash, verifyPassword } from '../../../lib/password';
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
@@ -25,20 +25,35 @@ export async function findUserByEmail(email: string) {
   });
 }
 
-export async function createPasswordResetVerification(email: string) {
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+export async function createOtpVerification(identifier: string, purpose: OtpPurpose) {
+  const normalizedIdentifier = identifier.toLowerCase();
+  const code = generateOtpCode();
+  const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
-  const [verification] = await db
-    .insert(authVerificationTokens)
-    .values({
-      purpose: 'password-reset',
-      identifier: email.toLowerCase(),
-      tokenHash: hashOtp('111111'),
+  const verification = await db.transaction(async (tx) => {
+    await tx.update(authVerificationTokens).set({
+      consumedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(and(
+      eq(authVerificationTokens.identifier, normalizedIdentifier),
+      eq(authVerificationTokens.purpose, purpose),
+      isNull(authVerificationTokens.consumedAt),
+    ));
+
+    const [created] = await tx.insert(authVerificationTokens).values({
+      purpose,
+      identifier: normalizedIdentifier,
+      tokenHash: hashOtp(code),
       expiresAt,
-    })
-    .returning();
+    }).returning();
+    return created;
+  });
 
-  return verification;
+  return { verification, code };
+}
+
+export function createPasswordResetVerification(email: string) {
+  return createOtpVerification(email, 'password-reset');
 }
 
 export async function verifyOtpForPurpose(identifier: string, purpose: OtpPurpose, code: string) {
@@ -63,7 +78,7 @@ export async function verifyOtpForPurpose(identifier: string, purpose: OtpPurpos
     return { success: false as const, code: 'TOO_MANY_ATTEMPTS' };
   }
 
-  if (!verifyOtp(code)) {
+  if (!/^\d{6}$/.test(code) || !verifyOtp(code, latest.tokenHash)) {
     await db
       .update(authVerificationTokens)
       .set({ attempts: latest.attempts + 1, updatedAt: new Date() })

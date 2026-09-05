@@ -1,5 +1,5 @@
 import { Context } from 'hono';
-import { verifyOtp } from '../../../lib/otp';
+import { verifyOtpForPurpose } from '../../../db/orm/auth/manageAuth';
 
 export async function verifyOtpHandler(c: Context) {
   const body = await c.req.json();
@@ -10,7 +10,8 @@ export async function verifyOtpHandler(c: Context) {
     return c.json({ message: 'Identifier and OTP are required', code: 'INVALID_OTP' }, 400);
   }
 
-  if (!verifyOtp(otp)) {
+  const verification = await verifyOtpForPurpose(email, 'email-verification', otp);
+  if (!verification.success) {
     return c.json({ message: 'Invalid verification code', code: 'INVALID_OTP' }, 400);
   }
 

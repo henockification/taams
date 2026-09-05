@@ -2,6 +2,7 @@ import {
   createNotificationLog,
   getEmployeeNotificationRecipient,
   getHrNotificationRecipients,
+  getNotificationRecipientByEmail,
   getNotificationRecipientsByRole,
   getSupervisorNotificationRecipients,
   markNotificationLogFailed,
@@ -246,14 +247,40 @@ class NotificationService {
     })));
   }
 
+  async enqueueDirectNotification(input: {
+    eventType: string;
+    recipientEmail: string;
+    subject: string;
+    message: string;
+    channels?: NotificationChannel[];
+    metadata?: Record<string, unknown> | null;
+  }) {
+    if (!workflowNotificationsAreEnabled()) return;
+    const recipient = await getNotificationRecipientByEmail(input.recipientEmail);
+    if (!recipient) return;
+    await this.enqueueForRecipient({
+      eventType: input.eventType,
+      recipient,
+      rendered: { subject: input.subject, message: input.message },
+      relatedEntityType: 'auth_otp',
+      relatedEntityId: recipient.employeeId,
+      metadata: input.metadata ?? null,
+      channels: input.channels ?? ['EMAIL', 'SMS'],
+      logMessage: 'A one-time authentication code was sent.',
+      redactProviderDetails: true,
+    });
+  }
+
   private async enqueueForRecipient(input: {
-    eventType: WorkflowNotificationEvent;
+    eventType: string;
     recipient: NotificationRecipient;
     rendered: RenderedNotification;
     relatedEntityType: string;
-    relatedEntityId: string;
+    relatedEntityId: string | null;
     metadata: Record<string, unknown> | null;
     channels: NotificationChannel[];
+    logMessage?: string;
+    redactProviderDetails?: boolean;
   }) {
     await Promise.all(input.channels.map((channel) => this.enqueueChannel(channel, input.recipient, input.rendered, input)));
   }
@@ -263,10 +290,12 @@ class NotificationService {
     recipient: NotificationRecipient,
     rendered: RenderedNotification,
     input: {
-      eventType: WorkflowNotificationEvent;
+      eventType: string;
       relatedEntityType: string;
-      relatedEntityId: string;
+      relatedEntityId: string | null;
       metadata: Record<string, unknown> | null;
+      logMessage?: string;
+      redactProviderDetails?: boolean;
     },
   ) {
     const destination = channel === 'EMAIL' ? recipient.email : normalizeEthiopianPhone(recipient.phoneNumber);
@@ -276,7 +305,7 @@ class NotificationService {
       recipient,
       destination,
       subject: channel === 'EMAIL' ? rendered.subject : null,
-      message: rendered.message,
+      message: input.logMessage ?? rendered.message,
       relatedEntityType: input.relatedEntityType,
       relatedEntityId: input.relatedEntityId,
       metadata: input.metadata,
@@ -299,9 +328,20 @@ class NotificationService {
         subject: rendered.subject,
         message: rendered.message,
       });
-      await markNotificationLogSent(log.id, result.providerResponse ?? null, result.providerMessageId ?? null);
+      await markNotificationLogSent(
+        log.id,
+        input.redactProviderDetails ? null : result.providerResponse ?? null,
+        result.providerMessageId ?? null,
+      );
     } catch (error) {
-      await markNotificationLogFailed(log.id, error instanceof Error ? error.message : String(error));
+      await markNotificationLogFailed(
+        log.id,
+        input.redactProviderDetails
+          ? 'Authentication code delivery failed'
+          : error instanceof Error
+            ? error.message
+            : String(error),
+      );
     }
   }
 
@@ -354,6 +394,24 @@ export async function safeEnqueueWorkflowNotification(
       eventType,
       entityId: payload.entityId,
       error,
+    });
+  }
+}
+
+export async function safeSendDirectNotification(input: {
+  eventType: string;
+  recipientEmail: string;
+  subject: string;
+  message: string;
+  channels?: NotificationChannel[];
+  metadata?: Record<string, unknown> | null;
+}) {
+  try {
+    await notificationService.enqueueDirectNotification(input);
+  } catch (error) {
+    console.error('Direct notification failed safely:', {
+      eventType: input.eventType,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 }

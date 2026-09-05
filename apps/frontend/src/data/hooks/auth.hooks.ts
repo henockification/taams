@@ -5,6 +5,7 @@ import { coreQueryKeys } from './core.hooks';
 export type EmailSignInInput = {
   email: string;
   password: string;
+  otp?: string;
   callbackURL?: string;
 };
 
@@ -25,7 +26,8 @@ export function useEmailSignIn() {
 
       return result.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data?.otpRequired) return;
       queryClient.removeQueries({ queryKey: coreQueryKeys.all });
       queryClient.invalidateQueries({ queryKey: authQueryKeys.session });
     },

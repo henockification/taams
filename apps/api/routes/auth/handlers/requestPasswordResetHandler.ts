@@ -1,6 +1,7 @@
 import { Context } from 'hono';
 import { createPasswordResetVerification, findUserByEmail } from '../../../db/orm/auth/manageAuth';
 import { sendOtp } from '../../../lib/otp';
+import { workflowNotificationsAreEnabled } from '../../../lib/notifications';
 
 export async function requestPasswordResetHandler(c: Context) {
   try {
@@ -14,11 +15,14 @@ export async function requestPasswordResetHandler(c: Context) {
     const foundUser = await findUserByEmail(email);
 
     if (foundUser) {
-      await createPasswordResetVerification(email);
-      await sendOtp(email, 'password-reset');
+      const { code } = await createPasswordResetVerification(email);
+      await sendOtp(email, 'password-reset', code);
     }
 
-    return c.json({ success: true });
+    return c.json({
+      success: true,
+      testingMode: !workflowNotificationsAreEnabled(),
+    });
   } catch (error) {
     return c.json({
       message: 'Failed to request password reset',
