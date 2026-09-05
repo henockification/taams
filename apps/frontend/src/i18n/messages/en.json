@@ -1167,6 +1167,7 @@
     "generateDailyRecords": "Refresh daily records",
     "dailyRecordsRefreshed": "Daily records refreshed",
     "attendanceApproved": "Attendance approved",
+    "attendanceRecordsApproved": "{count} attendance record(s) approved.",
     "attendanceUpdated": "Attendance updated",
     "editAttendance": "Adjust payroll days",
     "adjustmentSourceTruthNotice": "Device punches remain unchanged. This adjustment is saved separately for audit and comparison reports.",

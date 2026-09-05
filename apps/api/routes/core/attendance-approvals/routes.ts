@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { createRoute, z } from '@hono/zod-openapi';
 import {
+  AttendanceApprovalBatchRequestSchema,
+  AttendanceApprovalBatchResponseSchema,
   AttendanceDailyRecordResponseSchema,
   AttendanceDailyRecordsResponseSchema,
   GenerateAttendanceDailyRecordsResponseSchema,
@@ -13,9 +15,11 @@ import {
   generateAttendanceDailyRecordsHandler,
   getHrAttendanceDailyRecordsHandler,
   getSupervisorAttendanceDailyRecordsHandler,
+  hrApproveAttendanceDailyRecordsHandler,
   hrApproveAttendanceDailyRecordHandler,
   returnAttendanceDailyRecordHandler,
   supervisorApproveAttendanceDailyRecordHandler,
+  supervisorApproveAttendanceDailyRecordsHandler,
   updateSupervisorAttendanceDailyRecordPayrollHandler,
 } from './handlers/attendanceApprovals';
 
@@ -93,6 +97,15 @@ export const supervisorApproveAttendanceDailyRecordRoute = createRoute({
   },
 });
 
+export const supervisorApproveAttendanceDailyRecordsRoute = createRoute({
+  method: 'post',
+  path: '/attendance-approvals/supervisor/batch',
+  tags: ['Core', 'Attendance Approvals'],
+  summary: 'Supervisor Approve Attendance Batch',
+  request: { body: { content: { 'application/json': { schema: AttendanceApprovalBatchRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: AttendanceApprovalBatchResponseSchema } }, description: 'Supervisor-approved attendance batch' } },
+});
+
 export const updateSupervisorAttendanceDailyRecordPayrollRoute = createRoute({
   method: 'post',
   path: '/attendance-approvals/{id}/supervisor-edit',
@@ -134,6 +147,15 @@ export const hrApproveAttendanceDailyRecordRoute = createRoute({
   },
 });
 
+export const hrApproveAttendanceDailyRecordsRoute = createRoute({
+  method: 'post',
+  path: '/attendance-approvals/hr/batch',
+  tags: ['Core', 'Attendance Approvals'],
+  summary: 'HR Approve Attendance Batch',
+  request: { body: { content: { 'application/json': { schema: AttendanceApprovalBatchRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: AttendanceApprovalBatchResponseSchema } }, description: 'HR-approved attendance batch' } },
+});
+
 export const returnAttendanceDailyRecordRoute = createRoute({
   method: 'post',
   path: '/attendance-approvals/{id}/return',
@@ -160,6 +182,8 @@ export const returnAttendanceDailyRecordRoute = createRoute({
 attendanceApprovalsApp.post('/attendance-approvals/generate', generateAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/supervisor', getSupervisorAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/hr', getHrAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/supervisor/batch', supervisorApproveAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/hr/batch', hrApproveAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-approve', supervisorApproveAttendanceDailyRecordHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-edit', updateSupervisorAttendanceDailyRecordPayrollHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/hr-approve', hrApproveAttendanceDailyRecordHandler);
@@ -169,6 +193,8 @@ openApiApp
   .openapi(generateAttendanceDailyRecordsRoute, generateAttendanceDailyRecordsHandler as any)
   .openapi(getSupervisorAttendanceDailyRecordsRoute, getSupervisorAttendanceDailyRecordsHandler as any)
   .openapi(getHrAttendanceDailyRecordsRoute, getHrAttendanceDailyRecordsHandler as any)
+  .openapi(supervisorApproveAttendanceDailyRecordsRoute, supervisorApproveAttendanceDailyRecordsHandler as any)
+  .openapi(hrApproveAttendanceDailyRecordsRoute, hrApproveAttendanceDailyRecordsHandler as any)
   .openapi(supervisorApproveAttendanceDailyRecordRoute, supervisorApproveAttendanceDailyRecordHandler as any)
   .openapi(updateSupervisorAttendanceDailyRecordPayrollRoute, updateSupervisorAttendanceDailyRecordPayrollHandler as any)
   .openapi(hrApproveAttendanceDailyRecordRoute, hrApproveAttendanceDailyRecordHandler as any)

@@ -15,7 +15,7 @@ import { hasActiveSupervisorDelegation } from '../../../../db/orm/core/manageSup
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatOvertimeRequest } from '../../helpers/formatters';
-// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
+import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function createOvertimeRequestHandler(c: Context) {
   try {
@@ -40,13 +40,21 @@ export async function createOvertimeRequestHandler(c: Context) {
       requestedBy,
       roles: session.user.role ?? [],
     });
-    // Notification trigger disabled until SMS/email provider credentials are available.
-    // await safeEnqueueWorkflowNotification('OVERTIME_REQUEST_SUBMITTED', {
-    //   entityId: overtimeRequest.id,
-    //   employeeId: overtimeRequest.employeeId,
-    //   date: overtimeRequest.overtimeDate,
-    //   reason: overtimeRequest.reason,
-    // });
+    await Promise.all(overtimeRequests.map((overtimeRequest) => safeEnqueueWorkflowNotification('OVERTIME_ASSIGNED', {
+      entityId: overtimeRequest.id,
+      employeeId: overtimeRequest.employeeId,
+      date: overtimeRequest.overtimeDate,
+      startAt: toIsoString(overtimeRequest.startAt),
+      endAt: toIsoString(overtimeRequest.endAt),
+      durationMinutes: overtimeRequest.requestedMinutes,
+      reason: overtimeRequest.reason,
+      actorUserId: session.user.id,
+      actorName: session.user.name,
+      metadata: {
+        requestedMinutes: overtimeRequest.requestedMinutes,
+        supervisorDelegationId: overtimeRequest.requestedSupervisorDelegationId ?? null,
+      },
+    }, { channels: ['EMAIL'] })));
 
     return c.json({
       success: true,
@@ -55,6 +63,10 @@ export async function createOvertimeRequestHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create overtime assignment');
   }
+}
+
+function toIsoString(value: string | Date) {
+  return value instanceof Date ? value.toISOString() : value;
 }
 
 export async function getOvertimeRequestsHandler(c: Context) {

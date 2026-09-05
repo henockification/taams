@@ -284,16 +284,24 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
     }
 
     const leaveRequest = await changeLeaveRequestStatusScoped(c.req.param('id'), payload);
-    // Notification trigger disabled until SMS/email provider credentials are available.
-    await safeEnqueueWorkflowNotification(
-      leaveRequest.status === 'APPROVED' ? 'LEAVE_REQUEST_SUPERVISOR_APPROVED' : 'LEAVE_REQUEST_REJECTED',
-      {
-        entityId: leaveRequest.id,
-        employeeId: leaveRequest.employeeId,
-        date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
-        reason: leaveRequest.rejectionReason ?? null,
+    const notificationPayload = {
+      entityId: leaveRequest.id,
+      employeeId: leaveRequest.employeeId,
+      date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+      status: leaveRequest.status,
+      reason: leaveRequest.rejectionReason ?? null,
+      leaveType: leaveRequest.leaveType?.nameEn ?? leaveRequest.leaveType?.code ?? null,
+      actorUserId: session.user.id,
+      actorName: session.user.name,
+      metadata: {
+        leaveTypeId: leaveRequest.leaveTypeId,
+        fiscalYearId: leaveRequest.fiscalYearId,
       },
-    );
+    };
+    if (leaveRequest.status === 'APPROVED') {
+      await safeEnqueueWorkflowNotification('LEAVE_REQUEST_SUPERVISOR_APPROVED', notificationPayload, { channels: ['EMAIL'] });
+    }
+    await safeEnqueueWorkflowNotification('LEAVE_REQUEST_SUPERVISOR_DECISION', notificationPayload, { channels: ['EMAIL'] });
     return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave request status');

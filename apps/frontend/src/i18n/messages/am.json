@@ -1167,6 +1167,7 @@
     "generateDailyRecords": "ዕለታዊ መዝገቦችን አድስ",
     "dailyRecordsRefreshed": "ዕለታዊ መዝገቦች ታድሰዋል",
     "attendanceApproved": "መገኘት ጸድቋል",
+    "attendanceRecordsApproved": "{count} የመገኘት መዝገብ(ቦች) ጸድቀዋል።",
     "attendanceUpdated": "መገኘት ተዘምኗል",
     "editAttendance": "የደመወዝ ቀናት አስተካክል",
     "adjustmentSourceTruthNotice": "የመሳሪያ ምልክቶች አይቀየሩም። ይህ ማስተካከያ ለኦዲት እና ለንጽጽር ሪፖርቶች በተለየ ይቀመጣል።",

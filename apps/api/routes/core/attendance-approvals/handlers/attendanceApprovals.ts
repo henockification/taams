@@ -4,9 +4,9 @@ import {
   generateAttendanceDailyRecordsInRange,
   getHrAttendanceDailyRecords,
   getSupervisorAttendanceDailyRecords,
-  hrApproveAttendanceDailyRecord,
+  hrApproveAttendanceDailyRecords,
   returnAttendanceDailyRecord,
-  supervisorApproveAttendanceDailyRecord,
+  supervisorApproveAttendanceDailyRecords,
 } from '../../../../db/orm/core/manageAttendanceApprovals';
 import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
@@ -14,11 +14,12 @@ import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEm
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import {
+  AttendanceApprovalBatchRequestSchema,
   ReturnAttendanceDailyRecordRequestSchema,
 } from '../../../../schemas/core.schema';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceDailyRecord } from '../../helpers/formatters';
-// import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
+import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function generateAttendanceDailyRecordsHandler(c: Context) {
   try {
@@ -94,24 +95,37 @@ export async function supervisorApproveAttendanceDailyRecordHandler(c: Context) 
     const session = await requireAuthenticatedUser(c);
     const id = c.req.param('id');
     const scope = await resolveScope(session);
-    const record = await supervisorApproveAttendanceDailyRecord(id, {
+    const result = await supervisorApproveAttendanceDailyRecords([id], {
       userId: session.user.id,
       roles: session.user.role ?? [],
       scope,
     });
-    // Notification trigger disabled until SMS/email provider credentials are available.
-    // await safeEnqueueWorkflowNotification('ATTENDANCE_SUPERVISOR_APPROVED', {
-    //   entityId: record.id,
-    //   employeeId: record.employeeId,
-    //   date: record.attendanceDate,
-    // });
+    await sendAttendanceApprovalNotification('ATTENDANCE_SUPERVISOR_APPROVED', result, session.user);
 
     return c.json({
       success: true,
-      attendanceDailyRecord: formatAttendanceDailyRecord(record),
+      attendanceDailyRecord: formatAttendanceDailyRecord(result.attendanceDailyRecords[0]),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to supervisor approve attendance');
+  }
+}
+
+export async function supervisorApproveAttendanceDailyRecordsHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const parsed = AttendanceApprovalBatchRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const scope = await resolveScope(session);
+    const result = await supervisorApproveAttendanceDailyRecords(parsed.data.attendanceDailyRecordIds, {
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+      scope,
+    });
+    await sendAttendanceApprovalNotification('ATTENDANCE_SUPERVISOR_APPROVED', result, session.user);
+    return c.json(formatAttendanceBatchResponse(result));
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to supervisor approve attendance batch');
   }
 }
 
@@ -138,20 +152,31 @@ export async function hrApproveAttendanceDailyRecordHandler(c: Context) {
 
     const id = c.req.param('id');
     const scope = await resolveScope(session);
-    const record = await hrApproveAttendanceDailyRecord(id, { userId: session.user.id, scope });
-    // Notification trigger disabled until SMS/email provider credentials are available.
-    // await safeEnqueueWorkflowNotification('ATTENDANCE_HR_APPROVED', {
-    //   entityId: record.id,
-    //   employeeId: record.employeeId,
-    //   date: record.attendanceDate,
-    // });
+    const result = await hrApproveAttendanceDailyRecords([id], { userId: session.user.id, scope });
+    await sendAttendanceApprovalNotification('ATTENDANCE_HR_APPROVED', result, session.user);
 
     return c.json({
       success: true,
-      attendanceDailyRecord: formatAttendanceDailyRecord(record),
+      attendanceDailyRecord: formatAttendanceDailyRecord(result.attendanceDailyRecords[0]),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to HR approve attendance');
+  }
+}
+
+export async function hrApproveAttendanceDailyRecordsHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? []);
+    if (!hasPermission) return c.json({ success: false, error: 'You do not have permission to approve HR attendance' }, 403);
+    const parsed = AttendanceApprovalBatchRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const scope = await resolveScope(session);
+    const result = await hrApproveAttendanceDailyRecords(parsed.data.attendanceDailyRecordIds, { userId: session.user.id, scope });
+    await sendAttendanceApprovalNotification('ATTENDANCE_HR_APPROVED', result, session.user);
+    return c.json(formatAttendanceBatchResponse(result));
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to HR approve attendance batch');
   }
 }
 
@@ -207,6 +232,42 @@ async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken
     roles: session.user.role ?? [],
     permissions,
   });
+}
+
+function formatAttendanceBatchResponse(result: {
+  attendanceDailyRecords: any[];
+  recordCount: number;
+  employeeCount: number;
+  dateFrom: string;
+  dateTo: string;
+}) {
+  return {
+    success: true,
+    attendanceDailyRecords: result.attendanceDailyRecords.map(formatAttendanceDailyRecord),
+    recordCount: result.recordCount,
+    employeeCount: result.employeeCount,
+    dateFrom: result.dateFrom,
+    dateTo: result.dateTo,
+  };
+}
+
+async function sendAttendanceApprovalNotification(
+  eventType: 'ATTENDANCE_SUPERVISOR_APPROVED' | 'ATTENDANCE_HR_APPROVED',
+  result: { attendanceDailyRecords: any[]; recordCount: number; employeeCount: number; dateFrom: string; dateTo: string },
+  actor: { id: string; name?: string | null; email?: string | null },
+) {
+  const recordIds = result.attendanceDailyRecords.map((record) => record.id);
+  await safeEnqueueWorkflowNotification(eventType, {
+    entityId: recordIds[0],
+    entityType: 'attendance_daily_record_batch',
+    actorUserId: actor.id,
+    actorName: actor.name ?? actor.email ?? 'Unknown user',
+    dateFrom: result.dateFrom,
+    dateTo: result.dateTo,
+    employeeCount: result.employeeCount,
+    recordCount: result.recordCount,
+    metadata: { attendanceDailyRecordIds: recordIds },
+  }, { channels: ['EMAIL'] });
 }
 
 async function requireAuthenticatedUser(c: Context) {

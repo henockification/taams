@@ -71,7 +71,7 @@ export async function createSupervisorDelegation(input: {
 
   return tx.transaction(async (innerTx: DbClient) => {
     const now = new Date();
-    await innerTx.update(supervisorDelegations)
+    const revokedRows = await innerTx.update(supervisorDelegations)
       .set({
         revokedAt: now,
         revokedBy: input.createdBy,
@@ -81,7 +81,8 @@ export async function createSupervisorDelegation(input: {
         eq(supervisorDelegations.supervisorUserId, input.supervisorUserId),
         isNull(supervisorDelegations.revokedAt),
         gt(supervisorDelegations.endsAt, now),
-      ));
+      ))
+      .returning({ id: supervisorDelegations.id });
 
     const [created] = await innerTx.insert(supervisorDelegations).values({
       supervisorUserId: input.supervisorUserId,
@@ -93,7 +94,14 @@ export async function createSupervisorDelegation(input: {
       createdBy: input.createdBy,
     } as any).returning();
 
-    return getSupervisorDelegationById(created.id, innerTx);
+    const supervisorDelegation = await getSupervisorDelegationById(created.id, innerTx);
+    const revokedDelegations = revokedRows.length
+      ? await innerTx.query.supervisorDelegations.findMany({
+        where: inArray(supervisorDelegations.id, revokedRows.map((row: { id: string }) => row.id)),
+        with: delegationRelations,
+      })
+      : [];
+    return { supervisorDelegation, revokedDelegations };
   });
 }
 
@@ -107,13 +115,18 @@ export async function revokeSupervisorDelegation(id: string, revokedBy: string, 
     }
   }
 
+  if (existing.revokedAt) return { supervisorDelegation: existing, didRevoke: false };
+
   const now = new Date();
   const [updated] = await tx.update(supervisorDelegations)
     .set({ revokedAt: now, revokedBy, updatedAt: now } as any)
     .where(and(eq(supervisorDelegations.id, id), isNull(supervisorDelegations.revokedAt)))
     .returning();
 
-  return getSupervisorDelegationById(updated?.id ?? id, tx);
+  return {
+    supervisorDelegation: await getSupervisorDelegationById(updated?.id ?? id, tx),
+    didRevoke: Boolean(updated),
+  };
 }
 
 export async function getVisibleEmployeeIdsForSupervisorActor(

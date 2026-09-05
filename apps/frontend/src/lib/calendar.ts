@@ -13,6 +13,7 @@ export const CALENDAR_STORAGE_KEY = 'taams-calendar-system';
 const ethiopicCalendar = new EthiopicCalendar();
 const gregorianCalendar = new GregorianCalendar();
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const dateTimeFormatterCache = new Map<string, Intl.DateTimeFormat>();
 
 export function isCalendarSystem(value: unknown): value is CalendarSystem {
   return value === 'gregory' || value === 'ethiopic';
@@ -93,13 +94,42 @@ function dateForFormatting(value: Date | string | null | undefined): { date: Dat
 
 function formatWithoutUnwantedEra(formatter: Intl.DateTimeFormat, date: Date): string {
   const parts = formatter.formatToParts(date);
-  if (!parts.some((part) => part.type === 'era')) return formatter.format(date);
-
   return parts
     .filter((part) => part.type !== 'era')
     .map((part) => part.value)
     .join('')
     .trim();
+}
+
+function getCachedFormatter(
+  locale: string,
+  calendar: CalendarSystem,
+  kind: 'date' | 'date-time',
+  dateOnly: boolean,
+  options: Intl.DateTimeFormatOptions,
+) {
+  const key = JSON.stringify([locale, calendar, kind, dateOnly, options]);
+  const cached = dateTimeFormatterCache.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.DateTimeFormat(calendarLocale(locale, calendar), kind === 'date'
+    ? {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        ...(dateOnly ? { timeZone: 'UTC' } : {}),
+        ...options,
+      }
+    : {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        ...options,
+      });
+  dateTimeFormatterCache.set(key, formatter);
+  return formatter;
 }
 
 export function formatCalendarDate(
@@ -110,13 +140,7 @@ export function formatCalendarDate(
 ): string {
   const parsed = dateForFormatting(value);
   if (!parsed) return '-';
-  const formatter = new Intl.DateTimeFormat(calendarLocale(locale, calendar), {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    ...(parsed.dateOnly ? { timeZone: 'UTC' } : {}),
-    ...options,
-  });
+  const formatter = getCachedFormatter(locale, calendar, 'date', parsed.dateOnly, options);
   return formatWithoutUnwantedEra(formatter, parsed.date);
 }
 
@@ -128,14 +152,7 @@ export function formatCalendarDateTime(
 ): string {
   const parsed = dateForFormatting(value);
   if (!parsed) return '-';
-  const formatter = new Intl.DateTimeFormat(calendarLocale(locale, calendar), {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    ...options,
-  });
+  const formatter = getCachedFormatter(locale, calendar, 'date-time', parsed.dateOnly, options);
   return formatWithoutUnwantedEra(formatter, parsed.date);
 }
 

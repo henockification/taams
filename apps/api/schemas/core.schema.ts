@@ -1477,6 +1477,19 @@ export const AttendanceDailyRecordResponseSchema = z.object({
   attendanceDailyRecord: AttendanceDailyRecordSchema,
 });
 
+export const AttendanceApprovalBatchRequestSchema = z.object({
+  attendanceDailyRecordIds: z.array(UuidSchema).min(1).max(5000),
+});
+
+export const AttendanceApprovalBatchResponseSchema = z.object({
+  success: z.boolean(),
+  attendanceDailyRecords: z.array(AttendanceDailyRecordSchema),
+  recordCount: z.number().int().positive(),
+  employeeCount: z.number().int().positive(),
+  dateFrom: RequiredDateSchema,
+  dateTo: RequiredDateSchema,
+});
+
 export const GenerateAttendanceDailyRecordsResponseSchema = z.object({
   success: z.boolean(),
   generated: z.number().int().nonnegative(),

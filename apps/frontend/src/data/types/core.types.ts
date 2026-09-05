@@ -1162,6 +1162,14 @@ export type AttendanceDailyRecordResponse = {
   success: boolean;
   attendanceDailyRecord: AttendanceDailyRecord;
 };
+export type AttendanceApprovalBatchResponse = {
+  success: boolean;
+  attendanceDailyRecords: AttendanceDailyRecord[];
+  recordCount: number;
+  employeeCount: number;
+  dateFrom: string;
+  dateTo: string;
+};
 export type GenerateAttendanceDailyRecordsResponse = {
   success: boolean;
   generated: number;

@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
 import { CheckCircle2, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -39,9 +39,11 @@ import {
 import {
   useGenerateAttendanceDailyRecords,
   useHrApproveAttendanceDailyRecord,
+  useHrApproveAttendanceDailyRecords,
   useHrAttendanceDailyRecords,
   useReturnAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecord,
+  useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } from '@/data/types/core.types';
@@ -53,6 +55,7 @@ type AttendanceApprovalMode = 'supervisor' | 'hr';
 type ApprovalFilter = 'all' | 'approved' | 'unapproved';
 type DateFilter = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 const allDepartmentsValue = '__all_departments';
+const defaultPageSize = 50;
 
 function dateToYmd(date: Date) {
   const year = date.getFullYear();
@@ -114,6 +117,9 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
+  const deferredEmployeeSearch = useDeferredValue(employeeSearch);
 
   const dateBounds = getDateFilterBounds(dateFilter, customDateFilters);
   const dateRange = {
@@ -125,7 +131,9 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const hrQuery = useHrAttendanceDailyRecords(dateRange, mode === 'hr' && hasDateRange);
   const generateRecords = useGenerateAttendanceDailyRecords();
   const supervisorApprove = useSupervisorApproveAttendanceDailyRecord();
+  const supervisorBatchApprove = useSupervisorApproveAttendanceDailyRecords();
   const hrApprove = useHrApproveAttendanceDailyRecord();
+  const hrBatchApprove = useHrApproveAttendanceDailyRecords();
   const returnRecord = useReturnAttendanceDailyRecord();
   const session = useSession();
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
@@ -141,7 +149,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
     return [...byId.values()].sort((left, right) => left.nameEn.localeCompare(right.nameEn));
   }, [records]);
   const filteredRecords = useMemo(() => {
-    const search = employeeSearch.trim().toLowerCase();
+    const search = deferredEmployeeSearch.trim().toLowerCase();
     return records.filter((record) => {
       const employee = record.employee;
       const haystack = [
@@ -159,7 +167,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode));
       return matchesEmployee && matchesDepartment && matchesApproval;
     });
-  }, [approvalFilter, departmentFilter, employeeSearch, isHrMode, mode, records]);
+  }, [approvalFilter, departmentFilter, deferredEmployeeSearch, isHrMode, mode, records]);
   const approvableRecords = useMemo(
     () => filteredRecords.filter((record) => canApprove(record, mode)),
     [filteredRecords, mode],
@@ -168,8 +176,20 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
     () => approvableRecords.filter((record) => selectedRecordIds.includes(record.id)),
     [approvableRecords, selectedRecordIds],
   );
-  const allVisibleApprovableSelected = approvableRecords.length > 0
-    && approvableRecords.every((record) => selectedRecordIds.includes(record.id));
+  const pageCount = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRecords = useMemo(
+    () => filteredRecords.slice(pageStart, pageStart + pageSize),
+    [filteredRecords, pageSize, pageStart],
+  );
+  const pageApprovableRecords = useMemo(
+    () => pageRecords.filter((record) => canApprove(record, mode)),
+    [mode, pageRecords],
+  );
+  const selectedPageRecordCount = pageApprovableRecords.filter((record) => selectedRecordIds.includes(record.id)).length;
+  const allVisibleApprovableSelected = pageApprovableRecords.length > 0
+    && selectedPageRecordCount === pageApprovableRecords.length;
 
   async function handleRefresh() {
     try {
@@ -185,6 +205,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
     try {
       if (isHrMode) {
         await hrApprove.mutateAsync(record.id);
+        setSelectedRecordIds((current) => current.filter((id) => id !== record.id));
         notifications.show({ title: common('success'), message: t('hrAttendanceApproved'), color: 'green' });
       } else {
         await supervisorApprove.mutateAsync(record.id);
@@ -199,11 +220,14 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   async function handleBatchApprove() {
     if (selectedApprovableRecords.length === 0) return;
     try {
-      await Promise.all(selectedApprovableRecords.map((record) => supervisorApprove.mutateAsync(record.id)));
+      const recordIds = selectedApprovableRecords.map((record) => record.id);
+      const result = isHrMode
+        ? await hrBatchApprove.mutateAsync(recordIds)
+        : await supervisorBatchApprove.mutateAsync(recordIds);
       setSelectedRecordIds([]);
       notifications.show({
         title: common('success'),
-        message: `${selectedApprovableRecords.length} attendance record(s) approved.`,
+        message: t('attendanceRecordsApproved', { count: result.recordCount }),
         color: 'green',
       });
     } catch (error) {
@@ -219,7 +243,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
 
   function toggleVisibleApprovableRecords(checked: boolean) {
     setSelectedRecordIds((current) => {
-      const visibleIds = new Set(approvableRecords.map((record) => record.id));
+      const visibleIds = new Set(pageApprovableRecords.map((record) => record.id));
       if (!checked) return current.filter((id) => !visibleIds.has(id));
       return [...new Set([...current, ...visibleIds])];
     });
@@ -254,6 +278,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                 const nextFilter = value as DateFilter;
                 setDateFilter(nextFilter);
                 setSelectedRecordIds([]);
+                setPage(1);
                 if (nextFilter === 'CUSTOM') {
                   const current = today();
                   setCustomDateFilters({ fromDate: current, toDate: current });
@@ -281,6 +306,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                   onChange={(fromDate) => {
                     setCustomDateFilters((current) => ({ ...current, fromDate }));
                     setSelectedRecordIds([]);
+                    setPage(1);
                   }}
                   className="w-full sm:w-44"
                 />
@@ -292,6 +318,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                   onChange={(toDate) => {
                     setCustomDateFilters((current) => ({ ...current, toDate }));
                     setSelectedRecordIds([]);
+                    setPage(1);
                   }}
                   className="w-full sm:w-44"
                 />
@@ -303,13 +330,19 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               id="attendance-approval-employee-search"
               type="search"
               value={employeeSearch}
-              onChange={(event) => setEmployeeSearch(event.target.value)}
+              onChange={(event) => {
+                setEmployeeSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder={t('searchEmployee')}
               className="w-full md:max-w-xs"
             />
           </FilterField>
           <FilterField label={t('approvalStatus')} htmlFor="attendance-approval-status-filter">
-            <Select value={approvalFilter} onValueChange={(value) => setApprovalFilter(value as ApprovalFilter)}>
+            <Select value={approvalFilter} onValueChange={(value) => {
+              setApprovalFilter(value as ApprovalFilter);
+              setPage(1);
+            }}>
               <SelectTrigger id="attendance-approval-status-filter" className="w-full md:w-48">
                 <SelectValue placeholder={t('approvalStatus')} />
               </SelectTrigger>
@@ -322,7 +355,10 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
           </FilterField>
           {isHrMode ? (
             <FilterField label={t('department')} htmlFor="attendance-approval-department-filter">
-              <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <Select value={departmentFilter} onValueChange={(value) => {
+                setDepartmentFilter(value);
+                setPage(1);
+              }}>
                 <SelectTrigger id="attendance-approval-department-filter" className="w-full md:w-64">
                   <SelectValue placeholder={t('selectDepartment')} />
                 </SelectTrigger>
@@ -341,19 +377,17 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
             <RefreshCw className="size-4" />
             {t('generateDailyRecords')}
           </Button>
-          {!isHrMode ? (
-            <Button
-              type="button"
-              onClick={handleBatchApprove}
-              disabled={selectedApprovableRecords.length === 0 || supervisorApprove.isPending}
-              className="w-full lg:w-auto"
-            >
-              <CheckCircle2 className="size-4" />
-              {selectedApprovableRecords.length > 0
-                ? `${delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
-                : t('approveSelected')}
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            onClick={handleBatchApprove}
+            disabled={selectedApprovableRecords.length === 0 || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
+            className="w-full lg:w-auto"
+          >
+            <CheckCircle2 className="size-4" />
+            {selectedApprovableRecords.length > 0
+              ? `${isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
+              : t('approveSelected')}
+          </Button>
         </div>
       </div>
 
@@ -385,16 +419,14 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               <Table className="min-w-[96rem]">
                 <TableHeader>
                   <TableRow>
-                    {!isHrMode ? (
-                      <TableHead className="w-12">
-                        <Checkbox
-                          aria-label={t('selectAll')}
-                          checked={allVisibleApprovableSelected ? true : selectedApprovableRecords.length > 0 ? 'indeterminate' : false}
-                          disabled={approvableRecords.length === 0}
-                          onCheckedChange={(checked) => toggleVisibleApprovableRecords(Boolean(checked))}
-                        />
-                      </TableHead>
-                    ) : null}
+                    <TableHead className="w-12">
+                      <Checkbox
+                        aria-label={t('selectAll')}
+                        checked={allVisibleApprovableSelected ? true : selectedPageRecordCount > 0 ? 'indeterminate' : false}
+                        disabled={pageApprovableRecords.length === 0 || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
+                        onCheckedChange={(checked) => toggleVisibleApprovableRecords(Boolean(checked))}
+                      />
+                    </TableHead>
                     <TableHead>{t('employee')}</TableHead>
                     <TableHead>{t('department')}</TableHead>
                     <TableHead>{t('attendanceDate')}</TableHead>
@@ -413,18 +445,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRecords.map((record) => (
+                  {pageRecords.map((record) => (
                     <TableRow key={record.id}>
-                      {!isHrMode ? (
-                        <TableCell>
-                          <Checkbox
-                            aria-label={`${t('selectAttendanceRecord')} ${employeeName(record.employee) || (record.employee?.employeeCode ?? '')}`}
-                            checked={selectedRecordIds.includes(record.id)}
-                            disabled={!canApprove(record, mode) || supervisorApprove.isPending}
-                            onCheckedChange={(checked) => toggleRecordSelection(record.id, Boolean(checked))}
-                          />
-                        </TableCell>
-                      ) : null}
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`${t('selectAttendanceRecord')} ${employeeName(record.employee) || (record.employee?.employeeCode ?? '')}`}
+                          checked={selectedRecordIds.includes(record.id)}
+                          disabled={!canApprove(record, mode) || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
+                          onCheckedChange={(checked) => toggleRecordSelection(record.id, Boolean(checked))}
+                        />
+                      </TableCell>
                       <TableCell className="min-w-56">
                         <div className="min-w-0">
                           <p className="truncate font-medium">{employeeName(record.employee) || t('unknown')}</p>
@@ -485,7 +515,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                             type="button"
                             size="sm"
                             onClick={() => handleApprove(record)}
-                            disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending}
+                            disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
                           >
                             <CheckCircle2 className="size-4" />
                             {isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)}
@@ -513,6 +543,37 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
               </Table>
             </div>
           )}
+          {filteredRecords.length > 0 ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {t('showing')} {pageStart + 1}-{Math.min(pageStart + pageSize, filteredRecords.length)} {t('of')} {filteredRecords.length}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select value={String(pageSize)} onValueChange={(value) => {
+                  setPageSize(Number(value));
+                  setPage(1);
+                }}>
+                  <SelectTrigger className="w-32" aria-label={t('pageSize')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[25, 50, 100].map((size) => (
+                      <SelectItem key={size} value={String(size)}>{size} / {t('page')}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button type="button" variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1}>
+                  {common('previous')}
+                </Button>
+                <span className="rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">
+                  {t('page')} {currentPage} {t('of')} {pageCount}
+                </span>
+                <Button type="button" variant="outline" onClick={() => setPage((value) => Math.min(pageCount, value + 1))} disabled={currentPage >= pageCount}>
+                  {common('next')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

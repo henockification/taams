@@ -1,4 +1,5 @@
 import type {
+  AttendanceApprovalBatchResponse,
   AttendanceDailyRecordResponse,
   AttendanceDailyRecordsResponse,
   AttendancePunchesResponse,
@@ -527,6 +528,11 @@ export const coreApi = {
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${attendanceDailyRecordId}/supervisor-approve`, {
       method: 'POST',
     }),
+  supervisorApproveAttendanceDailyRecords: (attendanceDailyRecordIds: string[]) =>
+    coreFetch<AttendanceApprovalBatchResponse>('/attendance-approvals/supervisor/batch', {
+      method: 'POST',
+      body: JSON.stringify({ attendanceDailyRecordIds }),
+    }),
   updateSupervisorAttendanceDailyRecordPayroll: (input: { attendanceDailyRecordId: string; attendanceDays?: string; leaveDays?: string; payableDays?: string; payrollNote?: string | null }) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/supervisor-edit`, {
       method: 'POST',
@@ -540,6 +546,11 @@ export const coreApi = {
   hrApproveAttendanceDailyRecord: (attendanceDailyRecordId: string) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${attendanceDailyRecordId}/hr-approve`, {
       method: 'POST',
+    }),
+  hrApproveAttendanceDailyRecords: (attendanceDailyRecordIds: string[]) =>
+    coreFetch<AttendanceApprovalBatchResponse>('/attendance-approvals/hr/batch', {
+      method: 'POST',
+      body: JSON.stringify({ attendanceDailyRecordIds }),
     }),
   returnAttendanceDailyRecord: (input: { attendanceDailyRecordId: string; reason: string }) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/return`, {

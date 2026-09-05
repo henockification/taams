@@ -1,6 +1,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { coreApi } from '../api/core.api';
 import type {
+  AttendanceDailyRecord,
+  AttendanceDailyRecordsResponse,
   CreateAttendancePunchInput,
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
@@ -1178,6 +1180,7 @@ export function useSupervisorApproveAttendanceDailyRecord() {
     mutationFn: (attendanceDailyRecordId: string) => coreApi.supervisorApproveAttendanceDailyRecord(attendanceDailyRecordId),
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
+      patchAttendanceApprovalCaches(queryClient, [data.attendanceDailyRecord]);
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
@@ -1190,6 +1193,21 @@ export function useSupervisorApproveAttendanceDailyRecord() {
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.hrDashboardSummary(date),
       });
+    },
+  });
+}
+
+export function useSupervisorApproveAttendanceDailyRecords() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (attendanceDailyRecordIds: string[]) => coreApi.supervisorApproveAttendanceDailyRecords(attendanceDailyRecordIds),
+    onSuccess: (data) => {
+      patchAttendanceApprovalCaches(queryClient, data.attendanceDailyRecords);
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.departmentHeadDashboardSummary(data.dateTo) });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrDashboardSummary(data.dateTo) });
     },
   });
 }
@@ -1224,6 +1242,7 @@ export function useHrApproveAttendanceDailyRecord() {
     mutationFn: (attendanceDailyRecordId: string) => coreApi.hrApproveAttendanceDailyRecord(attendanceDailyRecordId),
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
+      patchAttendanceApprovalCaches(queryClient, [data.attendanceDailyRecord]);
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
@@ -1237,6 +1256,20 @@ export function useHrApproveAttendanceDailyRecord() {
   });
 }
 
+export function useHrApproveAttendanceDailyRecords() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (attendanceDailyRecordIds: string[]) => coreApi.hrApproveAttendanceDailyRecords(attendanceDailyRecordIds),
+    onSuccess: (data) => {
+      patchAttendanceApprovalCaches(queryClient, data.attendanceDailyRecords);
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrDashboardSummary(data.dateTo) });
+    },
+  });
+}
+
 export function useReturnAttendanceDailyRecord() {
   const queryClient = useQueryClient();
 
@@ -1244,6 +1277,7 @@ export function useReturnAttendanceDailyRecord() {
     mutationFn: (input: { attendanceDailyRecordId: string; reason: string }) => coreApi.returnAttendanceDailyRecord(input),
     onSuccess: (data) => {
       const date = data.attendanceDailyRecord.attendanceDate;
+      patchAttendanceApprovalCaches(queryClient, [data.attendanceDailyRecord]);
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(),
       });
@@ -1258,6 +1292,32 @@ export function useReturnAttendanceDailyRecord() {
       });
     },
   });
+}
+
+function patchAttendanceApprovalCaches(
+  queryClient: ReturnType<typeof useQueryClient>,
+  updatedRecords: AttendanceDailyRecord[],
+) {
+  const updatedById = new Map(updatedRecords.map((record) => [record.id, record]));
+  const patch = (
+    queryRoot: readonly unknown[],
+    visibleStatuses: Set<AttendanceDailyRecord['status']>,
+  ) => {
+    queryClient.setQueriesData<AttendanceDailyRecordsResponse>({ queryKey: queryRoot }, (current) => {
+      if (!current) return current;
+      let changed = false;
+      const attendanceDailyRecords = current.attendanceDailyRecords.flatMap((record) => {
+        const updated = updatedById.get(record.id);
+        if (!updated) return [record];
+        changed = true;
+        return visibleStatuses.has(updated.status) ? [updated] : [];
+      });
+      return changed ? { ...current, attendanceDailyRecords } : current;
+    });
+  };
+
+  patch(coreQueryKeys.supervisorAttendanceDailyRecords(), new Set(['PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED']));
+  patch(coreQueryKeys.hrAttendanceDailyRecords(), new Set(['SUPERVISOR_APPROVED']));
 }
 
 export function useManualPunchRequests(params: { mine?: boolean } = {}) {

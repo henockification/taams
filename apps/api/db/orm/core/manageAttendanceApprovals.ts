@@ -24,6 +24,14 @@ import {
 
 type DbClient = typeof db | any;
 
+export type AttendanceApprovalBatchResult = {
+  attendanceDailyRecords: any[];
+  recordCount: number;
+  employeeCount: number;
+  dateFrom: string;
+  dateTo: string;
+};
+
 type ApprovalScope = {
   userId: string;
   date?: string | null;
@@ -257,32 +265,41 @@ export async function getHrAttendanceDailyRecords(
 }
 
 export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope }) {
+  const result = await supervisorApproveAttendanceDailyRecords([id], input);
+  return result.attendanceDailyRecords[0];
+}
+
+export async function supervisorApproveAttendanceDailyRecords(
+  ids: string[],
+  input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope },
+): Promise<AttendanceApprovalBatchResult> {
+  const recordIds = uniqueRecordIds(ids);
   return db.transaction(async (tx) => {
-    const record = await getAttendanceDailyRecordById(id, tx);
-    if (!record) throw new Error('Attendance daily record not found');
-
-    const actionContext = input.scope?.type === 'unrestricted'
-      ? { supervisorDelegationId: null }
-      : await resolveSupervisorActionContext({
-        actorUserId: input.userId,
-        roles: input.roles,
-        targetEmployeeId: record.employeeId,
-        referenceDate: record.attendanceDate,
-        tx,
-      });
-
-    if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
-      throw new Error('Only pending or returned attendance records can be supervisor approved');
+    const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
+    const approvalContexts = [];
+    for (const record of records) {
+      if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
+        throw new Error('Only pending or returned attendance records can be supervisor approved');
+      }
+      approvalContexts.push(input.scope?.type === 'unrestricted'
+        ? { supervisorDelegationId: null }
+        : await resolveSupervisorActionContext({
+          actorUserId: input.userId,
+          roles: input.roles,
+          targetEmployeeId: record.employeeId,
+          referenceDate: record.attendanceDate,
+          tx,
+        }));
     }
 
     const approvedAt = new Date();
-    await tx
-      .update(attendanceDailyRecords)
-      .set({
+    for (let index = 0; index < records.length; index += 1) {
+      const [updated] = await tx.update(attendanceDailyRecords).set({
         status: 'SUPERVISOR_APPROVED',
         supervisorApprovedBy: input.userId,
         supervisorApprovedAt: approvedAt,
-        supervisorDelegationId: actionContext.supervisorDelegationId,
+        supervisorDelegationId: approvalContexts[index].supervisorDelegationId,
         hrApprovedBy: null,
         hrApprovedAt: null,
         returnedBy: null,
@@ -290,10 +307,15 @@ export async function supervisorApproveAttendanceDailyRecord(id: string, input: 
         returnReason: null,
         payrollReadyAt: null,
         updatedAt: approvedAt,
-      } as any)
-      .where(eq(attendanceDailyRecords.id, id));
+      } as any).where(and(
+        eq(attendanceDailyRecords.id, records[index].id),
+        inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
+      )).returning({ id: attendanceDailyRecords.id });
+      if (!updated) throw new Error('Attendance record was already processed');
+    }
 
-    return getAttendanceDailyRecordById(id, tx);
+    const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    return buildAttendanceApprovalBatch(updatedRecords);
   });
 }
 
@@ -370,17 +392,27 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
 }
 
 export async function hrApproveAttendanceDailyRecord(id: string, input: { userId: string; scope?: EmployeeVisibilityScope }) {
-  const record = await getAttendanceDailyRecordById(id);
-  if (!record) throw new Error('Attendance daily record not found');
-  if (input.scope) await assertCanAccessEmployee(record.employeeId, input.scope);
-  if (record.status !== 'SUPERVISOR_APPROVED') {
-    throw new Error('Only supervisor-approved attendance records can be HR approved');
-  }
+  const result = await hrApproveAttendanceDailyRecords([id], input);
+  return result.attendanceDailyRecords[0];
+}
 
-  const approvedAt = new Date();
-  await db
-    .update(attendanceDailyRecords)
-    .set({
+export async function hrApproveAttendanceDailyRecords(
+  ids: string[],
+  input: { userId: string; scope?: EmployeeVisibilityScope },
+): Promise<AttendanceApprovalBatchResult> {
+  const recordIds = uniqueRecordIds(ids);
+  return db.transaction(async (tx) => {
+    const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
+    for (const record of records) {
+      if (input.scope) await assertCanAccessEmployee(record.employeeId, input.scope, tx);
+      if (record.status !== 'SUPERVISOR_APPROVED') {
+        throw new Error('Only supervisor-approved attendance records can be HR approved');
+      }
+    }
+
+    const approvedAt = new Date();
+    const updated = await tx.update(attendanceDailyRecords).set({
       status: 'HR_APPROVED',
       hrApprovedBy: input.userId,
       hrApprovedAt: approvedAt,
@@ -389,10 +421,15 @@ export async function hrApproveAttendanceDailyRecord(id: string, input: { userId
       returnedAt: null,
       returnReason: null,
       updatedAt: approvedAt,
-    } as any)
-    .where(eq(attendanceDailyRecords.id, id));
+    } as any).where(and(
+      inArray(attendanceDailyRecords.id, recordIds),
+      eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
+    )).returning({ id: attendanceDailyRecords.id });
+    if (updated.length !== recordIds.length) throw new Error('One or more attendance records were already processed');
 
-  return getAttendanceDailyRecordById(id);
+    const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    return buildAttendanceApprovalBatch(updatedRecords);
+  });
 }
 
 export async function returnAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; reason: string; canHrReturn?: boolean; scope?: EmployeeVisibilityScope }) {
@@ -470,6 +507,36 @@ async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
   });
   if (!record) return record;
   return (await attachEffectiveDepartmentContext([record], record.attendanceDate, tx))[0] ?? record;
+}
+
+async function getAttendanceDailyRecordsByIds(ids: string[], tx: DbClient = db) {
+  if (ids.length === 0) return [];
+  const records = await tx.query.attendanceDailyRecords.findMany({
+    where: inArray(attendanceDailyRecords.id, ids),
+    with: recordRelations,
+  });
+  const enriched = await attachEffectiveDepartmentContext(records, undefined, tx);
+  const recordById = new Map(enriched.map((record: any) => [record.id, record]));
+  return ids.map((id) => recordById.get(id)).filter(Boolean);
+}
+
+function uniqueRecordIds(ids: string[]) {
+  const recordIds = [...new Set(ids.filter(Boolean))];
+  if (recordIds.length === 0) throw new Error('At least one attendance daily record is required');
+  if (recordIds.length > 5000) throw new Error('A maximum of 5000 attendance daily records can be approved at once');
+  return recordIds;
+}
+
+export function buildAttendanceApprovalBatch(records: any[]): AttendanceApprovalBatchResult {
+  if (records.length === 0) throw new Error('At least one attendance daily record is required');
+  const dates = records.map((record) => formatDateValue(record.attendanceDate)).sort();
+  return {
+    attendanceDailyRecords: records,
+    recordCount: records.length,
+    employeeCount: new Set(records.map((record) => record.employeeId)).size,
+    dateFrom: dates[0],
+    dateTo: dates[dates.length - 1],
+  };
 }
 
 async function attachEffectiveDepartmentContext(records: any[], attendanceDate?: string, tx: DbClient = db) {

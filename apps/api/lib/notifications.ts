@@ -2,6 +2,7 @@ import {
   createNotificationLog,
   getEmployeeNotificationRecipient,
   getHrNotificationRecipients,
+  getNotificationRecipientsByRole,
   getSupervisorNotificationRecipients,
   markNotificationLogFailed,
   markNotificationLogSent,
@@ -13,6 +14,7 @@ import {
 export type WorkflowNotificationEvent =
   | 'LEAVE_REQUEST_SUBMITTED'
   | 'LEAVE_REQUEST_APPROVED'
+  | 'LEAVE_REQUEST_SUPERVISOR_DECISION'
   | 'LEAVE_REQUEST_SUPERVISOR_APPROVED'
   | 'LEAVE_REQUEST_AUTHORIZED'
   | 'LEAVE_REQUEST_AUTHORIZATION_REJECTED'
@@ -21,6 +23,7 @@ export type WorkflowNotificationEvent =
   | 'LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED'
   | 'LEAVE_REQUEST_REJECTED'
   | 'OVERTIME_REQUEST_SUBMITTED'
+  | 'OVERTIME_ASSIGNED'
   | 'OVERTIME_REQUEST_APPROVED'
   | 'OVERTIME_REQUEST_REJECTED'
   | 'ATTENDANCE_CORRECTION_SUBMITTED'
@@ -31,6 +34,8 @@ export type WorkflowNotificationEvent =
   | 'BIOMETRIC_EXEMPTION_SUBMITTED'
   | 'BIOMETRIC_EXEMPTION_APPROVED'
   | 'BIOMETRIC_EXEMPTION_REJECTED'
+  | 'SUPERVISOR_DELEGATION_ASSIGNED'
+  | 'SUPERVISOR_DELEGATION_REVOKED'
   | 'ATTENDANCE_SUPERVISOR_APPROVED'
   | 'ATTENDANCE_HR_APPROVED'
   | 'ATTENDANCE_RETURNED';
@@ -44,7 +49,21 @@ export type WorkflowNotificationPayload = {
   reason?: string | null;
   title?: string | null;
   actorUserId?: string | null;
+  actorName?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  employeeCount?: number | null;
+  recordCount?: number | null;
+  leaveType?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  durationMinutes?: number | null;
+  delegatingSupervisorName?: string | null;
   metadata?: Record<string, unknown>;
+};
+
+export type WorkflowNotificationOptions = {
+  channels?: NotificationChannel[];
 };
 
 type RenderedNotification = {
@@ -66,7 +85,7 @@ class GraphEmailProvider implements NotificationProvider {
   private token: { accessToken: string; expiresAt: number } | null = null;
 
   isEnabled() {
-    return isTruthy(process.env.NOTIFICATIONS_EMAIL_ENABLED);
+    return workflowNotificationsAreEnabled() && isTruthy(process.env.NOTIFICATIONS_EMAIL_ENABLED);
   }
 
   async send(input: { destination: string; subject?: string | null; message: string }): Promise<SendResult> {
@@ -155,7 +174,7 @@ class GraphEmailProvider implements NotificationProvider {
 
 class EthioTelecomSmsProvider implements NotificationProvider {
   isEnabled() {
-    return isTruthy(process.env.NOTIFICATIONS_SMS_ENABLED);
+    return workflowNotificationsAreEnabled() && isTruthy(process.env.NOTIFICATIONS_SMS_ENABLED);
   }
 
   async send(input: { destination: string; message: string }): Promise<SendResult> {
@@ -205,7 +224,13 @@ class NotificationService {
   private emailProvider = new GraphEmailProvider();
   private smsProvider = new EthioTelecomSmsProvider();
 
-  async enqueueWorkflowNotification(eventType: WorkflowNotificationEvent, payload: WorkflowNotificationPayload) {
+  async enqueueWorkflowNotification(
+    eventType: WorkflowNotificationEvent,
+    payload: WorkflowNotificationPayload,
+    options: WorkflowNotificationOptions = {},
+  ) {
+    if (!workflowNotificationsAreEnabled()) return;
+
     const recipients = await this.resolveRecipients(eventType, payload);
     const rendered = renderWorkflowNotification(eventType, payload);
     const relatedEntityType = payload.entityType ?? inferEntityType(eventType);
@@ -216,7 +241,8 @@ class NotificationService {
       rendered,
       relatedEntityType,
       relatedEntityId: payload.entityId,
-      metadata: payload.metadata ?? null,
+      metadata: buildNotificationMetadata(payload),
+      channels: options.channels ?? ['EMAIL', 'SMS'],
     })));
   }
 
@@ -227,11 +253,9 @@ class NotificationService {
     relatedEntityType: string;
     relatedEntityId: string;
     metadata: Record<string, unknown> | null;
+    channels: NotificationChannel[];
   }) {
-    await Promise.all([
-      this.enqueueChannel('EMAIL', input.recipient, input.rendered, input),
-      this.enqueueChannel('SMS', input.recipient, input.rendered, input),
-    ]);
+    await Promise.all(input.channels.map((channel) => this.enqueueChannel(channel, input.recipient, input.rendered, input)));
   }
 
   private async enqueueChannel(
@@ -283,6 +307,15 @@ class NotificationService {
 
   private async resolveRecipients(eventType: WorkflowNotificationEvent, payload: WorkflowNotificationPayload) {
     const employeeId = payload.employeeId;
+
+    if (eventType === 'ATTENDANCE_SUPERVISOR_APPROVED') {
+      return getNotificationRecipientsByRole('human_resource');
+    }
+
+    if (eventType === 'ATTENDANCE_HR_APPROVED') {
+      return getNotificationRecipientsByRole('finance');
+    }
+
     if (!employeeId) return [];
 
     if (eventType.endsWith('_SUBMITTED')) {
@@ -290,17 +323,15 @@ class NotificationService {
       return getSupervisorNotificationRecipients(employeeId);
     }
 
-    if (eventType === 'ATTENDANCE_CORRECTION_HR_REVIEWED' || eventType === 'ATTENDANCE_SUPERVISOR_APPROVED') {
-      return eventType === 'ATTENDANCE_SUPERVISOR_APPROVED'
-        ? getHrNotificationRecipients()
-        : getSupervisorNotificationRecipients(employeeId);
+    if (eventType === 'ATTENDANCE_CORRECTION_HR_REVIEWED') {
+      return getSupervisorNotificationRecipients(employeeId);
     }
 
     if (eventType === 'LEAVE_REQUEST_SUPERVISOR_APPROVED' || eventType === 'LEAVE_INTERRUPTION_SUPERVISOR_APPROVED') {
       return getHrNotificationRecipients();
     }
 
-    if (eventType === 'ATTENDANCE_HR_APPROVED' || eventType === 'ATTENDANCE_RETURNED') {
+    if (eventType === 'ATTENDANCE_RETURNED') {
       return getSupervisorNotificationRecipients(employeeId);
     }
 
@@ -311,9 +342,13 @@ class NotificationService {
 
 export const notificationService = new NotificationService();
 
-export async function safeEnqueueWorkflowNotification(eventType: WorkflowNotificationEvent, payload: WorkflowNotificationPayload) {
+export async function safeEnqueueWorkflowNotification(
+  eventType: WorkflowNotificationEvent,
+  payload: WorkflowNotificationPayload,
+  options: WorkflowNotificationOptions = {},
+) {
   try {
-    await notificationService.enqueueWorkflowNotification(eventType, payload);
+    await notificationService.enqueueWorkflowNotification(eventType, payload, options);
   } catch (error) {
     console.error('Workflow notification failed safely:', {
       eventType,
@@ -334,7 +369,7 @@ export function normalizeEthiopianPhone(value?: string | null) {
   return null;
 }
 
-function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payload: WorkflowNotificationPayload): RenderedNotification {
+export function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payload: WorkflowNotificationPayload): RenderedNotification {
   const title = payload.title ?? humanizeEventType(eventType);
   const datePart = payload.date ? ` on ${payload.date}` : '';
   const reasonPart = payload.reason ? ` Reason: ${payload.reason}` : '';
@@ -347,6 +382,12 @@ function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payloa
     LEAVE_REQUEST_APPROVED: {
       subject: 'Leave request approved',
       message: `Your leave request${datePart} has been approved.`,
+    },
+    LEAVE_REQUEST_SUPERVISOR_DECISION: {
+      subject: payload.status === 'REJECTED' ? 'Leave request rejected by supervisor' : 'Leave request approved by supervisor',
+      message: payload.status === 'REJECTED'
+        ? `Your ${payload.leaveType ? `${payload.leaveType} ` : ''}leave request${datePart} was rejected by ${payload.actorName ?? 'your supervisor'}.${reasonPart}`
+        : `Your ${payload.leaveType ? `${payload.leaveType} ` : ''}leave request${datePart} was approved by ${payload.actorName ?? 'your supervisor'} and is awaiting HR authorization.`,
     },
     LEAVE_REQUEST_SUPERVISOR_APPROVED: {
       subject: 'Leave request awaiting HR authorization',
@@ -379,6 +420,10 @@ function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payloa
     OVERTIME_REQUEST_SUBMITTED: {
       subject: 'Overtime request submitted',
       message: `An overtime request${datePart} is waiting for your review.${reasonPart}`,
+    },
+    OVERTIME_ASSIGNED: {
+      subject: 'Overtime assigned',
+      message: `You have been assigned overtime${datePart} by ${payload.actorName ?? 'your supervisor'}${formatTimeWindow(payload.startAt, payload.endAt)}${formatDuration(payload.durationMinutes)}.${reasonPart}`,
     },
     OVERTIME_REQUEST_APPROVED: {
       subject: 'Overtime request approved',
@@ -420,13 +465,21 @@ function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payloa
       subject: 'Biometric exemption rejected',
       message: `Your biometric exemption request has been rejected.${reasonPart}`,
     },
+    SUPERVISOR_DELEGATION_ASSIGNED: {
+      subject: 'Supervisor delegation assigned',
+      message: `${payload.actorName ?? 'A supervisor'} delegated supervisor responsibilities to you for ${formatPeriod(payload.dateFrom, payload.dateTo)}.`,
+    },
+    SUPERVISOR_DELEGATION_REVOKED: {
+      subject: 'Supervisor delegation revoked',
+      message: `Your supervisor delegation from ${payload.delegatingSupervisorName ?? payload.actorName ?? 'the supervisor'} for ${formatPeriod(payload.dateFrom, payload.dateTo)} has been revoked.`,
+    },
     ATTENDANCE_SUPERVISOR_APPROVED: {
-      subject: 'Attendance approved by supervisor',
-      message: `A daily attendance record${datePart} has been supervisor approved and is ready for HR review.`,
+      subject: 'Attendance submitted for HR approval',
+      message: `Attendance for ${formatPeriod(payload.dateFrom, payload.dateTo)} covering ${formatEmployeeCount(payload.employeeCount)} (${formatRecordCount(payload.recordCount)}) was submitted by ${payload.actorName ?? 'a supervisor'} for HR approval.`,
     },
     ATTENDANCE_HR_APPROVED: {
-      subject: 'Attendance approved by HR',
-      message: `A daily attendance record${datePart} has been approved by HR for payroll readiness.`,
+      subject: 'Attendance ready for Finance',
+      message: `Attendance for ${formatPeriod(payload.dateFrom, payload.dateTo)} covering ${formatEmployeeCount(payload.employeeCount)} (${formatRecordCount(payload.recordCount)}) was submitted by ${payload.actorName ?? 'HR'} and is ready for Finance processing.`,
     },
     ATTENDANCE_RETURNED: {
       subject: 'Attendance returned',
@@ -443,9 +496,90 @@ function renderWorkflowNotification(eventType: WorkflowNotificationEvent, payloa
 function inferEntityType(eventType: WorkflowNotificationEvent) {
   if (eventType.startsWith('LEAVE_')) return 'leave_request';
   if (eventType.startsWith('OVERTIME_')) return 'overtime_request';
+  if (eventType.startsWith('SUPERVISOR_DELEGATION_')) return 'supervisor_delegation';
   if (eventType.startsWith('ATTENDANCE_CORRECTION_')) return 'manual_punch_request';
   if (eventType.startsWith('BIOMETRIC_EXEMPTION_')) return 'biometric_exemption';
   return 'attendance_daily_record';
+}
+
+function buildNotificationMetadata(payload: WorkflowNotificationPayload) {
+  const workflowContext = Object.fromEntries(Object.entries({
+    employeeId: payload.employeeId,
+    status: payload.status,
+    actorUserId: payload.actorUserId,
+    actorName: payload.actorName,
+    date: payload.date,
+    dateFrom: payload.dateFrom,
+    dateTo: payload.dateTo,
+    employeeCount: payload.employeeCount,
+    recordCount: payload.recordCount,
+    leaveType: payload.leaveType,
+    startAt: payload.startAt,
+    endAt: payload.endAt,
+    durationMinutes: payload.durationMinutes,
+    delegatingSupervisorName: payload.delegatingSupervisorName,
+  }).filter(([, value]) => value !== undefined && value !== null));
+  const metadata = { ...workflowContext, ...(payload.metadata ?? {}) };
+  return Object.keys(metadata).length ? metadata : null;
+}
+
+function formatPeriod(dateFrom?: string | null, dateTo?: string | null) {
+  if (dateFrom && dateTo) {
+    const from = formatGregorianDateTime(dateFrom);
+    const to = formatGregorianDateTime(dateTo);
+    return dateFrom === dateTo ? from : `${from} to ${to}`;
+  }
+  return formatGregorianDateTime(dateFrom ?? dateTo) ?? 'the approved period';
+}
+
+function formatEmployeeCount(value?: number | null) {
+  const count = value ?? 0;
+  return `${count} employee${count === 1 ? '' : 's'}`;
+}
+
+function formatRecordCount(value?: number | null) {
+  const count = value ?? 0;
+  return `${count} attendance record${count === 1 ? '' : 's'}`;
+}
+
+function formatTimeWindow(startAt?: string | null, endAt?: string | null) {
+  if (!startAt || !endAt) return '';
+  return ` from ${formatAddisTime(startAt)} to ${formatAddisTime(endAt)}`;
+}
+
+function formatDuration(minutes?: number | null) {
+  if (!minutes) return '';
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  const parts = [hours ? `${hours} hour${hours === 1 ? '' : 's'}` : '', remainder ? `${remainder} minute${remainder === 1 ? '' : 's'}` : ''].filter(Boolean);
+  return parts.length ? ` (${parts.join(' ')})` : '';
+}
+
+function formatAddisTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Africa/Addis_Ababa',
+  }).format(date);
+}
+
+function formatGregorianDateTime(value?: string | null) {
+  if (!value) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Africa/Addis_Ababa',
+  }).format(date);
 }
 
 function humanizeEventType(eventType: string) {
@@ -454,6 +588,10 @@ function humanizeEventType(eventType: string) {
 
 function isTruthy(value?: string | null) {
   return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
+}
+
+export function workflowNotificationsAreEnabled() {
+  return isTruthy(process.env.NOTIFICATIONS_ENABLED);
 }
 
 function extractProviderMessageId(value: unknown) {

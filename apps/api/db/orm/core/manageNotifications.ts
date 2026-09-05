@@ -227,6 +227,47 @@ export async function getHrNotificationRecipients(): Promise<NotificationRecipie
   }));
 }
 
+export async function getNotificationRecipientsByRole(roleName: string): Promise<NotificationRecipient[]> {
+  const normalizedRoleName = roleName.trim().toLowerCase();
+  if (!normalizedRoleName) return [];
+
+  const roleUsers = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    })
+    .from(user)
+    .leftJoin(userRoles, eq(userRoles.userId, user.id))
+    .leftJoin(roles, eq(roles.id, userRoles.roleId))
+    .where(or(
+      sql`lower(${roles.name}) = ${normalizedRoleName}`,
+      sql`EXISTS (
+        SELECT 1
+        FROM unnest(coalesce(${user.role}, ARRAY[]::text[])) AS legacy_role(role_name)
+        WHERE lower(legacy_role.role_name) = ${normalizedRoleName}
+      )`,
+    ));
+
+  const employeesByUserId = await db.query.employees.findMany({
+    where: sql`${employees.userId} IS NOT NULL`,
+    with: { user: true },
+  });
+  const employeeByUserId = new Map(employeesByUserId.map((employee) => [employee.userId, employee]));
+
+  return uniqueRecipients(roleUsers.map((roleUser) => {
+    const employee = employeeByUserId.get(roleUser.id);
+    if (employee) return mapEmployeeToRecipient(employee);
+    return {
+      userId: roleUser.id,
+      employeeId: null,
+      name: roleUser.name,
+      email: roleUser.email,
+      phoneNumber: null,
+    };
+  }));
+}
+
 function mapEmployeeToRecipient(employee: any): NotificationRecipient {
   return {
     userId: employee.userId ?? employee.user?.id ?? null,
