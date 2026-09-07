@@ -114,6 +114,27 @@ export const usersApi = {
     return data;
   },
 
+  unlockUser: async (id: string): Promise<CreateUserResponse> => {
+    const response = await fetch(
+      `${API_BASE_URL}/api/users/${id}/unlock`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
+    }
+
+    return data;
+  },
+
   updateProfile: async (profile: UserProfileUpdate): Promise<UserProfileUpdate> => {
     const response = await apiClient.patch('/api/profile', profile);
 

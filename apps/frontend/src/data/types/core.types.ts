@@ -1545,8 +1545,8 @@ export type CreateEmployeeInput = {
   middleNameAm?: string | null;
   lastNameAm?: string | null;
   gender?: string | null;
-  phoneNumber?: string | null;
-  email?: string | null;
+  phoneNumber: string;
+  email: string;
   departmentId: string;
   positionId?: string | null;
   positionName?: string | null;
@@ -1569,8 +1569,10 @@ export type CreateEmployeeInput = {
   isActive?: boolean;
 };
 
-export type UpdateEmployeeInput = Partial<CreateEmployeeInput> & {
+export type UpdateEmployeeInput = Partial<Omit<CreateEmployeeInput, 'email' | 'phoneNumber'>> & {
   employeeId: string;
+  email?: string | null;
+  phoneNumber?: string | null;
 };
 
 export type CreateEmployeeSupervisorInput = {

@@ -135,9 +135,13 @@ export async function createEmployee(input: CreateEmployeeInput) {
   await assertEmployeeReferences(input);
 
   const createdEmployee = await db.transaction(async (tx) => {
+    const employeeInput = {
+      ...input,
+      userId: input.userId ?? await ensureEmployeeUserAccount(input, tx),
+    };
     const [employee] = await tx
       .insert(employees)
-      .values(normalizeEmployeeInput(input) as any)
+      .values(normalizeEmployeeInput(employeeInput) as any)
       .returning();
 
     const created = await getEmployeeById(employee.id, tx);
@@ -801,6 +805,61 @@ async function assertUserExists(userId: string, tx: DbClient = db) {
   });
 
   if (!found) throw new Error('User not found');
+}
+
+async function ensureEmployeeUserAccount(input: CreateEmployeeInput, tx: DbClient = db) {
+  const email = normalizeLoginEmail(input.email);
+  const phone = normalizeLoginPhone(input.phoneNumber);
+
+  if (!email) throw new Error('Email is required');
+  if (!phone) throw new Error('Phone number is required');
+
+  const existingUser = await tx.query.user.findFirst({
+    where: or(eq(user.email, email), eq(user.phone, phone)),
+    columns: { id: true, email: true, phone: true },
+  });
+
+  if (existingUser) {
+    const linkedEmployee = await tx.query.employees.findFirst({
+      where: eq(employees.userId, existingUser.id),
+      columns: { id: true },
+    });
+    if (linkedEmployee) {
+      throw new Error('A user with this email or phone is already linked to another employee');
+    }
+
+    await syncLinkedUserContact(existingUser.id, { email, phoneNumber: phone }, tx);
+    await ensureEmployeeRole(existingUser.id, tx);
+    return existingUser.id;
+  }
+
+  const userId = randomUUID();
+  await tx.insert(user).values({
+    id: userId,
+    name: buildImportUserName(input as PermanentEmployeeImportInput),
+    email,
+    phone,
+    emailVerified: true,
+    role: ['employee'],
+  });
+  await ensureEmployeeRole(userId, tx);
+  return userId;
+}
+
+async function ensureEmployeeRole(userId: string, tx: DbClient = db) {
+  const employeeRole = await tx.query.roles.findFirst({
+    where: eq(roles.name, 'employee'),
+    columns: { id: true },
+  });
+
+  if (!employeeRole) return;
+
+  await tx
+    .insert(userRoles)
+    .values({ userId, roleId: employeeRole.id })
+    .onConflictDoNothing({
+      target: [userRoles.userId, userRoles.roleId],
+    });
 }
 
 async function assertEmployeeReferences(input: Partial<CreateEmployeeInput>) {

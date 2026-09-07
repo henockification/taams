@@ -8,6 +8,9 @@ export interface User {
   email: string | null;
   phone?: string | null;
   emailVerified: boolean | null;
+  locked?: boolean;
+  lockedUntil?: string | null;
+  failedLoginCount?: number;
   role: string[];
   createdAt: string;
   updatedAt?: string;

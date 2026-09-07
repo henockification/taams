@@ -15,6 +15,8 @@ import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
 import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
+import { useUnlockUser } from '@/data/hooks/users.hooks';
+import { useTranslations } from 'next-intl';
 
 interface User {
   id: string;
@@ -22,6 +24,9 @@ interface User {
   email: string | null;
   phone?: string | null;
   emailVerified: boolean | null;
+  locked?: boolean;
+  lockedUntil?: string | null;
+  failedLoginCount?: number;
   role: string[];
   createdAt: string;
   updatedAt: string;
@@ -34,6 +39,7 @@ interface UserResponse {
 }
 
 export default function UserDetailPage() {
+  const t = useTranslations('users');
   const { formatDateTime } = useCalendarPreference();
   const params = useParams();
   const router = useRouter();
@@ -45,6 +51,7 @@ export default function UserDetailPage() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const { data: rolesResponse, isLoading: rolesLoading } = useRoles();
   const assignUserRoles = useAssignUserRoles();
+  const unlockUser = useUnlockUser();
   const roles = rolesResponse?.roles ?? [];
 
   const fetchUser = useCallback(async () => {
@@ -121,6 +128,25 @@ export default function UserDetailPage() {
 
       return current.filter((id) => id !== roleId);
     });
+  };
+
+  const handleUnlock = async () => {
+    if (!user) return;
+    try {
+      await unlockUser.mutateAsync(user.id);
+      await fetchUser();
+      notifications.show({
+        title: t('unlockSuccessTitle'),
+        message: t('unlockSuccessMessage'),
+        color: 'green',
+      });
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : t('unlockFailed'),
+        color: 'red',
+      });
+    }
   };
 
   const handleSaveRoles = async () => {
@@ -224,6 +250,9 @@ export default function UserDetailPage() {
                   <Badge variant={user.emailVerified ? 'default' : 'secondary'}>
                     {user.emailVerified ? 'Verified' : 'Unverified'}
                   </Badge>
+                  <Badge variant={user.locked ? 'destructive' : 'outline'}>
+                    {user.locked ? t('locked') : t('active')}
+                  </Badge>
                   <div className="flex items-center gap-2">
                     {user.role.map((role) => (
                       <Badge key={role} variant="outline">
@@ -256,6 +285,29 @@ export default function UserDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Phone</p>
                 <p className="font-medium">{user.phone || '—'}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-sm text-muted-foreground">{t('loginStatus')}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-3">
+                  <Badge variant={user.locked ? 'destructive' : 'outline'}>
+                    {user.locked ? t('locked') : t('active')}
+                  </Badge>
+                  {user.locked ? (
+                    <Button
+                      size="sm"
+                      onClick={handleUnlock}
+                      disabled={unlockUser.isPending}
+                    >
+                      {unlockUser.isPending ? t('unlocking') : t('unlock')}
+                    </Button>
+                  ) : null}
+                </div>
+                {user.locked && user.lockedUntil ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {t('lockedUntil')}: {formatDateTime(user.lockedUntil)}
+                  </p>
+                ) : null}
               </div>
               <Separator />
               <div>

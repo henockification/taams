@@ -55,6 +55,18 @@ export const useCreateUser = () => {
   });
 };
 
+export const useUnlockUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => usersApi.unlockUser(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.detail(id) });
+    },
+  });
+};
+
 export const useUpdateProfile = () => {
   return useMutation({
     mutationFn: (profile: UserProfileUpdate) => usersApi.updateProfile(profile),

@@ -4,6 +4,8 @@ import {
   authenticateIdentifierPassword,
   createOtpVerification,
   createSessionForUser,
+  FAILED_LOGIN_LIMIT,
+  LOCKOUT_MINUTES,
   verifyOtpForPurpose,
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
@@ -11,8 +13,6 @@ import { parseLoginIdentifier } from '../../../lib/login-identifier';
 import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
 import { getRequestClientIp } from '../../../middleware/auth';
 import { formatAuthUser, setSessionCookie } from './helpers';
-
-const INVALID_CREDENTIALS = 'Invalid email, phone, or password';
 
 export async function signInEmailHandler(c: Context) {
   try {
@@ -22,7 +22,12 @@ export async function signInEmailHandler(c: Context) {
     const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
 
     if (!parsed || !password) {
-      return c.json({ message: INVALID_CREDENTIALS }, 400);
+      return c.json({
+        message: `Invalid email, phone, or password. You can try up to ${FAILED_LOGIN_LIMIT} times. After that the account is locked for ${LOCKOUT_MINUTES} minutes.`,
+        code: 'INVALID_CREDENTIALS',
+        maxAttempts: FAILED_LOGIN_LIMIT,
+        lockoutMinutes: LOCKOUT_MINUTES,
+      }, 400);
     }
 
     const authResult = await authenticateIdentifierPassword(parsed, password);
@@ -40,7 +45,15 @@ export async function signInEmailHandler(c: Context) {
         requestId: c.get('requestId') ?? null,
         metadata: { reason: authResult.reason, method: parsed.email ? 'email' : 'phone' },
       });
-      return c.json({ message: INVALID_CREDENTIALS }, 401);
+      const locked = authResult.reason === 'ACCOUNT_LOCKED';
+      return c.json({
+        message: locked
+          ? `This account is locked after ${FAILED_LOGIN_LIMIT} failed attempts. Try again in ${LOCKOUT_MINUTES} minutes or ask an administrator to unlock it.`
+          : `Invalid email, phone, or password. You can try up to ${FAILED_LOGIN_LIMIT} times. After that the account is locked for ${LOCKOUT_MINUTES} minutes.`,
+        code: locked ? 'ACCOUNT_LOCKED' : 'INVALID_CREDENTIALS',
+        maxAttempts: FAILED_LOGIN_LIMIT,
+        lockoutMinutes: LOCKOUT_MINUTES,
+      }, 401);
     }
 
     const identifier = authResult.identifier;

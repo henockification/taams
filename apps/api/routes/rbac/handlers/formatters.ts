@@ -23,6 +23,16 @@ export function formatRole(role: any) {
   };
 }
 
+export function formatUserLock(user: { lockedUntil?: Date | string | null; failedLoginCount?: number | null }) {
+  const lockedUntil = user.lockedUntil ? new Date(user.lockedUntil) : null;
+  const locked = Boolean(lockedUntil && !Number.isNaN(lockedUntil.getTime()) && lockedUntil.getTime() > Date.now());
+  return {
+    locked,
+    lockedUntil: locked && lockedUntil ? lockedUntil.toISOString() : null,
+    failedLoginCount: user.failedLoginCount ?? 0,
+  };
+}
+
 export function formatUser(user: any) {
   const roleNames = (user.userRoles ?? []).map((userRole: any) => userRole.role.name);
   const roles = roleNames.length ? roleNames : user.role ?? ['user'];
@@ -38,5 +48,6 @@ export function formatUser(user: any) {
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
     image: user.image,
+    ...formatUserLock(user),
   };
 }

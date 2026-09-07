@@ -12,8 +12,9 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 const SESSION_TOUCH_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
-const FAILED_LOGIN_LIMIT = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
+export const FAILED_LOGIN_LIMIT = 5;
+export const LOCKOUT_MS = 15 * 60 * 1000;
+export const LOCKOUT_MINUTES = 15;
 
 export type AuthUser = typeof user.$inferSelect;
 export type AuthSession = typeof authSessions.$inferSelect;
@@ -176,7 +177,7 @@ export async function authenticateIdentifierPassword(input: { email?: string | n
 
   if (foundUser.lockedUntil && foundUser.lockedUntil > now) {
     await runDummyPasswordHash(password);
-    return { success: false as const, reason: 'INVALID_CREDENTIALS' };
+    return { success: false as const, reason: 'ACCOUNT_LOCKED' };
   }
 
   const credential = await db.query.authCredentials.findFirst({
@@ -293,4 +294,19 @@ export async function deleteSessionByToken(token: string) {
     eq(authSessions.token, hashed),
     eq(authSessions.token, token),
   ));
+}
+
+export async function unlockUserLogin(userId: string) {
+  const found = await db.query.user.findFirst({
+    where: eq(user.id, userId),
+  });
+  if (!found) throw new Error('User not found');
+
+  const [updated] = await db.update(user).set({
+    failedLoginCount: 0,
+    lockedUntil: null,
+    updatedAt: new Date(),
+  }).where(eq(user.id, userId)).returning();
+
+  return updated;
 }

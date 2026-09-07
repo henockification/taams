@@ -8,6 +8,8 @@ type AuthError = {
   message: string;
   code?: string;
   status?: number;
+  maxAttempts?: number;
+  lockoutMinutes?: number;
 };
 
 async function authFetch(path: string, init?: RequestInit) {
@@ -29,6 +31,8 @@ async function authFetch(path: string, init?: RequestInit) {
         message: data?.message || data?.error || "Request failed",
         code: data?.code,
         status: response.status,
+        maxAttempts: data?.maxAttempts,
+        lockoutMinutes: data?.lockoutMinutes,
       } as AuthError,
     };
   }

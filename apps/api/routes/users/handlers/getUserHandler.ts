@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { getUserById } from '../../../db/orm/users/getUserById';
+import { formatUserLock } from '../../rbac/handlers/formatters';
 
 export async function getUserHandler(c: Context) {
   try {
@@ -30,10 +31,11 @@ export async function getUserHandler(c: Context) {
       email: user.email ?? null,
       phone: user.phone ?? null,
       emailVerified: user.emailVerified,
-      role: user.role || ['user'], // Default to ['user'] if null
+      role: user.role || ['user'],
       createdAt: user.createdAt.toISOString(),
       updatedAt: user.updatedAt.toISOString(),
       image: user.image,
+      ...formatUserLock(user),
     };
     
     console.log('User fetched successfully:', user.id);

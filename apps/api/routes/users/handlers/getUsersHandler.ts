@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import { getAllUsersPaginated } from '../../../db/orm/users/getAllUsers';
+import { formatUserLock } from '../../rbac/handlers/formatters';
 
 export async function getUsersHandler(c: Context) {
   try {
@@ -19,8 +20,9 @@ export async function getUsersHandler(c: Context) {
       email: u.email ?? null,
       phone: u.phone ?? null,
       emailVerified: u.emailVerified,
-      role: u.role || ['user'], // Default to ['user'] if null
-      createdAt: u.createdAt.toISOString()
+      role: u.role || ['user'],
+      createdAt: u.createdAt.toISOString(),
+      ...formatUserLock(u),
     }));
     
     console.log('Users fetched successfully:', result.users.length);

@@ -1,7 +1,7 @@
 'use client';
 
 import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, FileSpreadsheet, UploadCloud } from 'lucide-react';
+import { AlertCircle, CheckCircle2, FileSpreadsheet, Plus, UploadCloud } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -247,6 +247,10 @@ export function ImportedEmployeesPage({
           </FilterField>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => router.push(`${detailBasePath}/new`)}>
+            <Plus className="size-4" />
+            {t('addEmployee')}
+          </Button>
           <Button onClick={() => setImportDialogOpen(true)}>
             <UploadCloud className="size-4" />
             {common('import')}

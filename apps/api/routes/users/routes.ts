@@ -14,6 +14,7 @@ import { getUsersHandler } from './handlers/getUsersHandler';
 import { getUserHandler } from './handlers/getUserHandler';
 import { createUserHandler } from './handlers/createUserHandler';
 import { updateUserHandler } from './handlers/updateUserHandler';
+import { unlockUserHandler } from './handlers/unlockUserHandler';
 import { assignUserRolesHandler } from '../rbac/handlers/assignUserRolesHandler';
 import { disabledSignupHandler } from './handlers/disabledSignupHandler';
 import { requirePermission } from '../../middleware/rbac';
@@ -153,6 +154,37 @@ export const updateUserRoute = createRoute({
   },
 });
 
+export const unlockUserRoute = createRoute({
+  method: 'post',
+  path: '/users/{id}/unlock',
+  tags: ['Users'],
+  summary: 'Unlock User',
+  description: 'Clear login lockout and failed-attempt count for a user',
+  request: {
+    params: z.object({
+      id: z.string().openapi({ example: 'user_123' }),
+    }),
+  },
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: UserResponseSchema,
+        },
+      },
+      description: 'Unlocked user',
+    },
+    404: {
+      content: {
+        'application/json': {
+          schema: ErrorResponseSchema,
+        },
+      },
+      description: 'User not found',
+    },
+  },
+});
+
 export const assignUserRolesRoute = createRoute({
   method: 'post',
   path: '/users/{id}/roles',
@@ -197,6 +229,7 @@ usersApp.post('/users/signup', disabledSignupHandler);
 usersApp.get('/users/:id', requirePermission('users:read'), getUserHandler);
 usersApp.post('/users', requirePermission('users:create'), createUserHandler);
 usersApp.patch('/users/:id', requirePermission('users:update'), updateUserHandler);
+usersApp.post('/users/:id/unlock', requirePermission('users:update'), unlockUserHandler);
 usersApp.post('/users/:id/roles', requirePermission('users:assign-roles'), assignUserRolesHandler);
 
 // Register the OpenAPI definition
@@ -204,6 +237,7 @@ openApiApp.openapi(usersRoute, getUsersHandler)
           .openapi(userRoute, getUserHandler)
           .openapi(createUserRoute, createUserHandler)
           .openapi(updateUserRoute, updateUserHandler)
+          .openapi(unlockUserRoute, unlockUserHandler)
           .openapi(assignUserRolesRoute, assignUserRolesHandler);
 
 export default usersApp;

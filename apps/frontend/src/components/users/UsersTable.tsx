@@ -8,9 +8,11 @@ import { useUsers } from '../../data/hooks/users.hooks';
 import { OurTable, TableColumn, TableFilter, TableSort, TablePagination } from '../ui';
 import type { User } from '../../data/types/api';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
+import { useTranslations } from 'next-intl';
 
 export default function UsersTable() {
   const router = useRouter();
+  const t = useTranslations('users');
   const { formatDate } = useCalendarPreference();
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -31,6 +33,7 @@ export default function UsersTable() {
   const filteredUsers = useMemo(() => {
     const query = searchValue.trim().toLowerCase();
     const emailVerifiedFilter = filters.emailVerified;
+    const lockedFilter = filters.locked;
 
     let result = allUsers.filter((user) => {
       if (emailVerifiedFilter !== undefined && emailVerifiedFilter !== '') {
@@ -41,6 +44,12 @@ export default function UsersTable() {
           (value) => String(user.emailVerified) === String(value)
         );
         if (!matchesStatus) return false;
+      }
+
+      if (lockedFilter !== undefined && lockedFilter !== '') {
+        const values = Array.isArray(lockedFilter) ? lockedFilter : [lockedFilter];
+        const matchesLock = values.some((value) => String(Boolean(user.locked)) === String(value));
+        if (!matchesLock) return false;
       }
 
       if (!query) return true;
@@ -140,6 +149,21 @@ export default function UsersTable() {
       dataIndex: 'phone',
       sortable: true,
       render: (value) => value || '—',
+    },
+    {
+      key: 'locked',
+      title: t('loginStatus'),
+      dataIndex: 'locked',
+      render: (value) => (
+        <Badge variant={value ? 'destructive' : 'outline'}>
+          {value ? t('locked') : t('active')}
+        </Badge>
+      ),
+      filterable: true,
+      filterOptions: [
+        { label: t('locked'), value: 'true' },
+        { label: t('active'), value: 'false' },
+      ],
     },
     {
       key: 'emailVerified',

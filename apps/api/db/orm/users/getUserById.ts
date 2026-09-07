@@ -12,6 +12,8 @@ type UserModel = {
   createdAt: Date;
   updatedAt: Date;
   image: string | null;
+  failedLoginCount: number;
+  lockedUntil: Date | null;
 };
 
 export async function getUserById(id: string): Promise<UserModel | null> {

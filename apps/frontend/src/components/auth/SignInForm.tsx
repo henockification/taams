@@ -101,12 +101,21 @@ export function SignInForm() {
 
   const getErrorMessage = (err: unknown) => {
     console.error('Sign in error:', err);
-    return typeof err === 'object' &&
-      err !== null &&
-      'message' in err &&
-      typeof (err as { message?: string }).message === 'string'
-      ? (err as { message: string }).message
-      : t('loginFailed');
+    if (typeof err === 'object' && err !== null) {
+      const error = err as { message?: string; code?: string; maxAttempts?: number; lockoutMinutes?: number };
+      const max = error.maxAttempts ?? 5;
+      const minutes = error.lockoutMinutes ?? 15;
+      if (error.code === 'ACCOUNT_LOCKED') {
+        return t('accountLocked', { max, minutes });
+      }
+      if (error.code === 'INVALID_CREDENTIALS') {
+        return t('invalidCredentialsWithLimit', { max, minutes });
+      }
+      if (typeof error.message === 'string') {
+        return error.message;
+      }
+    }
+    return t('loginFailed');
   };
 
   const verifySignInOtp = async (otp: string) => {

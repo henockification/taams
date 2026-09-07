@@ -718,8 +718,8 @@ export const CreateEmployeeRequestSchema = z.object({
   middleNameAm: z.string().max(100).nullable().optional(),
   lastNameAm: z.string().max(100).nullable().optional(),
   gender: z.string().max(20).nullable().optional(),
-  phoneNumber: z.string().max(50).nullable().optional(),
-  email: z.string().email().max(150).nullable().optional(),
+  phoneNumber: z.string().min(1).max(50),
+  email: z.string().email().max(150),
   departmentId: UuidSchema,
   positionId: UuidSchema.nullable().optional(),
   positionName: z.string().max(200).nullable().optional(),
@@ -742,7 +742,10 @@ export const CreateEmployeeRequestSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const UpdateEmployeeRequestSchema = CreateEmployeeRequestSchema.partial();
+export const UpdateEmployeeRequestSchema = CreateEmployeeRequestSchema.partial().extend({
+  phoneNumber: z.string().max(50).nullable().optional(),
+  email: z.string().email().max(150).nullable().optional(),
+});
 
 export const CreateEmployeeSupervisorRequestSchema = z.object({
   supervisorId: UuidSchema,
