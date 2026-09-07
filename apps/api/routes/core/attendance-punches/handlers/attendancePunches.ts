@@ -25,9 +25,11 @@ export async function createAttendancePunchHandler(c: Context) {
       return validationErrorResponse(c, parsed.error.message);
     }
 
-    if (parsed.data.employeeId) {
-      await assertCanAccessEmployee(parsed.data.employeeId, scope);
+    if (!parsed.data.employeeId) {
+      return validationErrorResponse(c, 'employeeId is required');
     }
+
+    await assertCanAccessEmployee(parsed.data.employeeId, scope);
 
     const attendancePunch = await createAttendancePunch(parsed.data);
 

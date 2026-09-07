@@ -14,6 +14,7 @@ import {
   getBiometricProvisioningJobsHandler,
   retryBiometricProvisioningJobHandler,
 } from './handlers/biometricProvisioning';
+import { requirePermission } from '../../../middleware/rbac';
 
 const biometricProvisioningApp = new Hono();
 const uuidParam = z.object({ id: z.string().uuid() });
@@ -118,11 +119,11 @@ const listRoute = createRoute({
   },
 });
 
-biometricProvisioningApp.post('/biometric-provisioning/previews', createBiometricProvisioningPreviewHandler);
-biometricProvisioningApp.post('/biometric-provisioning/jobs/:previewId/apply', applyBiometricProvisioningPreviewHandler);
-biometricProvisioningApp.post('/biometric-provisioning/jobs/:id/retry', retryBiometricProvisioningJobHandler);
-biometricProvisioningApp.get('/biometric-provisioning/jobs/:id', getBiometricProvisioningJobHandler);
-biometricProvisioningApp.get('/biometric-provisioning/jobs', getBiometricProvisioningJobsHandler);
+biometricProvisioningApp.post('/biometric-provisioning/previews', requirePermission('biometric-provisioning:execute'), createBiometricProvisioningPreviewHandler);
+biometricProvisioningApp.post('/biometric-provisioning/jobs/:previewId/apply', requirePermission('biometric-provisioning:execute'), applyBiometricProvisioningPreviewHandler);
+biometricProvisioningApp.post('/biometric-provisioning/jobs/:id/retry', requirePermission('biometric-provisioning:execute'), retryBiometricProvisioningJobHandler);
+biometricProvisioningApp.get('/biometric-provisioning/jobs/:id', requirePermission('biometric-provisioning:read'), getBiometricProvisioningJobHandler);
+biometricProvisioningApp.get('/biometric-provisioning/jobs', requirePermission('biometric-provisioning:read'), getBiometricProvisioningJobsHandler);
 
 openApiApp
   .openapi(previewRoute, createBiometricProvisioningPreviewHandler as any)

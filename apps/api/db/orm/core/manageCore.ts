@@ -148,6 +148,9 @@ export async function createEmployee(input: CreateEmployeeInput) {
 }
 
 export async function createEmployeeScoped(input: CreateEmployeeInput, scope: EmployeeVisibilityScope) {
+  if (scope.type === 'self') {
+    throw new Error('You do not have permission to create employees');
+  }
   return createEmployee(input);
 }
 
@@ -282,6 +285,9 @@ export async function upsertPermanentEmployees(
   inputs: PermanentEmployeeImportInput[],
   options: { scope?: EmployeeVisibilityScope; employmentType?: 'PERMANENT' | 'CONTRACT' } = {},
 ): Promise<PermanentEmployeeImportResult> {
+  if (options.scope?.type === 'self') {
+    throw new Error('You do not have permission to import employees');
+  }
   if (inputs.length === 0) {
     return { created: 0, updated: 0, skipped: 0, employees: [] };
   }

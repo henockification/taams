@@ -771,7 +771,10 @@ function reportError(c: any, error: unknown) {
     : message.includes('permission')
       ? 403
       : 500;
-  return c.json({ success: false, error: message }, status);
+  if (status >= 500) {
+    console.error('Report error', error);
+  }
+  return c.json({ success: false, error: status >= 500 ? 'Failed to generate report' : message }, status);
 }
 
 export default reportsApp;

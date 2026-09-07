@@ -1,5 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { safeSendDirectNotification, workflowNotificationsAreEnabled } from './notifications';
+import { allowMasterOtp, isProduction, requireAuthSecret } from './runtime-env';
 
 export const MASTER_OTP_CODE = '424242';
 export const OTP_TTL_MINUTES = 10;
@@ -7,18 +8,28 @@ export const OTP_TTL_MINUTES = 10;
 export type OtpPurpose = 'sign-in' | 'password-reset' | 'email-verification';
 
 export function generateOtpCode() {
-  if (!workflowNotificationsAreEnabled()) return MASTER_OTP_CODE;
+  const notificationsEnabled = workflowNotificationsAreEnabled();
+  if (!notificationsEnabled) {
+    if (isProduction() || !allowMasterOtp()) {
+      throw new Error('OTP delivery is not configured');
+    }
+    return MASTER_OTP_CODE;
+  }
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
 export function hashOtp(code: string) {
-  return createHmac('sha256', otpHashSecret()).update(code).digest('hex');
+  return createHmac('sha256', requireAuthSecret()).update(code).digest('hex');
 }
 
 export function verifyOtp(code: string, expectedHash: string) {
   const actual = Buffer.from(hashOtp(code), 'hex');
   const expected = Buffer.from(expectedHash, 'hex');
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export function isOtpTestingMode() {
+  return !isProduction() && allowMasterOtp() && !workflowNotificationsAreEnabled();
 }
 
 export async function sendOtp(identifier: string, purpose: OtpPurpose, code: string) {
@@ -32,10 +43,6 @@ export async function sendOtp(identifier: string, purpose: OtpPurpose, code: str
     metadata: { purpose, expiresInMinutes: OTP_TTL_MINUTES },
   });
   return { success: true };
-}
-
-function otpHashSecret() {
-  return process.env.BETTER_AUTH_SECRET || 'taams-local-otp-secret';
 }
 
 function otpCopy(purpose: OtpPurpose) {

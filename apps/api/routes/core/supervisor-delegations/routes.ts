@@ -12,6 +12,7 @@ import {
   getSupervisorDelegationsHandler,
   revokeSupervisorDelegationHandler,
 } from './handlers/supervisorDelegations';
+import { requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const supervisorDelegationsApp = new Hono();
 
@@ -82,9 +83,9 @@ export const revokeSupervisorDelegationRoute = createRoute({
   },
 });
 
-supervisorDelegationsApp.get('/supervisor-delegations', getSupervisorDelegationsHandler);
-supervisorDelegationsApp.post('/supervisor-delegations', createSupervisorDelegationHandler);
-supervisorDelegationsApp.post('/supervisor-delegations/:id/revoke', revokeSupervisorDelegationHandler);
+supervisorDelegationsApp.get('/supervisor-delegations', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), getSupervisorDelegationsHandler);
+supervisorDelegationsApp.post('/supervisor-delegations', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), createSupervisorDelegationHandler);
+supervisorDelegationsApp.post('/supervisor-delegations/:id/revoke', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), revokeSupervisorDelegationHandler);
 
 openApiApp
   .openapi(getSupervisorDelegationsRoute, getSupervisorDelegationsHandler as any)

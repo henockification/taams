@@ -4,6 +4,7 @@ import { ErrorResponseSchema } from '../../../schemas/shared';
 import { TimeOperationsSummaryResponseSchema } from '../../../schemas/core.schema';
 import { openApiApp } from '../../../lib/openapi';
 import { getTimeOperationsSummaryHandler } from './handlers/timeOperations';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const timeOperationsApp = new Hono();
 
@@ -24,7 +25,7 @@ export const getTimeOperationsSummaryRoute = createRoute({
   },
 });
 
-timeOperationsApp.get('/time-operations/summary', getTimeOperationsSummaryHandler);
+timeOperationsApp.get('/time-operations/summary', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve', 'overtime-requests:approve', 'manual-punch-requests:approve', 'hr-attendance-approvals:approve'), getTimeOperationsSummaryHandler);
 
 openApiApp.openapi(getTimeOperationsSummaryRoute, getTimeOperationsSummaryHandler as any);
 

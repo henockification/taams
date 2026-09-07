@@ -54,7 +54,7 @@ export async function createEmployeeHandler(c: Context) {
 
     return c.json({
       success: true,
-      employee: formatEmployee(employee),
+      employee: formatEmployee(employee, { includeSensitive: true }),
     }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to create employee');
@@ -68,7 +68,7 @@ export async function getEmployeesHandler(c: Context) {
 
     return c.json({
       success: true,
-      employees: result.map(formatEmployee),
+      employees: result.map((employee) => formatEmployee(employee)),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch employees');
@@ -96,7 +96,7 @@ export async function getEmployeesPaginatedHandler(c: Context) {
 
     return c.json({
       success: true,
-      employees: result.employees.map(formatEmployee),
+      employees: result.employees.map((employee) => formatEmployee(employee)),
       pagination: {
         total: result.total,
         page: result.page,
@@ -123,7 +123,7 @@ export async function getEmployeeHandler(c: Context) {
 
     return c.json({
       success: true,
-      employee: formatEmployee(employee),
+      employee: formatEmployee(employee, { includeSensitive: true }),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch employee');
@@ -145,7 +145,7 @@ export async function updateEmployeeHandler(c: Context) {
 
     return c.json({
       success: true,
-      employee: formatEmployee(employee),
+      employee: formatEmployee(employee, { includeSensitive: true }),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update employee');
@@ -171,6 +171,24 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
     }
 
     const upload = file as File;
+    const fileName = (upload.name || '').toLowerCase();
+    const mimeType = (upload.type || '').toLowerCase();
+    const allowedMimeTypes = new Set([
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream',
+    ]);
+
+    if (!fileName.endsWith('.xls') && !fileName.endsWith('.xlsx')) {
+      return validationErrorResponse(c, 'An .xls or .xlsx file is required');
+    }
+    if (mimeType && !allowedMimeTypes.has(mimeType)) {
+      return validationErrorResponse(c, 'An .xls or .xlsx file is required');
+    }
+    if (typeof upload.size === 'number' && upload.size > 2 * 1024 * 1024) {
+      return validationErrorResponse(c, 'Import file must be 2MB or smaller');
+    }
+
     const buffer = Buffer.from(await upload.arrayBuffer());
     const rows = parseEmployeeWorkbook(buffer, upload.name);
     const seenEmployeeCodes = new Set<string>();
@@ -214,7 +232,7 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
       failed: errors.length,
       totalRows: rows.length,
       errors,
-      employees: result.employees.map(formatEmployee),
+      employees: result.employees.map((employee) => formatEmployee(employee)),
     });
   } catch (error) {
     return coreErrorResponse(c, error, `Failed to import ${employmentType.toLowerCase()} employees`);

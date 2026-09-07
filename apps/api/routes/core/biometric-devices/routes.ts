@@ -22,6 +22,7 @@ import {
   testBiometricDeviceConnectionHandler,
   updateBiometricDeviceHandler,
 } from './handlers/biometricDevices';
+import { requirePermission } from '../../../middleware/rbac';
 
 const biometricDevicesApp = new Hono();
 
@@ -175,13 +176,13 @@ export const getBiometricDeviceSyncHistoryRoute = createRoute({
   },
 });
 
-biometricDevicesApp.post('/biometric-devices', createBiometricDeviceHandler);
-biometricDevicesApp.get('/biometric-devices', getBiometricDevicesHandler);
-biometricDevicesApp.get('/biometric-devices/:id', getBiometricDeviceHandler);
-biometricDevicesApp.put('/biometric-devices/:id', updateBiometricDeviceHandler);
-biometricDevicesApp.post('/biometric-devices/:id/sync', syncBiometricDeviceHandler);
-biometricDevicesApp.post('/biometric-devices/:id/test-connection', testBiometricDeviceConnectionHandler);
-biometricDevicesApp.get('/biometric-devices/:id/sync-history', getBiometricDeviceSyncHistoryHandler);
+biometricDevicesApp.post('/biometric-devices', requirePermission('biometric-devices:read'), createBiometricDeviceHandler);
+biometricDevicesApp.get('/biometric-devices', requirePermission('biometric-devices:read'), getBiometricDevicesHandler);
+biometricDevicesApp.get('/biometric-devices/:id', requirePermission('biometric-devices:read'), getBiometricDeviceHandler);
+biometricDevicesApp.put('/biometric-devices/:id', requirePermission('biometric-devices:read'), updateBiometricDeviceHandler);
+biometricDevicesApp.post('/biometric-devices/:id/sync', requirePermission('biometric-devices:read', 'biometric-provisioning:execute'), syncBiometricDeviceHandler);
+biometricDevicesApp.post('/biometric-devices/:id/test-connection', requirePermission('biometric-devices:read'), testBiometricDeviceConnectionHandler);
+biometricDevicesApp.get('/biometric-devices/:id/sync-history', requirePermission('biometric-devices:read', 'reports-device-sync:read'), getBiometricDeviceSyncHistoryHandler);
 
 openApiApp
   .openapi(createBiometricDeviceRoute, createBiometricDeviceHandler as any)

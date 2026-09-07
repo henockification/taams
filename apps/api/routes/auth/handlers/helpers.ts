@@ -1,14 +1,15 @@
 import { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { cookieShouldBeSecure } from '../../../lib/runtime-env';
 
 export const SESSION_COOKIE_NAME = 'taams_session';
 
 export function setSessionCookie(c: Context, token: string, expiresAt: Date) {
   setCookie(c, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.FRONTEND_URL?.startsWith("https://") ?? false,
-    sameSite: "Lax",
-    path: "/",
+    secure: cookieShouldBeSecure(),
+    sameSite: 'Lax',
+    path: '/',
     expires: expiresAt,
     domain: process.env.COOKIE_DOMAIN || undefined,
   });
@@ -41,7 +42,6 @@ export function formatAuthUser(user: any) {
 export function formatAuthSession(session: any) {
   return {
     id: session.id,
-    token: session.token,
     userId: session.userId,
     expiresAt: session.expiresAt,
     createdAt: session.createdAt,

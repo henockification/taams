@@ -6,8 +6,6 @@ import { SESSION_COOKIE_NAME } from '../routes/auth/handlers/helpers';
 
 const PUBLIC_API_PREFIXES = [
   '/api/auth',
-  '/api/docs',
-  '/api/openapi.json',
   '/api/zkteco',
 ];
 

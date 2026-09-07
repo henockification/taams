@@ -1,7 +1,9 @@
 import { Context } from 'hono';
+import { db } from '../../../db/db';
 import { createPasswordResetVerification, findUserByEmail } from '../../../db/orm/auth/manageAuth';
-import { sendOtp } from '../../../lib/otp';
-import { workflowNotificationsAreEnabled } from '../../../lib/notifications';
+import { writeAuditEvent } from '../../../lib/audit';
+import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
+import { getRequestClientIp } from '../../../middleware/auth';
 
 export async function requestPasswordResetHandler(c: Context) {
   try {
@@ -19,14 +21,26 @@ export async function requestPasswordResetHandler(c: Context) {
       await sendOtp(email, 'password-reset', code);
     }
 
+    await writeAuditEvent(db, {
+      action: 'AUTH_PASSWORD_RESET_REQUESTED',
+      resourceType: 'user',
+      resourceId: foundUser?.id ?? null,
+      resourceLabel: email,
+      actorUserId: foundUser?.id ?? null,
+      actorName: foundUser?.name ?? null,
+      actorEmail: email,
+      actorType: 'USER',
+      ipAddress: getRequestClientIp(c),
+      userAgent: c.req.header('user-agent') ?? null,
+      requestId: c.get('requestId') ?? null,
+    });
+
     return c.json({
       success: true,
-      testingMode: !workflowNotificationsAreEnabled(),
+      ...(isOtpTestingMode() ? { testingMode: true } : {}),
     });
   } catch (error) {
-    return c.json({
-      message: 'Failed to request password reset',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    }, 500);
+    console.error('Failed to request password reset', error);
+    return c.json({ message: 'Failed to request password reset' }, 500);
   }
 }

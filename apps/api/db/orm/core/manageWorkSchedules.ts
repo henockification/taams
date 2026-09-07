@@ -17,6 +17,7 @@ import type {
   UpdateWorkScheduleInput,
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -26,6 +27,12 @@ export async function createWorkSchedule(input: CreateWorkScheduleInput) {
     .values(normalizeWorkScheduleInput(input) as any)
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'WORK_SCHEDULE_CREATED',
+    resourceType: 'work_schedule',
+    resourceId: workSchedule.id,
+    resourceLabel: workSchedule.nameEn,
+  });
   return workSchedule;
 }
 
@@ -70,6 +77,12 @@ export async function updateWorkSchedule(id: string, input: UpdateWorkScheduleIn
     .where(eq(workSchedules.id, id))
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'WORK_SCHEDULE_UPDATED',
+    resourceType: 'work_schedule',
+    resourceId: workSchedule.id,
+    resourceLabel: workSchedule.nameEn,
+  });
   return workSchedule;
 }
 

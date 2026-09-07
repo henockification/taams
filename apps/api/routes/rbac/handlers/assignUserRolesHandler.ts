@@ -31,10 +31,10 @@ export async function assignUserRolesHandler(c: Context) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const status = message === 'User not found' ? 404 : message.includes('not found') ? 400 : 500;
 
+    console.error('Failed to assign roles to user', error);
     return c.json({
       success: false,
-      error: 'Failed to assign roles to user',
-      details: message,
+      error: status >= 500 ? 'Failed to assign roles to user' : message,
     }, status);
   }
 }

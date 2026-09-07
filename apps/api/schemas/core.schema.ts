@@ -852,7 +852,7 @@ export const CreateBiometricDeviceSyncRequestSchema = z.object({
 });
 
 export const CreateAttendancePunchRequestSchema = z.object({
-  employeeId: UuidSchema.nullable().optional(),
+  employeeId: UuidSchema,
   biometricId: z.string().min(1).max(100),
   deviceId: UuidSchema.nullable().optional(),
   syncBatchId: UuidSchema.nullable().optional(),

@@ -30,10 +30,10 @@ export async function createUserHandler(c: Context) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const status = message.includes('not found') ? 400 : 500;
 
+    console.error('Failed to create user', error);
     return c.json({
       success: false,
-      error: 'Failed to create user',
-      details: message,
+      error: status >= 500 ? 'Failed to create user' : message,
     }, status);
   }
 }

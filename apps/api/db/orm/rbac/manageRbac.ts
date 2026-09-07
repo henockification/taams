@@ -1,7 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
-import { diffChanges, writeAuditEvent } from '../../../lib/audit';
+import { getAuditContext, diffChanges, writeAuditEvent } from '../../../lib/audit';
+import { hasSuperAdminRole, includesPrivilegedRole } from '../../../lib/privileged-roles';
 
 type DbClient = typeof db | any;
 const RESERVED_ROLE_NAMES = new Set(['super_admin', 'admin', 'executive', 'human_resource', 'supervisor', 'employee']);
@@ -222,6 +223,7 @@ export async function assignPermissionsToRole(roleId: string, permissionIds: str
 
 export async function createUserWithRoles(input: CreateUserInput) {
   return db.transaction(async (tx) => {
+    await assertActorCanAssignRoles(input.roleIds, tx);
     const roleNames = input.roleIds?.length ? await getRoleNamesByIds(input.roleIds, tx) : ['user'];
 
     const [createdUser] = await tx
@@ -268,6 +270,7 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
     if (input.image !== undefined) updateData.image = input.image;
 
     if (input.roleIds !== undefined) {
+      await assertActorCanAssignRoles(input.roleIds, tx);
       const roleNames = input.roleIds.length ? await getRoleNamesByIds(input.roleIds, tx) : ['user'];
       updateData.role = roleNames;
 
@@ -417,6 +420,22 @@ async function assertPermissionsExist(permissionIds: string[], tx: DbClient = db
 
   if (found.length !== uniquePermissionIds.length) {
     throw new Error('One or more permissions were not found');
+  }
+}
+
+async function assertActorCanAssignRoles(roleIds: string[] | undefined, tx: DbClient) {
+  if (!roleIds?.length) return;
+  const roleNames = await getRoleNamesByIds(roleIds, tx);
+  if (!includesPrivilegedRole(roleNames)) return;
+
+  const actorUserId = getAuditContext()?.actorUserId;
+  if (!actorUserId) {
+    throw new Error('Only a super administrator can assign privileged roles');
+  }
+
+  const actorRoles = await getUserRoleNames(actorUserId);
+  if (!hasSuperAdminRole(actorRoles)) {
+    throw new Error('Only a super administrator can assign privileged roles');
   }
 }
 

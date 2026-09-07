@@ -22,6 +22,7 @@ import {
   supervisorApproveAttendanceDailyRecordsHandler,
   updateSupervisorAttendanceDailyRecordPayrollHandler,
 } from './handlers/attendanceApprovals';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const attendanceApprovalsApp = new Hono();
 
@@ -179,15 +180,15 @@ export const returnAttendanceDailyRecordRoute = createRoute({
   },
 });
 
-attendanceApprovalsApp.post('/attendance-approvals/generate', generateAttendanceDailyRecordsHandler);
-attendanceApprovalsApp.get('/attendance-approvals/supervisor', getSupervisorAttendanceDailyRecordsHandler);
-attendanceApprovalsApp.get('/attendance-approvals/hr', getHrAttendanceDailyRecordsHandler);
-attendanceApprovalsApp.post('/attendance-approvals/supervisor/batch', supervisorApproveAttendanceDailyRecordsHandler);
-attendanceApprovalsApp.post('/attendance-approvals/hr/batch', hrApproveAttendanceDailyRecordsHandler);
-attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-approve', supervisorApproveAttendanceDailyRecordHandler);
-attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-edit', updateSupervisorAttendanceDailyRecordPayrollHandler);
-attendanceApprovalsApp.post('/attendance-approvals/:id/hr-approve', hrApproveAttendanceDailyRecordHandler);
-attendanceApprovalsApp.post('/attendance-approvals/:id/return', returnAttendanceDailyRecordHandler);
+attendanceApprovalsApp.post('/attendance-approvals/generate', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), generateAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.get('/attendance-approvals/supervisor', requirePermissionOrDelegation('attendance-approvals:approve'), getSupervisorAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.get('/attendance-approvals/hr', requirePermission('hr-attendance-approvals:approve'), getHrAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/supervisor/batch', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/hr/batch', requirePermission('hr-attendance-approvals:approve'), hrApproveAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-approve', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordHandler);
+attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-edit', requirePermissionOrDelegation('attendance-approvals:approve'), updateSupervisorAttendanceDailyRecordPayrollHandler);
+attendanceApprovalsApp.post('/attendance-approvals/:id/hr-approve', requirePermission('hr-attendance-approvals:approve'), hrApproveAttendanceDailyRecordHandler);
+attendanceApprovalsApp.post('/attendance-approvals/:id/return', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), returnAttendanceDailyRecordHandler);
 
 openApiApp
   .openapi(generateAttendanceDailyRecordsRoute, generateAttendanceDailyRecordsHandler as any)

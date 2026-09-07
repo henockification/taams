@@ -27,10 +27,10 @@ export async function updatePermissionHandler(c: Context) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const status = message.includes('not found') ? 404 : 500;
 
+    console.error('Failed to update permission', error);
     return c.json({
       success: false,
-      error: 'Failed to update permission',
-      details: message,
+      error: status >= 500 ? 'Failed to update permission' : message,
     }, status);
   }
 }

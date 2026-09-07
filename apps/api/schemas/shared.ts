@@ -23,7 +23,7 @@ export const SignUpRequestSchema = z.object({
   firstName: z.string().openapi({ example: 'John' }),
   lastName: z.string().openapi({ example: 'Doe' }),
   email: z.string().email().openapi({ example: 'user@example.com' }),
-  password: z.string().min(6).openapi({ example: 'password123' }),
+  password: z.string().min(12).openapi({ example: 'password1234' }),
   captchaToken: z.string().optional().openapi({ example: 'captcha-token' }),
 });
 
@@ -64,7 +64,7 @@ export const ForgotPasswordRequestSchema = z.object({
 
 export const ResetPasswordRequestSchema = z.object({
   token: z.string().openapi({ example: 'reset-token' }),
-  password: z.string().min(6).openapi({ example: 'newpassword123' }),
+  password: z.string().min(12).openapi({ example: 'newpassword123' }),
 });
 
 // Protected route schemas

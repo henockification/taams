@@ -49,6 +49,7 @@ import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
+import { requirePermission } from '../../middleware/rbac';
 
 const coreApp = new Hono();
 
@@ -547,27 +548,27 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
   },
 });
 
-coreApp.post('/departments', createDepartmentHandler);
-coreApp.get('/departments', getDepartmentsHandler);
-coreApp.put('/departments/:id', updateDepartmentHandler);
-coreApp.post('/positions', createPositionHandler);
-coreApp.get('/positions', getPositionsHandler);
-coreApp.put('/positions/:id', updatePositionHandler);
-coreApp.post('/employees', createEmployeeHandler);
-coreApp.get('/employees', getEmployeesHandler);
-coreApp.get('/employees/paginated', getEmployeesPaginatedHandler);
-coreApp.post('/employees/permanent/import', importPermanentEmployeesHandler);
-coreApp.post('/employees/contract/import', importContractEmployeesHandler);
-coreApp.get('/employees/work-schedules', getAllEmployeeWorkSchedulesHandler);
-coreApp.post('/employees/work-schedules/bulk', bulkCreateEmployeeWorkSchedulesHandler);
-coreApp.put('/employees/work-schedules/:id', updateEmployeeWorkScheduleHandler);
-coreApp.delete('/employees/work-schedules/:id', deleteEmployeeWorkScheduleHandler);
-coreApp.get('/employees/:id', getEmployeeHandler);
-coreApp.put('/employees/:id', updateEmployeeHandler);
-coreApp.post('/employees/:id/supervisors', createEmployeeSupervisorHandler);
-coreApp.get('/employees/:id/supervisors', getEmployeeSupervisorsHandler);
-coreApp.post('/employees/:id/work-schedules', createEmployeeWorkScheduleHandler);
-coreApp.get('/employees/:id/work-schedules', getEmployeeWorkSchedulesHandler);
+coreApp.post('/departments', requirePermission('employees:update'), createDepartmentHandler);
+coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read'), getDepartmentsHandler);
+coreApp.put('/departments/:id', requirePermission('employees:update'), updateDepartmentHandler);
+coreApp.post('/positions', requirePermission('employees:update'), createPositionHandler);
+coreApp.get('/positions', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getPositionsHandler);
+coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
+coreApp.post('/employees', requirePermission('employees:create'), createEmployeeHandler);
+coreApp.get('/employees', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesHandler);
+coreApp.get('/employees/paginated', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesPaginatedHandler);
+coreApp.post('/employees/permanent/import', requirePermission('employees:create'), importPermanentEmployeesHandler);
+coreApp.post('/employees/contract/import', requirePermission('employees:create'), importContractEmployeesHandler);
+coreApp.get('/employees/work-schedules', requirePermission('schedule-assignments:read', 'work-schedules:read'), getAllEmployeeWorkSchedulesHandler);
+coreApp.post('/employees/work-schedules/bulk', requirePermission('schedule-assignments:read', 'employees:update'), bulkCreateEmployeeWorkSchedulesHandler);
+coreApp.put('/employees/work-schedules/:id', requirePermission('schedule-assignments:read', 'employees:update'), updateEmployeeWorkScheduleHandler);
+coreApp.delete('/employees/work-schedules/:id', requirePermission('schedule-assignments:read', 'employees:update'), deleteEmployeeWorkScheduleHandler);
+coreApp.get('/employees/:id', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeeHandler);
+coreApp.put('/employees/:id', requirePermission('employees:update'), updateEmployeeHandler);
+coreApp.post('/employees/:id/supervisors', requirePermission('employees:update'), createEmployeeSupervisorHandler);
+coreApp.get('/employees/:id/supervisors', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read'), getEmployeeSupervisorsHandler);
+coreApp.post('/employees/:id/work-schedules', requirePermission('schedule-assignments:read', 'employees:update'), createEmployeeWorkScheduleHandler);
+coreApp.get('/employees/:id/work-schedules', requirePermission('schedule-assignments:read', 'work-schedules:read', 'employees:read', 'dashboard:read'), getEmployeeWorkSchedulesHandler);
 coreApp.route('/', dashboardApp);
 coreApp.route('/', biometricDevicesApp);
 coreApp.route('/', biometricProvisioningApp);

@@ -4,6 +4,7 @@ import { NotificationLogsResponseSchema } from '../../../schemas/core.schema';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import { openApiApp } from '../../../lib/openapi';
 import { getNotificationLogsHandler } from './handlers/notificationLogs';
+import { requirePermission } from '../../../middleware/rbac';
 
 const notificationLogsApp = new Hono();
 
@@ -35,7 +36,7 @@ export const getNotificationLogsRoute = createRoute({
   },
 });
 
-notificationLogsApp.get('/notification-logs', getNotificationLogsHandler);
+notificationLogsApp.get('/notification-logs', requirePermission('notification-logs:read'), getNotificationLogsHandler);
 
 openApiApp.openapi(getNotificationLogsRoute, getNotificationLogsHandler as any);
 

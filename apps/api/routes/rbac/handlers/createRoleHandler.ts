@@ -27,10 +27,10 @@ export async function createRoleHandler(c: Context) {
     const isClientError = message.includes('not found') || message.includes('reserved by the system');
     const status = isClientError ? 400 : 500;
 
+    console.error('Failed to create role', error);
     return c.json({
       success: false,
       error: isClientError ? message : 'Failed to create role',
-      details: message,
     }, status);
   }
 }

@@ -181,7 +181,8 @@ export function formatNotificationLog(log: any) {
   };
 }
 
-export function formatEmployee(employee: any) {
+export function formatEmployee(employee: any, options?: { includeSensitive?: boolean }) {
+  const includeSensitive = options?.includeSensitive === true;
   return {
     id: employee.id,
     userId: employee.userId ?? null,
@@ -210,12 +211,12 @@ export function formatEmployee(employee: any) {
     sourceDepartmentName: employee.sourceDepartmentName ?? null,
     sourcePositionName: employee.sourcePositionName ?? null,
     sourcePositionCode: employee.sourcePositionCode ?? null,
-    salary: employee.salary ?? null,
-    salaryStep: employee.salaryStep ?? null,
-    nationalId: employee.nationalId ?? null,
+    salary: includeSensitive ? employee.salary ?? null : null,
+    salaryStep: includeSensitive ? employee.salaryStep ?? null : null,
+    nationalId: includeSensitive ? employee.nationalId ?? null : null,
     paidByIfmis: employee.paidByIfmis ?? true,
     sourceImportedAt: formatTimestamp(employee.sourceImportedAt),
-    sourceRawPayload: employee.sourceRawPayload ?? null,
+    sourceRawPayload: includeSensitive ? employee.sourceRawPayload ?? null : null,
     isActive: employee.isActive,
     createdAt: formatTimestamp(employee.createdAt),
     updatedAt: formatTimestamp(employee.updatedAt),
@@ -318,6 +319,7 @@ export function formatBiometricDevice(device: any) {
     pushEnabled: device.pushEnabled,
     pullEnabled: device.pullEnabled,
     pushSecret: null,
+    pushSecretConfigured: Boolean(device.pushSecret),
     communicationKey: null,
     communicationKeyConfigured: Boolean(device.communicationKey),
     serialNumber: device.serialNumber ?? null,

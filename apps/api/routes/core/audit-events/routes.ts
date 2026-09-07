@@ -1,22 +1,11 @@
 import { Hono } from 'hono';
 import { auditActionLabel, listAuditEvents } from '../../../db/orm/core/manageAuditEvents';
-import { userHasPermission } from '../../../db/orm/rbac/manageRbac';
 import { summarizeChanges, type AuditChanges } from '../../../lib/audit';
+import { requirePermission } from '../../../middleware/rbac';
 
 const auditEventsApp = new Hono();
 
-auditEventsApp.get('/audit-events', async (c) => {
-  const user = c.user ?? c.get('user');
-  if (!user?.id) {
-    return c.json({ success: false, error: 'Authentication required' }, 401);
-  }
-
-  const roles = (user.role ?? []).map((role: string) => role.toLowerCase());
-  const unrestricted = roles.some((role: string) => ['super_admin', 'superadmin', 'admin'].includes(role));
-  if (!unrestricted && !(await userHasPermission(user.id, 'reports-audit:read'))) {
-    return c.json({ success: false, error: 'Permission denied' }, 403);
-  }
-
+auditEventsApp.get('/audit-events', requirePermission('reports-audit:read'), async (c) => {
   const query = c.req.query();
   const events = await listAuditEvents({
     resourceType: query.resourceType || null,

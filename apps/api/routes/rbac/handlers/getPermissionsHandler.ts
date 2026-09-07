@@ -14,7 +14,6 @@ export async function getPermissionsHandler(c: Context) {
     return c.json({
       success: false,
       error: 'Failed to fetch permissions',
-      details: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 }

@@ -13,6 +13,7 @@ import {
   createOvertimeRequestHandler,
   getOvertimeRequestsHandler,
 } from './handlers/overtimeRequests';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const overtimeRequestsApp = new Hono();
 
@@ -86,9 +87,9 @@ export const changeOvertimeRequestStatusRoute = createRoute({
   },
 });
 
-overtimeRequestsApp.post('/overtime-requests', createOvertimeRequestHandler);
-overtimeRequestsApp.get('/overtime-requests', getOvertimeRequestsHandler);
-overtimeRequestsApp.post('/overtime-requests/:id/status', changeOvertimeRequestStatusHandler);
+overtimeRequestsApp.post('/overtime-requests', requirePermissionOrDelegation('overtime-requests:approve'), createOvertimeRequestHandler);
+overtimeRequestsApp.get('/overtime-requests', requirePermission('overtime-requests:read'), getOvertimeRequestsHandler);
+overtimeRequestsApp.post('/overtime-requests/:id/status', requirePermissionOrDelegation('overtime-requests:approve'), changeOvertimeRequestStatusHandler);
 
 openApiApp
   .openapi(createOvertimeRequestRoute, createOvertimeRequestHandler as any)

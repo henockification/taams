@@ -14,6 +14,7 @@ import {
   createManualPunchRequestHandler,
   getManualPunchRequestsHandler,
 } from './handlers/manualPunchRequests';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const manualPunchRequestsApp = new Hono();
 
@@ -91,9 +92,9 @@ export const changeManualPunchRequestStatusRoute = createRoute({
   },
 });
 
-manualPunchRequestsApp.post('/manual-punch-requests', createManualPunchRequestHandler);
-manualPunchRequestsApp.get('/manual-punch-requests', getManualPunchRequestsHandler);
-manualPunchRequestsApp.post('/manual-punch-requests/:id/status', changeManualPunchRequestStatusHandler);
+manualPunchRequestsApp.post('/manual-punch-requests', requirePermission('manual-punch-requests:read'), createManualPunchRequestHandler);
+manualPunchRequestsApp.get('/manual-punch-requests', requirePermission('manual-punch-requests:read'), getManualPunchRequestsHandler);
+manualPunchRequestsApp.post('/manual-punch-requests/:id/status', requirePermissionOrDelegation('manual-punch-requests:approve'), changeManualPunchRequestStatusHandler);
 
 openApiApp
   .openapi(createManualPunchRequestRoute, createManualPunchRequestHandler as any)

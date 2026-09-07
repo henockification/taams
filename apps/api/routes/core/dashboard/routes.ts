@@ -4,6 +4,7 @@ import { ErrorResponseSchema } from '../../../schemas/shared';
 import { DashboardSummaryResponseSchema, DepartmentHeadDashboardSummaryResponseSchema, ExecutiveDashboardSummaryResponseSchema, HrDashboardSummaryResponseSchema } from '../../../schemas/core.schema';
 import { openApiApp } from '../../../lib/openapi';
 import { getDashboardSummaryHandler, getDepartmentHeadDashboardSummaryHandler, getExecutiveDashboardSummaryHandler, getHrDashboardSummaryHandler } from './handlers/dashboard';
+import { requirePermission } from '../../../middleware/rbac';
 
 const dashboardApp = new Hono();
 
@@ -119,10 +120,10 @@ export const getDepartmentHeadDashboardSummaryRoute = createRoute({
   },
 });
 
-dashboardApp.get('/dashboard/summary', getDashboardSummaryHandler);
-dashboardApp.get('/executive-dashboard/summary', getExecutiveDashboardSummaryHandler);
-dashboardApp.get('/hr-dashboard/summary', getHrDashboardSummaryHandler);
-dashboardApp.get('/department-head-dashboard/summary', getDepartmentHeadDashboardSummaryHandler);
+dashboardApp.get('/dashboard/summary', requirePermission('dashboard:read'), getDashboardSummaryHandler);
+dashboardApp.get('/executive-dashboard/summary', requirePermission('executive-dashboard:read'), getExecutiveDashboardSummaryHandler);
+dashboardApp.get('/hr-dashboard/summary', requirePermission('hr-dashboard:read'), getHrDashboardSummaryHandler);
+dashboardApp.get('/department-head-dashboard/summary', requirePermission('department-head-dashboard:read'), getDepartmentHeadDashboardSummaryHandler);
 
 openApiApp.openapi(getDashboardSummaryRoute, getDashboardSummaryHandler as any);
 openApiApp.openapi(getExecutiveDashboardSummaryRoute, getExecutiveDashboardSummaryHandler as any);

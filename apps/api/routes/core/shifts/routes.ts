@@ -32,6 +32,7 @@ import {
   getShiftSegmentsHandler,
   updateShiftSegmentHandler,
 } from './handlers/shiftSegments';
+import { requirePermission } from '../../../middleware/rbac';
 
 const shiftsApp = new Hono();
 
@@ -265,16 +266,16 @@ export const updateShiftBreakRoute = createRoute({
   },
 });
 
-shiftsApp.post('/shifts', createShiftHandler);
-shiftsApp.get('/shifts', getShiftsHandler);
-shiftsApp.get('/shifts/:id', getShiftHandler);
-shiftsApp.put('/shifts/:id', updateShiftHandler);
-shiftsApp.post('/shifts/:id/segments', createShiftSegmentHandler);
-shiftsApp.get('/shifts/:id/segments', getShiftSegmentsHandler);
-shiftsApp.put('/shift-segments/:id', updateShiftSegmentHandler);
-shiftsApp.post('/shifts/:id/breaks', createShiftBreakHandler);
-shiftsApp.get('/shifts/:id/breaks', getShiftBreaksHandler);
-shiftsApp.put('/shift-breaks/:id', updateShiftBreakHandler);
+shiftsApp.post('/shifts', requirePermission('shifts:read'), createShiftHandler);
+shiftsApp.get('/shifts', requirePermission('shifts:read'), getShiftsHandler);
+shiftsApp.get('/shifts/:id', requirePermission('shifts:read'), getShiftHandler);
+shiftsApp.put('/shifts/:id', requirePermission('shifts:read'), updateShiftHandler);
+shiftsApp.post('/shifts/:id/segments', requirePermission('shifts:read'), createShiftSegmentHandler);
+shiftsApp.get('/shifts/:id/segments', requirePermission('shifts:read'), getShiftSegmentsHandler);
+shiftsApp.put('/shift-segments/:id', requirePermission('shifts:read'), updateShiftSegmentHandler);
+shiftsApp.post('/shifts/:id/breaks', requirePermission('shifts:read'), createShiftBreakHandler);
+shiftsApp.get('/shifts/:id/breaks', requirePermission('shifts:read'), getShiftBreaksHandler);
+shiftsApp.put('/shift-breaks/:id', requirePermission('shifts:read'), updateShiftBreakHandler);
 
 openApiApp
   .openapi(createShiftRoute, createShiftHandler as any)

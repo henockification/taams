@@ -9,17 +9,10 @@ const HR_PERMISSION_RESOURCES = new Set([
   'permanent-employees',
   'hr-dashboard',
   'hr-attendance-approvals',
-  'manual-punch-requests',
   'leave-balances',
   'leave-transfer',
   'leave-fiscal-years',
   'leave-types',
-  'biometric-exemptions',
-  'attendance-punches',
-  'work-schedules',
-  'holidays',
-  'shifts',
-  'schedule-assignments',
 ]);
 
 export type EmployeeVisibilityScope =

@@ -7,10 +7,11 @@ import {
   verifyOtpForPurpose,
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
-import { sendOtp } from '../../../lib/otp';
-import { workflowNotificationsAreEnabled } from '../../../lib/notifications';
+import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
 import { getRequestClientIp } from '../../../middleware/auth';
 import { formatAuthUser, setSessionCookie } from './helpers';
+
+const INVALID_CREDENTIALS = 'Invalid email or password';
 
 export async function signInEmailHandler(c: Context) {
   try {
@@ -20,7 +21,7 @@ export async function signInEmailHandler(c: Context) {
     const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
 
     if (!email || !password) {
-      return c.json({ message: 'Invalid email or password' }, 400);
+      return c.json({ message: INVALID_CREDENTIALS }, 400);
     }
 
     const authResult = await authenticateEmailPassword(email, password);
@@ -31,8 +32,6 @@ export async function signInEmailHandler(c: Context) {
         outcome: 'FAILED',
         resourceType: 'auth_session',
         resourceLabel: email,
-        actorUserId: authResult.reason === 'PASSWORD_NOT_SET' ? authResult.user?.id ?? null : null,
-        actorName: authResult.reason === 'PASSWORD_NOT_SET' ? authResult.user?.name ?? null : null,
         actorEmail: email,
         actorType: 'USER',
         ipAddress: getRequestClientIp(c),
@@ -40,12 +39,7 @@ export async function signInEmailHandler(c: Context) {
         requestId: c.get('requestId') ?? null,
         metadata: { reason: authResult.reason },
       });
-      const message =
-        authResult.reason === 'PASSWORD_NOT_SET'
-          ? 'Password has not been set. Please reset your password to continue.'
-          : 'Invalid email or password';
-
-      return c.json({ message, code: authResult.reason }, 401);
+      return c.json({ message: INVALID_CREDENTIALS }, 401);
     }
 
     if (!otp) {
@@ -54,7 +48,7 @@ export async function signInEmailHandler(c: Context) {
       return c.json({
         otpRequired: true,
         email,
-        testingMode: !workflowNotificationsAreEnabled(),
+        ...(isOtpTestingMode() ? { testingMode: true } : {}),
       });
     }
 
@@ -101,14 +95,11 @@ export async function signInEmailHandler(c: Context) {
 
     return c.json({
       redirect: !!body.callbackURL,
-      token: session.token,
       url: body.callbackURL ?? null,
       user: formatAuthUser(authResult.user),
     });
   } catch (error) {
-    return c.json({
-      message: 'Sign in failed',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    }, 500);
+    console.error('Sign in failed', error);
+    return c.json({ message: 'Sign in failed' }, 500);
   }
 }

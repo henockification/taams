@@ -180,8 +180,8 @@ export default function ResetPasswordPage() {
                     {...register('password', {
                       required: t('validation.passwordRequired'),
                       minLength: {
-                        value: 6,
-                        message: t('validation.passwordTooShort'),
+                        value: 12,
+                        message: t('validation.passwordMinLength'),
                       },
                     })}
                   />

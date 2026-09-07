@@ -14,6 +14,7 @@ import {
   getTemporaryDepartmentAssignmentsHandler,
   updateTemporaryDepartmentAssignmentHandler,
 } from './handlers/temporaryDepartmentAssignments';
+import { requirePermission } from '../../../middleware/rbac';
 
 const temporaryDepartmentAssignmentsApp = new Hono();
 
@@ -105,10 +106,10 @@ export const deactivateTemporaryDepartmentAssignmentRoute = createRoute({
   },
 });
 
-temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', getTemporaryDepartmentAssignmentsHandler);
-temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', createTemporaryDepartmentAssignmentHandler);
-temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', updateTemporaryDepartmentAssignmentHandler);
-temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments/:id/deactivate', deactivateTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', requirePermission('temporary-assignment:read'), getTemporaryDepartmentAssignmentsHandler);
+temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', requirePermission('temporary-assignment:add'), createTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', requirePermission('temporary-assignment:edit'), updateTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments/:id/deactivate', requirePermission('temporary-assignment:edit'), deactivateTemporaryDepartmentAssignmentHandler);
 
 openApiApp
   .openapi(getTemporaryDepartmentAssignmentsRoute, getTemporaryDepartmentAssignmentsHandler as any)

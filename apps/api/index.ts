@@ -5,11 +5,14 @@ import { prettyJSON } from 'hono/pretty-json';
 import { apiReference } from '@scalar/hono-api-reference';
 import dotenv from 'dotenv';
 import { requireAuthUnlessPublic } from './middleware/auth';
+import { authRateLimiter } from './middleware/auth-rate-limit';
+import { requireCsrfOrigin } from './middleware/csrf';
+import { applyBodyLimit } from './middleware/request-limits';
+import { securityHeaders } from './middleware/security-headers';
+import { allowedCorsOrigins, normalizeOrigin } from './lib/cors';
 
-// Import centralized OpenAPI app
 import { openApiApp } from './lib/openapi';
 
-// Import feature modules
 import authApp from './routes/auth';
 import usersApp from './routes/users/routes';
 import rbacApp from './routes/rbac/routes';
@@ -17,58 +20,10 @@ import coreApp from './routes/core/routes';
 import zktecoApp from './routes/zkteco/routes';
 import reportsApp from './routes/reports/routes';
 
-// Load environment variables
 dotenv.config();
 
 const app = new OpenAPIHono();
 
-function splitOrigins(value?: string) {
-  return (value ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-}
-
-function normalizeOrigin(origin: string) {
-  try {
-    return new URL(origin).origin;
-  } catch {
-    return origin.replace(/\/+$/, '');
-  }
-}
-
-function expandAllowedOrigin(origin: string) {
-  const normalizedOrigin = normalizeOrigin(origin);
-  const origins = [normalizedOrigin];
-
-  try {
-    const parsedOrigin = new URL(normalizedOrigin);
-    const isWebOrigin = parsedOrigin.protocol === 'http:' || parsedOrigin.protocol === 'https:';
-    const isLocalOrigin = parsedOrigin.hostname === 'localhost' || parsedOrigin.hostname === '127.0.0.1';
-
-    if (isWebOrigin && !isLocalOrigin && parsedOrigin.protocol === 'http:') {
-      origins.push(`https://${parsedOrigin.host}`);
-    }
-  } catch {
-    // Keep the normalized value for non-URL origin entries.
-  }
-
-  return origins;
-}
-
-const allowedCorsOrigins = new Set(
-  [
-    'http://localhost:3011',
-    'https://www.taams.com',
-    ...splitOrigins(process.env.FRONT_END_URL),
-    ...splitOrigins(process.env.FRONTEND_URL),
-    ...splitOrigins(process.env.APP_BASE_URL),
-    ...splitOrigins(process.env.CORS_ALLOWED_ORIGINS),
-  ].flatMap(expandAllowedOrigin),
-);
-
-// Apply CORS before all routes so preflight works even if an adapter rewrites
-// the internal path seen by Hono.
 app.use('*', cors({
   origin: (origin) => {
     const requestOrigin = origin ? normalizeOrigin(origin) : '';
@@ -77,6 +32,8 @@ app.use('*', cors({
   credentials: true,
 }));
 
+app.use('*', securityHeaders);
+app.use('*', applyBodyLimit);
 app.use('*', logger());
 app.use('*', prettyJSON());
 app.use('*', async (c, next) => {
@@ -85,11 +42,13 @@ app.use('*', async (c, next) => {
   c.header('x-request-id', requestId);
   await next();
 });
+app.use('*', requireCsrfOrigin);
+app.use('/api/auth/*', authRateLimiter);
 
-// Mount auth app FIRST - before middleware to avoid interference
 app.route('/api/auth', authApp);
 
-// Scalar API Documentation
+app.use('/api/*', requireAuthUnlessPublic);
+
 app.get(
   '/api/docs',
   apiReference({
@@ -100,7 +59,6 @@ app.get(
   })
 );
 
-// OpenAPI configuration - mount directly on main app
 app.doc('/api/openapi.json', {
   openapi: '3.0.0',
   info: {
@@ -116,45 +74,31 @@ app.doc('/api/openapi.json', {
   ],
 });
 
-app.use('/api/*', requireAuthUnlessPublic);
-
-// Mount feature modules
 app.route('/api', usersApp);
 app.route('/api', rbacApp);
 app.route('/api', coreApp);
 app.route('/api', reportsApp);
 app.route('/api/zkteco', zktecoApp);
 app.route('/iclock', zktecoApp);
-
-// Mount centralized OpenAPI app for documentation
 app.route('/api', openApiApp);
 
-
-// 404 handler
 app.notFound((c) => {
   return c.json({ message: 'Route not found' }, 404);
 });
 
-// Error handler
 app.onError((err, c) => {
   console.error('Unhandled error:', err);
   const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-  const errorStack = err instanceof Error ? err.stack : undefined;
-  
   console.error('Error details:', {
     message: errorMessage,
-    stack: errorStack,
+    stack: err instanceof Error ? err.stack : undefined,
     path: c.req.path,
     method: c.req.method,
-    url: c.req.url
+    url: c.req.url,
   });
-  return c.json({ 
+  return c.json({
     message: 'Something went wrong!',
-    error: errorMessage,
-    path: c.req.path
   }, 500);
 });
-
-
 
 export default app;

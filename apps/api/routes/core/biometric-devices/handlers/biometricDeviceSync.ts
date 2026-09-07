@@ -5,6 +5,8 @@ import {
   getAttendanceSyncBatchesByDeviceId,
 } from '../../../../db/orm/core/manageBiometricDevices';
 import { pullZktecoAttendanceForDevice } from '../../../../lib/zkteco/tcp-pull-sync';
+import { writeAuditEvent } from '../../../../lib/audit';
+import { db } from '../../../../db/db';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceSyncBatch } from '../../helpers/formatters';
 
@@ -28,6 +30,14 @@ export async function syncBiometricDeviceHandler(c: Context) {
     }
 
     const attendanceSyncBatch = await pullZktecoAttendanceForDevice(biometricDevice);
+    await writeAuditEvent(db, {
+      action: 'BIOMETRIC_DEVICE_SYNCED',
+      resourceType: 'biometric_device',
+      resourceId: biometricDevice.id,
+      resourceLabel: biometricDevice.deviceName,
+      departmentId: biometricDevice.departmentId,
+      metadata: { batchId: attendanceSyncBatch?.id ?? null },
+    });
 
     return c.json({
       success: true,

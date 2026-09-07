@@ -16,8 +16,8 @@ import { createUserHandler } from './handlers/createUserHandler';
 import { updateUserHandler } from './handlers/updateUserHandler';
 import { assignUserRolesHandler } from '../rbac/handlers/assignUserRolesHandler';
 import { disabledSignupHandler } from './handlers/disabledSignupHandler';
+import { requirePermission } from '../../middleware/rbac';
 
-// Create the users app
 const usersApp = new Hono();
 
 // Users endpoint route definition
@@ -192,12 +192,12 @@ export const assignUserRolesRoute = createRoute({
 });
 
 // Register the actual route
-usersApp.get('/users', getUsersHandler);
+usersApp.get('/users', requirePermission('users:read'), getUsersHandler);
 usersApp.post('/users/signup', disabledSignupHandler);
-usersApp.get('/users/:id', getUserHandler);
-usersApp.post('/users', createUserHandler);
-usersApp.patch('/users/:id', updateUserHandler);
-usersApp.post('/users/:id/roles', assignUserRolesHandler);
+usersApp.get('/users/:id', requirePermission('users:read'), getUserHandler);
+usersApp.post('/users', requirePermission('users:create'), createUserHandler);
+usersApp.patch('/users/:id', requirePermission('users:update'), updateUserHandler);
+usersApp.post('/users/:id/roles', requirePermission('users:assign-roles'), assignUserRolesHandler);
 
 // Register the OpenAPI definition
 openApiApp.openapi(usersRoute, getUsersHandler)

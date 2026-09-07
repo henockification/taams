@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = [
   'AUTH_SIGN_IN',
   'AUTH_SIGN_OUT',
   'AUTH_PASSWORD_RESET',
+  'AUTH_PASSWORD_RESET_REQUESTED',
   'AUTH_SESSIONS_REVOKED',
   'PERMISSION_DENIED',
   'LEAVE_REQUEST_SUBMITTED',
@@ -68,6 +69,17 @@ export const AUDIT_ACTIONS = [
   'DEPARTMENT_UPDATED',
   'POSITION_CREATED',
   'POSITION_UPDATED',
+  'BIOMETRIC_DEVICE_CREATED',
+  'BIOMETRIC_DEVICE_UPDATED',
+  'BIOMETRIC_DEVICE_SYNCED',
+  'ATTENDANCE_PUNCH_CREATED',
+  'HOLIDAY_CREATED',
+  'HOLIDAY_UPDATED',
+  'SHIFT_CREATED',
+  'SHIFT_UPDATED',
+  'WORK_SCHEDULE_CREATED',
+  'WORK_SCHEDULE_UPDATED',
+  'ZKTECO_INGESTED',
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
@@ -78,6 +90,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   AUTH_SIGN_IN: 'Signed in',
   AUTH_SIGN_OUT: 'Signed out',
   AUTH_PASSWORD_RESET: 'Reset password',
+  AUTH_PASSWORD_RESET_REQUESTED: 'Requested password reset',
   AUTH_SESSIONS_REVOKED: 'Revoked sessions',
   PERMISSION_DENIED: 'Permission denied',
   LEAVE_REQUEST_SUBMITTED: 'Submitted leave request',
@@ -135,6 +148,17 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   DEPARTMENT_UPDATED: 'Updated department',
   POSITION_CREATED: 'Created position',
   POSITION_UPDATED: 'Updated position',
+  BIOMETRIC_DEVICE_CREATED: 'Created biometric device',
+  BIOMETRIC_DEVICE_UPDATED: 'Updated biometric device',
+  BIOMETRIC_DEVICE_SYNCED: 'Synced biometric device',
+  ATTENDANCE_PUNCH_CREATED: 'Created attendance punch',
+  HOLIDAY_CREATED: 'Created holiday',
+  HOLIDAY_UPDATED: 'Updated holiday',
+  SHIFT_CREATED: 'Created shift',
+  SHIFT_UPDATED: 'Updated shift',
+  WORK_SCHEDULE_CREATED: 'Created work schedule',
+  WORK_SCHEDULE_UPDATED: 'Updated work schedule',
+  ZKTECO_INGESTED: 'Ingested device punches',
 };
 
 export type AuditContext = {

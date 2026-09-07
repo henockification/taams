@@ -13,6 +13,7 @@ import {
   getHolidaysHandler,
   updateHolidayHandler,
 } from './handlers/holidays';
+import { requirePermission } from '../../../middleware/rbac';
 
 const holidaysApp = new Hono();
 
@@ -52,9 +53,9 @@ export const updateHolidayRoute = createRoute({
   },
 });
 
-holidaysApp.get('/holidays', getHolidaysHandler);
-holidaysApp.post('/holidays', createHolidayHandler);
-holidaysApp.put('/holidays/:id', updateHolidayHandler);
+holidaysApp.get('/holidays', requirePermission('holidays:read'), getHolidaysHandler);
+holidaysApp.post('/holidays', requirePermission('holidays:create'), createHolidayHandler);
+holidaysApp.put('/holidays/:id', requirePermission('holidays:update'), updateHolidayHandler);
 
 openApiApp
   .openapi(getHolidaysRoute, getHolidaysHandler as any)

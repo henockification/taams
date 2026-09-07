@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { ingestZktecoPush } from '../../../lib/zkteco/zkteco-ingestion.service';
+import { requireRegisteredZktecoDevice, ZktecoDeviceAuthError } from '../../../lib/zkteco/device-auth';
 
 const zktecoCdataApp = new Hono();
 
@@ -7,46 +8,39 @@ function getQueryParams(url: string) {
   return Object.fromEntries(new URL(url).searchParams.entries());
 }
 
-zktecoCdataApp.get('/', (c) => {
-  const sn = c.req.query('SN');
-  const query = getQueryParams(c.req.url);
+function deviceAuthError(c: any, error: unknown) {
+  if (error instanceof ZktecoDeviceAuthError) {
+    return c.text('ERROR', error.status);
+  }
+  console.error('ZKTeco request failed', error instanceof Error ? error.message : error);
+  return c.text('ERROR', 500);
+}
 
-  console.log('ZKTeco GET handshake', {
-    sn,
-    query,
-  });
-
-  return c.text('OK', 200);
+zktecoCdataApp.get('/', async (c) => {
+  try {
+    await requireRegisteredZktecoDevice(c);
+    return c.text('OK', 200);
+  } catch (error) {
+    return deviceAuthError(c, error);
+  }
 });
 
 zktecoCdataApp.post('/', async (c) => {
-  const sn = c.req.query('SN');
   const table = c.req.query('table') ?? null;
   const rawBody = await c.req.text();
   const query = getQueryParams(c.req.url);
 
-  console.log('ZKTeco PUSH received', {
-    sn,
-    table,
-    rawBody,
-  });
-
-  if (!sn) {
-    return c.text('Missing device serial number', 400);
-  }
-
   try {
+    const device = await requireRegisteredZktecoDevice(c, { requirePushAuth: true });
     await ingestZktecoPush({
-      serialNumber: sn,
+      serialNumber: device.serialNumber ?? '',
       table,
       rawBody,
       query,
     });
-
     return c.text('OK', 200);
   } catch (error) {
-    console.error('ZKTeco push failed', error);
-    return c.text('ERROR', 500);
+    return deviceAuthError(c, error);
   }
 });
 

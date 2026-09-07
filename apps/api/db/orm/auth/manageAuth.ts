@@ -1,18 +1,28 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
-import { randomBytes } from 'crypto';
+import { and, desc, eq, isNull, ne, or } from 'drizzle-orm';
+import { createHmac, randomBytes } from 'crypto';
 import { db } from '../../db';
 import { authCredentials, authSessions, authVerificationTokens, user } from '../../schema';
 import { generateOtpCode, hashOtp, OTP_TTL_MINUTES, OtpPurpose, verifyOtp } from '../../../lib/otp';
 import { hashPassword, runDummyPasswordHash, verifyPassword } from '../../../lib/password';
+import { assertPasswordPolicy } from '../../../lib/password-policy';
+import { requireAuthSecret } from '../../../lib/runtime-env';
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const SESSION_IDLE_MS = 30 * 60 * 1000;
+const SESSION_TOUCH_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
+const FAILED_LOGIN_LIMIT = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
 
 export type AuthUser = typeof user.$inferSelect;
 export type AuthSession = typeof authSessions.$inferSelect;
 
 export function createSessionToken() {
   return randomBytes(32).toString('hex');
+}
+
+export function hashSessionToken(token: string) {
+  return createHmac('sha256', requireAuthSecret()).update(token).digest('hex');
 }
 
 export function getSessionExpiry() {
@@ -96,6 +106,12 @@ export async function verifyOtpForPurpose(identifier: string, purpose: OtpPurpos
 }
 
 export async function setUserPassword(userId: string, password: string) {
+  const foundUser = await db.query.user.findFirst({
+    where: eq(user.id, userId),
+    columns: { email: true },
+  });
+  assertPasswordPolicy(password, foundUser?.email);
+
   const passwordHash = await hashPassword(password);
   const now = new Date();
 
@@ -120,10 +136,25 @@ export async function revokeUserSessions(userId: string) {
   await db.delete(authSessions).where(eq(authSessions.userId, userId));
 }
 
+export async function revokeOtherUserSessions(userId: string, currentToken: string) {
+  const hashed = hashSessionToken(currentToken);
+  await db.delete(authSessions).where(and(
+    eq(authSessions.userId, userId),
+    ne(authSessions.token, hashed),
+    ne(authSessions.token, currentToken),
+  ));
+}
+
 export async function authenticateEmailPassword(email: string, password: string) {
   const foundUser = await findUserByEmail(email);
+  const now = new Date();
 
   if (!foundUser) {
+    await runDummyPasswordHash(password);
+    return { success: false as const, reason: 'INVALID_CREDENTIALS' };
+  }
+
+  if (foundUser.lockedUntil && foundUser.lockedUntil > now) {
     await runDummyPasswordHash(password);
     return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
@@ -134,16 +165,34 @@ export async function authenticateEmailPassword(email: string, password: string)
 
   if (!credential) {
     await runDummyPasswordHash(password);
-    return { success: false as const, reason: 'PASSWORD_NOT_SET', user: foundUser };
+    await recordFailedLogin(foundUser.id, foundUser.failedLoginCount);
+    return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
 
   const validPassword = await verifyPassword(password, credential.passwordHash);
 
   if (!validPassword) {
+    await recordFailedLogin(foundUser.id, foundUser.failedLoginCount);
     return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
 
-  return { success: true as const, user: foundUser };
+  await db.update(user).set({
+    failedLoginCount: 0,
+    lockedUntil: null,
+    updatedAt: now,
+  }).where(eq(user.id, foundUser.id));
+
+  return { success: true as const, user: { ...foundUser, failedLoginCount: 0, lockedUntil: null } };
+}
+
+async function recordFailedLogin(userId: string, currentCount: number) {
+  const nextCount = (currentCount ?? 0) + 1;
+  const now = new Date();
+  await db.update(user).set({
+    failedLoginCount: nextCount,
+    lockedUntil: nextCount >= FAILED_LOGIN_LIMIT ? new Date(now.getTime() + LOCKOUT_MS) : null,
+    updatedAt: now,
+  }).where(eq(user.id, userId));
 }
 
 export async function createSessionForUser({
@@ -155,23 +204,27 @@ export async function createSessionForUser({
   ipAddress?: string;
   userAgent?: string;
 }) {
+  const token = createSessionToken();
+  const now = new Date();
   const [session] = await db
     .insert(authSessions)
     .values({
-      token: createSessionToken(),
+      token: hashSessionToken(token),
       userId,
       expiresAt: getSessionExpiry(),
       ipAddress,
       userAgent,
+      lastSeenAt: now,
     })
     .returning();
 
-  return session;
+  return { ...session, token };
 }
 
 export async function getSessionByToken(token: string) {
+  const hashed = hashSessionToken(token);
   const result = await db.query.authSessions.findFirst({
-    where: eq(authSessions.token, token),
+    where: or(eq(authSessions.token, hashed), eq(authSessions.token, token)),
     with: {
       user: true,
     },
@@ -184,9 +237,32 @@ export async function getSessionByToken(token: string) {
     return null;
   }
 
+  const lastSeenAt = new Date(result.lastSeenAt ?? result.updatedAt);
+  if (lastSeenAt.getTime() + SESSION_IDLE_MS < Date.now()) {
+    await deleteSessionByToken(token);
+    return null;
+  }
+
+  const now = new Date();
+  const shouldTouch = lastSeenAt.getTime() + SESSION_TOUCH_MS < now.getTime();
+  const shouldRehash = result.token === token;
+
+  if (shouldTouch || shouldRehash) {
+    await db.update(authSessions).set({
+      token: hashed,
+      lastSeenAt: now,
+      updatedAt: now,
+    }).where(eq(authSessions.id, result.id));
+    return { ...result, token: hashed, lastSeenAt: now, updatedAt: now };
+  }
+
   return result;
 }
 
 export async function deleteSessionByToken(token: string) {
-  await db.delete(authSessions).where(eq(authSessions.token, token));
+  const hashed = hashSessionToken(token);
+  await db.delete(authSessions).where(or(
+    eq(authSessions.token, hashed),
+    eq(authSessions.token, token),
+  ));
 }

@@ -13,6 +13,7 @@ import type {
   UpdateShiftInput,
   UpdateShiftSegmentInput,
 } from '../../../types/core.types';
+import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -22,6 +23,12 @@ export async function createShift(input: CreateShiftInput) {
     .values(normalizeShiftInput(input) as any)
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'SHIFT_CREATED',
+    resourceType: 'shift',
+    resourceId: shift.id,
+    resourceLabel: shift.nameEn,
+  });
   return shift;
 }
 
@@ -50,6 +57,12 @@ export async function updateShift(id: string, input: UpdateShiftInput) {
     .where(eq(shifts.id, id))
     .returning();
 
+  await writeAuditEvent(db, {
+    action: 'SHIFT_UPDATED',
+    resourceType: 'shift',
+    resourceId: shift.id,
+    resourceLabel: shift.nameEn,
+  });
   return shift;
 }
 

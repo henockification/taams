@@ -20,6 +20,7 @@ import { getPermissionsHandler } from './handlers/getPermissionsHandler';
 import { getRolesHandler } from './handlers/getRolesHandler';
 import { updatePermissionHandler } from './handlers/updatePermissionHandler';
 import { updateRoleHandler } from './handlers/updateRoleHandler';
+import { requirePermission } from '../../middleware/rbac';
 
 const rbacApp = new Hono();
 
@@ -259,13 +260,13 @@ export const updatePermissionRoute = createRoute({
   },
 });
 
-rbacApp.get('/roles', getRolesHandler);
-rbacApp.post('/roles', createRoleHandler);
-rbacApp.patch('/roles/:id', updateRoleHandler);
-rbacApp.post('/roles/:id/permissions', assignRolePermissionsHandler);
-rbacApp.get('/permissions', getPermissionsHandler);
-rbacApp.post('/permissions', createPermissionHandler);
-rbacApp.patch('/permissions/:id', updatePermissionHandler);
+rbacApp.get('/roles', requirePermission('roles:read'), getRolesHandler);
+rbacApp.post('/roles', requirePermission('roles:create'), createRoleHandler);
+rbacApp.patch('/roles/:id', requirePermission('roles:update'), updateRoleHandler);
+rbacApp.post('/roles/:id/permissions', requirePermission('roles:assign-permissions'), assignRolePermissionsHandler);
+rbacApp.get('/permissions', requirePermission('permissions:read'), getPermissionsHandler);
+rbacApp.post('/permissions', requirePermission('permissions:create'), createPermissionHandler);
+rbacApp.patch('/permissions/:id', requirePermission('permissions:update'), updatePermissionHandler);
 
 openApiApp
   .openapi(getRolesRoute, getRolesHandler)

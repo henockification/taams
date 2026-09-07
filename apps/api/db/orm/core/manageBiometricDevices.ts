@@ -8,6 +8,7 @@ import type {
   UpdateBiometricDeviceInput,
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
@@ -21,7 +22,15 @@ export async function createBiometricDevice(input: CreateBiometricDeviceInput) {
     .values(normalizeBiometricDeviceInput(input) as any)
     .returning();
 
-  return getBiometricDeviceById(device.id);
+  const created = await getBiometricDeviceById(device.id);
+  await writeAuditEvent(db, {
+    action: 'BIOMETRIC_DEVICE_CREATED',
+    resourceType: 'biometric_device',
+    resourceId: created?.id,
+    resourceLabel: created?.deviceName,
+    departmentId: created?.departmentId,
+  });
+  return created;
 }
 
 export async function getBiometricDevices() {
@@ -36,6 +45,15 @@ export async function getBiometricDevices() {
 export async function getBiometricDeviceById(id: string, tx: DbClient = db) {
   return tx.query.biometricDevices.findFirst({
     where: eq(biometricDevices.id, id),
+    with: {
+      department: true,
+    },
+  });
+}
+
+export async function getBiometricDeviceBySerialNumber(serialNumber: string, tx: DbClient = db) {
+  return tx.query.biometricDevices.findFirst({
+    where: eq(biometricDevices.serialNumber, serialNumber),
     with: {
       department: true,
     },
@@ -60,7 +78,16 @@ export async function updateBiometricDevice(id: string, input: UpdateBiometricDe
     .set({ ...updateData, updatedAt: new Date() })
     .where(eq(biometricDevices.id, id));
 
-  return getBiometricDeviceById(id);
+  const updated = await getBiometricDeviceById(id);
+  await writeAuditEvent(db, {
+    action: 'BIOMETRIC_DEVICE_UPDATED',
+    resourceType: 'biometric_device',
+    resourceId: updated?.id,
+    resourceLabel: updated?.deviceName,
+    departmentId: updated?.departmentId,
+    metadata: { fields: Object.keys(updateData) },
+  });
+  return updated;
 }
 
 export async function acquireBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE' | 'PROVISIONING', ownerId: string, ttlMilliseconds = 120_000) {
@@ -242,7 +269,15 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
     } as any)
     .returning();
 
-  return getAttendancePunchById(punch.id, tx);
+  const createdPunch = await getAttendancePunchById(punch.id, tx);
+  await writeAuditEvent(tx, {
+    action: 'ATTENDANCE_PUNCH_CREATED',
+    resourceType: 'attendance_punch',
+    resourceId: createdPunch?.id,
+    resourceLabel: createdPunch?.biometricId,
+    employeeId: createdPunch?.employeeId ?? null,
+  });
+  return createdPunch;
 }
 
 export async function getAttendancePunches(scope?: EmployeeVisibilityScope) {

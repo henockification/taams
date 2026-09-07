@@ -11,10 +11,10 @@ export async function getRolesHandler(c: Context) {
       roles: roles.map(formatRole),
     });
   } catch (error) {
+    console.error('Failed to fetch roles', error);
     return c.json({
       success: false,
       error: 'Failed to fetch roles',
-      details: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 }

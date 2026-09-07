@@ -7,6 +7,7 @@ import {
   verifyOtpForPurpose,
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
+import { assertPasswordPolicy } from '../../../lib/password-policy';
 import { getRequestClientIp } from '../../../middleware/auth';
 
 export async function resetPasswordHandler(c: Context) {
@@ -23,6 +24,14 @@ export async function resetPasswordHandler(c: Context) {
 
     if (!email || !otp || !newPassword) {
       return c.json({ message: 'Email, OTP, and new password are required' }, 400);
+    }
+
+    try {
+      assertPasswordPolicy(newPassword, email);
+    } catch (error) {
+      return c.json({
+        message: error instanceof Error ? error.message : 'Password does not meet requirements',
+      }, 400);
     }
 
     const foundUser = await findUserByEmail(email);
@@ -86,9 +95,7 @@ export async function resetPasswordHandler(c: Context) {
 
     return c.json({ success: true });
   } catch (error) {
-    return c.json({
-      message: 'Failed to reset password',
-      details: error instanceof Error ? error.message : 'Unknown error',
-    }, 500);
+    console.error('Failed to reset password', error);
+    return c.json({ message: 'Failed to reset password' }, 500);
   }
 }

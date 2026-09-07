@@ -47,6 +47,7 @@ import {
   updateLeaveTypeHandler,
   upsertLeaveBalanceHandler,
 } from './handlers/leaveManagement';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const leaveManagementApp = new Hono();
 
@@ -232,25 +233,25 @@ export const reviewLeaveInterruptionRoute = createRoute({
   responses: { 200: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Reviewed leave interruption' } },
 });
 
-leaveManagementApp.get('/leave/fiscal-years', getLeaveFiscalYearsHandler);
-leaveManagementApp.post('/leave/fiscal-years', createLeaveFiscalYearHandler);
-leaveManagementApp.put('/leave/fiscal-years/:id', updateLeaveFiscalYearHandler);
-leaveManagementApp.post('/leave/fiscal-years/:id/active', setActiveLeaveFiscalYearHandler);
-leaveManagementApp.get('/leave/types', getLeaveTypesHandler);
-leaveManagementApp.post('/leave/types', createLeaveTypeHandler);
-leaveManagementApp.put('/leave/types/:id', updateLeaveTypeHandler);
-leaveManagementApp.get('/leave/balances', getLeaveBalancesHandler);
-leaveManagementApp.post('/leave/balances', upsertLeaveBalanceHandler);
-leaveManagementApp.post('/leave/balances/bulk', bulkUpsertLeaveBalancesHandler);
-leaveManagementApp.post('/leave/balances/transfer', transferLeaveBalanceHandler);
-leaveManagementApp.get('/leave/requests', getLeaveRequestsHandler);
-leaveManagementApp.post('/leave/requests', createLeaveRequestHandler);
-leaveManagementApp.put('/leave/requests/:id', updateLeaveRequestHandler);
-leaveManagementApp.post('/leave/requests/:id/status', changeLeaveRequestStatusHandler);
-leaveManagementApp.post('/leave/requests/:id/authorization', authorizeLeaveRequestHandler);
-leaveManagementApp.post('/leave/requests/:id/interruptions', createLeaveInterruptionHandler);
-leaveManagementApp.post('/leave/interruptions/:id/review', reviewLeaveInterruptionHandler);
-leaveManagementApp.post('/leave/interruptions/:id/authorization', authorizeLeaveInterruptionHandler);
+leaveManagementApp.get('/leave/fiscal-years', requirePermission('leave-fiscal-years:read', 'annual-leave-requests:read', 'other-leave-requests:read', 'leave-balances:read'), getLeaveFiscalYearsHandler);
+leaveManagementApp.post('/leave/fiscal-years', requirePermission('leave-fiscal-years:read'), createLeaveFiscalYearHandler);
+leaveManagementApp.put('/leave/fiscal-years/:id', requirePermission('leave-fiscal-years:read'), updateLeaveFiscalYearHandler);
+leaveManagementApp.post('/leave/fiscal-years/:id/active', requirePermission('leave-fiscal-years:read'), setActiveLeaveFiscalYearHandler);
+leaveManagementApp.get('/leave/types', requirePermission('leave-types:read', 'annual-leave-requests:read', 'other-leave-requests:read'), getLeaveTypesHandler);
+leaveManagementApp.post('/leave/types', requirePermission('leave-types:read'), createLeaveTypeHandler);
+leaveManagementApp.put('/leave/types/:id', requirePermission('leave-types:read'), updateLeaveTypeHandler);
+leaveManagementApp.get('/leave/balances', requirePermission('leave-balances:read', 'annual-leave-requests:read'), getLeaveBalancesHandler);
+leaveManagementApp.post('/leave/balances', requirePermission('leave-balances:read'), upsertLeaveBalanceHandler);
+leaveManagementApp.post('/leave/balances/bulk', requirePermission('leave-balances:read'), bulkUpsertLeaveBalancesHandler);
+leaveManagementApp.post('/leave/balances/transfer', requirePermission('leave-transfer:read'), transferLeaveBalanceHandler);
+leaveManagementApp.get('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveRequestsHandler);
+leaveManagementApp.post('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), createLeaveRequestHandler);
+leaveManagementApp.put('/leave/requests/:id', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), updateLeaveRequestHandler);
+leaveManagementApp.post('/leave/requests/:id/status', requirePermissionOrDelegation('leave-request-approvals:approve'), changeLeaveRequestStatusHandler);
+leaveManagementApp.post('/leave/requests/:id/authorization', requirePermission('leave-authorizations:approve'), authorizeLeaveRequestHandler);
+leaveManagementApp.post('/leave/requests/:id/interruptions', requirePermission('annual-leave-requests:read'), createLeaveInterruptionHandler);
+leaveManagementApp.post('/leave/interruptions/:id/review', requirePermissionOrDelegation('leave-request-approvals:approve'), reviewLeaveInterruptionHandler);
+leaveManagementApp.post('/leave/interruptions/:id/authorization', requirePermission('leave-authorizations:approve'), authorizeLeaveInterruptionHandler);
 
 openApiApp
   .openapi(getLeaveFiscalYearsRoute, getLeaveFiscalYearsHandler as any)

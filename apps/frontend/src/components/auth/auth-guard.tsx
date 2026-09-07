@@ -16,9 +16,7 @@ export function AuthGuard({ children, requireAuth = true }: AuthGuardProps) {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('AuthGuard check:', { isPending, hasUser: !!session?.user, session });
     if (!isPending && requireAuth && !session?.user) {
-      console.log('AuthGuard: No user found, redirecting to signin');
       notifications.show({
         title: 'Authentication Required',
         message: 'Please log in to access this page',

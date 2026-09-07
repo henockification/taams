@@ -1,6 +1,7 @@
 import { and, eq, gte, lte, ne } from 'drizzle-orm';
 import { db } from '../../db';
 import { holidays } from '../../schema';
+import { writeAuditEvent } from '../../../lib/audit';
 import type {
   CreateHolidayInput,
   UpdateHolidayInput,
@@ -47,7 +48,14 @@ export async function createHoliday(input: CreateHolidayInput, tx: DbClient = db
     } as any)
     .returning();
 
-  return getHolidayById(created.id, tx);
+  const createdHoliday = await getHolidayById(created.id, tx);
+  await writeAuditEvent(tx, {
+    action: 'HOLIDAY_CREATED',
+    resourceType: 'holiday',
+    resourceId: createdHoliday?.id,
+    resourceLabel: createdHoliday?.nameEn,
+  });
+  return createdHoliday;
 }
 
 export async function updateHoliday(id: string, input: UpdateHolidayInput, tx: DbClient = db) {
@@ -81,7 +89,14 @@ export async function updateHoliday(id: string, input: UpdateHolidayInput, tx: D
     }) as any)
     .where(eq(holidays.id, id));
 
-  return getHolidayById(id, tx);
+  const updatedHoliday = await getHolidayById(id, tx);
+  await writeAuditEvent(tx, {
+    action: 'HOLIDAY_UPDATED',
+    resourceType: 'holiday',
+    resourceId: updatedHoliday?.id,
+    resourceLabel: updatedHoliday?.nameEn,
+  });
+  return updatedHoliday;
 }
 
 export async function getActiveHolidayForDate(date: string, tx: DbClient = db) {

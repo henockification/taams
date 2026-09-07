@@ -33,6 +33,8 @@ export const user = pgTable('user', {
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
   role: text('role').array().default(['user']),
+  failedLoginCount: integer('failed_login_count').notNull().default(0),
+  lockedUntil: timestamp('locked_until', { withTimezone: true, precision: 6 }),
   createdAt: timestamp('createdAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updatedAt', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
@@ -53,6 +55,7 @@ export const authSessions = pgTable('auth_sessions', {
   userAgent: text('user_agent'),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
 
 export const authVerificationTokens = pgTable('auth_verification_tokens', {

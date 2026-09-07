@@ -14,6 +14,7 @@ import {
   getAttendancePunchesPaginatedHandler,
   getUnprocessedAttendancePunchesHandler,
 } from './handlers/attendancePunches';
+import { requirePermission } from '../../../middleware/rbac';
 
 const attendancePunchesApp = new Hono();
 
@@ -119,11 +120,11 @@ export const getUnprocessedAttendancePunchesRoute = createRoute({
   },
 });
 
-attendancePunchesApp.post('/attendance-punches', createAttendancePunchHandler);
-attendancePunchesApp.get('/attendance-punches', getAttendancePunchesHandler);
-attendancePunchesApp.get('/attendance-punches/paginated', getAttendancePunchesPaginatedHandler);
-attendancePunchesApp.get('/attendance-punches/unprocessed', getUnprocessedAttendancePunchesHandler);
-attendancePunchesApp.get('/attendance-punches/employee/:employeeId', getAttendancePunchesByEmployeeHandler);
+attendancePunchesApp.post('/attendance-punches', requirePermission('attendance-punches:read'), createAttendancePunchHandler);
+attendancePunchesApp.get('/attendance-punches', requirePermission('attendance-punches:read', 'reports-attendance-punches:read'), getAttendancePunchesHandler);
+attendancePunchesApp.get('/attendance-punches/paginated', requirePermission('attendance-punches:read', 'reports-attendance-punches:read'), getAttendancePunchesPaginatedHandler);
+attendancePunchesApp.get('/attendance-punches/unprocessed', requirePermission('attendance-punches:read'), getUnprocessedAttendancePunchesHandler);
+attendancePunchesApp.get('/attendance-punches/employee/:employeeId', requirePermission('attendance-punches:read', 'dashboard:read', 'reports-attendance-punches:read'), getAttendancePunchesByEmployeeHandler);
 
 openApiApp
   .openapi(createAttendancePunchRoute, createAttendancePunchHandler as any)

@@ -38,7 +38,6 @@ export async function getUsersHandler(c: Context) {
     return c.json({
       success: false,
       error: 'Failed to fetch users',
-      details: error instanceof Error ? error.message : 'Unknown error'
     }, 500);
   }
 }

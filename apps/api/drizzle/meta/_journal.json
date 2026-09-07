@@ -204,6 +204,13 @@
       "when": 1788600000000,
       "tag": "0032_audit_events",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788782400000,
+      "tag": "0033_auth_lockout_sessions",
+      "breakpoints": true
     }
   ]
 }

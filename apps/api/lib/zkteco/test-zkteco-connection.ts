@@ -1,4 +1,5 @@
 import ZKLib from "node-zklib";
+import { assertPrivateDeviceAddress } from "./ssrf";
 
 type TestZktecoConnectionInput = {
   ipAddress: string;
@@ -13,6 +14,8 @@ export type TestZktecoConnectionResult = {
 };
 
 export async function testZktecoConnection(input: TestZktecoConnectionInput): Promise<TestZktecoConnectionResult> {
+  assertPrivateDeviceAddress(input.ipAddress);
+
   const startedAt = Date.now();
   const zk = new ZKLib(input.ipAddress, input.port || 4370, 10000, 4000);
 
