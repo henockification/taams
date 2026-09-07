@@ -12,6 +12,7 @@ import {
   type NotificationChannel,
   type NotificationRecipient,
 } from '../db/orm/core/manageNotifications';
+import { isTruthyEnv } from './runtime-env';
 
 export type WorkflowNotificationEvent =
   | 'LEAVE_REQUEST_SUBMITTED'
@@ -87,7 +88,7 @@ class GraphEmailProvider implements NotificationProvider {
   private token: { accessToken: string; expiresAt: number } | null = null;
 
   isEnabled() {
-    return workflowNotificationsAreEnabled() && isTruthy(process.env.NOTIFICATIONS_EMAIL_ENABLED);
+    return workflowNotificationsAreEnabled() && isTruthyEnv('NOTIFICATIONS_EMAIL_ENABLED');
   }
 
   async send(input: { destination: string; subject?: string | null; message: string }): Promise<SendResult> {
@@ -176,7 +177,7 @@ class GraphEmailProvider implements NotificationProvider {
 
 class EthioTelecomSmsProvider implements NotificationProvider {
   isEnabled() {
-    return workflowNotificationsAreEnabled() && isTruthy(process.env.NOTIFICATIONS_SMS_ENABLED);
+    return workflowNotificationsAreEnabled() && isTruthyEnv('NOTIFICATIONS_SMS_ENABLED');
   }
 
   async send(input: { destination: string; message: string }): Promise<SendResult> {
@@ -650,12 +651,8 @@ function humanizeEventType(eventType: string) {
   return eventType.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function isTruthy(value?: string | null) {
-  return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
-}
-
 export function workflowNotificationsAreEnabled() {
-  return isTruthy(process.env.NOTIFICATIONS_ENABLED);
+  return isTruthyEnv('NOTIFICATIONS_ENABLED');
 }
 
 function extractProviderMessageId(value: unknown) {

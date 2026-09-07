@@ -1,10 +1,30 @@
-function envFlag(value?: string | null) {
-  return (value ?? '').trim().toLowerCase();
+function readEnv(name: string) {
+  return process.env[name];
+}
+
+function envFlag(name: string) {
+  return (readEnv(name) ?? '').trim().toLowerCase();
+}
+
+export function isTruthyEnv(name: string) {
+  return ['1', 'true', 'yes', 'on'].includes(envFlag(name));
+}
+
+export function isFalsyEnv(name: string) {
+  return ['0', 'false', 'no', 'off'].includes(envFlag(name));
+}
+
+function appEnv() {
+  return envFlag('APP_ENV');
 }
 
 export function isProduction() {
-  const env = envFlag(process.env.NODE_ENV || process.env.APP_ENV);
-  return env === 'production' || env === 'prod';
+  // Next.js standalone and the Dockerfile always set NODE_ENV=production, even
+  // when operators set NODE_ENV=development at runtime. Prefer APP_ENV.
+  const explicit = appEnv();
+  if (explicit) return explicit === 'production' || explicit === 'prod';
+  const nodeEnv = envFlag('NODE_ENV');
+  return nodeEnv === 'production' || nodeEnv === 'prod';
 }
 
 export function isLocalRuntime() {
@@ -12,12 +32,14 @@ export function isLocalRuntime() {
 }
 
 export function allowMasterOtp() {
-  if (isProduction()) return false;
-  return ['1', 'true', 'yes', 'on'].includes(envFlag(process.env.ALLOW_MASTER_OTP));
+  if (!isTruthyEnv('ALLOW_MASTER_OTP')) return false;
+  const explicit = appEnv();
+  if (explicit === 'production' || explicit === 'prod') return false;
+  return true;
 }
 
 export function requireAuthSecret() {
-  const secret = process.env.BETTER_AUTH_SECRET?.trim();
+  const secret = readEnv('BETTER_AUTH_SECRET')?.trim();
   if (secret) return secret;
   if (isProduction()) {
     throw new Error('BETTER_AUTH_SECRET is required');
@@ -26,11 +48,10 @@ export function requireAuthSecret() {
 }
 
 export function cookieShouldBeSecure() {
-  const cookieSecure = envFlag(process.env.COOKIE_SECURE);
-  if (cookieSecure === 'true' || cookieSecure === '1' || cookieSecure === 'yes' || cookieSecure === 'on') return true;
-  if (cookieSecure === 'false' || cookieSecure === '0' || cookieSecure === 'no' || cookieSecure === 'off') return false;
+  if (isTruthyEnv('COOKIE_SECURE')) return true;
+  if (isFalsyEnv('COOKIE_SECURE')) return false;
   if (isProduction()) return true;
-  return process.env.FRONTEND_URL?.startsWith('https://')
-    || process.env.APP_BASE_URL?.startsWith('https://')
+  return readEnv('FRONTEND_URL')?.startsWith('https://')
+    || readEnv('APP_BASE_URL')?.startsWith('https://')
     || false;
 }

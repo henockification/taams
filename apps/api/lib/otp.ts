@@ -1,6 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { safeSendDirectNotification, workflowNotificationsAreEnabled } from './notifications';
-import { allowMasterOtp, isProduction, requireAuthSecret } from './runtime-env';
+import { allowMasterOtp, requireAuthSecret } from './runtime-env';
 
 export const MASTER_OTP_CODE = '424242';
 export const OTP_TTL_MINUTES = 10;
@@ -10,9 +10,9 @@ export type OtpPurpose = 'sign-in' | 'password-reset' | 'email-verification';
 export function generateOtpCode() {
   const notificationsEnabled = workflowNotificationsAreEnabled();
   if (!notificationsEnabled) {
-    if (isProduction() || !allowMasterOtp()) {
+    if (!allowMasterOtp()) {
       throw new Error(
-        'OTP delivery is not configured. Enable NOTIFICATIONS_ENABLED with a working email/SMS provider, or set ALLOW_MASTER_OTP=true while not in production (no spaces around the value). Restart the API after changing .env.',
+        'OTP delivery is not configured. Set NOTIFICATIONS_ENABLED=true with a working email/SMS provider, or set ALLOW_MASTER_OTP=true. Docker/Next.js force NODE_ENV=production, so NODE_ENV=development is ignored; do not set APP_ENV=production on this host if you need the testing OTP.',
       );
     }
     return MASTER_OTP_CODE;
@@ -31,7 +31,7 @@ export function verifyOtp(code: string, expectedHash: string) {
 }
 
 export function isOtpTestingMode() {
-  return !isProduction() && allowMasterOtp() && !workflowNotificationsAreEnabled();
+  return allowMasterOtp() && !workflowNotificationsAreEnabled();
 }
 
 export async function sendOtp(identifier: string, purpose: OtpPurpose, code: string) {
