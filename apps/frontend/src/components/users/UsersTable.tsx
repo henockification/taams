@@ -45,7 +45,7 @@ export default function UsersTable() {
 
       if (!query) return true;
 
-      const haystack = [user.name, user.email, ...(user.role ?? [])]
+      const haystack = [user.name, user.email, user.phone, ...(user.role ?? [])]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
@@ -132,6 +132,14 @@ export default function UsersTable() {
       title: 'Email',
       dataIndex: 'email',
       sortable: true,
+      render: (value) => value || '—',
+    },
+    {
+      key: 'phone',
+      title: 'Phone',
+      dataIndex: 'phone',
+      sortable: true,
+      render: (value) => value || '—',
     },
     {
       key: 'emailVerified',

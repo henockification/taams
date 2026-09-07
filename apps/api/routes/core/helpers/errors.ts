@@ -11,7 +11,7 @@ export function coreErrorResponse(c: Context, error: unknown, fallback: string) 
         ? 409
         : lowerMessage.includes('only ') || lowerMessage.includes('not authorized') || lowerMessage.includes('permission')
           ? 403
-          : lowerMessage.includes('cannot') || lowerMessage.includes('must ') || lowerMessage.includes('invalid') || lowerMessage.includes('required')
+          : lowerMessage.includes('cannot') || lowerMessage.includes('must ') || lowerMessage.includes('invalid') || lowerMessage.includes('required') || lowerMessage.includes('already used')
             ? 400
             : 500;
 

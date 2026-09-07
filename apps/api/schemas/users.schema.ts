@@ -1,21 +1,21 @@
 import { z } from 'zod';
 
-// User schema for validation
 export const UserSchema = z.object({
   id: z.string().openapi({ example: 'user_123' }),
   name: z.string().nullable().openapi({ example: 'John Doe' }),
-  email: z.string().email().openapi({ example: 'john@example.com' }),
+  email: z.string().email().nullable().openapi({ example: 'john@example.com' }),
+  phone: z.string().nullable().optional().openapi({ example: '+251911223344' }),
   emailVerified: z.boolean().nullable().openapi({ example: false }),
   role: z.array(z.string()).openapi({ example: ['user'] }),
   roles: z.array(z.string()).optional().openapi({ example: ['admin'] }),
   createdAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
 });
 
-// Extended user schema for single user response (includes additional fields)
 export const UserDetailSchema = z.object({
   id: z.string().openapi({ example: 'user_123' }),
   name: z.string().nullable().openapi({ example: 'John Doe' }),
-  email: z.string().email().openapi({ example: 'john@example.com' }),
+  email: z.string().email().nullable().openapi({ example: 'john@example.com' }),
+  phone: z.string().nullable().optional().openapi({ example: '+251911223344' }),
   emailVerified: z.boolean().nullable().openapi({ example: false }),
   role: z.array(z.string()).openapi({ example: ['user'] }),
   roles: z.array(z.string()).optional().openapi({ example: ['admin'] }),
@@ -24,14 +24,12 @@ export const UserDetailSchema = z.object({
   image: z.string().nullable().openapi({ example: 'https://example.com/avatar.jpg' }),
 });
 
-// Pagination schema
 export const PaginationSchema = z.object({
   total: z.number().openapi({ example: 100 }),
   page: z.number().openapi({ example: 1 }),
   pageSize: z.number().openapi({ example: 20 }),
 });
 
-// Response schemas
 export const UsersResponseSchema = z.object({
   success: z.boolean().openapi({ example: true }),
   users: z.array(UserSchema),
@@ -45,18 +43,22 @@ export const UserResponseSchema = z.object({
 
 export const CreateUserRequestSchema = z.object({
   name: z.string().min(1).openapi({ example: 'John Doe' }),
-  email: z.string().email().openapi({ example: 'john@example.com' }),
+  email: z.string().email().nullable().optional().openapi({ example: 'john@example.com' }),
+  phone: z.string().max(30).nullable().optional().openapi({ example: '+251911223344' }),
   emailVerified: z.boolean().optional().openapi({ example: false }),
   image: z.string().url().optional().openapi({ example: 'https://example.com/avatar.jpg' }),
   roleIds: z.array(z.string().uuid()).optional().openapi({
     example: ['a52da4a6-4b69-4aa0-865c-1a03fddb731f'],
     description: 'Role ids to assign after user creation',
   }),
+}).refine((value) => Boolean(value.email?.trim() || value.phone?.trim()), {
+  message: 'An email or phone number is required',
 });
 
 export const UpdateUserRequestSchema = z.object({
   name: z.string().min(1).optional().openapi({ example: 'Jane Doe' }),
-  email: z.string().email().optional().openapi({ example: 'jane@example.com' }),
+  email: z.string().email().nullable().optional().openapi({ example: 'jane@example.com' }),
+  phone: z.string().max(30).nullable().optional().openapi({ example: '+251911223344' }),
   emailVerified: z.boolean().optional().openapi({ example: true }),
   image: z.string().url().nullable().optional().openapi({ example: 'https://example.com/avatar.jpg' }),
   roleIds: z.array(z.string().uuid()).optional().openapi({
@@ -84,9 +86,9 @@ export const UserProfileUpdateResponseSchema = z.object({
 });
 
 export const UpdateProfileImageSchema = z.object({
-  imageUrl: z.string().url().openapi({ 
+  imageUrl: z.string().url().openapi({
     example: 'https://your-bucket.r2.dev/tenant123/avatars/image-123456.jpg',
-    description: 'The URL of the uploaded profile image'
+    description: 'The URL of the uploaded profile image',
   }),
 });
 

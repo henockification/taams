@@ -1,8 +1,9 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../../db';
 import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
 import { getAuditContext, diffChanges, writeAuditEvent } from '../../../lib/audit';
 import { hasSuperAdminRole, includesPrivilegedRole } from '../../../lib/privileged-roles';
+import { assertUserHasLoginIdentifier, normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 
 type DbClient = typeof db | any;
 const RESERVED_ROLE_NAMES = new Set(['super_admin', 'admin', 'executive', 'human_resource', 'supervisor', 'employee']);
@@ -36,7 +37,8 @@ export type UpdatePermissionInput = {
 export type CreateUserInput = {
   id: string;
   name: string;
-  email: string;
+  email?: string | null;
+  phone?: string | null;
   emailVerified?: boolean;
   image?: string;
   roleIds?: string[];
@@ -44,7 +46,8 @@ export type CreateUserInput = {
 
 export type UpdateUserInput = {
   name?: string;
-  email?: string;
+  email?: string | null;
+  phone?: string | null;
   emailVerified?: boolean;
   image?: string | null;
   roleIds?: string[];
@@ -226,12 +229,32 @@ export async function createUserWithRoles(input: CreateUserInput) {
     await assertActorCanAssignRoles(input.roleIds, tx);
     const roleNames = input.roleIds?.length ? await getRoleNamesByIds(input.roleIds, tx) : ['user'];
 
+    const email = normalizeLoginEmail(input.email);
+    const phone = normalizeLoginPhone(input.phone);
+    assertUserHasLoginIdentifier(email, phone);
+
+    if (email) {
+      const existing = await tx.query.user.findFirst({
+        where: eq(user.email, email),
+        columns: { id: true },
+      });
+      if (existing) throw new Error('That email is already used by another user account');
+    }
+    if (phone) {
+      const existing = await tx.query.user.findFirst({
+        where: eq(user.phone, phone),
+        columns: { id: true },
+      });
+      if (existing) throw new Error('That phone number is already used by another user account');
+    }
+
     const [createdUser] = await tx
       .insert(user)
       .values({
         id: input.id,
         name: input.name,
-        email: input.email,
+        email,
+        phone,
         emailVerified: input.emailVerified ?? true,
         image: input.image,
         role: roleNames,
@@ -265,7 +288,16 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
 
     const updateData: Record<string, unknown> = {};
     if (input.name !== undefined) updateData.name = input.name;
-    if (input.email !== undefined) updateData.email = input.email;
+    if (input.email !== undefined) updateData.email = normalizeLoginEmail(input.email);
+    if (input.phone !== undefined) {
+      if (input.phone === null || input.phone.trim() === '') {
+        updateData.phone = null;
+      } else {
+        const phone = normalizeLoginPhone(input.phone);
+        if (!phone) throw new Error('Invalid phone number');
+        updateData.phone = phone;
+      }
+    }
     if (input.emailVerified !== undefined) updateData.emailVerified = input.emailVerified;
     if (input.image !== undefined) updateData.image = input.image;
 
@@ -287,6 +319,26 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
     }
 
     if (Object.keys(updateData).length > 0) {
+      const current = await tx.query.user.findFirst({ where: eq(user.id, userId) });
+      const nextEmail = updateData.email !== undefined ? (updateData.email as string | null) : current?.email;
+      const nextPhone = updateData.phone !== undefined ? (updateData.phone as string | null) : current?.phone;
+      assertUserHasLoginIdentifier(nextEmail, nextPhone);
+
+      if (nextEmail) {
+        const other = await tx.query.user.findFirst({
+          where: and(eq(user.email, nextEmail), ne(user.id, userId)),
+          columns: { id: true },
+        });
+        if (other) throw new Error('That email is already used by another user account');
+      }
+      if (nextPhone) {
+        const other = await tx.query.user.findFirst({
+          where: and(eq(user.phone, nextPhone), ne(user.id, userId)),
+          columns: { id: true },
+        });
+        if (other) throw new Error('That phone number is already used by another user account');
+      }
+
       await tx
         .update(user)
         .set({

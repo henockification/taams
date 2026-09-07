@@ -38,11 +38,11 @@ async function authFetch(path: string, init?: RequestInit) {
 
 export const authClient = {
   signIn: {
-    email: async ({ email, password, otp, fetchOptions, callbackURL }: any) => {
+    email: async ({ email, phone, password, otp, fetchOptions, callbackURL }: any) => {
       return authFetch("/sign-in/email", {
         method: "POST",
         headers: fetchOptions?.headers,
-        body: JSON.stringify({ email, password, otp, callbackURL }),
+        body: JSON.stringify({ email, phone, password, otp, callbackURL }),
       });
     },
     social: async (_input?: any) => ({
@@ -58,17 +58,17 @@ export const authClient = {
   },
   signOut: async () => authFetch("/sign-out", { method: "POST" }),
   getSession: async () => authFetch("/get-session", { method: "GET" }),
-  requestPasswordReset: async ({ email, fetchOptions }: any) => {
+  requestPasswordReset: async ({ email, phone, fetchOptions }: any) => {
     return authFetch("/request-password-reset", {
       method: "POST",
       headers: fetchOptions?.headers,
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, phone }),
     });
   },
-  resetPassword: async ({ email, otp, token, newPassword }: any) => {
+  resetPassword: async ({ email, phone, otp, token, newPassword }: any) => {
     return authFetch("/reset-password", {
       method: "POST",
-      body: JSON.stringify({ email, otp: otp ?? token, newPassword }),
+      body: JSON.stringify({ email, phone, otp: otp ?? token, newPassword }),
     });
   },
   emailOtp: {

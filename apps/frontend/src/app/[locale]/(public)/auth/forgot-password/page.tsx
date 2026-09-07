@@ -13,43 +13,54 @@ import { useForm } from 'react-hook-form';
 import { notifications } from '@/lib/notifications';
 import { AlertCircle } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
+import { LoginMethodToggle, type LoginMethod } from '@/components/auth/login-method-toggle';
+import { identifierPayload, isValidEthiopianPhone } from '@/lib/login-identifier';
 
 interface ForgotPasswordFormData {
-  email: string;
+  identifier: string;
 }
 
 export default function ForgotPasswordPage() {
   const t = useTranslations('auth');
   const router = useRouter();
+  const [method, setMethod] = useState<LoginMethod>('email');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [submittedEmail, setSubmittedEmail] = useState('');
+  const [submittedIdentifier, setSubmittedIdentifier] = useState('');
+  const [submittedMethod, setSubmittedMethod] = useState<LoginMethod>('email');
   const [testingMode, setTestingMode] = useState(false);
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<ForgotPasswordFormData>({
     defaultValues: {
-      email: '',
+      identifier: '',
     },
   });
+
+  const changeMethod = (nextMethod: LoginMethod) => {
+    setMethod(nextMethod);
+    setValue('identifier', '');
+    setError(null);
+  };
 
   const onSubmit = async (data: ForgotPasswordFormData) => {
     setLoading(true);
     setError(null);
 
     try {
-      const { data: result, error } = await authClient.requestPasswordReset({
-        email: data.email,
-      });
+      const payload = identifierPayload(method, data.identifier);
+      const { data: result, error } = await authClient.requestPasswordReset(payload);
 
       if (error) {
         setError(error.message || t('requestResetFailed'));
       } else {
-        setSubmittedEmail(data.email);
+        setSubmittedIdentifier(data.identifier.trim());
+        setSubmittedMethod(method);
         setTestingMode(Boolean(result?.testingMode));
         setSuccess(true);
         notifications.show({
@@ -68,13 +79,17 @@ export default function ForgotPasswordPage() {
     }
   };
 
+  const resetQuery = submittedMethod === 'email'
+    ? `email=${encodeURIComponent(submittedIdentifier)}`
+    : `phone=${encodeURIComponent(submittedIdentifier)}`;
+
   return (
     <AuthShell
       eyebrow={t('brandEyebrow')}
       title={success ? t('forgotPasswordSuccessTitle') : t('forgotPasswordTitle')}
       description={
         success
-          ? t('forgotPasswordSuccessDescription', { email: submittedEmail })
+          ? t('forgotPasswordSuccessDescription', { identifier: submittedIdentifier })
           : t('forgotPasswordDescription')
       }
       sideFooter={<div />}
@@ -86,7 +101,7 @@ export default function ForgotPasswordPage() {
               {testingMode ? t('otpTestingMode') : t('forgotPasswordSuccessHelp')}
             </p>
             <Button className="w-full" asChild>
-              <Link href={`/auth/reset-password?email=${encodeURIComponent(submittedEmail)}${testingMode ? '&testingMode=1' : ''}`}>
+              <Link href={`/auth/reset-password?${resetQuery}${testingMode ? '&testingMode=1' : ''}`}>
                 {t('setNewPassword')}
               </Link>
             </Button>
@@ -107,22 +122,29 @@ export default function ForgotPasswordPage() {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <LoginMethodToggle method={method} onChange={changeMethod} />
+
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t('email')}</Label>
+                  <Label htmlFor="identifier">{method === 'email' ? t('email') : t('phone')}</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder={t('emailPlaceholder')}
-                    {...register('email', {
-                      required: t('validation.emailRequired'),
-                      pattern: {
-                        value: /^\S+@\S+$/,
-                        message: t('validation.invalidEmail'),
+                    id="identifier"
+                    key={method}
+                    type={method === 'email' ? 'email' : 'tel'}
+                    inputMode={method === 'email' ? 'email' : 'tel'}
+                    autoComplete={method === 'email' ? 'email' : 'tel'}
+                    placeholder={method === 'email' ? t('emailPlaceholder') : t('phonePlaceholder')}
+                    {...register('identifier', {
+                      required: method === 'email' ? t('validation.emailRequired') : t('validation.phoneRequired'),
+                      validate: (value) => {
+                        if (method === 'email') {
+                          return /^\S+@\S+$/.test(value) || t('validation.invalidEmail');
+                        }
+                        return isValidEthiopianPhone(value) || t('validation.invalidPhone');
                       },
                     })}
                   />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
+                  {errors.identifier && (
+                    <p className="text-sm text-destructive">{errors.identifier.message}</p>
                   )}
                 </div>
 

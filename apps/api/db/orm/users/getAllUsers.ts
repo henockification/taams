@@ -5,7 +5,8 @@ import { count, ilike, or } from 'drizzle-orm';
 type UserModel = {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
+  phone: string | null;
   emailVerified: boolean | null;
   role: string[] | null;
   createdAt: Date;
@@ -28,6 +29,7 @@ export async function getAllUsersPaginated({
     ? or(
         ilike(user.name, `%${normalizedSearch}%`),
         ilike(user.email, `%${normalizedSearch}%`),
+        ilike(user.phone, `%${normalizedSearch}%`),
       )
     : undefined;
 

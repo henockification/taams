@@ -211,6 +211,13 @@
       "when": 1788782400000,
       "tag": "0033_auth_lockout_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788786000000,
+      "tag": "0034_user_phone",
+      "breakpoints": true
     }
   ]
 }

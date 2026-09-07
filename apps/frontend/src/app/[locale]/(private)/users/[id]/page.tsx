@@ -19,7 +19,8 @@ import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 interface User {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
+  phone?: string | null;
   emailVerified: boolean | null;
   role: string[];
   createdAt: string;
@@ -217,7 +218,7 @@ export default function UserDetailPage() {
                   {user.name || 'No name'}
                 </h2>
                 <p className="text-lg text-muted-foreground">
-                  {user.email}
+                  {user.email || user.phone || 'No login identifier'}
                 </p>
                 <div className="flex items-center gap-2 mt-4">
                   <Badge variant={user.emailVerified ? 'default' : 'secondary'}>
@@ -249,7 +250,12 @@ export default function UserDetailPage() {
               <Separator />
               <div>
                 <p className="text-sm text-muted-foreground">Email Address</p>
-                <p className="font-medium">{user.email}</p>
+                <p className="font-medium">{user.email || '—'}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-sm text-muted-foreground">Phone</p>
+                <p className="font-medium">{user.phone || '—'}</p>
               </div>
               <Separator />
               <div>

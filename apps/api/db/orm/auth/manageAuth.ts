@@ -6,6 +6,7 @@ import { generateOtpCode, hashOtp, OTP_TTL_MINUTES, OtpPurpose, verifyOtp } from
 import { hashPassword, runDummyPasswordHash, verifyPassword } from '../../../lib/password';
 import { assertPasswordPolicy } from '../../../lib/password-policy';
 import { requireAuthSecret } from '../../../lib/runtime-env';
+import { parseLoginIdentifier, type LoginIdentifier } from '../../../lib/login-identifier';
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const SESSION_IDLE_MS = 30 * 60 * 1000;
@@ -30,9 +31,27 @@ export function getSessionExpiry() {
 }
 
 export async function findUserByEmail(email: string) {
+  return findUserByIdentifier({ email });
+}
+
+export async function findUserByIdentifier(input: { email?: string | null; phone?: string | null }) {
+  const parsed = parseLoginIdentifier(input);
+  if (!parsed) return null;
+
+  if (parsed.email) {
+    return db.query.user.findFirst({
+      where: eq(user.email, parsed.email),
+    });
+  }
+
   return db.query.user.findFirst({
-    where: eq(user.email, email.toLowerCase()),
+    where: eq(user.phone, parsed.phone!),
   });
+}
+
+export function canonicalAuthIdentifier(foundUser: { email?: string | null; phone?: string | null }, parsed: LoginIdentifier) {
+  if (parsed.email) return foundUser.email ?? parsed.email;
+  return foundUser.phone ?? parsed.phone ?? parsed.identifier;
 }
 
 export async function createOtpVerification(identifier: string, purpose: OtpPurpose) {
@@ -62,8 +81,8 @@ export async function createOtpVerification(identifier: string, purpose: OtpPurp
   return { verification, code };
 }
 
-export function createPasswordResetVerification(email: string) {
-  return createOtpVerification(email, 'password-reset');
+export function createPasswordResetVerification(identifier: string) {
+  return createOtpVerification(identifier, 'password-reset');
 }
 
 export async function verifyOtpForPurpose(identifier: string, purpose: OtpPurpose, code: string) {
@@ -145,8 +164,9 @@ export async function revokeOtherUserSessions(userId: string, currentToken: stri
   ));
 }
 
-export async function authenticateEmailPassword(email: string, password: string) {
-  const foundUser = await findUserByEmail(email);
+export async function authenticateIdentifierPassword(input: { email?: string | null; phone?: string | null }, password: string) {
+  const parsed = parseLoginIdentifier(input);
+  const foundUser = parsed ? await findUserByIdentifier(parsed) : null;
   const now = new Date();
 
   if (!foundUser) {
@@ -182,7 +202,15 @@ export async function authenticateEmailPassword(email: string, password: string)
     updatedAt: now,
   }).where(eq(user.id, foundUser.id));
 
-  return { success: true as const, user: { ...foundUser, failedLoginCount: 0, lockedUntil: null } };
+  return {
+    success: true as const,
+    user: { ...foundUser, failedLoginCount: 0, lockedUntil: null },
+    identifier: canonicalAuthIdentifier(foundUser, parsed!),
+  };
+}
+
+export async function authenticateEmailPassword(email: string, password: string) {
+  return authenticateIdentifierPassword({ email }, password);
 }
 
 async function recordFailedLogin(userId: string, currentCount: number) {

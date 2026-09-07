@@ -16,9 +16,11 @@ import { notifications } from '@/lib/notifications';
 import { AlertCircle, Check } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { OtpVerificationDialog } from '@/components/auth/OtpVerificationDialog';
+import { LoginMethodToggle, type LoginMethod } from '@/components/auth/login-method-toggle';
+import { identifierPayload, isValidEthiopianPhone } from '@/lib/login-identifier';
 
 interface ResetPasswordFormData {
-  email: string;
+  identifier: string;
   password: string;
   confirmPassword: string;
 }
@@ -32,21 +34,27 @@ export default function ResetPasswordPage() {
   const [otpError, setOtpError] = useState<string | null>(null);
   const [resendingOtp, setResendingOtp] = useState(false);
   const [testingMode, setTestingMode] = useState(false);
-  const [pendingReset, setPendingReset] = useState<ResetPasswordFormData | null>(null);
+  const [pendingReset, setPendingReset] = useState<{
+    email?: string;
+    phone?: string;
+    password: string;
+  } | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
-  
-  const email = searchParams.get('email') || '';
+  const queryEmail = searchParams.get('email') || '';
+  const queryPhone = searchParams.get('phone') || '';
+  const [method, setMethod] = useState<LoginMethod>(queryPhone && !queryEmail ? 'phone' : 'email');
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<ResetPasswordFormData>({
     mode: 'onChange',
     defaultValues: {
-      email,
+      identifier: queryPhone && !queryEmail ? queryPhone : queryEmail,
       password: '',
       confirmPassword: '',
     },
@@ -55,12 +63,30 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     setError(null);
     setTestingMode(searchParams.get('testingMode') === '1');
-  }, [searchParams]);
+    const email = searchParams.get('email') || '';
+    const phone = searchParams.get('phone') || '';
+    if (phone && !email) {
+      setMethod('phone');
+      setValue('identifier', phone);
+    } else if (email) {
+      setMethod('email');
+      setValue('identifier', email);
+    }
+  }, [searchParams, setValue]);
+
+  const changeMethod = (nextMethod: LoginMethod) => {
+    setMethod(nextMethod);
+    setValue('identifier', '');
+    setError(null);
+  };
 
   const onSubmit = async (data: ResetPasswordFormData) => {
     setError(null);
     setOtpError(null);
-    setPendingReset(data);
+    setPendingReset({
+      ...identifierPayload(method, data.identifier),
+      password: data.password,
+    });
     setOtpOpen(true);
   };
 
@@ -72,6 +98,7 @@ export default function ResetPasswordPage() {
     try {
       const { error } = await authClient.resetPassword({
         email: pendingReset.email,
+        phone: pendingReset.phone,
         otp,
         newPassword: pendingReset.password,
       });
@@ -87,8 +114,7 @@ export default function ResetPasswordPage() {
           color: 'green',
           icon: <Check size={16} />,
         });
-        
-        // Redirect to sign in page after 2 seconds
+
         setTimeout(() => {
           router.push('/auth/signin');
         }, 2000);
@@ -109,6 +135,7 @@ export default function ResetPasswordPage() {
     try {
       const { data, error } = await authClient.requestPasswordReset({
         email: pendingReset.email,
+        phone: pendingReset.phone,
       });
       if (error) {
         setOtpError(error.message || t('requestResetFailed'));
@@ -157,18 +184,29 @@ export default function ResetPasswordPage() {
               )}
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <LoginMethodToggle method={method} onChange={changeMethod} />
+
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t('email')}</Label>
+                  <Label htmlFor="identifier">{method === 'email' ? t('email') : t('phone')}</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder={t('emailPlaceholder')}
-                    {...register('email', {
-                      required: t('validation.emailRequired'),
+                    id="identifier"
+                    key={method}
+                    type={method === 'email' ? 'email' : 'tel'}
+                    inputMode={method === 'email' ? 'email' : 'tel'}
+                    autoComplete={method === 'email' ? 'email' : 'tel'}
+                    placeholder={method === 'email' ? t('emailPlaceholder') : t('phonePlaceholder')}
+                    {...register('identifier', {
+                      required: method === 'email' ? t('validation.emailRequired') : t('validation.phoneRequired'),
+                      validate: (value) => {
+                        if (method === 'email') {
+                          return /^\S+@\S+$/.test(value) || t('validation.invalidEmail');
+                        }
+                        return isValidEthiopianPhone(value) || t('validation.invalidPhone');
+                      },
                     })}
                   />
-                  {errors.email && (
-                    <p className="text-sm text-destructive">{errors.email.message}</p>
+                  {errors.identifier && (
+                    <p className="text-sm text-destructive">{errors.identifier.message}</p>
                   )}
                 </div>
 
@@ -226,7 +264,7 @@ export default function ResetPasswordPage() {
 
           <OtpVerificationDialog
             open={otpOpen}
-            email={pendingReset?.email ?? email}
+            destination={pendingReset?.email ?? pendingReset?.phone ?? ''}
             loading={loading}
             resending={resendingOtp}
             error={otpError}

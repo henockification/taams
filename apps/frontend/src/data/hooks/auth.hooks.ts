@@ -3,7 +3,8 @@ import { authClient } from '@/lib/auth-client';
 import { coreQueryKeys } from './core.hooks';
 
 export type EmailSignInInput = {
-  email: string;
+  email?: string;
+  phone?: string;
   password: string;
   otp?: string;
   callbackURL?: string;

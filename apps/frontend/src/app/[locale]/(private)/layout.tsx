@@ -239,7 +239,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
                       {session.user.name || t('user')}
                     </span>
                     <span className="max-w-40 truncate text-xs text-muted-foreground">
-                      {session.user.email}
+                      {session.user.email || session.user.phone || ''}
                     </span>
                   </span>
                   <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
@@ -252,7 +252,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
                       {session.user.name || t('user')}
                     </span>
                     <span className="truncate text-xs font-normal text-muted-foreground">
-                      {session.user.email}
+                      {session.user.email || session.user.phone || ''}
                     </span>
                   </div>
                 </DropdownMenuLabel>

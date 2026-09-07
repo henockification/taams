@@ -3,6 +3,7 @@ import {
   getEmployeeNotificationRecipient,
   getHrNotificationRecipients,
   getNotificationRecipientByEmail,
+  getNotificationRecipientByIdentifier,
   getNotificationRecipientsByRole,
   getSupervisorNotificationRecipients,
   markNotificationLogFailed,
@@ -256,8 +257,13 @@ class NotificationService {
     metadata?: Record<string, unknown> | null;
   }) {
     if (!workflowNotificationsAreEnabled()) return;
-    const recipient = await getNotificationRecipientByEmail(input.recipientEmail);
+    const recipient = await getNotificationRecipientByIdentifier(input.recipientEmail);
     if (!recipient) return;
+    const channels = input.channels ?? [
+      ...(recipient.email ? ['EMAIL' as const] : []),
+      ...(recipient.phoneNumber ? ['SMS' as const] : []),
+    ];
+    if (channels.length === 0) return;
     await this.enqueueForRecipient({
       eventType: input.eventType,
       recipient,
@@ -265,7 +271,7 @@ class NotificationService {
       relatedEntityType: 'auth_otp',
       relatedEntityId: recipient.employeeId,
       metadata: input.metadata ?? null,
-      channels: input.channels ?? ['EMAIL', 'SMS'],
+      channels,
       logMessage: 'A one-time authentication code was sent.',
       redactProviderDetails: true,
     });

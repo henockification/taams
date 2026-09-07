@@ -18,6 +18,8 @@ import type {
   UpdatePositionInput,
 } from '../../../types/core.types';
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
+import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
+import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
 import {
   diffChanges,
   employeeAuditFields,
@@ -131,16 +133,26 @@ export async function updatePosition(id: string, input: UpdatePositionInput) {
 export async function createEmployee(input: CreateEmployeeInput) {
   await assertEmployeeReferences(input);
 
-  const [employee] = await db
-    .insert(employees)
-    .values(normalizeEmployeeInput(input) as any)
-    .returning();
+  const createdEmployee = await db.transaction(async (tx) => {
+    const [employee] = await tx
+      .insert(employees)
+      .values(normalizeEmployeeInput(input) as any)
+      .returning();
 
-  const createdEmployee = await getEmployeeById(employee.id);
+    const created = await getEmployeeById(employee.id, tx);
+    if (created?.userId) {
+      await syncLinkedUserContact(created.userId, {
+        email: created.email,
+        phoneNumber: created.phoneNumber,
+      }, tx);
+    }
+    return created;
+  });
+
   await writeAuditEvent(db, {
     action: 'EMPLOYEE_CREATED',
     resourceType: 'employee',
-    resourceId: employee.id,
+    resourceId: createdEmployee?.id,
     resourceLabel: formatEmployeeLabel(createdEmployee),
     ...employeeAuditFields(createdEmployee),
   });
@@ -252,12 +264,22 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
     return getEmployeeById(id);
   }
 
-  await db
-    .update(employees)
-    .set({ ...updateData, updatedAt: new Date() })
-    .where(eq(employees.id, id));
+  const updatedEmployee = await db.transaction(async (tx) => {
+    await tx
+      .update(employees)
+      .set({ ...updateData, updatedAt: new Date() })
+      .where(eq(employees.id, id));
 
-  const updatedEmployee = await getEmployeeById(id);
+    const updated = await getEmployeeById(id, tx);
+    if (updated?.userId) {
+      await syncLinkedUserContact(updated.userId, {
+        email: updated.email,
+        phoneNumber: updated.phoneNumber,
+      }, tx);
+    }
+    return updated;
+  });
+
   await writeAuditEvent(db, {
     action: 'EMPLOYEE_UPDATED',
     resourceType: 'employee',
@@ -302,7 +324,7 @@ export async function upsertPermanentEmployees(
   );
   const userIdByEmployeeCode = await ensureImportUserAccounts(inputs, existingEmployeeByCode);
   const importedAt = new Date();
-  const employeeValues = [];
+  const employeeValues: ReturnType<typeof normalizeEmployeeInput>[] = [];
   let skipped = 0;
   let updated = 0;
 
@@ -333,10 +355,14 @@ export async function upsertPermanentEmployees(
   }
 
   if (employeeValues.length === 0) {
+    await db.transaction(async (tx) => {
+      await syncImportedUserContacts(inputs, existingEmployeeByCode, userIdByEmployeeCode, tx);
+    });
     return { created: 0, updated: 0, skipped, employees: [] };
   }
 
-  const importedEmployees = await db
+  const importedEmployees = await db.transaction(async (tx) => {
+    const rows = await tx
     .insert(employees)
     .values(employeeValues as any)
     .onConflictDoUpdate({
@@ -377,6 +403,10 @@ export async function upsertPermanentEmployees(
     })
     .returning();
 
+    await syncImportedUserContacts(inputs, existingEmployeeByCode, userIdByEmployeeCode, tx);
+    return rows;
+  });
+
   await writeAuditEvent(db, {
     action: 'EMPLOYEE_IMPORTED',
     resourceType: 'employee',
@@ -388,6 +418,7 @@ export async function upsertPermanentEmployees(
       employmentType: options.employmentType ?? 'PERMANENT',
     },
   });
+
   return {
     created: employeeValues.length - updated,
     updated,
@@ -515,7 +546,7 @@ async function ensureImportUserAccounts(
   inputs: PermanentEmployeeImportInput[],
   existingEmployeeByCode: Map<string, typeof employees.$inferSelect>
 ) {
-  const accountByEmployeeCode = new Map<string, { employeeCode: string; name: string; email: string }>();
+  const accountByEmployeeCode = new Map<string, { employeeCode: string; name: string; email: string | null; phone: string | null }>();
 
   for (const input of inputs) {
     const existingEmployee = existingEmployeeByCode.get(input.employeeCode);
@@ -523,58 +554,66 @@ async function ensureImportUserAccounts(
       continue;
     }
 
+    const email = normalizeLoginEmail(input.email);
+    const phone = normalizeLoginPhone(input.phoneNumber);
+    if (!email && !phone) {
+      continue;
+    }
+
     accountByEmployeeCode.set(input.employeeCode, {
       employeeCode: input.employeeCode,
       name: buildImportUserName(input),
-      email: buildImportUserEmail(input),
+      email,
+      phone,
     });
   }
 
   const accounts = Array.from(accountByEmployeeCode.values());
-  if (accounts.length === 0) return new Map<string, string>();
+  const userIdByEmployeeCode = new Map<string, string>();
+  if (accounts.length === 0) return userIdByEmployeeCode;
 
-  const uniqueAccountByEmail = new Map<string, { employeeCode: string; name: string; email: string }>();
+  const emails = accounts.map((account) => account.email).filter((value): value is string => Boolean(value));
+  const phones = accounts.map((account) => account.phone).filter((value): value is string => Boolean(value));
+  const lookupConditions = [
+    ...(emails.length ? [inArray(user.email, emails)] : []),
+    ...(phones.length ? [inArray(user.phone, phones)] : []),
+  ];
+  const existingUsers = lookupConditions.length
+    ? await db.query.user.findMany({
+      where: or(...lookupConditions),
+      columns: { id: true, email: true, phone: true },
+    })
+    : [];
+  const existingUserByEmail = new Map(existingUsers.filter((row) => row.email).map((row) => [row.email!, row]));
+  const existingUserByPhone = new Map(existingUsers.filter((row) => row.phone).map((row) => [row.phone!, row]));
+
+  const usersToCreate: { id: string; name: string; email: string | null; phone: string | null; emailVerified: boolean; role: string[] }[] = [];
+
   for (const account of accounts) {
-    if (!uniqueAccountByEmail.has(account.email)) {
-      uniqueAccountByEmail.set(account.email, account);
+    const foundUser = (account.email && existingUserByEmail.get(account.email))
+      || (account.phone && existingUserByPhone.get(account.phone))
+      || null;
+    if (foundUser) {
+      userIdByEmployeeCode.set(account.employeeCode, foundUser.id);
+      continue;
     }
-  }
 
-  const emails = Array.from(uniqueAccountByEmail.keys());
-  const existingUsers = await db
-    .select({ id: user.id, email: user.email })
-    .from(user)
-    .where(inArray(user.email, emails));
-  const existingUserByEmail = new Map(existingUsers.map((foundUser) => [foundUser.email, foundUser]));
-  const usersToCreate = Array.from(uniqueAccountByEmail.values())
-    .filter((account) => !existingUserByEmail.has(account.email))
-    .map((account) => ({
+    const created = {
       id: randomUUID(),
       name: account.name,
       email: account.email,
+      phone: account.phone,
       emailVerified: true,
       role: ['employee'],
-    }));
-
-  if (usersToCreate.length > 0) {
-    await db
-      .insert(user)
-      .values(usersToCreate)
-      .onConflictDoNothing({ target: user.email });
+    };
+    usersToCreate.push(created);
+    userIdByEmployeeCode.set(account.employeeCode, created.id);
+    if (account.email) existingUserByEmail.set(account.email, { id: created.id, email: account.email, phone: account.phone });
+    if (account.phone) existingUserByPhone.set(account.phone, { id: created.id, email: account.email, phone: account.phone });
   }
 
-  const users = await db
-    .select({ id: user.id, email: user.email })
-    .from(user)
-    .where(inArray(user.email, emails));
-  const userByEmail = new Map(users.map((foundUser) => [foundUser.email, foundUser]));
-  const userIdByEmployeeCode = new Map<string, string>();
-
-  for (const account of accounts) {
-    const foundUser = userByEmail.get(account.email);
-    if (foundUser) {
-      userIdByEmployeeCode.set(account.employeeCode, foundUser.id);
-    }
+  if (usersToCreate.length > 0) {
+    await db.insert(user).values(usersToCreate);
   }
 
   const employeeRole = await db.query.roles.findFirst({
@@ -583,23 +622,17 @@ async function ensureImportUserAccounts(
   });
 
   if (employeeRole && usersToCreate.length > 0) {
-    const createdUserIds = usersToCreate
-      .map((createdUser) => userByEmail.get(createdUser.email)?.id)
-      .filter((id): id is string => Boolean(id));
-
-    if (createdUserIds.length > 0) {
-      await db
-        .insert(userRoles)
-        .values(
-          createdUserIds.map((userId) => ({
-            userId,
-            roleId: employeeRole.id,
-          }))
-        )
-        .onConflictDoNothing({
-          target: [userRoles.userId, userRoles.roleId],
-        });
-    }
+    await db
+      .insert(userRoles)
+      .values(
+        usersToCreate.map((createdUser) => ({
+          userId: createdUser.id,
+          roleId: employeeRole.id,
+        }))
+      )
+      .onConflictDoNothing({
+        target: [userRoles.userId, userRoles.roleId],
+      });
   }
 
   return userIdByEmployeeCode;
@@ -766,23 +799,21 @@ function buildImportUserName(input: PermanentEmployeeImportInput) {
     .trim() || input.employeeCode;
 }
 
-function buildImportUserEmail(input: PermanentEmployeeImportInput) {
-  const importedEmail = input.email?.trim().toLowerCase();
-  if (importedEmail) return importedEmail;
-
-  const firstInitial = normalizeEmailNamePart(input.firstNameEn).charAt(0);
-  const middleName = normalizeEmailNamePart(input.middleNameEn ?? '');
-  const fallbackName = normalizeEmailNamePart(input.lastNameEn);
-  const localPart = `${firstInitial}${middleName || fallbackName}`;
-
-  return `${localPart || randomUUID()}@mofed.gov.et`;
-}
-
-function normalizeEmailNamePart(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '');
+async function syncImportedUserContacts(
+  inputs: PermanentEmployeeImportInput[],
+  existingEmployeeByCode: Map<string, typeof employees.$inferSelect>,
+  userIdByEmployeeCode: Map<string, string>,
+  tx: DbClient = db,
+) {
+  for (const input of inputs) {
+    const userId = existingEmployeeByCode.get(input.employeeCode)?.userId
+      ?? userIdByEmployeeCode.get(input.employeeCode);
+    if (!userId) continue;
+    await syncLinkedUserContact(userId, {
+      email: input.email,
+      phoneNumber: input.phoneNumber,
+    }, tx);
+  }
 }
 
 function removeUndefined<T extends Record<string, unknown>>(input: T) {

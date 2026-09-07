@@ -5,7 +5,8 @@ import { eq } from 'drizzle-orm';
 type UserModel = {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
+  phone: string | null;
   emailVerified: boolean | null;
   role: string[] | null;
   createdAt: Date;

@@ -29,7 +29,11 @@ export async function updateUserHandler(c: Context) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = message === 'User not found' ? 404 : message.includes('not found') ? 400 : 500;
+    const status = message === 'User not found'
+      ? 404
+      : message.includes('not found') || message.includes('already used') || message.includes('required') || message.includes('duplicate') || message.toLowerCase().includes('invalid')
+        ? 400
+        : 500;
 
     console.error('Failed to update user', error);
     return c.json({

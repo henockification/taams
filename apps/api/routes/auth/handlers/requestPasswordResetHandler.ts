@@ -1,34 +1,36 @@
 import { Context } from 'hono';
 import { db } from '../../../db/db';
-import { createPasswordResetVerification, findUserByEmail } from '../../../db/orm/auth/manageAuth';
+import { createPasswordResetVerification, findUserByIdentifier } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
+import { parseLoginIdentifier } from '../../../lib/login-identifier';
 import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
 import { getRequestClientIp } from '../../../middleware/auth';
 
 export async function requestPasswordResetHandler(c: Context) {
   try {
     const body = await c.req.json();
-    const email = typeof body.email === 'string' ? body.email.toLowerCase() : '';
+    const parsed = parseLoginIdentifier(body);
 
-    if (!email) {
-      return c.json({ message: 'Email is required' }, 400);
+    if (!parsed) {
+      return c.json({ message: 'Email or phone is required' }, 400);
     }
 
-    const foundUser = await findUserByEmail(email);
+    const foundUser = await findUserByIdentifier(parsed);
 
     if (foundUser) {
-      const { code } = await createPasswordResetVerification(email);
-      await sendOtp(email, 'password-reset', code);
+      const identifier = parsed.identifier;
+      const { code } = await createPasswordResetVerification(identifier);
+      await sendOtp(identifier, 'password-reset', code);
     }
 
     await writeAuditEvent(db, {
       action: 'AUTH_PASSWORD_RESET_REQUESTED',
       resourceType: 'user',
       resourceId: foundUser?.id ?? null,
-      resourceLabel: email,
+      resourceLabel: parsed.identifier,
       actorUserId: foundUser?.id ?? null,
       actorName: foundUser?.name ?? null,
-      actorEmail: email,
+      actorEmail: foundUser?.email ?? parsed.email ?? null,
       actorType: 'USER',
       ipAddress: getRequestClientIp(c),
       userAgent: c.req.header('user-agent') ?? null,

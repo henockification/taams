@@ -28,7 +28,13 @@ export async function createUserHandler(c: Context) {
     }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    const status = message.includes('not found') ? 400 : 500;
+    const status = message.includes('not found')
+      || message.includes('already used')
+      || message.includes('required')
+      || message.includes('duplicate')
+      || message.toLowerCase().includes('invalid')
+      ? 400
+      : 500;
 
     console.error('Failed to create user', error);
     return c.json({

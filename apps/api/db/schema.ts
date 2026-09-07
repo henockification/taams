@@ -29,7 +29,8 @@ export const userRole = pgEnum('user_role', ['super_admin', 'admin', 'employee']
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  email: text('email').notNull().unique(),
+  email: text('email').unique(),
+  phone: varchar('phone', { length: 30 }).unique(),
   emailVerified: boolean('emailVerified').notNull().default(false),
   image: text('image'),
   role: text('role').array().default(['user']),

@@ -1,67 +1,71 @@
 import { Context } from 'hono';
 import { db } from '../../../db/db';
 import {
-  authenticateEmailPassword,
+  authenticateIdentifierPassword,
   createOtpVerification,
   createSessionForUser,
   verifyOtpForPurpose,
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
+import { parseLoginIdentifier } from '../../../lib/login-identifier';
 import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
 import { getRequestClientIp } from '../../../middleware/auth';
 import { formatAuthUser, setSessionCookie } from './helpers';
 
-const INVALID_CREDENTIALS = 'Invalid email or password';
+const INVALID_CREDENTIALS = 'Invalid email, phone, or password';
 
 export async function signInEmailHandler(c: Context) {
   try {
     const body = await c.req.json();
-    const email = typeof body.email === 'string' ? body.email.toLowerCase() : '';
+    const parsed = parseLoginIdentifier(body);
     const password = typeof body.password === 'string' ? body.password : '';
     const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
 
-    if (!email || !password) {
+    if (!parsed || !password) {
       return c.json({ message: INVALID_CREDENTIALS }, 400);
     }
 
-    const authResult = await authenticateEmailPassword(email, password);
+    const authResult = await authenticateIdentifierPassword(parsed, password);
 
     if (!authResult.success) {
       await writeAuditEvent(db, {
         action: 'AUTH_SIGN_IN',
         outcome: 'FAILED',
         resourceType: 'auth_session',
-        resourceLabel: email,
-        actorEmail: email,
+        resourceLabel: parsed.identifier,
+        actorEmail: parsed.email ?? null,
         actorType: 'USER',
         ipAddress: getRequestClientIp(c),
         userAgent: c.req.header('user-agent') ?? null,
         requestId: c.get('requestId') ?? null,
-        metadata: { reason: authResult.reason },
+        metadata: { reason: authResult.reason, method: parsed.email ? 'email' : 'phone' },
       });
       return c.json({ message: INVALID_CREDENTIALS }, 401);
     }
 
+    const identifier = authResult.identifier;
+
     if (!otp) {
-      const { code } = await createOtpVerification(email, 'sign-in');
-      await sendOtp(email, 'sign-in', code);
+      const { code } = await createOtpVerification(identifier, 'sign-in');
+      await sendOtp(identifier, 'sign-in', code);
       return c.json({
         otpRequired: true,
-        email,
+        email: parsed.email ?? null,
+        phone: parsed.phone ?? null,
         ...(isOtpTestingMode() ? { testingMode: true } : {}),
       });
     }
 
-    const verification = await verifyOtpForPurpose(email, 'sign-in', otp);
+    const verification = await verifyOtpForPurpose(identifier, 'sign-in', otp);
     if (!verification.success) {
       await writeAuditEvent(db, {
         action: 'AUTH_SIGN_IN',
         outcome: 'FAILED',
         resourceType: 'auth_session',
-        resourceLabel: email,
+        resourceLabel: identifier,
         actorUserId: authResult.user.id,
         actorName: authResult.user.name,
-        actorEmail: email,
+        actorEmail: authResult.user.email,
         actorType: 'USER',
         ipAddress: getRequestClientIp(c),
         userAgent: c.req.header('user-agent') ?? null,
@@ -81,7 +85,7 @@ export async function signInEmailHandler(c: Context) {
       action: 'AUTH_SIGN_IN',
       resourceType: 'auth_session',
       resourceId: session.id,
-      resourceLabel: authResult.user.email,
+      resourceLabel: identifier,
       actorUserId: authResult.user.id,
       actorName: authResult.user.name,
       actorEmail: authResult.user.email,

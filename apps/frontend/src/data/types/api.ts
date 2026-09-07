@@ -5,7 +5,8 @@ export type UserStatus = 'active' | 'inactive' | 'pending' | 'suspended';
 export interface User {
   id: string;
   name: string | null;
-  email: string;
+  email: string | null;
+  phone?: string | null;
   emailVerified: boolean | null;
   role: string[];
   createdAt: string;
@@ -40,7 +41,8 @@ export interface SignUpInput {
 
 export interface CreateUserInput {
   name: string;
-  email: string;
+  email?: string | null;
+  phone?: string | null;
   emailVerified?: boolean;
   image?: string;
   roleIds?: string[];

@@ -17,7 +17,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 
 type OtpVerificationDialogProps = {
   open: boolean;
-  email: string;
+  destination: string;
   loading?: boolean;
   resending?: boolean;
   error?: string | null;
@@ -29,7 +29,7 @@ type OtpVerificationDialogProps = {
 
 export function OtpVerificationDialog({
   open,
-  email,
+  destination,
   loading = false,
   resending = false,
   error,
@@ -57,7 +57,7 @@ export function OtpVerificationDialog({
           <DialogHeader>
             <DialogTitle>{t('otpDialogTitle')}</DialogTitle>
             <DialogDescription>
-              {t('otpDialogDescription', { email })}
+              {t('otpDialogDescription', { destination })}
             </DialogDescription>
           </DialogHeader>
 

@@ -30,7 +30,8 @@ export function formatUser(user: any) {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    email: user.email ?? null,
+    phone: user.phone ?? null,
     emailVerified: user.emailVerified,
     role: user.role ?? roles,
     roles,

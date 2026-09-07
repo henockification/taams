@@ -11,7 +11,9 @@ export function generateOtpCode() {
   const notificationsEnabled = workflowNotificationsAreEnabled();
   if (!notificationsEnabled) {
     if (isProduction() || !allowMasterOtp()) {
-      throw new Error('OTP delivery is not configured');
+      throw new Error(
+        'OTP delivery is not configured. Enable NOTIFICATIONS_ENABLED with a working email/SMS provider, or set ALLOW_MASTER_OTP=true while not in production (no spaces around the value). Restart the API after changing .env.',
+      );
     }
     return MASTER_OTP_CODE;
   }
@@ -39,7 +41,6 @@ export async function sendOtp(identifier: string, purpose: OtpPurpose, code: str
     recipientEmail: identifier,
     subject: copy.subject,
     message: `${copy.introduction} Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes. Do not share this code with anyone.`,
-    channels: ['EMAIL', 'SMS'],
     metadata: { purpose, expiresInMinutes: OTP_TTL_MINUTES },
   });
   return { success: true };

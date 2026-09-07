@@ -1,19 +1,20 @@
 import { Context } from 'hono';
 import { db } from '../../../db/db';
 import {
-  findUserByEmail,
+  findUserByIdentifier,
   revokeUserSessions,
   setUserPassword,
   verifyOtpForPurpose,
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
+import { parseLoginIdentifier } from '../../../lib/login-identifier';
 import { assertPasswordPolicy } from '../../../lib/password-policy';
 import { getRequestClientIp } from '../../../middleware/auth';
 
 export async function resetPasswordHandler(c: Context) {
   try {
     const body = await c.req.json();
-    const email = typeof body.email === 'string' ? body.email.toLowerCase() : '';
+    const parsed = parseLoginIdentifier(body);
     const otp = typeof body.otp === 'string' ? body.otp : typeof body.token === 'string' ? body.token : '';
     const newPassword =
       typeof body.newPassword === 'string'
@@ -22,25 +23,25 @@ export async function resetPasswordHandler(c: Context) {
           ? body.password
           : '';
 
-    if (!email || !otp || !newPassword) {
-      return c.json({ message: 'Email, OTP, and new password are required' }, 400);
+    if (!parsed || !otp || !newPassword) {
+      return c.json({ message: 'Email or phone, OTP, and new password are required' }, 400);
     }
 
     try {
-      assertPasswordPolicy(newPassword, email);
+      assertPasswordPolicy(newPassword, parsed.email);
     } catch (error) {
       return c.json({
         message: error instanceof Error ? error.message : 'Password does not meet requirements',
       }, 400);
     }
 
-    const foundUser = await findUserByEmail(email);
+    const foundUser = await findUserByIdentifier(parsed);
 
     if (!foundUser) {
       return c.json({ message: 'Invalid reset request' }, 400);
     }
 
-    const verification = await verifyOtpForPurpose(email, 'password-reset', otp);
+    const verification = await verifyOtpForPurpose(parsed.identifier, 'password-reset', otp);
 
     if (!verification.success) {
       await writeAuditEvent(db, {
@@ -48,7 +49,7 @@ export async function resetPasswordHandler(c: Context) {
         outcome: 'FAILED',
         resourceType: 'user',
         resourceId: foundUser.id,
-        resourceLabel: foundUser.email,
+        resourceLabel: parsed.identifier,
         actorUserId: foundUser.id,
         actorName: foundUser.name,
         actorEmail: foundUser.email,
@@ -70,7 +71,7 @@ export async function resetPasswordHandler(c: Context) {
       action: 'AUTH_PASSWORD_RESET',
       resourceType: 'user',
       resourceId: foundUser.id,
-      resourceLabel: foundUser.email,
+      resourceLabel: parsed.identifier,
       actorUserId: foundUser.id,
       actorName: foundUser.name,
       actorEmail: foundUser.email,
@@ -83,7 +84,7 @@ export async function resetPasswordHandler(c: Context) {
       action: 'AUTH_SESSIONS_REVOKED',
       resourceType: 'user',
       resourceId: foundUser.id,
-      resourceLabel: foundUser.email,
+      resourceLabel: parsed.identifier,
       actorUserId: foundUser.id,
       actorName: foundUser.name,
       actorEmail: foundUser.email,

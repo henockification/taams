@@ -27,7 +27,8 @@ export async function getUserHandler(c: Context) {
     const transformedUser = {
       id: user.id,
       name: user.name,
-      email: user.email,
+      email: user.email ?? null,
+      phone: user.phone ?? null,
       emailVerified: user.emailVerified,
       role: user.role || ['user'], // Default to ['user'] if null
       createdAt: user.createdAt.toISOString(),

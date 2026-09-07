@@ -14,47 +14,64 @@ import { notifications } from '@/lib/notifications';
 import { AlertCircle } from 'lucide-react';
 import { useEmailSignIn } from '@/data/hooks/auth.hooks';
 import { OtpVerificationDialog } from '@/components/auth/OtpVerificationDialog';
+import { LoginMethodToggle, type LoginMethod } from '@/components/auth/login-method-toggle';
+import { identifierPayload, isValidEthiopianPhone } from '@/lib/login-identifier';
 
 interface SignInFormData {
-  email: string;
+  identifier: string;
   password: string;
 }
 
 export function SignInForm() {
   const t = useTranslations('auth');
+  const [method, setMethod] = useState<LoginMethod>('email');
   const [error, setError] = useState<string | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [otpOpen, setOtpOpen] = useState(false);
   const [testingMode, setTestingMode] = useState(false);
   const [resendingOtp, setResendingOtp] = useState(false);
-  const [pendingCredentials, setPendingCredentials] = useState<SignInFormData | null>(null);
+  const [pendingCredentials, setPendingCredentials] = useState<{
+    email?: string;
+    phone?: string;
+    password: string;
+  } | null>(null);
   const router = useRouter();
   const signInMutation = useEmailSignIn();
 
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<SignInFormData>({
     mode: 'onChange',
     defaultValues: {
-      email: '',
+      identifier: '',
       password: '',
     },
   });
 
+  const changeMethod = (nextMethod: LoginMethod) => {
+    setMethod(nextMethod);
+    setValue('identifier', '');
+    setError(null);
+  };
+
   const onSubmit = async (formData: SignInFormData) => {
     setError(null);
+    const credentials = {
+      ...identifierPayload(method, formData.identifier),
+      password: formData.password,
+    };
 
     try {
       const result = await signInMutation.mutateAsync({
-        email: formData.email,
-        password: formData.password,
+        ...credentials,
         callbackURL: '/dashboard',
       });
 
       if (result?.otpRequired) {
-        setPendingCredentials(formData);
+        setPendingCredentials(credentials);
         setTestingMode(Boolean(result.testingMode));
         setOtpError(null);
         setOtpOpen(true);
@@ -143,23 +160,30 @@ export function SignInForm() {
           )}
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <LoginMethodToggle method={method} onChange={changeMethod} />
+
             <div className="space-y-2">
-              <Label htmlFor="email">{t('email')}</Label>
+              <Label htmlFor="identifier">{method === 'email' ? t('email') : t('phone')}</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder={t('emailPlaceholder')}
-                {...register('email', {
-                  required: t('validation.emailRequired'),
-                  pattern: {
-                    value: /^\S+@\S+$/,
-                    message: t('validation.invalidEmail'),
+                id="identifier"
+                key={method}
+                type={method === 'email' ? 'email' : 'tel'}
+                inputMode={method === 'email' ? 'email' : 'tel'}
+                autoComplete={method === 'email' ? 'email' : 'tel'}
+                placeholder={method === 'email' ? t('emailPlaceholder') : t('phonePlaceholder')}
+                {...register('identifier', {
+                  required: method === 'email' ? t('validation.emailRequired') : t('validation.phoneRequired'),
+                  validate: (value) => {
+                    if (method === 'email') {
+                      return /^\S+@\S+$/.test(value) || t('validation.invalidEmail');
+                    }
+                    return isValidEthiopianPhone(value) || t('validation.invalidPhone');
                   },
                 })}
               />
-              {errors.email && (
+              {errors.identifier && (
                 <p className="mt-1 text-sm text-error-600">
-                  {errors.email.message}
+                  {errors.identifier.message}
                 </p>
               )}
             </div>
@@ -199,7 +223,7 @@ export function SignInForm() {
 
       <OtpVerificationDialog
         open={otpOpen}
-        email={pendingCredentials?.email ?? ''}
+        destination={pendingCredentials?.email ?? pendingCredentials?.phone ?? ''}
         loading={signInMutation.isPending && !resendingOtp}
         resending={resendingOtp}
         error={otpError}

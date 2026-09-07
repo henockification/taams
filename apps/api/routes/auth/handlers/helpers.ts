@@ -31,6 +31,7 @@ export function formatAuthUser(user: any) {
     id: user.id,
     name: user.name,
     email: user.email,
+    phone: user.phone ?? null,
     emailVerified: user.emailVerified,
     image: user.image,
     role: user.role ?? ['user'],

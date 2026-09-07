@@ -183,7 +183,34 @@ export async function getNotificationRecipientByEmail(email: string): Promise<No
     employeeId: null,
     name: foundUser.name,
     email: foundUser.email,
-    phoneNumber: null,
+    phoneNumber: foundUser.phone ?? null,
+  };
+}
+
+export async function getNotificationRecipientByIdentifier(identifier: string): Promise<NotificationRecipient | null> {
+  const trimmed = identifier.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('@')) {
+    return getNotificationRecipientByEmail(trimmed);
+  }
+
+  const foundUser = await db.query.user.findFirst({
+    where: eq(user.phone, trimmed),
+  });
+  if (!foundUser) return null;
+
+  const employee = await db.query.employees.findFirst({
+    where: eq(employees.userId, foundUser.id),
+    with: { user: true },
+  });
+  if (employee) return mapEmployeeToRecipient(employee);
+
+  return {
+    userId: foundUser.id,
+    employeeId: null,
+    name: foundUser.name,
+    email: foundUser.email,
+    phoneNumber: foundUser.phone ?? null,
   };
 }
 
@@ -295,7 +322,7 @@ function mapEmployeeToRecipient(employee: any): NotificationRecipient {
     employeeId: employee.id,
     name: [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' '),
     email: employee.email ?? employee.user?.email ?? null,
-    phoneNumber: employee.phoneNumber ?? null,
+    phoneNumber: employee.phoneNumber ?? employee.user?.phone ?? null,
   };
 }
 
