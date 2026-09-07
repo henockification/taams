@@ -12,7 +12,7 @@ export function generateOtpCode() {
   if (!notificationsEnabled) {
     if (!allowMasterOtp()) {
       throw new Error(
-        'OTP delivery is not configured. Set NOTIFICATIONS_ENABLED=true with a working email/SMS provider, or set ALLOW_MASTER_OTP=true. Docker/Next.js force NODE_ENV=production, so NODE_ENV=development is ignored; do not set APP_ENV=production on this host if you need the testing OTP.',
+        'OTP delivery is not configured. Set ALLOW_MASTER_OTP=true, or enable NOTIFICATIONS_ENABLED with a working email/SMS provider.',
       );
     }
     return MASTER_OTP_CODE;

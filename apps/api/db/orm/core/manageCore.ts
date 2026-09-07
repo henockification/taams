@@ -10,6 +10,7 @@ import {
 import type {
   CreateDepartmentInput,
   CreateEmployeeInput,
+  BulkCreateEmployeeSupervisorInput,
   CreateEmployeeSupervisorInput,
   CreatePositionInput,
   EmploymentType,
@@ -435,27 +436,58 @@ export async function createEmployeeSupervisor(employeeId: string, input: Create
     throw new Error('Employee cannot be their own supervisor');
   }
 
-  const [assignment] = await db
-    .insert(employeeSupervisors)
-    .values({
-      employeeId,
-      supervisorId: input.supervisorId,
-      isPrimary: input.isPrimary ?? true,
-      effectiveFrom: input.effectiveFrom,
-      effectiveTo: input.effectiveTo,
-    } as any)
-    .returning();
-
-  const createdAssignment = await getEmployeeSupervisorById(assignment.id);
+  const result = await assignEmployeeSupervisor(employeeId, input);
+  const createdAssignment = await getEmployeeSupervisorById(result.assignment.id);
   await writeAuditEvent(db, {
     action: 'EMPLOYEE_SUPERVISOR_ASSIGNED',
     resourceType: 'employee',
     resourceId: employeeId,
     resourceLabel: `Supervisor assignment`,
     employeeId,
-    metadata: { supervisorId: input.supervisorId, isPrimary: input.isPrimary ?? true },
+    metadata: { supervisorId: input.supervisorId, isPrimary: input.isPrimary ?? true, replaced: result.updated },
   });
   return createdAssignment;
+}
+
+export async function bulkCreateEmployeeSupervisorsScoped(
+  input: BulkCreateEmployeeSupervisorInput,
+  scope: EmployeeVisibilityScope,
+) {
+  await assertCanAccessEmployee(input.supervisorId, scope);
+
+  const employeeIds = [...new Set(input.employeeIds)];
+  const errors: Array<{ employeeId: string; message: string }> = [];
+  let created = 0;
+  let updated = 0;
+
+  for (const employeeId of employeeIds) {
+    try {
+      await assertCanAccessEmployee(employeeId, scope);
+      const result = await assignEmployeeSupervisor(employeeId, input);
+      if (result.created) created += 1;
+      updated += result.updated;
+      await writeAuditEvent(db, {
+        action: 'EMPLOYEE_SUPERVISOR_ASSIGNED',
+        resourceType: 'employee',
+        resourceId: employeeId,
+        resourceLabel: 'Supervisor assignment',
+        employeeId,
+        metadata: { supervisorId: input.supervisorId, isPrimary: input.isPrimary ?? true, replaced: result.updated, bulk: true },
+      });
+    } catch (error) {
+      errors.push({
+        employeeId,
+        message: error instanceof Error ? error.message : 'Failed to assign employee supervisor',
+      });
+    }
+  }
+
+  return {
+    created,
+    updated,
+    failed: errors.length,
+    errors,
+  };
 }
 
 export async function getEmployeeSupervisors(employeeId: string) {
@@ -472,6 +504,93 @@ export async function getEmployeeSupervisors(employeeId: string) {
       },
     },
     orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
+  });
+}
+
+export async function getAllEmployeeSupervisorsScoped(scope: EmployeeVisibilityScope) {
+  const visibleEmployees = await db.query.employees.findMany({
+    where: scopedEmployeeWhere(scope),
+    columns: { id: true },
+  });
+  const employeeIds = visibleEmployees.map((employee) => employee.id);
+
+  if (employeeIds.length === 0) return [];
+
+  return db.query.employeeSupervisors.findMany({
+    where: inArray(employeeSupervisors.employeeId, employeeIds),
+    with: {
+      supervisor: {
+        with: {
+          department: true,
+          position: true,
+        },
+      },
+    },
+    orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
+  });
+}
+
+async function assignEmployeeSupervisor(employeeId: string, input: CreateEmployeeSupervisorInput) {
+  await assertEmployeeExists(employeeId);
+  await assertEmployeeExists(input.supervisorId);
+
+  if (employeeId === input.supervisorId) {
+    throw new Error('Employee cannot be their own supervisor');
+  }
+
+  const effectiveFrom = input.effectiveFrom ?? currentDateString();
+  const effectiveTo = input.effectiveTo ?? null;
+  const isPrimary = input.isPrimary ?? true;
+
+  return db.transaction(async (tx) => {
+    let updated = 0;
+
+    if (isPrimary) {
+      const existingPrimaries = await tx.query.employeeSupervisors.findMany({
+        where: and(
+          eq(employeeSupervisors.employeeId, employeeId),
+          eq(employeeSupervisors.isPrimary, true),
+          sql`${employeeSupervisors.effectiveFrom} <= ${effectiveTo ?? '9999-12-31'}`,
+          or(
+            sql`${employeeSupervisors.effectiveTo} IS NULL`,
+            sql`${employeeSupervisors.effectiveTo} >= ${effectiveFrom}`,
+          ),
+        ),
+      });
+
+      const previousDate = previousDateString(effectiveFrom);
+      for (const assignment of existingPrimaries) {
+        if (
+          assignment.supervisorId === input.supervisorId
+          && assignment.effectiveFrom === effectiveFrom
+          && (assignment.effectiveTo ?? null) === effectiveTo
+        ) {
+          return { assignment, updated, created: false };
+        }
+
+        const currentEffectiveTo = assignment.effectiveTo ?? '9999-12-31';
+        if (currentEffectiveTo > previousDate) {
+          await tx
+            .update(employeeSupervisors)
+            .set({ effectiveTo: previousDate } as any)
+            .where(eq(employeeSupervisors.id, assignment.id));
+          updated += 1;
+        }
+      }
+    }
+
+    const [assignment] = await tx
+      .insert(employeeSupervisors)
+      .values({
+        employeeId,
+        supervisorId: input.supervisorId,
+        isPrimary,
+        effectiveFrom,
+        effectiveTo,
+      } as any)
+      .returning();
+
+    return { assignment, updated, created: true };
   });
 }
 
@@ -499,6 +618,16 @@ async function getEmployeeSupervisorById(id: string, tx: DbClient = db) {
       },
     },
   });
+}
+
+function currentDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function previousDateString(date: string) {
+  const [year, month, day] = date.split('-').map(Number);
+  const previous = new Date(Date.UTC(year, month - 1, day - 1));
+  return previous.toISOString().slice(0, 10);
 }
 
 async function getEmployeeByCode(employeeCode: string, tx: DbClient = db) {

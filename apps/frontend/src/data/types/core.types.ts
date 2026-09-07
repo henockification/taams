@@ -264,6 +264,22 @@ export type EmployeeSupervisor = {
   supervisor?: Employee;
 };
 
+export type BulkCreateEmployeeSupervisorInput = {
+  employeeIds: string[];
+  supervisorId: string;
+  isPrimary?: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+};
+
+export type BulkCreateEmployeeSupervisorResponse = {
+  success: boolean;
+  created: number;
+  updated: number;
+  failed: number;
+  errors: Array<{ employeeId: string; message: string }>;
+};
+
 export type SupervisorDelegation = {
   id: string;
   supervisorUserId: string;

@@ -42,6 +42,7 @@ export type AppNavItem = {
     | 'positions'
     | 'employees'
     | 'permanentEmployees'
+    | 'supervisorAssignments'
     | 'fiscalYears'
     | 'leaveTypes'
     | 'leaveBalances'
@@ -180,6 +181,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'employees',
         requiredPermission: 'employees:read',
         icon: FileSpreadsheet,
+      },
+      {
+        titleKey: 'supervisorAssignments',
+        url: '/supervisor-assignments',
+        permissionResource: 'employees',
+        requiredPermission: 'employees:update',
+        icon: UserRoundCog,
       },
     ],
   },

@@ -2,6 +2,7 @@ import { Context } from 'hono';
 import {
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
+  BulkCreateEmployeeSupervisorRequestSchema,
   CreateEmployeeWorkScheduleRequestSchema,
   BulkCreateEmployeeWorkScheduleRequestSchema,
   UpdateEmployeeRequestSchema,
@@ -10,6 +11,8 @@ import {
 import {
   createEmployeeScoped,
   createEmployeeSupervisor,
+  bulkCreateEmployeeSupervisorsScoped,
+  getAllEmployeeSupervisorsScoped,
   getEmployeeByIdScoped,
   getEmployees,
   getEmployeesPaginated,
@@ -273,6 +276,44 @@ export async function createEmployeeSupervisorHandler(c: Context) {
     }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to assign employee supervisor');
+  }
+}
+
+export async function bulkCreateEmployeeSupervisorsHandler(c: Context) {
+  try {
+    const scope = await resolveScope(c);
+    const body = await c.req.json();
+    const parsed = BulkCreateEmployeeSupervisorRequestSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return validationErrorResponse(c, parsed.error.message);
+    }
+
+    const result = await bulkCreateEmployeeSupervisorsScoped(parsed.data, scope);
+
+    return c.json({
+      success: true,
+      created: result.created,
+      updated: result.updated,
+      failed: result.failed,
+      errors: result.errors,
+    }, 201);
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to assign employee supervisors');
+  }
+}
+
+export async function getAllEmployeeSupervisorsHandler(c: Context) {
+  try {
+    const scope = await resolveScope(c);
+    const supervisors = await getAllEmployeeSupervisorsScoped(scope);
+
+    return c.json({
+      success: true,
+      supervisors: supervisors.map(formatEmployeeSupervisor),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch employee supervisors');
   }
 }
 

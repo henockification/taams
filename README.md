@@ -39,7 +39,7 @@ cp apps/api/env.example apps/api/.env
 
 # Update the following variables:
 # - DATABASE_URL with your Neon PostgreSQL connection string
-# - BETTER_AUTH_SECRET with a secure random string (32+ characters)
+# - AUTH_SECRET with a secure random string (32+ characters) when APP_ENV=production
 # - GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET for Google OAuth (optional)
 ```
 

@@ -15,11 +15,13 @@ import type {
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
   CreateBiometricProvisioningPreviewInput,
+  BulkCreateEmployeeSupervisorInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
   CreateEmployeeWorkScheduleInput,
   BulkCreateEmployeeWorkScheduleInput,
+  BulkCreateEmployeeSupervisorResponse,
   CreateHolidayInput,
   EmployeesPaginatedParams,
   CreatePositionInput,
@@ -93,6 +95,7 @@ export const coreQueryKeys = {
   employeesPaginated: (params: EmployeesPaginatedParams) => [...coreQueryKeys.all, 'employees', 'paginated', params] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
+  allEmployeeSupervisors: () => [...coreQueryKeys.all, 'employee-supervisors'] as const,
   supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
   temporaryDepartmentAssignments: () => [...coreQueryKeys.all, 'temporary-department-assignments'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
@@ -609,6 +612,14 @@ export function useEmployeeSupervisors(employeeId: string) {
   });
 }
 
+export function useAllEmployeeSupervisors() {
+  return useQuery({
+    queryKey: coreQueryKeys.allEmployeeSupervisors(),
+    queryFn: () => coreApi.getAllEmployeeSupervisors(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useCreateEmployeeSupervisor() {
   const queryClient = useQueryClient();
 
@@ -619,7 +630,26 @@ export function useCreateEmployeeSupervisor() {
         queryKey: coreQueryKeys.employeeSupervisors(variables.employeeId),
       });
       queryClient.invalidateQueries({
+        queryKey: coreQueryKeys.allEmployeeSupervisors(),
+      });
+      queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
+      });
+    },
+  });
+}
+
+export function useBulkCreateEmployeeSupervisors() {
+  const queryClient = useQueryClient();
+
+  return useMutation<BulkCreateEmployeeSupervisorResponse, Error, BulkCreateEmployeeSupervisorInput>({
+    mutationFn: (input) => coreApi.bulkCreateEmployeeSupervisors(input),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.allEmployeeSupervisors() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
+      variables.employeeIds.forEach((employeeId) => {
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeSupervisors(employeeId) });
       });
     },
   });

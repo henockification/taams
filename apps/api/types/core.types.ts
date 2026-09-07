@@ -160,6 +160,14 @@ export type CreateEmployeeSupervisorInput = {
   effectiveTo?: string | null;
 };
 
+export type BulkCreateEmployeeSupervisorInput = {
+  employeeIds: string[];
+  supervisorId: string;
+  isPrimary?: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string | null;
+};
+
 export type SupervisorDelegation = {
   id: string;
   supervisorUserId: string;

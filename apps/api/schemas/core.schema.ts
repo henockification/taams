@@ -754,6 +754,21 @@ export const CreateEmployeeSupervisorRequestSchema = z.object({
   effectiveTo: OptionalDateSchema,
 });
 
+export const BulkCreateEmployeeSupervisorRequestSchema = CreateEmployeeSupervisorRequestSchema.extend({
+  employeeIds: z.array(UuidSchema).min(1),
+});
+
+export const BulkCreateEmployeeSupervisorResponseSchema = z.object({
+  success: z.boolean(),
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  errors: z.array(z.object({
+    employeeId: UuidSchema,
+    message: z.string(),
+  })),
+});
+
 export const CreateBiometricDeviceRequestSchema = z.object({
   deviceName: z.string().min(1).max(150),
   deviceCode: z.string().min(1).max(100),

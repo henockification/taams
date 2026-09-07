@@ -5,6 +5,8 @@ import {
   CreateDepartmentRequestSchema,
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
+  BulkCreateEmployeeSupervisorRequestSchema,
+  BulkCreateEmployeeSupervisorResponseSchema,
   CreateEmployeeWorkScheduleRequestSchema,
   BulkCreateEmployeeWorkScheduleRequestSchema,
   BulkCreateEmployeeWorkScheduleResponseSchema,
@@ -48,7 +50,7 @@ import ifmisAttendanceApp from './ifmis-attendance/routes';
 import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
-import { createEmployeeHandler, createEmployeeSupervisorHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
+import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 import { requirePermission } from '../../middleware/rbac';
 
 const coreApp = new Hono();
@@ -407,6 +409,49 @@ export const getEmployeeSupervisorsRoute = createRoute({
   },
 });
 
+export const getAllEmployeeSupervisorsRoute = createRoute({
+  method: 'get',
+  path: '/employees/supervisors',
+  tags: ['Core', 'Employees'],
+  summary: 'Get Employee Supervisor Assignments',
+  responses: {
+    200: {
+      content: {
+        'application/json': { schema: EmployeeSupervisorsResponseSchema },
+      },
+      description: 'Employee supervisor assignments',
+    },
+  },
+});
+
+export const bulkCreateEmployeeSupervisorsRoute = createRoute({
+  method: 'post',
+  path: '/employees/supervisors/bulk',
+  tags: ['Core', 'Employees'],
+  summary: 'Assign Supervisor To Multiple Employees',
+  request: {
+    body: {
+      content: {
+        'application/json': {
+          schema: BulkCreateEmployeeSupervisorRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    201: {
+      content: {
+        'application/json': { schema: BulkCreateEmployeeSupervisorResponseSchema },
+      },
+      description: 'Bulk employee supervisor assignment result',
+    },
+    400: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Invalid request',
+    },
+  },
+});
+
 export const createEmployeeWorkScheduleRoute = createRoute({
   method: 'post',
   path: '/employees/{id}/work-schedules',
@@ -559,6 +604,8 @@ coreApp.get('/employees', requirePermission('employees:read', 'permanent-employe
 coreApp.get('/employees/paginated', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesPaginatedHandler);
 coreApp.post('/employees/permanent/import', requirePermission('employees:create'), importPermanentEmployeesHandler);
 coreApp.post('/employees/contract/import', requirePermission('employees:create'), importContractEmployeesHandler);
+coreApp.get('/employees/supervisors', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read'), getAllEmployeeSupervisorsHandler);
+coreApp.post('/employees/supervisors/bulk', requirePermission('employees:update'), bulkCreateEmployeeSupervisorsHandler);
 coreApp.get('/employees/work-schedules', requirePermission('schedule-assignments:read', 'work-schedules:read'), getAllEmployeeWorkSchedulesHandler);
 coreApp.post('/employees/work-schedules/bulk', requirePermission('schedule-assignments:read', 'employees:update'), bulkCreateEmployeeWorkSchedulesHandler);
 coreApp.put('/employees/work-schedules/:id', requirePermission('schedule-assignments:read', 'employees:update'), updateEmployeeWorkScheduleHandler);
@@ -603,6 +650,8 @@ openApiApp
   .openapi(getEmployeeRoute, getEmployeeHandler as any)
   .openapi(updateEmployeeRoute, updateEmployeeHandler as any)
   .openapi(createEmployeeSupervisorRoute, createEmployeeSupervisorHandler as any)
+  .openapi(getAllEmployeeSupervisorsRoute, getAllEmployeeSupervisorsHandler as any)
+  .openapi(bulkCreateEmployeeSupervisorsRoute, bulkCreateEmployeeSupervisorsHandler as any)
   .openapi(getEmployeeSupervisorsRoute, getEmployeeSupervisorsHandler as any)
   .openapi(createEmployeeWorkScheduleRoute, createEmployeeWorkScheduleHandler as any)
   .openapi(getEmployeeWorkSchedulesRoute, getEmployeeWorkSchedulesHandler as any)

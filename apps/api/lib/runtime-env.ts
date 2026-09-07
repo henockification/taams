@@ -14,17 +14,13 @@ export function isFalsyEnv(name: string) {
   return ['0', 'false', 'no', 'off'].includes(envFlag(name));
 }
 
-function appEnv() {
-  return envFlag('APP_ENV');
-}
-
+/**
+ * Live-production switch. Do not use NODE_ENV: Docker and Next.js standalone
+ * always set NODE_ENV=production, including on HTTP test hosts.
+ */
 export function isProduction() {
-  // Next.js standalone and the Dockerfile always set NODE_ENV=production, even
-  // when operators set NODE_ENV=development at runtime. Prefer APP_ENV.
-  const explicit = appEnv();
-  if (explicit) return explicit === 'production' || explicit === 'prod';
-  const nodeEnv = envFlag('NODE_ENV');
-  return nodeEnv === 'production' || nodeEnv === 'prod';
+  const env = envFlag('APP_ENV');
+  return env === 'production' || env === 'prod';
 }
 
 export function isLocalRuntime() {
@@ -32,17 +28,15 @@ export function isLocalRuntime() {
 }
 
 export function allowMasterOtp() {
-  if (!isTruthyEnv('ALLOW_MASTER_OTP')) return false;
-  const explicit = appEnv();
-  if (explicit === 'production' || explicit === 'prod') return false;
-  return true;
+  if (isProduction()) return false;
+  return isTruthyEnv('ALLOW_MASTER_OTP');
 }
 
 export function requireAuthSecret() {
-  const secret = readEnv('BETTER_AUTH_SECRET')?.trim();
+  const secret = readEnv('AUTH_SECRET')?.trim() || readEnv('BETTER_AUTH_SECRET')?.trim();
   if (secret) return secret;
   if (isProduction()) {
-    throw new Error('BETTER_AUTH_SECRET is required');
+    throw new Error('AUTH_SECRET is required when APP_ENV=production');
   }
   return 'taams-local-otp-secret';
 }

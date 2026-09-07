@@ -13,6 +13,8 @@ import type {
   BiometricProvisioningJobsResponse,
   BiometricExemptionResponse,
   BiometricExemptionsResponse,
+  BulkCreateEmployeeSupervisorInput,
+  BulkCreateEmployeeSupervisorResponse,
   BulkUpsertLeaveBalancesInput,
   BulkCreateEmployeeWorkScheduleInput,
   BulkCreateEmployeeWorkScheduleResponse,
@@ -367,8 +369,14 @@ export const coreApi = {
     });
   },
   getEmployeeSupervisors: (employeeId: string) => coreFetch<EmployeeSupervisorsResponse>(`/employees/${employeeId}/supervisors`),
+  getAllEmployeeSupervisors: () => coreFetch<EmployeeSupervisorsResponse>('/employees/supervisors'),
   createEmployeeSupervisor: ({ employeeId, ...input }: CreateEmployeeSupervisorInput) =>
     coreFetch(`/employees/${employeeId}/supervisors`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  bulkCreateEmployeeSupervisors: (input: BulkCreateEmployeeSupervisorInput) =>
+    coreFetch<BulkCreateEmployeeSupervisorResponse>('/employees/supervisors/bulk', {
       method: 'POST',
       body: JSON.stringify(input),
     }),
