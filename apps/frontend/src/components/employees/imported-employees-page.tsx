@@ -31,14 +31,10 @@ import {
   useImportPermanentEmployees,
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmploymentType, PermanentEmployeeImportResponse } from '@/data/types/core.types';
+import { matchSourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS_OPTIONS } from '@/lib/employment-status';
 import { useRouter } from '@/i18n';
 
-const employmentStatusOptions = [
-  { value: 'WORKING', label: 'በስራ ላይ', matches: ['በስራ ላይ', 'በ ስራ ላይ', 'working', 'active'] },
-  { value: 'RESIGNED', label: 'በገዛ ፍቃድ የተሰናበቱ', matches: ['በገዛ ፍቃድ የተሰናበቱ', 'resigned', 'left by own request'] },
-  { value: 'RETIRED', label: 'በጡረታ የተገለሉ', matches: ['በጡረታ የተገለሉ', 'retired'] },
-] as const;
-
+const employmentStatusOptions = SOURCE_EMPLOYMENT_STATUS_OPTIONS;
 type EmploymentStatusFilter = 'ALL' | (typeof employmentStatusOptions)[number]['value'];
 const allDepartmentsValue = '__all_departments';
 
@@ -125,11 +121,8 @@ export function ImportedEmployeesPage({
 
     return directoryEmployees.filter((employee) => {
       if (employmentStatusFilter !== 'ALL') {
-        const sourceStatus = normalizeText(employee.sourceEmploymentStatus ?? employee.employmentStatus);
-        const selected = employmentStatusOptions.find((option) => option.value === employmentStatusFilter);
-        if (!selected || !selected.matches.some((match) => sourceStatus.includes(normalizeText(match)))) {
-          return false;
-        }
+        const matched = matchSourceEmploymentStatus(employee.sourceEmploymentStatus ?? employee.employmentStatus);
+        if (matched?.value !== employmentStatusFilter) return false;
       }
 
       if (departmentFilter !== allDepartmentsValue) {
@@ -227,7 +220,7 @@ export function ImportedEmployeesPage({
               <SelectContent>
                 <SelectItem value="ALL">{t('allEmploymentStatuses')}</SelectItem>
                 {employmentStatusOptions.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
+                  <SelectItem key={status.value} value={status.value}>{status.value}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -483,30 +476,22 @@ function ImportMetric({
 }
 
 function EmploymentStatusBadge({ value }: { value: string | null }) {
-  const normalized = (value ?? '').trim().toLowerCase();
-  const tone = normalized.includes('active') || normalized.includes('በስራ') || normalized.includes('ስራ ላይ')
+  const matched = matchSourceEmploymentStatus(value);
+  const tone = matched?.isActive
     ? 'success'
-    : normalized.includes('term') || normalized.includes('terminated') || normalized.includes('ተቋርጧል')
+    : matched
       ? 'danger'
-      : normalized.includes('suspend') || normalized.includes('ታግዷል')
-        ? 'warning'
-        : 'neutral';
+      : 'neutral';
 
   const toneClasses = tone === 'success'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100'
     : tone === 'danger'
       ? 'border-rose-300 bg-rose-50 text-rose-950 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-100'
-      : tone === 'warning'
-        ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100'
-        : 'border-border bg-muted/40 text-foreground';
+      : 'border-border bg-muted/40 text-foreground';
 
   return (
     <div className={`flex items-center rounded-md border px-2 py-1 text-xs font-medium ${toneClasses}`}>
       <span className="truncate">{value || '-'}</span>
     </div>
   );
-}
-
-function normalizeText(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }

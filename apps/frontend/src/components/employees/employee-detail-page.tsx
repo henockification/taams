@@ -45,7 +45,13 @@ import {
   useEmployeeSupervisors,
   useUpdateEmployee,
 } from '@/data/hooks/core.hooks';
-import type { Employee, EmploymentStatus } from '@/data/types/core.types';
+import type { Employee } from '@/data/types/core.types';
+import {
+  canonicalSourceEmploymentStatus,
+  displayEmploymentStatus,
+  resolveEmploymentFields,
+  SOURCE_EMPLOYMENT_STATUS_OPTIONS,
+} from '@/lib/employment-status';
 
 type EmployeeDetailPageProps = {
   employeeId: string;
@@ -67,7 +73,7 @@ type ProfileDraft = {
   departmentId: string;
   positionName: string;
   sourcePositionCode: string;
-  employmentStatus: EmploymentStatus;
+  sourceEmploymentStatus: string;
   hireDate: string;
   terminationDate: string;
   salary: string;
@@ -75,8 +81,6 @@ type ProfileDraft = {
   nationalId: string;
   paidByIfmis: boolean;
 };
-
-const employmentStatuses: EmploymentStatus[] = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'];
 
 export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageProps) {
   const { formatDate } = useCalendarPreference();
@@ -158,8 +162,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
         positionName: emptyToNull(draft.positionName),
         sourcePositionName: emptyToNull(draft.positionName),
         sourcePositionCode: emptyToNull(draft.sourcePositionCode),
-        employmentStatus: draft.employmentStatus,
-        isActive: draft.employmentStatus === 'ACTIVE',
+        ...resolveEmploymentFields(draft.sourceEmploymentStatus),
         hireDate: emptyToNull(draft.hireDate),
         terminationDate: emptyToNull(draft.terminationDate),
         salary: emptyToNull(draft.salary),
@@ -255,8 +258,8 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={employee.employmentStatus === 'ACTIVE' ? 'default' : 'secondary'}>
-            {employee.employmentStatus}
+          <Badge variant={resolveEmploymentFields(importedEmploymentStatus, employee.employmentStatus).isActive ? 'default' : 'secondary'}>
+            {displayEmploymentStatus(importedEmploymentStatus, employee.employmentStatus)}
           </Badge>
           {isBiometricExempt ? (
             <Badge variant="outline" className="border-emerald-500 text-emerald-700 dark:text-emerald-400">
@@ -356,18 +359,18 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
             <Field
               label={t('employmentStatus')}
               editing={isEditing}
-              value={importedEmploymentStatus ?? employee.employmentStatus}
+              value={displayEmploymentStatus(importedEmploymentStatus, employee.employmentStatus)}
             >
               <Select
-                value={draft?.employmentStatus}
-                onValueChange={(value) => patchDraft({ employmentStatus: value as EmploymentStatus })}
+                value={draft?.sourceEmploymentStatus}
+                onValueChange={(value) => patchDraft({ sourceEmploymentStatus: value })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {employmentStatuses.map((status) => (
-                    <SelectItem key={status} value={status}>{employmentStatusLabel(status, t)}</SelectItem>
+                  {employmentStatusSelectOptions(draft?.sourceEmploymentStatus).map((status) => (
+                    <SelectItem key={status} value={status}>{status}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -506,7 +509,7 @@ function toDraft(employee: Employee): ProfileDraft {
     departmentId: employee.departmentId,
     positionName: employee.positionName ?? employee.position?.nameEn ?? employee.sourcePositionName ?? '',
     sourcePositionCode: employee.sourcePositionCode ?? employee.sourceEmployeeCode ?? '',
-    employmentStatus: employee.employmentStatus,
+    sourceEmploymentStatus: canonicalSourceEmploymentStatus(employee.sourceEmploymentStatus, employee.employmentStatus),
     hireDate: employee.hireDate ?? '',
     terminationDate: employee.terminationDate ?? '',
     salary: employee.salary ?? '',
@@ -521,17 +524,12 @@ function emptyToNull(value: string) {
   return trimmed ? trimmed : null;
 }
 
-function employmentStatusLabel(status: EmploymentStatus, t: (key: string) => string) {
-  switch (status) {
-    case 'ACTIVE':
-      return t('active');
-    case 'INACTIVE':
-      return t('inactive');
-    case 'TERMINATED':
-      return t('terminated');
-    case 'SUSPENDED':
-      return t('suspended');
+function employmentStatusSelectOptions(currentValue?: string) {
+  const options = SOURCE_EMPLOYMENT_STATUS_OPTIONS.map((option) => option.value);
+  if (currentValue && !options.includes(currentValue as (typeof options)[number])) {
+    return [currentValue, ...options];
   }
+  return options;
 }
 
 function Field({

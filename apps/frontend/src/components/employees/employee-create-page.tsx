@@ -20,7 +20,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Link, useRouter } from '@/i18n';
 import { useCreateEmployee, useDepartments, usePositions } from '@/data/hooks/core.hooks';
-import type { EmploymentStatus, EmploymentType } from '@/data/types/core.types';
+import type { EmploymentType } from '@/data/types/core.types';
+import { SOURCE_EMPLOYMENT_STATUS, SOURCE_EMPLOYMENT_STATUS_OPTIONS, resolveEmploymentFields } from '@/lib/employment-status';
 import { notifications } from '@/lib/notifications';
 
 type EmployeeCreatePageProps = {
@@ -44,7 +45,7 @@ type EmployeeCreateForm = {
   departmentId: string;
   positionId: string;
   positionName: string;
-  employmentStatus: EmploymentStatus;
+  sourceEmploymentStatus: string;
   hireDate: string;
   terminationDate: string;
   salary: string;
@@ -52,14 +53,12 @@ type EmployeeCreateForm = {
   nationalId: string;
   sourceIdNo: string;
   sourceEmployeeCode: string;
-  sourceEmploymentStatus: string;
   sourcePositionCode: string;
   paidByIfmis: boolean;
 };
 
 const noneValue = '__none';
 const genderOptions = ['MALE', 'FEMALE'];
-const employmentStatuses: EmploymentStatus[] = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'];
 
 const initialForm: EmployeeCreateForm = {
   employeeCode: '',
@@ -77,7 +76,7 @@ const initialForm: EmployeeCreateForm = {
   departmentId: '',
   positionId: '',
   positionName: '',
-  employmentStatus: 'ACTIVE',
+  sourceEmploymentStatus: SOURCE_EMPLOYMENT_STATUS.WORKING,
   hireDate: '',
   terminationDate: '',
   salary: '',
@@ -85,7 +84,6 @@ const initialForm: EmployeeCreateForm = {
   nationalId: '',
   sourceIdNo: '',
   sourceEmployeeCode: '',
-  sourceEmploymentStatus: '',
   sourcePositionCode: '',
   paidByIfmis: true,
 };
@@ -140,7 +138,7 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
         positionName: emptyToNull(form.positionName) ?? selectedPosition?.nameEn ?? null,
         sourcePositionName: emptyToNull(form.positionName) ?? selectedPosition?.nameEn ?? null,
         sourcePositionCode: emptyToNull(form.sourcePositionCode) ?? selectedPosition?.code ?? null,
-        employmentStatus: form.employmentStatus,
+        ...resolveEmploymentFields(form.sourceEmploymentStatus),
         employmentType,
         hireDate: emptyToNull(form.hireDate),
         terminationDate: emptyToNull(form.terminationDate),
@@ -149,9 +147,7 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
         nationalId: emptyToNull(form.nationalId),
         sourceIdNo: emptyToNull(form.sourceIdNo),
         sourceEmployeeCode: emptyToNull(form.sourceEmployeeCode),
-        sourceEmploymentStatus: emptyToNull(form.sourceEmploymentStatus) ?? form.employmentStatus,
         paidByIfmis: form.paidByIfmis,
-        isActive: form.employmentStatus === 'ACTIVE',
       });
 
       notifications.show({
@@ -263,10 +259,12 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
               <Input id="position-code" value={form.sourcePositionCode} onChange={(event) => patchForm({ sourcePositionCode: event.target.value })} placeholder={selectedPosition?.code ?? ''} />
             </Field>
             <Field label={t('employmentStatus')} id="employment-status">
-              <Select value={form.employmentStatus} onValueChange={(value) => patchForm({ employmentStatus: value as EmploymentStatus })}>
+              <Select value={form.sourceEmploymentStatus} onValueChange={(value) => patchForm({ sourceEmploymentStatus: value })}>
                 <SelectTrigger id="employment-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {employmentStatuses.map((status) => <SelectItem key={status} value={status}>{t(status.toLowerCase() as 'active')}</SelectItem>)}
+                  {SOURCE_EMPLOYMENT_STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status.value} value={status.value}>{status.value}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>
@@ -296,9 +294,6 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
             </Field>
             <Field label={t('sourceEmployeeCode')} id="source-employee-code">
               <Input id="source-employee-code" value={form.sourceEmployeeCode} onChange={(event) => patchForm({ sourceEmployeeCode: event.target.value })} />
-            </Field>
-            <Field label={t('sourceEmploymentStatus')} id="source-employment-status">
-              <Input id="source-employment-status" value={form.sourceEmploymentStatus} onChange={(event) => patchForm({ sourceEmploymentStatus: event.target.value })} />
             </Field>
             <Field label={t('salary')} id="salary">
               <Input id="salary" value={form.salary} onChange={(event) => patchForm({ salary: event.target.value })} />

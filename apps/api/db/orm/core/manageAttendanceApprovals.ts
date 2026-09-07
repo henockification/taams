@@ -13,6 +13,7 @@ import {
   temporaryDepartmentAssignments,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
@@ -56,10 +57,15 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   }
   const dayRange = getDayRange(attendanceDate);
 
-  const [activeEmployees, punches, approvedLeaves, activeExemptions, activeHoliday] = await Promise.all([
+  const [allEmployees, punches, approvedLeaves, activeExemptions, activeHoliday] = await Promise.all([
     db.query.employees.findMany({
-      where: eq(employees.isActive, true),
-      columns: { id: true, positionId: true },
+      columns: {
+        id: true,
+        positionId: true,
+        sourceEmploymentStatus: true,
+        employmentStatus: true,
+        isActive: true,
+      },
     }),
     db.query.attendancePunches.findMany({
       where: and(
@@ -92,6 +98,8 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       orderBy: (table, { asc }) => [asc(table.startDate), asc(table.nameEn)],
     }),
   ]);
+
+  const activeEmployees = allEmployees.filter(isWorkingEmployee);
 
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
@@ -147,6 +155,11 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       status: 'PENDING_SUPERVISOR',
     };
   });
+
+  if (dailyRecordRows.length === 0) {
+    await syncApprovedOvertimeForDate(attendanceDate);
+    return [];
+  }
 
   const records: Array<{ id: string }> = [];
   for (const rows of chunk(dailyRecordRows, 1000)) {
@@ -229,7 +242,7 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
       with: recordRelations,
       orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
     });
-    return attachEffectiveDepartmentContext(records, referenceDate);
+    return attachEffectiveDepartmentContext(records, referenceDate).then(keepWorkingEmployeeRecords);
   }
 
   const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, referenceDate);
@@ -274,8 +287,9 @@ export async function getHrAttendanceDailyRecords(
   });
 
   const enriched = await attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
-  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return enriched;
-  return enriched.filter((record) => record.employee?.userId === scope.userId);
+  const working = keepWorkingEmployeeRecords(enriched);
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return working;
+  return working.filter((record) => record.employee?.userId === scope.userId);
 }
 
 export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope }) {
@@ -575,7 +589,7 @@ async function getAttendanceDailyRecordsByEmployeeIds(
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
-  return attachEffectiveDepartmentContext(records, clipDateToToday(dateTo));
+  return attachEffectiveDepartmentContext(records, clipDateToToday(dateTo)).then(keepWorkingEmployeeRecords);
 }
 
 async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {
@@ -603,6 +617,10 @@ function uniqueRecordIds(ids: string[]) {
   if (recordIds.length === 0) throw new Error('At least one attendance daily record is required');
   if (recordIds.length > 5000) throw new Error('A maximum of 5000 attendance daily records can be approved at once');
   return recordIds;
+}
+
+function keepWorkingEmployeeRecords<T extends { employee?: Parameters<typeof isWorkingEmployee>[0] | null }>(records: T[]) {
+  return records.filter((record) => isWorkingEmployee(record.employee));
 }
 
 export function buildAttendanceApprovalBatch(records: any[]): AttendanceApprovalBatchResult {
@@ -865,6 +883,7 @@ const recordRelations = {
       positionName: true,
       employmentStatus: true,
       employmentType: true,
+      sourceEmploymentStatus: true,
       sourceDepartmentName: true,
       sourcePositionName: true,
       sourcePositionCode: true,

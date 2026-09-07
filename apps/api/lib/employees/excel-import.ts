@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
-import type { CreateEmployeeInput, EmploymentStatus } from '../../types/core.types';
+import type { CreateEmployeeInput } from '../../types/core.types';
+import { resolveEmploymentFields } from './employment-status';
 
 export type ExcelEmployeeRow = Record<string, unknown>;
 
@@ -44,11 +45,6 @@ export const EMPLOYEE_EXCEL_HEADER_ALIASES: Record<FieldKey, string[]> = {
   email: ['email', 'email address', 'work email'],
 };
 
-const ACTIVE_STATUS_VALUES = new Set(['active', 'permanent', 'working', 'on duty', 'employed']);
-const INACTIVE_STATUS_VALUES = new Set(['inactive', 'not active']);
-const TERMINATED_STATUS_VALUES = new Set(['terminated', 'termination', 'separated', 'resigned', 'retired']);
-const SUSPENDED_STATUS_VALUES = new Set(['suspended', 'suspension']);
-
 export function parseEmployeeWorkbook(fileBuffer: Buffer, fileName: string): ExcelEmployeeRow[] {
   if (!/\.(xlsx|xls)$/i.test(fileName)) {
     throw new Error('Only .xls and .xlsx files are supported');
@@ -82,7 +78,7 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
   const positionName = readString(row, 'position');
   const salary = readSalary(row, errors);
   const hireDate = readDate(row, errors);
-  const employmentStatus = mapEmploymentStatus(sourceStatus);
+  const employment = resolveEmploymentFields(sourceStatus);
   const nameParts = splitFullName(fullName, errors);
 
   if (!sourceIdNo) errors.push('Employee Id No is required');
@@ -108,13 +104,13 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
       departmentId: '',
       positionId: null,
       positionName: positionName || null,
-      employmentStatus,
+      employmentStatus: employment.employmentStatus,
       employmentType: 'PERMANENT',
       hireDate,
       terminationDate: null,
       sourceIdNo,
       sourceEmployeeCode: sourceEmployeeCode || null,
-      sourceEmploymentStatus: sourceStatus || null,
+      sourceEmploymentStatus: sourceStatus || employment.sourceEmploymentStatus,
       sourceDepartmentName: departmentName,
       sourcePositionName: positionName || null,
       sourcePositionCode: sourceEmployeeCode || null,
@@ -122,7 +118,7 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
       salaryStep: readString(row, 'step') || null,
       sourceImportedAt: new Date(),
       sourceRawPayload: normalizeRawPayload(row),
-      isActive: employmentStatus === 'ACTIVE',
+      isActive: employment.isActive,
     },
   };
 }
@@ -199,16 +195,6 @@ function readRaw(row: ExcelEmployeeRow, field: FieldKey) {
   }
 
   return null;
-}
-
-function mapEmploymentStatus(value: string): EmploymentStatus {
-  const normalized = value.trim().toLowerCase();
-  if (!normalized || ACTIVE_STATUS_VALUES.has(normalized) || normalized.includes('active')) return 'ACTIVE';
-  if (INACTIVE_STATUS_VALUES.has(normalized)) return 'INACTIVE';
-  if (TERMINATED_STATUS_VALUES.has(normalized)) return 'TERMINATED';
-  if (SUSPENDED_STATUS_VALUES.has(normalized)) return 'SUSPENDED';
-
-  return 'ACTIVE';
 }
 
 function splitFullName(fullName: string, errors: string[]) {

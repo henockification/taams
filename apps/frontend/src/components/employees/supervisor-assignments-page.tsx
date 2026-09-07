@@ -2,7 +2,7 @@
 
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, UserRoundCog } from 'lucide-react';
+import { Check, ChevronsUpDown, Plus, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -45,6 +47,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allDepartmentsValue = '__all_departments';
@@ -389,18 +392,15 @@ export function SupervisorAssignmentsPage() {
           <form className="space-y-5" onSubmit={saveAssignment}>
             <div className="grid gap-4">
               <Field label={t('supervisor')} id="bulk-supervisor">
-                <Select value={supervisorId} onValueChange={setSupervisorId}>
-                  <SelectTrigger id="bulk-supervisor" className="w-full">
-                    <SelectValue placeholder={t('selectSupervisor')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {supervisorOptions.map((employee) => (
-                      <SelectItem key={employee.id} value={employee.id}>
-                        {employeeName(employee)} - {employee.employeeCode}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableEmployeeSelect
+                  id="bulk-supervisor"
+                  value={supervisorId}
+                  onValueChange={setSupervisorId}
+                  employees={supervisorOptions}
+                  placeholder={t('selectSupervisor')}
+                  searchPlaceholder={t('searchEmployees')}
+                  emptyMessage={t('noMatchingEmployees')}
+                />
               </Field>
               <Field label={t('effectiveFrom')} id="bulk-supervisor-effective-from">
                 <CalendarDateField id="bulk-supervisor-effective-from" value={effectiveFrom} onChange={setEffectiveFrom} required />
@@ -448,5 +448,82 @@ function SwitchRow({ label, checked, onCheckedChange }: { label: ReactNode; chec
       <Label>{label}</Label>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
+  );
+}
+
+function SearchableEmployeeSelect({
+  id,
+  value,
+  onValueChange,
+  employees,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+}: {
+  id: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  employees: Employee[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedEmployee = employees.find((employee) => employee.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {selectedEmployee ? `${employeeName(selectedEmployee)} - ${selectedEmployee.employeeCode}` : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {employees.map((employee) => {
+                const name = employeeName(employee);
+                const description = [
+                  employee.employeeCode,
+                  employee.department?.nameEn ?? employee.sourceDepartmentName,
+                  employee.email,
+                  employee.phoneNumber,
+                ].filter(Boolean).join(' ');
+
+                return (
+                  <CommandItem
+                    key={employee.id}
+                    value={`${name} ${description}`}
+                    onSelect={() => {
+                      onValueChange(employee.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn('size-4', value === employee.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{description}</span>
+                    </span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

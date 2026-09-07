@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, useMemo, useState } from 'react';
-import { Clock, ShieldCheck, UserRoundCog } from 'lucide-react';
+import { Check, ChevronsUpDown, Clock, ShieldCheck, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -24,13 +25,7 @@ import {
 import { EmptyState } from '@/components/ui/empty-state';
 import { Label } from '@/components/ui/label';
 import { CalendarDateTimeField } from '@/components/calendar/calendar-date-field';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Table,
   TableBody,
@@ -48,6 +43,7 @@ import {
 import type { Employee, SupervisorDelegation } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
+import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type DelegationFormState = {
@@ -250,21 +246,15 @@ export function SupervisorDelegationsPage() {
           <form className="space-y-4" onSubmit={submitDelegation}>
             <div className="space-y-2">
               <Label>Delegate employee</Label>
-              <Select
+              <SearchableEmployeeSelect
+                id="delegate-employee"
                 value={form.delegateEmployeeId}
                 onValueChange={(value) => setForm((current) => ({ ...current, delegateEmployeeId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select an active employee with a user account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {delegateOptions.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>
-                      {employeeName(employee)} · {employee.employeeCode}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                employees={delegateOptions}
+                placeholder="Select an active employee with a user account"
+                searchPlaceholder="Search employees..."
+                emptyMessage="No matching employee found."
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -319,4 +309,81 @@ function employeeName(employee?: Employee | null) {
 function toDateTimeLocal(value: Date) {
   const offsetMs = value.getTimezoneOffset() * 60 * 1000;
   return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function SearchableEmployeeSelect({
+  id,
+  value,
+  onValueChange,
+  employees,
+  placeholder,
+  searchPlaceholder,
+  emptyMessage,
+}: {
+  id: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  employees: Employee[];
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyMessage: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedEmployee = employees.find((employee) => employee.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-10 w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {selectedEmployee ? `${employeeName(selectedEmployee)} · ${selectedEmployee.employeeCode}` : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
+        <Command>
+          <CommandInput placeholder={searchPlaceholder} />
+          <CommandList>
+            <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <CommandGroup>
+              {employees.map((employee) => {
+                const name = employeeName(employee);
+                const description = [
+                  employee.employeeCode,
+                  employee.department?.nameEn ?? employee.sourceDepartmentName,
+                  employee.email,
+                  employee.phoneNumber,
+                ].filter(Boolean).join(' ');
+
+                return (
+                  <CommandItem
+                    key={employee.id}
+                    value={`${name} ${description}`}
+                    onSelect={() => {
+                      onValueChange(employee.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check className={cn('size-4', value === employee.id ? 'opacity-100' : 'opacity-0')} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{description}</span>
+                    </span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }

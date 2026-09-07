@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n';
 import { AuthShell } from '@/components/auth/AuthShell';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
@@ -17,7 +16,8 @@ import { AlertCircle, Check } from 'lucide-react';
 import { authClient } from '@/lib/auth-client';
 import { OtpVerificationDialog } from '@/components/auth/OtpVerificationDialog';
 import { LoginMethodToggle, type LoginMethod } from '@/components/auth/login-method-toggle';
-import { identifierPayload, isValidEthiopianPhone } from '@/lib/login-identifier';
+import { identifierPayload, toLocalEthiopianMobile } from '@/lib/login-identifier';
+import { identifierFieldRules, LoginIdentifierField } from '@/components/auth/login-identifier-field';
 
 interface ResetPasswordFormData {
   identifier: string;
@@ -54,7 +54,7 @@ export default function ResetPasswordPage() {
   } = useForm<ResetPasswordFormData>({
     mode: 'onChange',
     defaultValues: {
-      identifier: queryPhone && !queryEmail ? queryPhone : queryEmail,
+      identifier: queryPhone && !queryEmail ? toLocalEthiopianMobile(queryPhone) : queryEmail,
       password: '',
       confirmPassword: '',
     },
@@ -67,7 +67,7 @@ export default function ResetPasswordPage() {
     const phone = searchParams.get('phone') || '';
     if (phone && !email) {
       setMethod('phone');
-      setValue('identifier', phone);
+      setValue('identifier', toLocalEthiopianMobile(phone));
     } else if (email) {
       setMethod('email');
       setValue('identifier', email);
@@ -186,29 +186,12 @@ export default function ResetPasswordPage() {
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <LoginMethodToggle method={method} onChange={changeMethod} />
 
-                <div className="space-y-2">
-                  <Label htmlFor="identifier">{method === 'email' ? t('email') : t('phone')}</Label>
-                  <Input
-                    id="identifier"
-                    key={method}
-                    type={method === 'email' ? 'email' : 'tel'}
-                    inputMode={method === 'email' ? 'email' : 'tel'}
-                    autoComplete={method === 'email' ? 'email' : 'tel'}
-                    placeholder={method === 'email' ? t('emailPlaceholder') : t('phonePlaceholder')}
-                    {...register('identifier', {
-                      required: method === 'email' ? t('validation.emailRequired') : t('validation.phoneRequired'),
-                      validate: (value) => {
-                        if (method === 'email') {
-                          return /^\S+@\S+$/.test(value) || t('validation.invalidEmail');
-                        }
-                        return isValidEthiopianPhone(value) || t('validation.invalidPhone');
-                      },
-                    })}
-                  />
-                  {errors.identifier && (
-                    <p className="text-sm text-destructive">{errors.identifier.message}</p>
-                  )}
-                </div>
+                <LoginIdentifierField
+                  key={method}
+                  method={method}
+                  registration={register('identifier', identifierFieldRules(method, t))}
+                  error={errors.identifier?.message}
+                />
 
                 <div className="space-y-2">
                   <Label htmlFor="password">{t('newPassword')}</Label>
