@@ -15,7 +15,7 @@ import {
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
 import {
@@ -289,6 +289,12 @@ export async function getHrAttendanceDailyRecords(
   const enriched = await attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
   const working = keepWorkingEmployeeRecords(enriched);
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return working;
+  if (scope.type === 'hr-departments') {
+    return working.filter((record) => isDepartmentVisibleInScope(record.effectiveDepartment?.id ?? record.employee?.departmentId, scope));
+  }
+  if (scope.type === 'employee-ids') {
+    return working.filter((record) => Boolean(record.employeeId && scope.employeeIds.includes(record.employeeId)));
+  }
   return working.filter((record) => record.employee?.userId === scope.userId);
 }
 
@@ -467,7 +473,13 @@ export async function hrApproveAttendanceDailyRecords(
     const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
     if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
     for (const record of records) {
-      if (input.scope) await assertCanAccessEmployee(record.employeeId, input.scope, tx);
+      if (input.scope?.type === 'hr-departments') {
+        if (!isDepartmentVisibleInScope(record.effectiveDepartment?.id ?? record.employee?.departmentId, input.scope)) {
+          throw new Error('Attendance daily record not found');
+        }
+      } else if (input.scope) {
+        await assertCanAccessEmployee(record.employeeId, input.scope, tx);
+      }
       if (record.status !== 'SUPERVISOR_APPROVED') {
         throw new Error('Only supervisor-approved attendance records can be HR approved');
       }
@@ -536,7 +548,11 @@ export async function returnAttendanceDailyRecord(id: string, input: { userId: s
     throw new Error('You do not have permission to return this attendance record');
   }
 
-  if (!isSupervisorReturn && input.scope) {
+  if (!isSupervisorReturn && input.scope?.type === 'hr-departments') {
+    if (!isDepartmentVisibleInScope((record as any).effectiveDepartment?.id ?? record.employee?.departmentId, input.scope)) {
+      throw new Error('Attendance daily record not found');
+    }
+  } else if (!isSupervisorReturn && input.scope) {
     await assertCanAccessEmployee(record.employeeId, input.scope);
   }
 

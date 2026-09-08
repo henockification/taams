@@ -8,7 +8,7 @@ import {
   CreateUserResponse,
 } from '../types/api';
 import { PaginationParams } from '../shared/types';
-import { UpdateProfileImageRequest, UpdateProfileImageResponse, UserProfileUpdate } from '../types/users.types';
+import { UpdateProfileImageRequest, UpdateProfileImageResponse, UserProfileResponse, UserProfileUpdate } from '../types/users.types';
 import { apiClient } from '../utils/api-client';
 
 // API endpoints
@@ -135,15 +135,36 @@ export const usersApi = {
     return data;
   },
 
-  updateProfile: async (profile: UserProfileUpdate): Promise<UserProfileUpdate> => {
-    const response = await apiClient.patch('/api/profile', profile);
+  getProfile: async (): Promise<UserProfileResponse> => {
+    const response = await apiClient.get('/api/profile', {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
-    return data.profile || data;
+    return data;
+  },
+
+  updateProfile: async (profile: UserProfileUpdate): Promise<UserProfileResponse> => {
+    const response = await apiClient.patch('/api/profile', profile, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
+    }
+
+    return data;
   },
 
   updateProfileImage: async (imageData: UpdateProfileImageRequest): Promise<UpdateProfileImageResponse> => {

@@ -21,9 +21,10 @@ import {
   updateEmployeeScoped,
 } from '../../../db/orm/core/manageCore';
 import { getSessionByToken } from '../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames } from '../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleNames } from '../../../db/orm/rbac/manageRbac';
 import { getSessionCookie } from '../../auth/handlers/helpers';
 import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../db/orm/core/manageEmployeeVisibility';
+import { getVisibleEmployeeIdsForSupervisorActor } from '../../../db/orm/core/manageSupervisorDelegations';
 import {
   mapExcelRowToEmployeeInput,
   parseEmployeeWorkbook,
@@ -80,7 +81,9 @@ export async function getEmployeesHandler(c: Context) {
 
 export async function getEmployeesPaginatedHandler(c: Context) {
   try {
-    const scope = await resolveScope(c);
+    const scope = c.req.query('scope') === 'supervisor'
+      ? await resolveSupervisorEmployeeScope(c)
+      : await resolveScope(c);
     const page = Number(c.req.query('page') || 1);
     const pageSize = Number(c.req.query('pageSize') || 50);
     const search = c.req.query('search') || '';
@@ -243,16 +246,34 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
 }
 
 async function resolveScope(c: Context) {
-  const token = getSessionCookie(c);
-  if (!token) throw new Error('Authentication required');
-  const session = await getSessionByToken(token);
-  if (!session?.user?.id) throw new Error('Authentication required');
+  const session = await resolveSession(c);
   const permissions = await getUserPermissionNames(session.user.id);
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
     roles: session.user.role ?? [],
     permissions,
   });
+}
+
+async function resolveSupervisorEmployeeScope(c: Context) {
+  const session = await resolveSession(c);
+  const roles = await resolveRoleNames(session);
+  const employeeIds = await getVisibleEmployeeIdsForSupervisorActor(session.user.id, roles);
+  return { type: 'employee-ids' as const, employeeIds };
+}
+
+async function resolveSession(c: Context) {
+  const token = getSessionCookie(c);
+  if (!token) throw new Error('Authentication required');
+  const session = await getSessionByToken(token);
+  if (!session?.user?.id) throw new Error('Authentication required');
+  return session;
+}
+
+async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const assignedRoles = await getUserRoleNames(session.user.id);
+  return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
 }
 
 export async function createEmployeeSupervisorHandler(c: Context) {

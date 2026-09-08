@@ -15,6 +15,7 @@ import { openApiApp } from './lib/openapi';
 
 import authApp from './routes/auth';
 import usersApp from './routes/users/routes';
+import profileApp from './routes/profile/routes';
 import rbacApp from './routes/rbac/routes';
 import coreApp from './routes/core/routes';
 import zktecoApp from './routes/zkteco/routes';
@@ -75,6 +76,7 @@ app.doc('/api/openapi.json', {
 });
 
 app.route('/api', usersApp);
+app.route('/api', profileApp);
 app.route('/api', rbacApp);
 app.route('/api', coreApp);
 app.route('/api', reportsApp);

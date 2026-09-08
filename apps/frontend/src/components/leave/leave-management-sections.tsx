@@ -449,17 +449,18 @@ function fiscalYearsForEmploymentType(
   return active;
 }
 
-export function LeaveBalancesSection() {
+export function LeaveBalancesSection({ view = 'management' }: { view?: 'management' | 'supervisor' }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const isSupervisorView = view === 'supervisor';
   const fiscalYearsQuery = useLeaveFiscalYears();
   const departmentsQuery = useDepartments();
-  const saveBalance = useUpsertLeaveBalance();
+  const saveBalance = useUpsertLeaveBalance({ view });
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
   const departments = departmentsQuery.data?.departments ?? [];
   const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
-  const [employmentTypeFilter, setEmploymentTypeFilter] = useState<'all' | Employee['employmentType']>('all');
+  const [employmentTypeFilter, setEmploymentTypeFilter] = useState<'all' | Employee['employmentType']>(isSupervisorView ? 'PERMANENT' : 'all');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -468,12 +469,17 @@ export function LeaveBalancesSection() {
   const [balanceForm, setBalanceForm] = useState(initialBalanceForm);
 
   const visibleFiscalYears = useMemo(
-    () => fiscalYearsForEmploymentType(fiscalYears, employmentTypeFilter),
-    [employmentTypeFilter, fiscalYears],
+    () => isSupervisorView
+      ? fiscalYears.filter((fiscalYear) => !fiscalYear.isActive).sort((left, right) => right.startsAt.localeCompare(left.startsAt))
+      : fiscalYearsForEmploymentType(fiscalYears, employmentTypeFilter),
+    [employmentTypeFilter, fiscalYears, isSupervisorView],
   );
   const selectedFiscalYear = visibleFiscalYears.find((fiscalYear) => fiscalYear.id === selectedFiscalYearId);
   const employeeListFilters = useMemo(() => {
     const departmentId = departmentFilter === allDepartmentsValue ? undefined : departmentFilter;
+    if (isSupervisorView) {
+      return { employmentType: 'PERMANENT' as const, departmentId };
+    }
     if (employmentTypeFilter !== 'all') {
       return { employmentType: employmentTypeFilter, departmentId };
     }
@@ -484,13 +490,14 @@ export function LeaveBalancesSection() {
       return { employmentType: 'PERMANENT' as const, departmentId };
     }
     return { departmentId };
-  }, [departmentFilter, employmentTypeFilter, selectedFiscalYear?.isActive, selectedFiscalYearId]);
+  }, [departmentFilter, employmentTypeFilter, isSupervisorView, selectedFiscalYear?.isActive, selectedFiscalYearId]);
 
-  const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined, { view: 'management' });
+  const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined, { view });
   const employeesQuery = useEmployeesPaginated({
     page,
     pageSize,
     search: balanceSearch,
+    scope: isSupervisorView ? 'supervisor' : undefined,
     ...employeeListFilters,
   });
 
@@ -518,7 +525,7 @@ export function LeaveBalancesSection() {
   const endIndex = Math.min(page * pageSize, totalEmployees);
   const selectedDialogEmployee = employeePageRows.find((employee) => employee.id === balanceForm.employeeId);
   const dialogFiscalYears = fiscalYearsForEmploymentType(
-    fiscalYears,
+    isSupervisorView ? visibleFiscalYears : fiscalYears,
     selectedDialogEmployee?.employmentType ?? employmentTypeFilter,
   );
 
@@ -526,7 +533,9 @@ export function LeaveBalancesSection() {
     employee: Employee | undefined,
     preferredFiscalYearId: string,
   ) => {
-    const years = fiscalYearsForEmploymentType(fiscalYears, employee?.employmentType ?? employmentTypeFilter);
+    const years = isSupervisorView
+      ? visibleFiscalYears
+      : fiscalYearsForEmploymentType(fiscalYears, employee?.employmentType ?? employmentTypeFilter);
     if (years.some((fiscalYear) => fiscalYear.id === preferredFiscalYearId)) return preferredFiscalYearId;
     return years[0]?.id ?? '';
   };
@@ -576,18 +585,20 @@ export function LeaveBalancesSection() {
           <Field label={t('employeeSearch')} id="leave-balance-search">
             <Input id="leave-balance-search" value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:min-w-64 md:max-w-sm" />
           </Field>
-          <Field label={t('employmentType')} id="leave-balance-employment-type">
-            <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
-              <SelectTrigger id="leave-balance-employment-type" className="w-full md:w-48"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
-                <SelectItem value="PERMANENT">PERMANENT</SelectItem>
-                <SelectItem value="CONTRACT">CONTRACT</SelectItem>
-                <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
-                <SelectItem value="DAILY">DAILY</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
+          {!isSupervisorView ? (
+            <Field label={t('employmentType')} id="leave-balance-employment-type">
+              <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
+                <SelectTrigger id="leave-balance-employment-type" className="w-full md:w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
+                  <SelectItem value="PERMANENT">PERMANENT</SelectItem>
+                  <SelectItem value="CONTRACT">CONTRACT</SelectItem>
+                  <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
+                  <SelectItem value="DAILY">DAILY</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          ) : null}
           <Field label={t('department')} id="leave-balance-department">
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger id="leave-balance-department" className="w-full md:w-64"><SelectValue placeholder={t('selectDepartment')} /></SelectTrigger>
@@ -692,7 +703,7 @@ export function LeaveBalancesSection() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingBalance ? t('editLeaveBalance') : t('addLeaveBalance')}</DialogTitle>
-            <DialogDescription>{t('initialBalancesDescription')}</DialogDescription>
+            <DialogDescription>{isSupervisorView ? t('supervisorLeaveBalancesDescription') : t('initialBalancesDescription')}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveBalanceForm}>
             <Field label={t('employee')} id="balance-employee">

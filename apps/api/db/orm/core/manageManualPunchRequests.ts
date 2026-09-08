@@ -18,7 +18,6 @@ import {
 } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
-const HR_ROLE_NAMES = ['human_resource'];
 
 export async function createManualPunchRequest(input: CreateManualPunchRequestInput, scope?: EmployeeVisibilityScope) {
   if (!input.requestedBy) {
@@ -85,10 +84,6 @@ export async function getManualPunchRequests(input: {
     return requests.filter((request) => request.employee?.userId === input.userId);
   }
 
-  const roles = (input.roles ?? []).map((role) => role.toLowerCase());
-  const isHrRole = roles.some((role) => HR_ROLE_NAMES.includes(role));
-  if (!input.scope || input.scope.type === 'unrestricted' || isHrRole) return requests;
-
   if (!input.userId) return [];
   const visibleRequests = [];
   const visibleIdsByDate = new Map<string, string[]>();
@@ -122,9 +117,10 @@ export async function changeManualPunchRequestStatus(
     }
 
     if (input.status === 'HR_REVIEWED' || input.status === 'HR_REJECTED') {
-      if (context.scope?.type !== 'hr' && context.scope?.type !== 'unrestricted') {
+      if (context.scope?.type !== 'hr' && context.scope?.type !== 'hr-departments' && context.scope?.type !== 'unrestricted') {
         throw new Error('Only HR can review attendance correction requests');
       }
+      if (context.scope) await assertCanAccessEmployee(request.employeeId, context.scope, tx);
 
       const hrReviewedBy = context.reviewerUserId ?? input.hrReviewedBy;
       if (!hrReviewedBy) throw new Error('HR reviewer is required');

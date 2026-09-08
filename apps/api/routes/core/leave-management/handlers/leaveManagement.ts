@@ -16,6 +16,7 @@ import {
 } from '../../../../schemas/core.schema';
 import {
   bulkUpsertLeaveBalancesScoped,
+  bulkUpsertSupervisorLeaveBalances,
   authorizeLeaveInterruption,
   authorizeLeaveRequest,
   changeLeaveRequestStatusScoped,
@@ -34,6 +35,7 @@ import {
   updateLeaveRequestScoped,
   updateLeaveType,
   upsertLeaveBalanceScoped,
+  upsertSupervisorLeaveBalance,
 } from '../../../../db/orm/core/manageLeave';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
@@ -138,11 +140,15 @@ export async function getLeaveBalancesHandler(c: Context) {
         ? 'authorizations'
         : c.req.query('view') === 'management'
           ? 'management'
-          : 'self';
+          : c.req.query('view') === 'supervisor'
+            ? 'supervisor'
+            : 'self';
     const permissions = view === 'authorizations' ? await getUserPermissionNames(session.user.id) : [];
+    const roles = view === 'supervisor' ? await resolveRoleNames(session) : undefined;
     const leaveBalances = await getLeaveBalances(fiscalYearId, {
       scope,
       userId: session.user.id,
+      roles,
       view,
       canAuthorize: permissions.includes('leave-authorizations:approve'),
     });
@@ -156,13 +162,17 @@ export async function upsertLeaveBalanceHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
+    const view = c.req.query('view') === 'supervisor' ? 'supervisor' : 'management';
     const parsed = UpsertLeaveBalanceRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const leaveBalance = await upsertLeaveBalanceScoped({
+    const payload = {
       ...parsed.data,
       createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
       updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    }, scope);
+    };
+    const leaveBalance = view === 'supervisor'
+      ? await upsertSupervisorLeaveBalance(payload, session.user.id, await resolveRoleNames(session))
+      : await upsertLeaveBalanceScoped(payload, scope);
     return c.json({ success: true, leaveBalance: formatLeaveBalance(leaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to save leave balance');
@@ -173,13 +183,17 @@ export async function bulkUpsertLeaveBalancesHandler(c: Context) {
   try {
     const session = await resolveSession(c);
     const scope = await resolveScope(session);
+    const view = c.req.query('view') === 'supervisor' ? 'supervisor' : 'management';
     const parsed = BulkUpsertLeaveBalancesRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const leaveBalances = await bulkUpsertLeaveBalancesScoped({
+    const payload = {
       ...parsed.data,
       createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
       updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
-    }, scope);
+    };
+    const leaveBalances = view === 'supervisor'
+      ? await bulkUpsertSupervisorLeaveBalances(payload, session.user.id, await resolveRoleNames(session))
+      : await bulkUpsertLeaveBalancesScoped(payload, scope);
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to bulk save leave balances');
@@ -210,6 +224,7 @@ export async function transferLeaveBalanceHandler(c: Context) {
 export async function getLeaveRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     const view = c.req.query('view') === 'approvals'
       ? 'approvals'
       : c.req.query('view') === 'authorizations'
@@ -224,6 +239,7 @@ export async function getLeaveRequestsHandler(c: Context) {
     const leaveRequests = await getLeaveRequests(kind, {
       userId: session.user.id,
       view,
+      scope,
       canAuthorize: permissions.includes('leave-authorizations:approve'),
     });
     return c.json({ success: true, leaveRequests: leaveRequests.map(formatLeaveRequest) });
@@ -311,12 +327,14 @@ export async function changeLeaveRequestStatusHandler(c: Context) {
 export async function authorizeLeaveRequestHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     await assertLeaveAuthorizationPermission(session.user.id);
     const parsed = AuthorizeLeaveRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const leaveRequest = await authorizeLeaveRequest(c.req.param('id'), {
       ...parsed.data,
       actorUserId: session.user.id,
+      scope,
     });
     if (leaveRequest.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
     await safeEnqueueWorkflowNotification(
@@ -337,12 +355,14 @@ export async function authorizeLeaveRequestHandler(c: Context) {
 export async function authorizeLeaveInterruptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const scope = await resolveScope(session);
     await assertLeaveAuthorizationPermission(session.user.id);
     const parsed = AuthorizeLeaveRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const leaveRequest = await authorizeLeaveInterruption(c.req.param('id'), {
       ...parsed.data,
       actorUserId: session.user.id,
+      scope,
     });
     if (parsed.data.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
     await safeEnqueueWorkflowNotification(

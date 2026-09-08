@@ -9,7 +9,7 @@ import {
   getOvertimeRequests,
 } from '../../../../db/orm/core/manageOvertimeRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { hasActiveSupervisorDelegation } from '../../../../db/orm/core/manageSupervisorDelegations';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
@@ -24,6 +24,7 @@ export async function createOvertimeRequestHandler(c: Context) {
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
 
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const requestedBy = session.user.id ?? c.user?.id ?? parsed.data.requestedBy;
     if (!requestedBy) return validationErrorResponse(c, 'requestedBy is required');
@@ -38,7 +39,7 @@ export async function createOvertimeRequestHandler(c: Context) {
     }, {
       scope,
       requestedBy,
-      roles: session.user.role ?? [],
+      roles,
     });
     await Promise.all(overtimeRequests.map((overtimeRequest) => safeEnqueueWorkflowNotification('OVERTIME_ASSIGNED', {
       entityId: overtimeRequest.id,
@@ -72,11 +73,12 @@ function toIsoString(value: string | Date) {
 export async function getOvertimeRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const overtimeRequests = await getOvertimeRequests({
       scope,
       userId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
       dateFrom: c.req.query('dateFrom'),
       dateTo: c.req.query('dateTo'),
       status: c.req.query('status'),
@@ -100,6 +102,7 @@ export async function changeOvertimeRequestStatusHandler(c: Context) {
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
 
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const canReview = await userHasPermission(session.user.id, 'overtime-requests:approve')
       || await hasActiveSupervisorDelegation(session.user.id);
@@ -108,7 +111,7 @@ export async function changeOvertimeRequestStatusHandler(c: Context) {
     const overtimeRequest = await changeOvertimeRequestStatus(id, parsed.data, {
       scope,
       reviewerUserId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
     });
     // Notification trigger disabled until SMS/email provider credentials are available.
     // await safeEnqueueWorkflowNotification(
@@ -145,9 +148,16 @@ async function resolveSession(c: Context) {
 async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
   if (!session?.user?.id) throw new Error('Authentication required');
   const permissions = await getUserPermissionNames(session.user.id);
+  const roles = await resolveRoleNames(session);
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
-    roles: session.user.role ?? [],
+    roles,
     permissions,
   });
+}
+
+async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const assignedRoles = await getUserRoleNames(session.user.id);
+  return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
 }

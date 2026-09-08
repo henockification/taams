@@ -61,6 +61,9 @@ import type {
   EmployeesPaginatedResponse,
   ExecutiveDashboardSummaryResponse,
   HrDashboardSummaryResponse,
+  HrDepartmentAssignmentUserResponse,
+  HrDepartmentAssignmentUsersResponse,
+  HrDepartmentAssignmentsResponse,
   IfmisAttendancePreviewResponse,
   IfmisAttendancePushResponse,
   GenerateAttendanceDailyRecordsResponse,
@@ -89,6 +92,7 @@ import type {
   PositionsResponse,
   ReportKey,
   ReportResponse,
+  ReplaceHrDepartmentAssignmentsInput,
   AuditEventsResponse,
   ReviewLeaveInterruptionInput,
   ShiftBreakResponse,
@@ -224,6 +228,13 @@ export const coreApi = {
     return coreFetch<AuditEventsResponse>(`/audit-events${suffix}`);
   },
   getDepartments: () => coreFetch<DepartmentsResponse>('/departments'),
+  getHrDepartmentAssignmentUsers: () => coreFetch<HrDepartmentAssignmentUsersResponse>('/department-assignments/hr-users'),
+  getHrDepartmentAssignments: () => coreFetch<HrDepartmentAssignmentsResponse>('/department-assignments'),
+  replaceHrDepartmentAssignments: ({ userId, departmentIds }: ReplaceHrDepartmentAssignmentsInput) =>
+    coreFetch<HrDepartmentAssignmentUserResponse>(`/department-assignments/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ departmentIds }),
+    }),
   createDepartment: (input: CreateDepartmentInput) =>
     coreFetch<DepartmentResponse>('/departments', {
       method: 'POST',
@@ -335,6 +346,7 @@ export const coreApi = {
     if (params.employmentType) query.set('employmentType', params.employmentType);
     if (params.excludeEmploymentType) query.set('excludeEmploymentType', params.excludeEmploymentType);
     if (params.departmentId) query.set('departmentId', params.departmentId);
+    if (params.scope) query.set('scope', params.scope);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<EmployeesPaginatedResponse>(`/employees/paginated${suffix}`);
@@ -648,16 +660,20 @@ export const coreApi = {
     if (fiscalYearId) query.set('fiscalYearId', fiscalYearId);
     return coreFetch<LeaveBalancesResponse>(`/leave/balances?${query.toString()}`);
   },
-  upsertLeaveBalance: (input: UpsertLeaveBalanceInput) =>
-    coreFetch<LeaveBalanceResponse>('/leave/balances', {
+  upsertLeaveBalance: (input: UpsertLeaveBalanceInput, view?: LeaveBalanceView) => {
+    const suffix = view ? `?${new URLSearchParams({ view }).toString()}` : '';
+    return coreFetch<LeaveBalanceResponse>(`/leave/balances${suffix}`, {
       method: 'POST',
       body: JSON.stringify(input),
-    }),
-  bulkUpsertLeaveBalances: (input: BulkUpsertLeaveBalancesInput) =>
-    coreFetch<LeaveBalancesResponse>('/leave/balances/bulk', {
+    });
+  },
+  bulkUpsertLeaveBalances: (input: BulkUpsertLeaveBalancesInput, view?: LeaveBalanceView) => {
+    const suffix = view ? `?${new URLSearchParams({ view }).toString()}` : '';
+    return coreFetch<LeaveBalancesResponse>(`/leave/balances/bulk${suffix}`, {
       method: 'POST',
       body: JSON.stringify(input),
-    }),
+    });
+  },
   transferLeaveBalance: (input: TransferLeaveBalanceInput) =>
     coreFetch<LeaveBalanceTransferResponse>('/leave/balances/transfer', {
       method: 'POST',

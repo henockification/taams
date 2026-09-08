@@ -120,6 +120,23 @@ export const departments = pgTable('departments', {
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
 
+export const hrDepartmentAssignments = pgTable('hr_department_assignments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  departmentId: uuid('department_id').notNull().references(() => departments.id, { onDelete: 'cascade' }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: text('created_by').references(() => user.id),
+  updatedBy: text('updated_by').references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  activeUserDepartmentUnique: uniqueIndex('hr_department_assignments_active_user_department_unique')
+    .on(table.userId, table.departmentId)
+    .where(sql`${table.isActive} = true`),
+  userActiveIdx: index('idx_hr_department_assignments_user_active').on(table.userId, table.isActive),
+  departmentActiveIdx: index('idx_hr_department_assignments_department_active').on(table.departmentId, table.isActive),
+}));
+
 export const positions = pgTable('positions', {
   id: uuid('id').primaryKey().defaultRandom(),
   nameEn: varchar('name_en', { length: 150 }).notNull(),
@@ -916,6 +933,9 @@ export const userRelations = relations(user, ({ one, many }) => ({
   sessions: many(authSessions),
   userRoles: many(userRoles),
   employees: many(employees),
+  hrDepartmentAssignments: many(hrDepartmentAssignments, { relationName: 'hrDepartmentAssignmentUser' }),
+  createdHrDepartmentAssignments: many(hrDepartmentAssignments, { relationName: 'hrDepartmentAssignmentCreator' }),
+  updatedHrDepartmentAssignments: many(hrDepartmentAssignments, { relationName: 'hrDepartmentAssignmentUpdater' }),
   createdTemporaryDepartmentAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentCreator' }),
   supervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationSupervisorUser' }),
   delegatedSupervisorDelegations: many(supervisorDelegations, { relationName: 'supervisorDelegationDelegateUser' }),
@@ -979,7 +999,30 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
   employees: many(employees),
   temporarySourceAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentSource' }),
   temporaryTargetAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentTarget' }),
+  hrDepartmentAssignments: many(hrDepartmentAssignments),
   auditEvents: many(auditEvents, { relationName: 'auditEventDepartment' }),
+}));
+
+export const hrDepartmentAssignmentsRelations = relations(hrDepartmentAssignments, ({ one }) => ({
+  user: one(user, {
+    fields: [hrDepartmentAssignments.userId],
+    references: [user.id],
+    relationName: 'hrDepartmentAssignmentUser',
+  }),
+  department: one(departments, {
+    fields: [hrDepartmentAssignments.departmentId],
+    references: [departments.id],
+  }),
+  createdByUser: one(user, {
+    fields: [hrDepartmentAssignments.createdBy],
+    references: [user.id],
+    relationName: 'hrDepartmentAssignmentCreator',
+  }),
+  updatedByUser: one(user, {
+    fields: [hrDepartmentAssignments.updatedBy],
+    references: [user.id],
+    relationName: 'hrDepartmentAssignmentUpdater',
+  }),
 }));
 
 export const positionsRelations = relations(positions, ({ many }) => ({

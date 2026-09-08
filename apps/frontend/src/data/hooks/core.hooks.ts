@@ -44,6 +44,7 @@ import type {
   NotificationLogFilters,
   AuditEventsResponse,
   ReportKey,
+  ReplaceHrDepartmentAssignmentsInput,
   ReviewLeaveInterruptionInput,
   TransferLeaveBalanceInput,
   UpdateBiometricDeviceInput,
@@ -80,6 +81,8 @@ export const coreQueryKeys = {
   hrDashboardSummary: (date: string) => [...coreQueryKeys.all, 'hr-dashboard', 'summary', date] as const,
   departmentHeadDashboardSummary: (date: string) => [...coreQueryKeys.all, 'department-head-dashboard', 'summary', date] as const,
   departments: () => [...coreQueryKeys.all, 'departments'] as const,
+  hrDepartmentAssignmentUsers: () => [...coreQueryKeys.all, 'department-assignments', 'hr-users'] as const,
+  hrDepartmentAssignments: () => [...coreQueryKeys.all, 'department-assignments'] as const,
   positions: () => [...coreQueryKeys.all, 'positions'] as const,
   shifts: () => [...coreQueryKeys.all, 'shifts'] as const,
   shift: (id: string) => [...coreQueryKeys.shifts(), id] as const,
@@ -215,6 +218,39 @@ export function useDepartments() {
     queryKey: coreQueryKeys.departments(),
     queryFn: () => coreApi.getDepartments(),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useHrDepartmentAssignmentUsers() {
+  return useQuery({
+    queryKey: coreQueryKeys.hrDepartmentAssignmentUsers(),
+    queryFn: () => coreApi.getHrDepartmentAssignmentUsers(),
+  });
+}
+
+export function useHrDepartmentAssignments() {
+  return useQuery({
+    queryKey: coreQueryKeys.hrDepartmentAssignments(),
+    queryFn: () => coreApi.getHrDepartmentAssignments(),
+  });
+}
+
+export function useReplaceHrDepartmentAssignments() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: ReplaceHrDepartmentAssignmentsInput) => coreApi.replaceHrDepartmentAssignments(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrDepartmentAssignmentUsers() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrDepartmentAssignments() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'hr-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.attendancePunches() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'attendance-approvals', 'hr'] });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.allEmployeeWorkSchedules() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequestsRoot() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalancesRoot() });
+    },
   });
 }
 
@@ -1560,11 +1596,11 @@ export function useLeaveBalances(fiscalYearId?: string, options?: { enabled?: bo
   });
 }
 
-export function useUpsertLeaveBalance() {
+export function useUpsertLeaveBalance(options?: { view?: LeaveBalanceView }) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: UpsertLeaveBalanceInput) => coreApi.upsertLeaveBalance(input),
+    mutationFn: (input: UpsertLeaveBalanceInput) => coreApi.upsertLeaveBalance(input, options?.view),
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.leaveBalancesRoot(),
@@ -1582,11 +1618,11 @@ export function useUpsertLeaveBalance() {
   });
 }
 
-export function useBulkUpsertLeaveBalances() {
+export function useBulkUpsertLeaveBalances(options?: { view?: LeaveBalanceView }) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: BulkUpsertLeaveBalancesInput) => coreApi.bulkUpsertLeaveBalances(input),
+    mutationFn: (input: BulkUpsertLeaveBalancesInput) => coreApi.bulkUpsertLeaveBalances(input, options?.view),
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.leaveBalancesRoot(),

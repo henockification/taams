@@ -117,7 +117,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
       case 'leaveTypes':
         return coreT('leaveTypesDescription');
       case 'leaveBalances':
-        return coreT('initialBalancesDescription');
+        return coreT('supervisorLeaveBalancesDescription');
       case 'leaveTransfer':
         return coreT('leaveTransferDescription');
       case 'leaveAuthorizations':
@@ -183,6 +183,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
       case 'permissions':
         return rbacT('permissionsDescription');
       default:
+        if (pathname === '/profile') return coreT('profileDescription');
         return pathname === '/notification-logs' ? coreT('myNotificationsDescription') : '';
     }
   };
@@ -190,9 +191,11 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
   const currentNavItem = getNavItemForPath(pathname);
   const currentPage = pathname === '/notification-logs'
     ? t('notifications')
-    : currentNavItem
-      ? t(currentNavItem.titleKey)
-      : t('dashboard');
+    : pathname === '/profile'
+      ? t('profile')
+      : currentNavItem
+        ? t(currentNavItem.titleKey)
+        : t('dashboard');
   const currentDescription = getPageDescription();
 
   return (
@@ -258,7 +261,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href={`/users/${session.user.id}`} className="cursor-pointer">
+                  <Link href="/profile" className="cursor-pointer">
                     <User className="mr-2 size-4" />
                     <span>{t('profile')}</span>
                   </Link>

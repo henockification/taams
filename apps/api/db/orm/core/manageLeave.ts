@@ -31,8 +31,9 @@ import type {
   UpsertLeaveBalanceInput,
   ReviewLeaveInterruptionInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { assertCanAccessEmployee, isEmployeeVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import {
+  getVisibleEmployeeIdsForSupervisorActor,
   getPrimaryLeaveApprovalEmployeeIds,
   resolveLeaveApprovalActionContext,
 } from './manageSupervisorDelegations';
@@ -46,7 +47,7 @@ import {
   type AuditAction,
 } from '../../../lib/audit';
 
-export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
+export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management' | 'supervisor';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
@@ -241,7 +242,7 @@ export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
 
 export async function getLeaveBalances(
   fiscalYearId?: string,
-  context: { scope?: EmployeeVisibilityScope; userId?: string; view?: LeaveBalanceView; canAuthorize?: boolean } = {},
+  context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[]; view?: LeaveBalanceView; canAuthorize?: boolean } = {},
 ) {
   const balances = await db.query.leaveBalances.findMany({
     where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
@@ -259,13 +260,17 @@ export async function getLeaveBalances(
 
   const { scope, userId, view = 'self' } = context;
   if (!userId) return [];
+  if (view === 'supervisor') {
+    const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(userId, context.roles ?? []));
+    return balances.filter((balance) => visibleEmployeeIds.has(balance.employeeId) && !balance.fiscalYear?.isActive);
+  }
   if (view === 'management') {
-    if (scope?.type !== 'unrestricted' && scope?.type !== 'hr') throw new Error('Leave balance management access is required');
-    return balances;
+    if (scope?.type !== 'unrestricted' && scope?.type !== 'hr' && scope?.type !== 'hr-departments') throw new Error('Leave balance management access is required');
+    return balances.filter((balance) => isEmployeeVisibleInScope(balance.employee, scope));
   }
   if (view === 'authorizations') {
     if (!context.canAuthorize) throw new Error('Leave authorization permission is required');
-    return balances;
+    return balances.filter((balance) => isEmployeeVisibleInScope(balance.employee, scope));
   }
   if (view === 'approvals') {
     const visibleEmployeeIds = new Set(await getPrimaryLeaveApprovalEmployeeIds(userId));
@@ -372,6 +377,29 @@ export async function bulkUpsertLeaveBalancesScoped(input: BulkUpsertLeaveBalanc
   return bulkUpsertLeaveBalances(input);
 }
 
+export async function upsertSupervisorLeaveBalance(
+  input: UpsertLeaveBalanceInput,
+  actorUserId: string,
+  roles?: string[] | null,
+) {
+  await assertSupervisorCanManageLeaveBalance(input.employeeId, actorUserId, roles);
+  await assertInactiveLeaveFiscalYear(input.fiscalYearId);
+  return upsertLeaveBalance(input);
+}
+
+export async function bulkUpsertSupervisorLeaveBalances(
+  input: BulkUpsertLeaveBalancesInput,
+  actorUserId: string,
+  roles?: string[] | null,
+) {
+  await assertInactiveLeaveFiscalYear(input.fiscalYearId);
+  const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(actorUserId, roles ?? []));
+  for (const balance of input.balances) {
+    if (!visibleEmployeeIds.has(balance.employeeId)) throw new Error('Employee not found');
+  }
+  return bulkUpsertLeaveBalances(input);
+}
+
 export async function transferLeaveBalanceScoped(input: TransferLeaveBalanceInput, scope: EmployeeVisibilityScope) {
   await assertCanAccessEmployee(input.employeeId, scope);
   return transferLeaveBalance(input);
@@ -464,7 +492,7 @@ export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
 
 export async function getLeaveRequests(
   kind?: 'annual' | 'other',
-  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean } = {},
+  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean; scope?: EmployeeVisibilityScope } = {},
 ) {
   await ensureKnownLeaveTypes();
   await reconcileAnnualLeaveConsumption();
@@ -888,10 +916,11 @@ export async function changeLeaveRequestStatusScoped(
   return changeLeaveRequestStatus(id, input);
 }
 
-export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInput) {
+export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInput & { scope?: EmployeeVisibilityScope }) {
   return db.transaction(async (tx) => {
     const request = await getLeaveRequestById(id, tx);
     if (!request) throw new Error('Leave request not found');
+    if (input.scope) await assertCanAccessEmployee(request.employeeId, input.scope, tx);
     if (request.status === input.status) return request;
     if (request.status !== 'APPROVED') throw new Error('Only supervisor-approved leave requests can be authorized');
     await assertUserExists(input.actorUserId, tx);
@@ -989,7 +1018,7 @@ export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInp
   });
 }
 
-export async function authorizeLeaveInterruption(id: string, input: AuthorizeLeaveInput) {
+export async function authorizeLeaveInterruption(id: string, input: AuthorizeLeaveInput & { scope?: EmployeeVisibilityScope }) {
   return db.transaction(async (tx) => {
     const interruption = await getLeaveInterruptionById(id, tx);
     if (!interruption) throw new Error('Leave interruption not found');
@@ -998,6 +1027,7 @@ export async function authorizeLeaveInterruption(id: string, input: AuthorizeLea
     await assertUserExists(input.actorUserId, tx);
     const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
     if (!request || request.status !== 'AUTHORIZED') throw new Error('The original leave request is not authorized');
+    if (input.scope) await assertCanAccessEmployee(request.employeeId, input.scope, tx);
 
     if (input.status === 'AUTHORIZATION_REJECTED') {
       if (!input.rejectionReason?.trim()) throw new Error('Authorization rejection reason is required');
@@ -1208,13 +1238,17 @@ export async function reviewLeaveInterruption(input: ReviewLeaveInterruptionInpu
 
 async function filterLeaveRequestsForViewer(
   requests: any[],
-  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean } = {},
+  context: { userId?: string; view?: LeaveRequestView; canAuthorize?: boolean; scope?: EmployeeVisibilityScope } = {},
 ) {
   const { userId, view = 'self' } = context;
   if (!userId) return [];
   if (view === 'authorizations' && !context.canAuthorize) throw new Error('Leave authorization permission is required');
   const visibleEmployeeIds = view === 'approvals' ? await getPrimaryLeaveApprovalEmployeeIds(userId) : [];
-  return filterLeaveRequestsByView(requests, view, userId, visibleEmployeeIds);
+  const visibleRequests = filterLeaveRequestsByView(requests, view, userId, visibleEmployeeIds);
+  if (view === 'authorizations') {
+    return visibleRequests.filter((request) => isEmployeeVisibleInScope(request.employee, context.scope));
+  }
+  return visibleRequests;
 }
 
 function approvedInterruptionSelections(interruption: any, kind: string): AnnualLeaveDateSelection[] {
@@ -1380,6 +1414,23 @@ async function assertLeaveBalanceFiscalYearAllowed(employee: any, fiscalYear: an
     'Permanent employees can have leave balances only for previous fiscal years',
     'Contract and non-permanent employees can have leave balances only for the current fiscal year',
   );
+}
+
+async function assertSupervisorCanManageLeaveBalance(
+  employeeId: string,
+  actorUserId: string,
+  roles?: string[] | null,
+) {
+  const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(actorUserId, roles ?? []));
+  if (!visibleEmployeeIds.has(employeeId)) throw new Error('Employee not found');
+}
+
+async function assertInactiveLeaveFiscalYear(fiscalYearId: string, tx: DbClient = db) {
+  const fiscalYear = await getLeaveFiscalYearById(fiscalYearId, tx);
+  if (!fiscalYear) throw new Error('Leave fiscal year not found');
+  if (fiscalYear.isActive) {
+    throw new Error('Supervisors can set leave balances only for previous fiscal years');
+  }
 }
 
 async function assertFiscalYearMatchesEmploymentType(

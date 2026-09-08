@@ -16,7 +16,7 @@ import type {
   UpdateWorkScheduleDayInput,
   UpdateWorkScheduleInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { assertCanAccessEmployee, isEmployeeVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
@@ -290,8 +290,7 @@ export async function getAllEmployeeWorkSchedules() {
 
 export async function getAllEmployeeWorkSchedulesScoped(scope: EmployeeVisibilityScope) {
   const schedules = await getAllEmployeeWorkSchedules();
-  if (scope.type === 'unrestricted' || scope.type === 'hr') return schedules;
-  return schedules.filter((schedule) => schedule.employee?.userId === scope.userId);
+  return schedules.filter((schedule) => isEmployeeVisibleInScope(schedule.employee, scope));
 }
 
 export async function getEmployeeWorkScheduleById(id: string, tx: DbClient = db) {

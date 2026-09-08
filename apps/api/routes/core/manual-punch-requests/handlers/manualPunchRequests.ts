@@ -9,7 +9,7 @@ import {
   getManualPunchRequests,
 } from '../../../../db/orm/core/manageManualPunchRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -57,11 +57,12 @@ export async function createManualPunchRequestHandler(c: Context) {
 export async function getManualPunchRequestsHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const manualPunchRequests = await getManualPunchRequests({
       scope,
       userId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
       mine: c.req.query('mine') === 'true' || c.req.query('mine') === '1',
     });
 
@@ -78,6 +79,7 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
   try {
     const id = c.req.param('id');
     const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
     const scope = await resolveScope(session);
     const body = await c.req.json().catch(() => ({}));
     const parsed = ChangeManualPunchRequestStatusRequestSchema.safeParse(body);
@@ -89,7 +91,7 @@ export async function changeManualPunchRequestStatusHandler(c: Context) {
     const result = await changeManualPunchRequestStatus(id, parsed.data, {
       scope,
       reviewerUserId: session.user.id,
-      roles: session.user.role ?? [],
+      roles,
     });
 
     if (!result.manualPunchRequest) {
@@ -138,9 +140,16 @@ async function resolveSession(c: Context) {
 async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
   if (!session?.user?.id) throw new Error('Authentication required');
   const permissions = await getUserPermissionNames(session.user.id);
+  const roles = await resolveRoleNames(session);
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
-    roles: session.user.role ?? [],
+    roles,
     permissions,
   });
+}
+
+async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const assignedRoles = await getUserRoleNames(session.user.id);
+  return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
 }

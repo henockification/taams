@@ -41,6 +41,7 @@ import overtimeRequestsApp from './overtime-requests/routes';
 import leaveManagementApp from './leave-management/routes';
 import supervisorDelegationsApp from './supervisor-delegations/routes';
 import temporaryDepartmentAssignmentsApp from './temporary-department-assignments/routes';
+import departmentAssignmentsApp from './department-assignments/routes';
 import notificationLogsApp from './notification-logs/routes';
 import timeOperationsApp from './time-operations/routes';
 import dashboardApp from './dashboard/routes';
@@ -51,7 +52,7 @@ import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
-import { requirePermission } from '../../middleware/rbac';
+import { requirePermission, requirePermissionOrDelegation } from '../../middleware/rbac';
 
 const coreApp = new Hono();
 
@@ -243,6 +244,7 @@ export const getEmployeesPaginatedRoute = createRoute({
       employmentType: EmploymentTypeSchema.optional(),
       excludeEmploymentType: EmploymentTypeSchema.optional(),
       departmentId: z.string().uuid().optional(),
+      scope: z.enum(['supervisor']).optional(),
     }),
   },
   responses: {
@@ -601,7 +603,7 @@ coreApp.get('/positions', requirePermission('employees:read', 'permanent-employe
 coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
 coreApp.post('/employees', requirePermission('employees:create'), createEmployeeHandler);
 coreApp.get('/employees', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesHandler);
-coreApp.get('/employees/paginated', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesPaginatedHandler);
+coreApp.get('/employees/paginated', requirePermissionOrDelegation('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'leave-request-approvals:approve'), getEmployeesPaginatedHandler);
 coreApp.post('/employees/permanent/import', requirePermission('employees:create'), importPermanentEmployeesHandler);
 coreApp.post('/employees/contract/import', requirePermission('employees:create'), importContractEmployeesHandler);
 coreApp.get('/employees/supervisors', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read'), getAllEmployeeSupervisorsHandler);
@@ -628,6 +630,7 @@ coreApp.route('/', overtimeRequestsApp);
 coreApp.route('/', leaveManagementApp);
 coreApp.route('/', supervisorDelegationsApp);
 coreApp.route('/', temporaryDepartmentAssignmentsApp);
+coreApp.route('/', departmentAssignmentsApp);
 coreApp.route('/', notificationLogsApp);
 coreApp.route('/', timeOperationsApp);
 coreApp.route('/', shiftsApp);

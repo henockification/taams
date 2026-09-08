@@ -25,7 +25,6 @@ import {
 } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
-const HR_ROLE_NAMES = ['human_resource'];
 const OVERTIME_NOTE_PREFIX = 'Approved overtime ';
 
 export async function createOvertimeRequests(
@@ -132,11 +131,7 @@ export async function getOvertimeRequests(input: {
     return attachAttendanceEvidence(requests.filter((request) => request.employee?.userId === input.userId));
   }
 
-  const roles = (input.roles ?? []).map((role) => role.toLowerCase());
-  const isHrRole = roles.some((role) => HR_ROLE_NAMES.includes(role));
-  const visible = !input.scope || input.scope.type === 'unrestricted' || isHrRole
-    ? requests
-    : await filterVisibleOvertimeRequests(requests, input.userId, input.roles);
+  const visible = await filterVisibleOvertimeRequests(requests, input.userId, input.roles);
 
   return attachAttendanceEvidence(visible);
 }
@@ -420,9 +415,7 @@ async function filterVisibleOvertimeRequests<T extends { employeeId: string; emp
   roles?: string[] | null,
 ) {
   const managedEmployeeIds = userId ? await getVisibleEmployeeIdsForSupervisorActor(userId, roles) : [];
-  return requests.filter((request) => (
-    request.employee?.userId === userId || managedEmployeeIds.includes(request.employeeId)
-  ));
+  return requests.filter((request) => managedEmployeeIds.includes(request.employeeId));
 }
 
 async function assertEmployeeExists(id: string, tx: DbClient = db) {

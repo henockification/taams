@@ -110,6 +110,8 @@ export function useSession() {
 
   useEffect(() => {
     void loadSession();
+    window.addEventListener("taams-session-refresh", loadSession);
+    return () => window.removeEventListener("taams-session-refresh", loadSession);
   }, [loadSession]);
 
   return {

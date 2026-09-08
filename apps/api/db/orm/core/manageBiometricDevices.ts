@@ -7,7 +7,7 @@ import type {
   CreateBiometricDeviceSyncInput,
   UpdateBiometricDeviceInput,
 } from '../../../types/core.types';
-import { assertCanAccessEmployee, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { assertCanAccessEmployee, isDepartmentVisibleInScope, isEmployeeVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
@@ -496,9 +496,13 @@ async function hydratePunchEmployeesByBiometricId<T extends { biometricId: strin
   }));
 }
 
-function filterPunchesByScope<T extends { employee?: any | null }>(punches: T[], scope?: EmployeeVisibilityScope) {
+function filterPunchesByScope<T extends { employee?: any | null; device?: any | null }>(punches: T[], scope?: EmployeeVisibilityScope) {
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return punches;
-  return punches.filter((punch) => punch.employee?.userId === scope.userId);
+  return punches.filter((punch) => {
+    if (punch.employee) return isEmployeeVisibleInScope(punch.employee, scope);
+    if (scope.type === 'hr-departments') return isDepartmentVisibleInScope(punch.device?.departmentId, scope);
+    return false;
+  });
 }
 
 function buildPunchTimeConditions({

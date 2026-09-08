@@ -43,6 +43,7 @@ export type AppNavItem = {
     | 'employees'
     | 'permanentEmployees'
     | 'supervisorAssignments'
+    | 'departmentAssignments'
     | 'fiscalYears'
     | 'leaveTypes'
     | 'leaveBalances'
@@ -189,6 +190,13 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'employees:update',
         icon: UserRoundCog,
       },
+      {
+        titleKey: 'departmentAssignments',
+        url: '/department-assignments',
+        permissionResource: 'department-assignments',
+        requiredPermission: 'department-assignments:manage',
+        icon: Building2,
+      },
     ],
   },
   {
@@ -210,14 +218,6 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'leave-types:read',
         legacyPermissions: ['leave-management:read'],
         icon: ListChecks,
-      },
-      {
-        titleKey: 'leaveBalances',
-        url: '/leave-management/balances',
-        permissionResource: 'leave-balances',
-        requiredPermission: 'leave-balances:read',
-        legacyPermissions: ['leave-management:read'],
-        icon: Scale,
       },
       {
         titleKey: 'leaveTransfer',
@@ -262,6 +262,14 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'leave-request-approvals:approve',
         legacyPermissions: ['leave-requests:approve'],
         icon: FileCheck2,
+      },
+      {
+        titleKey: 'leaveBalances',
+        url: '/leave-balances',
+        permissionResource: 'leave-balances',
+        requiredPermission: 'leave-balances:read',
+        legacyPermissions: ['leave-management:read'],
+        icon: Scale,
       },
       {
         titleKey: 'overtimeAssignments',
@@ -546,7 +554,9 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/leave-management/authorizations') return userHasPermission(user, 'leave-authorizations:approve');
+  if (item.url === '/leave-balances') return hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user) || isSuperAdmin(user);
   if (item.url === '/temporary-assignments') return hasTemporaryAssignmentAccess(user);
+  if (item.url === '/department-assignments') return hasHrDepartmentAssignmentManagementAccess(user);
   if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (item.url === '/overtime-assignments')
     return (
@@ -689,12 +699,17 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
     );
   if (pathname === '/supervisor-delegations' || pathname.startsWith('/supervisor-delegations/'))
     return hasExactSupervisorRole(user) || isSuperAdmin(user);
+  if (pathname === '/leave-balances' || pathname.startsWith('/leave-balances/'))
+    return hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user) || isSuperAdmin(user);
+  if (pathname === '/leave-management/balances' || pathname.startsWith('/leave-management/balances/')) return false;
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
   if (pathname === '/manual-punch-requests' || pathname.startsWith('/manual-punch-requests/')) return Boolean(user);
+  if (pathname === '/profile') return Boolean(user);
   if (pathname === '/notification-logs' || pathname.startsWith('/notification-logs/')) return Boolean(user);
   if (pathname === '/temporary-assignments' || pathname.startsWith('/temporary-assignments/')) return hasTemporaryAssignmentAccess(user);
+  if (pathname === '/department-assignments' || pathname.startsWith('/department-assignments/')) return hasHrDepartmentAssignmentManagementAccess(user);
   if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');
   if (pathname === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
@@ -792,6 +807,10 @@ function hasUnrestrictedRole(user: AuthzUser) {
 function hasHumanResourceRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => role === 'human_resource');
+}
+
+function hasHrDepartmentAssignmentManagementAccess(user: AuthzUser) {
+  return hasUnrestrictedRole(user) || (hasHumanResourceRole(user) && hasExactSupervisorRole(user));
 }
 
 function hasTemporaryAssignmentAccess(user: AuthzUser) {

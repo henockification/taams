@@ -9,6 +9,33 @@ export type Department = {
   updatedAt: string;
 };
 
+export type HrDepartmentAssignment = {
+  id: string;
+  userId: string;
+  departmentId: string;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  department?: Department;
+};
+
+export type HrDepartmentAssignmentUser = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string[];
+  roles: string[];
+  departmentAssignments: HrDepartmentAssignment[];
+};
+
+export type ReplaceHrDepartmentAssignmentsInput = {
+  userId: string;
+  departmentIds: string[];
+};
+
 export type Position = {
   id: string;
   nameEn: string;
@@ -251,7 +278,7 @@ export type NotificationLogFilters = {
 };
 
 export type LeaveRequestView = 'self' | 'approvals' | 'authorizations';
-export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
+export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management' | 'supervisor';
 
 export type EmployeeSupervisor = {
   id: string;
@@ -1015,6 +1042,9 @@ export type DepartmentsResponse = {
   departments: Department[];
 };
 export type DepartmentResponse = { success: boolean; department: Department };
+export type HrDepartmentAssignmentUsersResponse = { success: boolean; users: HrDepartmentAssignmentUser[] };
+export type HrDepartmentAssignmentsResponse = { success: boolean; assignments: HrDepartmentAssignment[] };
+export type HrDepartmentAssignmentUserResponse = { success: boolean; user: HrDepartmentAssignmentUser };
 export type PositionsResponse = { success: boolean; positions: Position[] };
 export type PositionResponse = { success: boolean; position: Position };
 export type ShiftsResponse = { success: boolean; shifts: Shift[] };
@@ -1056,6 +1086,7 @@ export type EmployeesPaginatedParams = {
   employmentType?: EmploymentType;
   excludeEmploymentType?: EmploymentType;
   departmentId?: string;
+  scope?: 'supervisor';
 };
 export type EmployeesPaginatedResponse = {
   success: boolean;

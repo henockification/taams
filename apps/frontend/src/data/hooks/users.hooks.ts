@@ -4,6 +4,7 @@ import type { CreateUserInput, UserFilters, SignUpInput } from '../types/api';
 import type { PaginationParams } from '../shared/types';
 import { userQueryKeys } from '../types/api';
 import { UpdateProfileImageRequest, UserProfileUpdate } from '../types/users.types';
+import { authQueryKeys } from './auth.hooks';
 
 // Get all users with pagination and filters
 export const useUsers = (
@@ -67,9 +68,28 @@ export const useUnlockUser = () => {
   });
 };
 
+export const profileQueryKeys = {
+  profile: ['profile'] as const,
+};
+
+export const useProfile = () => {
+  return useQuery({
+    queryKey: profileQueryKeys.profile,
+    queryFn: () => usersApi.getProfile(),
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
 export const useUpdateProfile = () => {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (profile: UserProfileUpdate) => usersApi.updateProfile(profile),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: profileQueryKeys.profile });
+      queryClient.invalidateQueries({ queryKey: authQueryKeys.session });
+      window.dispatchEvent(new CustomEvent('taams-session-refresh'));
+    },
   });
 };
 

@@ -4,6 +4,7 @@ import { db } from '../../db';
 import { departments, employeeSupervisors, employees, positions, roles, user, userRoles } from '../../schema';
 import {
   assertCanAccessEmployee,
+  isDepartmentVisibleInScope,
   scopedEmployeeWhere,
   type EmployeeVisibilityScope,
 } from './manageEmployeeVisibility';
@@ -168,6 +169,9 @@ export async function createEmployeeScoped(input: CreateEmployeeInput, scope: Em
   if (scope.type === 'self') {
     throw new Error('You do not have permission to create employees');
   }
+  if (!isDepartmentVisibleInScope(input.departmentId, scope)) {
+    throw new Error('Department not found');
+  }
   return createEmployee(input);
 }
 
@@ -298,6 +302,9 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
 
 export async function updateEmployeeScoped(id: string, input: UpdateEmployeeInput, scope: EmployeeVisibilityScope) {
   await assertCanAccessEmployee(id, scope);
+  if (input.departmentId && !isDepartmentVisibleInScope(input.departmentId, scope)) {
+    throw new Error('Department not found');
+  }
   return updateEmployee(id, input);
 }
 
@@ -332,9 +339,15 @@ export async function upsertPermanentEmployees(
   const employeeValues: ReturnType<typeof normalizeEmployeeInput>[] = [];
   let skipped = 0;
   let updated = 0;
+  const canCreateImportDepartments = !options.scope || options.scope.type === 'unrestricted' || options.scope.type === 'hr';
 
   for (const input of inputs) {
-    const department = await findOrCreateDepartmentByName(input.sourceDepartmentName, departmentCache);
+    const department = await findOrCreateDepartmentByName(input.sourceDepartmentName, departmentCache, {
+      allowCreate: canCreateImportDepartments,
+    });
+    if (!isDepartmentVisibleInScope(department.id, options.scope)) {
+      throw new Error(`Department not found: ${department.nameEn}`);
+    }
 
     const employeeInput = normalizeEmployeeInput({
       ...input,
@@ -658,12 +671,14 @@ async function buildDepartmentImportCache() {
 
 async function findOrCreateDepartmentByName(
   name: string,
-  cache: Map<string, Awaited<ReturnType<typeof getDepartments>>[number]>
+  cache: Map<string, Awaited<ReturnType<typeof getDepartments>>[number]>,
+  options: { allowCreate?: boolean } = {},
 ) {
   const normalizedName = normalizeLookup(name);
   const found = cache.get(normalizedName);
 
   if (found) return found;
+  if (options.allowCreate === false) throw new Error(`Department not found: ${name}`);
 
   const department = await createDepartment({
     nameEn: name,
