@@ -8,9 +8,17 @@ const auditEventsApp = new Hono();
 auditEventsApp.get('/audit-events', requirePermission('reports-audit:read'), async (c) => {
   const query = c.req.query();
   const events = await listAuditEvents({
+    dateFrom: query.dateFrom || null,
+    dateTo: query.dateTo || null,
+    actorUserId: query.actorUserId || null,
+    actorSearch: query.actorSearch || null,
+    action: query.action || null,
     resourceType: query.resourceType || null,
     resourceId: query.resourceId || null,
     employeeId: query.employeeId || null,
+    departmentId: query.departmentId || null,
+    outcome: query.outcome || null,
+    delegatedOnly: query.delegatedOnly === 'true',
     limit: query.limit ? Number(query.limit) : 100,
   });
 

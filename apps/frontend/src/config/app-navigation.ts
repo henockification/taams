@@ -10,6 +10,7 @@ import {
   FileCheck2,
   Fingerprint,
   History,
+  ListTree,
   HeartPulse,
   KeyRound,
   Landmark,
@@ -76,7 +77,8 @@ export type AppNavItem = {
     | 'leaveRequestsReport'
     | 'employeeRosterReport'
     | 'deviceSyncReport'
-    | 'auditReport';
+    | 'auditReport'
+    | 'auditTimeline';
   url: string;
   permissionResource: string;
   requiredPermission: string;
@@ -514,6 +516,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'permissions',
         requiredPermission: 'permissions:read',
         icon: KeyRound,
+      },
+      {
+        titleKey: 'auditTimeline',
+        url: '/audit-timeline',
+        permissionResource: 'reports-audit',
+        requiredPermission: 'reports-audit:read',
+        icon: ListTree,
       },
     ],
   },

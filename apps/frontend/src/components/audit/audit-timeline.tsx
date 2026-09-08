@@ -4,7 +4,7 @@ import { History } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import {
   Timeline,
@@ -25,19 +25,35 @@ type AuditTimelineProps = {
   resourceType?: string;
   resourceId?: string;
   employeeId?: string;
+  params?: Record<string, string>;
+  enabled?: boolean;
+  title?: string;
+  description?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
 };
 
-export function AuditTimeline({ resourceType, resourceId, employeeId }: AuditTimelineProps) {
+export function AuditTimeline({
+  resourceType,
+  resourceId,
+  employeeId,
+  params: suppliedParams,
+  enabled = true,
+  title,
+  description,
+  emptyTitle,
+  emptyDescription,
+}: AuditTimelineProps) {
   const t = useTranslations('audit');
   const { formatDateTime } = useCalendarPreference();
   const session = useSession();
   const canView = userHasPermission(session.data?.user, 'reports-audit:read');
-  const params = {
+  const params = suppliedParams ?? {
     ...(resourceType ? { resourceType } : {}),
     ...(resourceId ? { resourceId } : {}),
     ...(employeeId ? { employeeId } : {}),
   };
-  const query = useAuditEvents(params, canView && Boolean(resourceId || employeeId));
+  const query = useAuditEvents(params, canView && enabled && Boolean(suppliedParams || resourceId || employeeId));
 
   if (!canView) return null;
 
@@ -46,13 +62,14 @@ export function AuditTimeline({ resourceType, resourceId, employeeId }: AuditTim
   return (
     <Card className="rounded-lg">
       <CardHeader>
-        <CardTitle>{t('title')}</CardTitle>
+        <CardTitle>{title ?? t('title')}</CardTitle>
+        {description ? <CardDescription>{description}</CardDescription> : null}
       </CardHeader>
       <CardContent>
         {query.isLoading ? (
           <p className="text-sm text-muted-foreground">…</p>
         ) : events.length === 0 ? (
-          <EmptyState icon={History} title={t('empty')} description={t('emptyHint')} />
+          <EmptyState icon={History} title={emptyTitle ?? t('empty')} description={emptyDescription ?? t('emptyHint')} />
         ) : (
           <Timeline defaultValue={events.length} className="px-2">
             {events.map((event, index) => (
@@ -62,7 +79,7 @@ export function AuditTimeline({ resourceType, resourceId, employeeId }: AuditTim
                 <TimelineHeader>
                   <TimelineDate>{formatDateTime(event.occurredAt)}</TimelineDate>
                   <TimelineTitle>
-                    {t(`actions.${event.action}` as never)}
+                    {getActionLabel(t, event.action, event.actionLabel)}
                   </TimelineTitle>
                 </TimelineHeader>
                 <TimelineContent>
@@ -87,4 +104,12 @@ export function AuditTimeline({ resourceType, resourceId, employeeId }: AuditTim
       </CardContent>
     </Card>
   );
+}
+
+function getActionLabel(t: ReturnType<typeof useTranslations>, action: string, fallback?: string) {
+  try {
+    return t(`actions.${action}` as never);
+  } catch {
+    return fallback || action;
+  }
 }

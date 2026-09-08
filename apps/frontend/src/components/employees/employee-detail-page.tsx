@@ -32,7 +32,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { AuditTimeline } from '@/components/audit/audit-timeline';
 import { Link } from '@/i18n';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -443,8 +442,6 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
           </CardContent>
         </Card>
       </div>
-
-      <AuditTimeline employeeId={employeeId} />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
