@@ -129,7 +129,7 @@ export function SupervisorAssignmentsPage() {
       ].filter(Boolean).join(' ').toLowerCase();
 
       return haystack.includes(query);
-    });
+    }).sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }));
   }, [departmentFilter, employees, search, statusFilter, typeFilter]);
 
   const filteredEmployeeIds = useMemo(() => filteredEmployees.map((employee) => employee.id), [filteredEmployees]);
@@ -140,12 +140,17 @@ export function SupervisorAssignmentsPage() {
   const currentPage = Math.min(page, totalPages);
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedEmployees = filteredEmployees.slice(startIndex, startIndex + pageSize);
-  const selectedEmployees = useMemo(() => employees.filter((employee) => selectedEmployeeIds.has(employee.id)), [employees, selectedEmployeeIds]);
+  const selectedEmployees = useMemo(
+    () => employees
+      .filter((employee) => selectedEmployeeIds.has(employee.id))
+      .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' })),
+    [employees, selectedEmployeeIds],
+  );
   const selectedEmployeeSet = useMemo(() => new Set(selectedEmployeeIds), [selectedEmployeeIds]);
   const supervisorOptions = useMemo(() => (
     employees
       .filter((employee) => employee.employmentStatus === 'ACTIVE' && !selectedEmployeeSet.has(employee.id))
-      .sort((left, right) => employeeName(left).localeCompare(employeeName(right)))
+      .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }))
   ), [employees, selectedEmployeeSet]);
 
   useEffect(() => {

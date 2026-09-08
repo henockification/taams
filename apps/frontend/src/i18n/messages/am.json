@@ -297,6 +297,10 @@
   "executiveDashboard": {
     "date": "ቀን",
     "month": "ወር",
+    "period": "ጊዜ",
+    "today": "ዛሬ",
+    "thisWeek": "ይህ ሳምንት",
+    "thisMonth": "ይህ ወር",
     "refresh": "አድስ",
     "refreshing": "በማደስ ላይ",
     "generatedAt": "የታደሰው {value}",
@@ -399,6 +403,7 @@
     "partial": "ከፊል",
     "noAlerts": "አሁን የሚጠይቅ ማሳሰቢያ የለም።",
     "noRows": "የሚታይ መዝገብ የለም።",
+    "allDepartments": "ሁሉም መምሪያዎች",
     "employee": "ሰራተኛ",
     "department": "መምሪያ",
     "requestedAt": "የተጠየቀበት",

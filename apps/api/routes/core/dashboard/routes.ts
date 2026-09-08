@@ -38,6 +38,7 @@ export const getExecutiveDashboardSummaryRoute = createRoute({
     query: z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      period: z.enum(['day', 'week', 'month']).optional(),
     }),
   },
   responses: {

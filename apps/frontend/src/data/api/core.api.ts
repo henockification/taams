@@ -181,10 +181,11 @@ export const coreApi = {
       body: JSON.stringify(params),
     }),
   getDashboardSummary: () => coreFetch<DashboardSummaryResponse>('/dashboard/summary'),
-  getExecutiveDashboardSummary: (params: { date?: string; month?: string } = {}) => {
+  getExecutiveDashboardSummary: (params: { date?: string; month?: string; period?: 'day' | 'week' | 'month' } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
     if (params.month) query.set('month', params.month);
+    if (params.period) query.set('period', params.period);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<ExecutiveDashboardSummaryResponse>(`/executive-dashboard/summary${suffix}`);

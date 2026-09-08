@@ -38,6 +38,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useExecutiveDashboardSummary } from "@/data/hooks/core.hooks"
@@ -46,6 +47,7 @@ import { cn } from "@/lib/utils"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 const distributionColors = ["#1f8a70", "#4f46e5", "#dc2626", "#f59e0b", "#0e7490"]
+type ExecutiveDashboardPeriod = "day" | "week" | "month"
 
 const distributionChartConfig = {
   count: { label: "Count" },
@@ -68,8 +70,15 @@ export default function ExecutiveDashboardPage() {
   const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const [month, setMonth] = React.useState(todayInput().slice(0, 7))
-  const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month })
+  const [period, setPeriod] = React.useState<ExecutiveDashboardPeriod>("day")
+  const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month, period })
   const dashboard = data?.executiveDashboard
+  const handlePeriodChange = (value: ExecutiveDashboardPeriod) => {
+    const today = todayInput()
+    setPeriod(value)
+    setDate(today)
+    setMonth(today.slice(0, 7))
+  }
 
   if (isLoading) return <ExecutiveDashboardSkeleton />
 
@@ -90,6 +99,19 @@ export default function ExecutiveDashboardPage() {
     <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
+          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
+            {t("period")}
+            <Select value={period} onValueChange={(value) => handlePeriodChange(value as ExecutiveDashboardPeriod)}>
+              <SelectTrigger className="w-full sm:w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">{t("today")}</SelectItem>
+                <SelectItem value="week">{t("thisWeek")}</SelectItem>
+                <SelectItem value="month">{t("thisMonth")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("date")}
             <CalendarDateField value={date} onChange={setDate} className="w-full sm:w-44" />
@@ -219,10 +241,18 @@ function DepartmentRanking({ dashboard }: { dashboard: ExecutiveDashboardSummary
       </CardHeader>
       <CardContent className="px-3 sm:px-6">
         <ChartContainer config={rankingChartConfig} className="min-h-60 sm:min-h-72">
-          <BarChart data={data} layout="vertical" margin={{ left: 0, right: 30 }}>
+          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 36 }}>
             <CartesianGrid horizontal={false} />
             <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
-            <YAxis dataKey="department" type="category" width={88} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
+            <YAxis
+              dataKey="department"
+              type="category"
+              width={148}
+              tickLine={false}
+              axisLine={false}
+              interval={0}
+              tick={<WrappedDepartmentTick />}
+            />
             <ChartTooltip content={<ChartTooltipContent />} />
             <Bar dataKey="attendanceRate" fill="var(--color-attendanceRate)" radius={4}>
               <LabelList dataKey="attendanceRate" position="right" formatter={(value) => `${value ?? 0}%`} />
@@ -232,6 +262,47 @@ function DepartmentRanking({ dashboard }: { dashboard: ExecutiveDashboardSummary
       </CardContent>
     </Card>
   )
+}
+
+function WrappedDepartmentTick({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value?: string } }) {
+  const value = String(payload?.value ?? "")
+  const lines = wrapLabel(value, 19, 2)
+  const startY = y - ((lines.length - 1) * 6)
+
+  return (
+    <g transform={`translate(${x},${startY})`}>
+      <title>{value}</title>
+      <text textAnchor="end" fill="currentColor" className="fill-muted-foreground text-[11px]">
+        {lines.map((line, index) => (
+          <tspan key={`${line}-${index}`} x={0} dy={index === 0 ? 0 : 12}>
+            {line}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  )
+}
+
+function wrapLabel(value: string, maxChars: number, maxLines: number) {
+  const words = value.split(/\s+/).filter(Boolean)
+  const lines: string[] = []
+
+  for (const word of words.length ? words : [value]) {
+    const chunks = word.length > maxChars ? word.match(new RegExp(`.{1,${maxChars}}`, "g")) ?? [word] : [word]
+    for (const chunk of chunks) {
+      const current = lines[lines.length - 1]
+      if (!current || `${current} ${chunk}`.length > maxChars) {
+        lines.push(chunk)
+      } else {
+        lines[lines.length - 1] = `${current} ${chunk}`
+      }
+    }
+  }
+
+  if (lines.length <= maxLines) return lines
+  const visible = lines.slice(0, maxLines)
+  visible[maxLines - 1] = `${visible[maxLines - 1].replace(/\.+$/, "")}…`
+  return visible
 }
 
 function CompoundStatus({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {

@@ -858,6 +858,7 @@ export type ExecutiveDashboardSummary = {
   generatedAt: string | null;
   date: string;
   month: string;
+  period: 'day' | 'week' | 'month';
   workforceStatus: {
     totalEmployees: number;
     presentToday: number;

@@ -77,7 +77,7 @@ export const coreQueryKeys = {
 
     return [...coreQueryKeys.all, 'dashboard', 'summary'] as const;
   },
-  executiveDashboardSummary: (date: string, month: string) => [...coreQueryKeys.all, 'executive-dashboard', 'summary', date, month] as const,
+  executiveDashboardSummary: (date: string, month: string, period: 'day' | 'week' | 'month' = 'day') => [...coreQueryKeys.all, 'executive-dashboard', 'summary', date, month, period] as const,
   hrDashboardSummary: (date: string) => [...coreQueryKeys.all, 'hr-dashboard', 'summary', date] as const,
   departmentHeadDashboardSummary: (date: string) => [...coreQueryKeys.all, 'department-head-dashboard', 'summary', date] as const,
   departments: () => [...coreQueryKeys.all, 'departments'] as const,
@@ -165,9 +165,9 @@ export function useDashboardSummary(userId?: string | null) {
   });
 }
 
-export function useExecutiveDashboardSummary(params: { date: string; month: string }) {
+export function useExecutiveDashboardSummary(params: { date: string; month: string; period?: 'day' | 'week' | 'month' }) {
   return useQuery({
-    queryKey: coreQueryKeys.executiveDashboardSummary(params.date, params.month),
+    queryKey: coreQueryKeys.executiveDashboardSummary(params.date, params.month, params.period ?? 'day'),
     queryFn: () => coreApi.getExecutiveDashboardSummary(params),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,

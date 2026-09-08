@@ -145,7 +145,7 @@ export function ImportedEmployeesPage({
       ].filter(Boolean).join(' ').toLowerCase();
 
       return haystack.includes(query);
-    });
+    }).sort((left, right) => employeeDirectoryName(left).localeCompare(employeeDirectoryName(right), undefined, { sensitivity: 'base' }));
   }, [departmentFilter, directoryEmployees, employmentStatusFilter, search]);
 
   const totalRecords = filteredEmployees.length;
@@ -432,6 +432,10 @@ export function ImportedEmployeesPage({
       </Dialog>
     </div>
   );
+}
+
+function employeeDirectoryName(employee: Employee) {
+  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
 function employeeDepartmentOption(employee: Employee) {

@@ -69,7 +69,8 @@ export async function getExecutiveDashboardSummaryHandler(c: Context) {
 
     const date = c.req.query('date');
     const month = c.req.query('month');
-    const executiveDashboard = await getExecutiveDashboardSummary({ date, month });
+    const period = c.req.query('period') as 'day' | 'week' | 'month' | undefined;
+    const executiveDashboard = await getExecutiveDashboardSummary({ date, month, period });
 
     return c.json({
       success: true,

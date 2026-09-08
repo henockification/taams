@@ -21,6 +21,7 @@ const TIMELINE_END_HOUR = 18;
 export type ExecutiveDashboardSummaryParams = {
   date?: string;
   month?: string;
+  period?: 'day' | 'week' | 'month';
 };
 
 type Punch = typeof attendancePunches.$inferSelect;
@@ -28,13 +29,22 @@ type Punch = typeof attendancePunches.$inferSelect;
 export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSummaryParams = {}) {
   const selectedDate = normalizeDateParam(params.date);
   const selectedMonth = normalizeMonthParam(params.month, selectedDate);
+  const selectedPeriod = normalizePeriodParam(params.period);
   const generatedAt = new Date();
   const dayRange = getDayRange(selectedDate);
   const monthRange = getMonthRange(selectedMonth);
+  const metricRange = selectedPeriod === 'month'
+    ? monthRange
+    : selectedPeriod === 'week'
+      ? getWeekRange(selectedDate)
+      : dayRange;
+  const metricDateFrom = metricRange.start.toISOString().slice(0, 10);
+  const metricDateTo = metricRange.end.toISOString().slice(0, 10);
   const trendRange = getSixMonthRange(selectedMonth);
 
   const [
     activeEmployees,
+    periodPunches,
     dayPunches,
     approvedLeaves,
     activeExemptions,
@@ -52,6 +62,11 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
       with: { department: true, position: true },
     }),
     db.query.attendancePunches.findMany({
+      where: and(gte(attendancePunches.punchTime, metricRange.start), lte(attendancePunches.punchTime, metricRange.end)),
+      with: { employee: { with: { department: true, position: true } }, device: true },
+      orderBy: (table, { asc }) => [asc(table.punchTime)],
+    }),
+    db.query.attendancePunches.findMany({
       where: and(gte(attendancePunches.punchTime, dayRange.start), lte(attendancePunches.punchTime, dayRange.end)),
       with: { employee: { with: { department: true, position: true } }, device: true },
       orderBy: (table, { asc }) => [asc(table.punchTime)],
@@ -59,8 +74,8 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     db.query.leaveRequests.findMany({
       where: and(
         eq(leaveRequests.status, 'AUTHORIZED'),
-        lte(leaveRequests.startDate, selectedDate),
-        gte(leaveRequests.endDate, selectedDate),
+        lte(leaveRequests.startDate, metricDateTo),
+        gte(leaveRequests.endDate, metricDateFrom),
       ),
       with: { leaveType: true, employee: { with: { department: true, position: true } } },
     }),
@@ -119,10 +134,11 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
       .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
       .map((employee) => employee.id),
   );
-  const punchesByEmployee = groupPunchesByEmployee(dayPunches);
+  const punchesByEmployee = groupPunchesByEmployee(periodPunches);
+  const dayPunchesByEmployee = groupPunchesByEmployee(dayPunches);
   const leaveGroups = groupApprovedLeave(approvedLeaves, activeEmployeeIds);
   const scheduleByEmployee = getScheduleByEmployee(workScheduleAssignments, selectedDate);
-  const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
+  const lateEmployeeIds = getLateEmployeeIds(dayPunchesByEmployee, scheduleByEmployee, selectedDate);
   const presentEmployeeIds = new Set([...punchesByEmployee.keys()].filter((id) => activeEmployeeIds.has(id)));
   const absentEmployeeIds = activeEmployees
     .filter((employee) => (
@@ -154,8 +170,8 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   );
   const attendanceReportingDiscipline = await getAttendanceReportingDisciplineSummary({
     employees: activeEmployees,
-    dateFrom: monthRange.start.toISOString().slice(0, 10),
-    dateTo: monthRange.end.toISOString().slice(0, 10),
+    dateFrom: metricDateFrom,
+    dateTo: metricDateTo,
   });
 
   const workforceStatus = {
@@ -170,7 +186,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   };
   const compoundStatus = buildCompoundStatus({
     employees: activeEmployees,
-    punchesByEmployee,
+    punchesByEmployee: dayPunchesByEmployee,
     leaveEmployeeIds: unionSets(leaveGroups.all, leaveGroups.officialDuty, leaveGroups.fieldDuty, leaveGroups.remote),
     exemptEmployeeIds,
   });
@@ -193,6 +209,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     generatedAt,
     date: selectedDate,
     month: selectedMonth,
+    period: selectedPeriod,
     workforceStatus,
     workforceDistribution: buildWorkforceDistribution({
       present: Math.max(presentEmployeeIds.size - lateEmployeeIds.size, 0),
@@ -239,11 +256,28 @@ function normalizeMonthParam(month: string | undefined, date: string) {
   return date.slice(0, 7);
 }
 
+function normalizePeriodParam(period?: string): 'day' | 'week' | 'month' {
+  return period === 'week' || period === 'month' ? period : 'day';
+}
+
 function getDayRange(date: string) {
   return {
     start: new Date(`${date}T00:00:00`),
     end: new Date(`${date}T23:59:59.999`),
   };
+}
+
+function getWeekRange(date: string) {
+  const value = new Date(`${date}T00:00:00`);
+  const day = value.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const start = new Date(value);
+  start.setDate(value.getDate() + mondayOffset);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
 }
 
 function getMonthRange(month: string) {

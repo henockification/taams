@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -37,8 +37,33 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const upcomingLeaveEnd = addDays(selectedDate, UPCOMING_LEAVE_DAYS);
   const leaveExpiryEnd = addDays(selectedDate, LEAVE_EXPIRY_DAYS);
 
+  const [activeEmployees, activeFiscalYear, currentEmployee] = await Promise.all([
+    db.query.employees.findMany({
+      where: and(eq(employees.isActive, true), params.scope ? scopedEmployeeWhere(params.scope) : undefined),
+      with: { department: true, position: true },
+    }),
+    db.query.leaveFiscalYears.findFirst({
+      where: and(
+        eq(leaveFiscalYears.isActive, true),
+        lte(leaveFiscalYears.startsAt, selectedDate),
+        gte(leaveFiscalYears.endsAt, selectedDate),
+      ),
+    }),
+    params.userId
+      ? db.query.employees.findFirst({
+        where: eq(employees.userId, params.userId),
+        with: { department: true, position: true },
+      })
+      : Promise.resolve(null),
+  ]);
+
+  const activeEmployeeIds = activeEmployees.map((employee) => employee.id);
+  const scopedEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(leaveRequests.employeeId, activeEmployeeIds) : sql`false`;
+  const scopedManualRequestEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(manualPunchRequests.employeeId, activeEmployeeIds) : sql`false`;
+  const scopedPunchEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(attendancePunches.employeeId, activeEmployeeIds) : sql`false`;
+  const scopedBalanceEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(leaveBalances.employeeId, activeEmployeeIds) : sql`false`;
+
   const [
-    activeEmployees,
     dayPunches,
     approvedLeavesToday,
     upcomingLeaveRequests,
@@ -50,13 +75,8 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     unprocessedPunches,
     activeDevices,
     recentSyncBatches,
-    activeFiscalYear,
-    currentEmployee,
+    currentEmployeeLeaveBalances,
   ] = await Promise.all([
-    db.query.employees.findMany({
-      where: and(eq(employees.isActive, true), params.scope ? scopedEmployeeWhere(params.scope) : undefined),
-      with: { department: true, position: true },
-    }),
     db.query.attendancePunches.findMany({
       where: and(gte(attendancePunches.punchTime, dayRange.start), lte(attendancePunches.punchTime, dayRange.end)),
       with: { employee: { with: { department: true, position: true } }, device: true },
@@ -67,6 +87,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         eq(leaveRequests.status, 'AUTHORIZED'),
         lte(leaveRequests.startDate, selectedDate),
         gte(leaveRequests.endDate, selectedDate),
+        scopedEmployeeCondition,
       ),
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
     }),
@@ -75,13 +96,14 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         eq(leaveRequests.status, 'AUTHORIZED'),
         gte(leaveRequests.startDate, selectedDate),
         lte(leaveRequests.startDate, upcomingLeaveEnd),
+        scopedEmployeeCondition,
       ),
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.startDate)],
       limit: 20,
     }),
     db.query.leaveRequests.findMany({
-      where: eq(leaveRequests.status, 'APPROVED'),
+      where: and(eq(leaveRequests.status, 'APPROVED'), scopedEmployeeCondition),
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.approvedAt), asc(table.createdAt)],
       limit: 20,
@@ -109,7 +131,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
     }),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
+      where: and(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), scopedManualRequestEmployeeCondition),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,
@@ -119,13 +141,14 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         or(eq(manualPunchRequests.status, 'HR_REJECTED'), eq(manualPunchRequests.status, 'SUPERVISOR_REJECTED')),
         gte(manualPunchRequests.createdAt, monthRange.start),
         lte(manualPunchRequests.createdAt, monthRange.end),
+        scopedManualRequestEmployeeCondition,
       ),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { desc }) => [desc(table.rejectedAt), desc(table.createdAt)],
       limit: 20,
     }),
     db.query.attendancePunches.findMany({
-      where: eq(attendancePunches.isProcessed, false),
+      where: and(eq(attendancePunches.isProcessed, false), scopedPunchEmployeeCondition),
       with: { employee: { with: { department: true, position: true } }, device: true },
       orderBy: (table, { desc }) => [desc(table.punchTime)],
       limit: 20,
@@ -139,23 +162,16 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       with: { device: true },
       limit: 20,
     }),
-    db.query.leaveFiscalYears.findFirst({
-      where: and(
-        eq(leaveFiscalYears.isActive, true),
-        lte(leaveFiscalYears.startsAt, selectedDate),
-        gte(leaveFiscalYears.endsAt, selectedDate),
-      ),
-    }),
-    params.userId
-      ? db.query.employees.findFirst({
-        where: eq(employees.userId, params.userId),
-        with: { department: true, position: true },
+    currentEmployee
+      ? db.query.leaveBalances.findMany({
+        where: eq(leaveBalances.employeeId, currentEmployee.id),
+        with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
       })
-      : Promise.resolve(null),
+      : Promise.resolve([]),
   ]);
 
-  const activeEmployeeIds = new Set(activeEmployees.map((employee) => employee.id));
-  const isVisibleEmployee = (employeeId: string | null | undefined) => Boolean(employeeId && activeEmployeeIds.has(employeeId));
+  const activeEmployeeIdSet = new Set(activeEmployeeIds);
+  const isVisibleEmployee = (employeeId: string | null | undefined) => Boolean(employeeId && activeEmployeeIdSet.has(employeeId));
   const scopedDayPunches = dayPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
   const scopedApprovedLeavesToday = approvedLeavesToday.filter((request) => isVisibleEmployee(request.employeeId));
   const scopedUpcomingLeaveRequests = upcomingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
@@ -173,7 +189,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const coveredLeaveEmployeeIds = new Set(
     scopedApprovedLeavesToday
       .filter((request) => !isUnpaidLeaveType(request.leaveType))
-      .filter((request) => activeEmployeeIds.has(request.employeeId))
+      .filter((request) => activeEmployeeIdSet.has(request.employeeId))
       .map((request) => request.employeeId),
   );
   const scheduleByEmployee = getScheduleByEmployee(scopedWorkScheduleAssignments, selectedDate);
@@ -194,21 +210,18 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       where: and(
         eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
         gte(leaveBalances.available, '0.01'),
+        scopedBalanceEmployeeCondition,
       ),
       with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
       limit: 20,
     })
     : [];
   const scopedLeaveBalancesNearExpiry = leaveBalancesNearExpiry.filter((balance) => isVisibleEmployee(balance.employeeId));
-  const currentAnnualLeaveBalance = activeFiscalYear && currentEmployee
-    ? await db.query.leaveBalances.findFirst({
-      where: and(
-        eq(leaveBalances.employeeId, currentEmployee.id),
-        eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
-      ),
-      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
-    })
-    : null;
+  const currentAnnualLeaveBalance = selectCurrentAnnualLeaveBalance(
+    currentEmployee,
+    currentEmployeeLeaveBalances,
+    activeFiscalYear?.id,
+  );
 
   const offlineDevices = activeDevices.filter((device) => device.healthStatus === 'OFFLINE');
   const syncStatus = buildSyncStatus(recentSyncBatches);
@@ -323,6 +336,19 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
 
 function isUnpaidLeaveType(leaveType: any) {
   return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
+}
+
+function selectCurrentAnnualLeaveBalance(employee: any, balances: any[], activeFiscalYearId?: string | null) {
+  if (!employee) return null;
+
+  if (employee.employmentType === 'PERMANENT') {
+    return balances
+      .filter((balance) => balance.fiscalYear && !balance.fiscalYear.isActive)
+      .sort((left, right) => String(right.fiscalYear?.startsAt ?? '').localeCompare(String(left.fiscalYear?.startsAt ?? '')))[0] ?? null;
+  }
+
+  if (!activeFiscalYearId) return null;
+  return balances.find((balance) => balance.fiscalYearId === activeFiscalYearId) ?? null;
 }
 
 function normalizeDateParam(date?: string) {

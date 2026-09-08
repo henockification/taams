@@ -1686,6 +1686,7 @@ export const ExecutiveDashboardSummarySchema = z.object({
   generatedAt: z.string().nullable(),
   date: z.string(),
   month: z.string(),
+  period: z.enum(['day', 'week', 'month']),
   workforceStatus: z.object({
     totalEmployees: z.number().int().nonnegative(),
     presentToday: z.number().int().nonnegative(),

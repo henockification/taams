@@ -297,6 +297,10 @@
   "executiveDashboard": {
     "date": "Date",
     "month": "Month",
+    "period": "Period",
+    "today": "Today",
+    "thisWeek": "This week",
+    "thisMonth": "This month",
     "refresh": "Refresh",
     "refreshing": "Refreshing",
     "generatedAt": "Updated {value}",
@@ -399,6 +403,7 @@
     "partial": "Partial",
     "noAlerts": "No operational alerts right now.",
     "noRows": "No records to show.",
+    "allDepartments": "All departments",
     "employee": "Employee",
     "department": "Department",
     "requestedAt": "Requested at",
