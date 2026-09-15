@@ -1,4 +1,4 @@
-"""Replaceable device boundary. Fingerprint bytes never leave adapter/worker memory."""
+"""Replaceable device boundary. Enrollment data stays in adapter/worker memory."""
 
 from __future__ import annotations
 
@@ -37,20 +37,33 @@ class FingerTemplate:
         return bytes(value or b"")
 
 
+@dataclass(repr=False)
+class FaceTemplate:
+    uid: int
+    value: str
+    length: int
+
+    def ephemeral_value(self) -> str:
+        return self.value
+
+
 class DeviceAdapter(Protocol):
     def connect(self) -> None: ...
     def disconnect(self) -> None: ...
     def users(self) -> list[DeviceUser]: ...
     def templates(self) -> list[FingerTemplate]: ...
+    def face_templates(self, users: list[DeviceUser]) -> list[FaceTemplate]: ...
     def disable(self) -> None: ...
     def enable(self) -> None: ...
     def refresh(self) -> None: ...
     def upsert_user_with_templates(self, user: DeviceUser, templates: list[FingerTemplate]) -> None: ...
+    def upsert_face(self, user: DeviceUser, face: FaceTemplate | None) -> None: ...
     def delete_user(self, user: DeviceUser) -> None: ...
     def metadata(self) -> dict[str, str | None]: ...
 
 
 class PyzkDeviceAdapter:
+    supports_faces = False
     def __init__(self, config: DeviceConfig, timeout: int = 12):
         self.config = config
         self._zk = ZK(
@@ -92,6 +105,13 @@ class PyzkDeviceAdapter:
             if 0 <= finger_id <= 9:
                 templates.append(FingerTemplate(int(finger.uid), finger_id, finger))
         return templates
+
+    def face_templates(self, users: list[DeviceUser]) -> list[FaceTemplate]:
+        return []
+
+    def upsert_face(self, user: DeviceUser, face: FaceTemplate | None) -> None:
+        if face is not None:
+            raise RuntimeError("Face provisioning requires the Windows ZKTeco SDK backend")
 
     @device_operation("Disable device")
     def disable(self) -> None:
@@ -136,7 +156,8 @@ class PyzkDeviceAdapter:
         )
         # pyzk packs user metadata with template writes; supply a deliberately
         # sanitized user so passwords, cards, groups, and privileges are excluded.
-        self._connection.save_user_template(sanitized_user, [template.raw for template in templates])
+        if templates:
+            self._connection.save_user_template(sanitized_user, [template.raw for template in templates])
 
     @device_operation("Remove enrollment")
     def delete_user(self, user: DeviceUser) -> None:
@@ -150,6 +171,7 @@ class PyzkDeviceAdapter:
             "platform": self._safe_call("get_platform"),
             "serial": self._safe_call("get_serialnumber"),
             "fingerprintAlgorithm": self._safe_call("get_fp_version"),
+            "faceAlgorithm": self._safe_call("get_face_version"),
         }
 
     def _safe_call(self, method_name: str) -> str | None:

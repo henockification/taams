@@ -8,7 +8,8 @@ def numeric_id(value: str) -> str | None:
     return (text.lstrip("0") or "0") if text.isascii() and text.isdigit() else None
 
 
-def source_diagnostics(employees, source_users, templates, reported_counts=None):
+def source_diagnostics(employees, source_users, templates, reported_counts=None, faces=None, face_supported=False):
+    faces = faces or {}
     users = defaultdict(list)
     numeric_users = defaultdict(list)
     for user in source_users:
@@ -19,6 +20,7 @@ def source_diagnostics(employees, source_users, templates, reported_counts=None)
 
     missing_users = []
     without_fingerprints = []
+    without_enrollments = []
     possible_id_mismatches = []
     matched = 0
     for employee in employees:
@@ -28,6 +30,8 @@ def source_diagnostics(employees, source_users, templates, reported_counts=None)
             matched += 1
             if not any(templates.get(user.uid) for user in matches):
                 without_fingerprints.append(biometric_id)
+                if not any(faces.get(user.uid) for user in matches):
+                    without_enrollments.append(biometric_id)
         else:
             missing_users.append(biometric_id)
             key = numeric_id(biometric_id)
@@ -43,6 +47,10 @@ def source_diagnostics(employees, source_users, templates, reported_counts=None)
         "sourceUserCount": len(source_users),
         "sourceFingerprintCount": sum(len(fingers) for fingers in templates.values()),
         "sourceUsersWithFingerprints": sum(bool(templates.get(user.uid)) for user in source_users),
+        "sourceFaceCount": len(faces),
+        "sourceUsersWithFaces": sum(bool(faces.get(user.uid)) for user in source_users),
+        "sourceUsersWithoutEnrollments": without_enrollments,
+        "faceProvisioningSupported": face_supported,
         "exactMatchedEmployeeCount": matched,
         "missingSourceUserIds": missing_users,
         "sourceUsersWithoutFingerprints": without_fingerprints,

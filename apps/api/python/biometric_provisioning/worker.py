@@ -19,8 +19,8 @@ from typing import Any, Iterator
 import psycopg
 from psycopg.rows import dict_row
 
-from device_adapter import DeviceAdapter, DeviceConfig, DeviceUser, FingerTemplate, PyzkDeviceAdapter
-from provisioning_errors import safe_provisioning_error
+from device_adapter import DeviceAdapter, DeviceConfig, DeviceUser, FingerTemplate, FaceTemplate, PyzkDeviceAdapter
+from provisioning_errors import DeviceOperationError, safe_provisioning_error
 from source_diagnostics import source_diagnostics
 
 
@@ -78,21 +78,32 @@ class ProvisioningWorker:
             raise RuntimeError("Enrollment source is currently locked")
 
         source_adapter = self._adapter(source)
+        source_adapter.heartbeat = lambda: self._renew_lock(connection, source["id"], owner_id)
         try:
             source_adapter.connect()
-            self._update_device_metadata(connection, source, source_adapter.metadata())
+            source_metadata = source_adapter.metadata()
+            self._update_device_metadata(connection, source, source_metadata)
             source_user_list = source_adapter.users()
             source_users = {user.user_id: user for user in source_user_list}
             source_templates = self._templates_by_uid(source_adapter.templates())
             counts = getattr(source_adapter, "inventory_counts", lambda: {})()
-            job["source_diagnostics"] = source_diagnostics(employees, source_user_list, source_templates, counts)
+            source_faces = {} if job["mode"] == "EMPLOYEE_REMOVE" else {
+                face.uid: face for face in source_adapter.face_templates(source_user_list)
+            }
+            job["source_diagnostics"] = source_diagnostics(employees, source_user_list, source_templates, counts, source_faces, source_adapter.supports_faces)
+            job["source_face_algorithm"] = source_metadata.get("faceAlgorithm")
+            if job["mode"] != "EMPLOYEE_REMOVE" and counts.get("faces") and not source_faces:
+                message = ("Master reports face enrollments, but the fingerprint-only backend cannot download them. Run the worker on Windows with PROVISIONING_DEVICE_BACKEND=zkteco-sdk and the registered ZKTeco Standalone SDK"
+                           if not source_adapter.supports_faces else
+                           "Master reports face enrollments, but ZKTeco SDK downloaded none. Check SDK/firmware face support before treating employees as unenrolled")
+                raise DeviceOperationError(message)
 
             if job["mode"] == "FULL_SYNC":
                 desired = employees
             else:
                 desired = employees
 
-            source_records = self._resolve_source_records(job, desired, source_users, source_templates)
+            source_records = self._resolve_source_records(job, desired, source_users, source_templates, source_faces)
             for device_id in job["requested_target_device_ids"]:
                 self._renew_lock(connection, source["id"], owner_id)
                 self._process_device(connection, job, devices[device_id], source_records, owner_id)
@@ -134,7 +145,7 @@ class ProvisioningWorker:
         connection: psycopg.Connection,
         job: dict[str, Any],
         device: dict[str, Any],
-        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate]]],
+        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]],
         owner_id: str,
     ) -> None:
         self._mark_result_running(connection, job["id"], device["id"])
@@ -143,12 +154,23 @@ class ProvisioningWorker:
             return
 
         adapter = self._adapter(device)
+        def heartbeat():
+            self._renew_lock(connection, job["source_device_id"], owner_id)
+            self._renew_lock(connection, device["id"], owner_id)
+        adapter.heartbeat = heartbeat
         try:
             adapter.connect()
-            self._update_device_metadata(connection, device, adapter.metadata())
+            metadata = adapter.metadata()
+            self._update_device_metadata(connection, device, metadata)
+            if any(face for _, _, face in source_records.values()):
+                source_algorithm = job.get("source_face_algorithm")
+                target_algorithm = metadata.get("faceAlgorithm")
+                if not adapter.supports_faces or source_algorithm in (None, "0", "") or target_algorithm != source_algorithm:
+                    raise DeviceOperationError(f"Face compatibility check failed on device {device['id']}: master algorithm {source_algorithm or 'unknown'}, target algorithm {target_algorithm or 'unknown'}. Matching readable face algorithms are required before writing")
             target_users = adapter.users()
             target_templates = self._templates_by_uid(adapter.templates())
-            differences = self._differences(job, source_records, target_users, target_templates)
+            target_faces = {} if job["mode"] == "EMPLOYEE_REMOVE" else {face.uid: face for face in adapter.face_templates(target_users)}
+            differences = self._differences(job, source_records, target_users, target_templates, target_faces)
 
             if differences["uidConflicts"] or differences["missingSourceTemplates"]:
                 self._complete_result(connection, job, device, differences, failed=True)
@@ -160,7 +182,8 @@ class ProvisioningWorker:
                 self._apply_changes(adapter, job, source_records, target_users, differences)
                 verified_users = adapter.users()
                 verified_templates = self._templates_by_uid(adapter.templates())
-                self._verify(job, source_records, verified_users, verified_templates)
+                verified_faces = {} if job["mode"] == "EMPLOYEE_REMOVE" else {face.uid: face for face in adapter.face_templates(verified_users)}
+                self._verify(job, source_records, verified_users, verified_templates, verified_faces)
 
             self._complete_result(connection, job, device, differences, failed=False)
         except Exception as error:
@@ -178,26 +201,28 @@ class ProvisioningWorker:
         employees: list[dict[str, Any]],
         users: dict[str, DeviceUser],
         templates: dict[int, list[FingerTemplate]],
-    ) -> dict[str, tuple[DeviceUser, list[FingerTemplate]]]:
-        records: dict[str, tuple[DeviceUser, list[FingerTemplate]]] = {}
+        faces: dict[int, FaceTemplate] | None = None,
+    ) -> dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]]:
+        records: dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]] = {}
         if job["mode"] == "EMPLOYEE_REMOVE":
             return records
         for employee in employees:
             biometric_id = employee["biometric_id"]
             source_user = users.get(biometric_id)
             if source_user:
-                records[biometric_id] = (source_user, templates.get(source_user.uid, []))
+                records[biometric_id] = (source_user, templates.get(source_user.uid, []), (faces or {}).get(source_user.uid))
             else:
                 # A synthetic record lets every target report the missing enrollment without writes.
-                records[biometric_id] = (DeviceUser(-1, biometric_id, employee["name"], None), [])
+                records[biometric_id] = (DeviceUser(-1, biometric_id, employee["name"], None), [], None)
         return records
 
     def _differences(
         self,
         job: dict[str, Any],
-        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate]]],
+        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]],
         target_users: list[DeviceUser],
         target_templates: dict[int, list[FingerTemplate]],
+        target_faces: dict[int, FaceTemplate] | None = None,
     ) -> dict[str, Any]:
         by_user_id = {user.user_id: user for user in target_users}
         by_uid = {user.uid: user for user in target_users}
@@ -210,8 +235,8 @@ class ProvisioningWorker:
             result["removals"] = sorted(user_id for user_id in requested_ids if user_id in by_user_id)
             return result
 
-        for biometric_id, (source_user, fingers) in source_records.items():
-            if source_user.uid < 0 or not fingers:
+        for biometric_id, (source_user, fingers, face) in source_records.items():
+            if source_user.uid < 0 or not (fingers or face):
                 result["missingSourceTemplates"].append(biometric_id)
                 continue
             occupant = by_uid.get(source_user.uid)
@@ -235,7 +260,9 @@ class ProvisioningWorker:
                 continue
             target_fingers = {finger.finger_id: finger.ephemeral_value() for finger in target_templates.get(existing.uid, [])}
             source_fingers = {finger.finger_id: finger.ephemeral_value() for finger in fingers}
-            if existing.name != source_user.name or target_fingers != source_fingers:
+            target_face = (target_faces or {}).get(existing.uid)
+            face_changed = (face.ephemeral_value() if face else None) != (target_face.ephemeral_value() if target_face else None)
+            if existing.name != source_user.name or target_fingers != source_fingers or face_changed:
                 result["updatedUsers"].append(biometric_id)
         return result
 
@@ -243,7 +270,7 @@ class ProvisioningWorker:
         self,
         adapter: DeviceAdapter,
         job: dict[str, Any],
-        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate]]],
+        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]],
         target_users: list[DeviceUser],
         differences: dict[str, Any],
     ) -> None:
@@ -252,12 +279,18 @@ class ProvisioningWorker:
             if job["mode"] == "EMPLOYEE_REMOVE":
                 target_by_id = {user.user_id: user for user in target_users}
                 for biometric_id in differences["removals"]:
+                    if getattr(adapter, "heartbeat", None):
+                        adapter.heartbeat()
                     adapter.delete_user(target_by_id[biometric_id])
             else:
                 changed = set(differences["missingUsers"] + differences["updatedUsers"])
                 for biometric_id in changed:
-                    user, fingers = source_records[biometric_id]
+                    if getattr(adapter, "heartbeat", None):
+                        adapter.heartbeat()
+                    user, fingers, face = source_records[biometric_id]
                     adapter.upsert_user_with_templates(user, fingers)
+                    if adapter.supports_faces:
+                        adapter.upsert_face(user, face)
             adapter.refresh()
         finally:
             adapter.enable()
@@ -265,9 +298,10 @@ class ProvisioningWorker:
     def _verify(
         self,
         job: dict[str, Any],
-        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate]]],
+        source_records: dict[str, tuple[DeviceUser, list[FingerTemplate], FaceTemplate | None]],
         users: list[DeviceUser],
         templates: dict[int, list[FingerTemplate]],
+        faces: dict[int, FaceTemplate] | None = None,
     ) -> None:
         by_id = {user.user_id: user for user in users}
         if job["mode"] == "EMPLOYEE_REMOVE":
@@ -275,14 +309,17 @@ class ProvisioningWorker:
             if remaining:
                 raise RuntimeError("Read-back verification found users that should have been removed")
             return
-        for biometric_id, (source_user, source_fingers) in source_records.items():
+        for biometric_id, (source_user, source_fingers, source_face) in source_records.items():
             target_user = by_id.get(biometric_id)
             if not target_user or target_user.uid != source_user.uid:
                 raise RuntimeError(f"Read-back identity verification failed for biometric ID {biometric_id}")
-            source_slots = {finger.finger_id for finger in source_fingers}
-            target_slots = {finger.finger_id for finger in templates.get(target_user.uid, [])}
+            source_slots = {finger.finger_id: finger.ephemeral_value() for finger in source_fingers}
+            target_slots = {finger.finger_id: finger.ephemeral_value() for finger in templates.get(target_user.uid, [])}
             if source_slots != target_slots:
                 raise RuntimeError(f"Read-back template verification failed for biometric ID {biometric_id}")
+            target_face = (faces or {}).get(target_user.uid)
+            if (source_face.ephemeral_value() if source_face else None) != (target_face.ephemeral_value() if target_face else None):
+                raise DeviceOperationError(f"Read-back face verification failed for biometric ID {biometric_id}")
 
     def _process_removal_source(
         self,
@@ -364,7 +401,7 @@ class ProvisioningWorker:
     def _complete_result(self, connection: psycopg.Connection, job: dict[str, Any], device: dict[str, Any], differences: dict[str, Any], failed: bool) -> None:
         blockers = []
         if differences["missingSourceTemplates"]:
-            blockers.append(f'{len(differences["missingSourceTemplates"])} employee(s) missing enrollment or fingerprints on the source')
+            blockers.append(f'{len(differences["missingSourceTemplates"])} employee(s) missing user or readable face/fingerprint enrollment on the source')
         if differences["uidConflicts"]:
             blockers.append(f'{len(differences["uidConflicts"])} target UID conflict(s)')
         error = "; ".join(blockers) + ". Review preview details before applying." if failed else None
@@ -480,4 +517,15 @@ if __name__ == "__main__":
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise SystemExit("DATABASE_URL is required")
-    ProvisioningWorker(database_url).run_forever()
+    backend = os.getenv("PROVISIONING_DEVICE_BACKEND", "pyzk")
+    if backend == "zkteco-sdk":
+        from face_sdk_adapter import SdkFaceDeviceAdapter
+        # Check runtime/registration before claiming jobs, without connecting to
+        # any terminal or writing enrollments.
+        SdkFaceDeviceAdapter._windows_sdk()
+        adapter_factory = SdkFaceDeviceAdapter
+    elif backend == "pyzk":
+        adapter_factory = PyzkDeviceAdapter
+    else:
+        raise SystemExit("PROVISIONING_DEVICE_BACKEND must be pyzk or zkteco-sdk")
+    ProvisioningWorker(database_url, adapter_factory).run_forever()

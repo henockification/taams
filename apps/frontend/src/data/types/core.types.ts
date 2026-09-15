@@ -504,6 +504,10 @@ export type BiometricProvisioningSourceDiagnostics = {
   sourceUserCount: number;
   sourceFingerprintCount: number;
   sourceUsersWithFingerprints: number;
+  sourceFaceCount?: number;
+  sourceUsersWithFaces?: number;
+  sourceUsersWithoutEnrollments?: string[];
+  faceProvisioningSupported?: boolean;
   exactMatchedEmployeeCount: number;
   missingSourceUserIds: string[];
   sourceUsersWithoutFingerprints: string[];

@@ -37,7 +37,7 @@ const modes: Array<{
   {
     value: 'EMPLOYEE_UPSERT',
     label: 'New employee or re-enrollment',
-    help: 'Create or replace fingerprints for selected active employees.',
+    help: 'Create or replace face and fingerprint enrollments for selected active employees.',
   },
   {
     value: 'EMPLOYEE_REMOVE',
@@ -379,14 +379,14 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
       {results.filter((result) => result.missingTemplates > 0 || result.uidConflicts > 0).map((result) => (
         <details key={result.id} className="mt-3 rounded-md border border-border p-3">
           <summary className="cursor-pointer text-sm font-medium">
-            {result.device?.deviceName ?? result.deviceId}: {result.missingTemplates} missing source enrollments or fingerprints · {result.uidConflicts} UID conflicts
+            {result.device?.deviceName ?? result.deviceId}: {result.missingTemplates} missing source enrollments · {result.uidConflicts} UID conflicts
           </summary>
           <div className="mt-3 space-y-4 text-sm">
             {(result.differences?.missingSourceTemplates?.length ?? 0) > 0 ? (
               <div className="space-y-2">
                 <p className="font-medium">Missing on enrollment source</p>
                 <p className="text-muted-foreground">
-                  These IDs have no matching downloaded user or fingerprint data. Review the source diagnostics first: an ID formatting or download problem does not mean the employee is unenrolled.
+                  These IDs have no matching downloaded user or readable face/fingerprint enrollment. Review the source diagnostics first: an ID formatting or download problem does not mean the employee is unenrolled.
                 </p>
                 <div className="max-h-48 overflow-y-auto rounded border border-border p-2">
                   {result.differences!.missingSourceTemplates.map((biometricId) => <p key={biometricId} className="font-mono">{biometricId}</p>)}
@@ -418,6 +418,7 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
 }
 
 function SourceEnrollmentDiagnostics({ diagnostics: source }: { diagnostics: BiometricProvisioningSourceDiagnostics }) {
+  const withoutEnrollments = source.sourceUsersWithoutEnrollments ?? source.sourceUsersWithoutFingerprints;
   return (
     <details className="mt-3 rounded-md border border-border p-3" open>
       <summary className="cursor-pointer text-sm font-medium">Enrollment source diagnostics</summary>
@@ -427,14 +428,22 @@ function SourceEnrollmentDiagnostics({ diagnostics: source }: { diagnostics: Bio
           <p>{source.sourceUserCount} users downloaded from master</p>
           <p>{source.sourceFingerprintCount} fingerprint templates downloaded</p>
           <p>{source.sourceUsersWithFingerprints} master users with downloaded fingerprints</p>
+          {source.sourceFaceCount !== undefined ? <p>{source.sourceFaceCount} face enrollments downloaded</p> : null}
+          {source.sourceUsersWithFaces !== undefined ? <p>{source.sourceUsersWithFaces} master users with downloaded faces</p> : null}
           <p>{source.exactMatchedEmployeeCount} employee IDs matched exactly</p>
           <p>{source.missingSourceUserIds.length} employee IDs absent from downloaded master users</p>
-          <p>{source.sourceUsersWithoutFingerprints.length} matched employees without downloaded fingerprints</p>
+          <p>{withoutEnrollments.length} matched employees without downloaded face or fingerprint enrollments</p>
         </div>
         <p className="text-muted-foreground">
           Device reports {source.reportedUserCount ?? 'unknown'} users, {source.reportedFingerprintCount ?? 'unknown'} fingerprints and {source.reportedFaceCount ?? 'unknown'} faces. User record size: {source.userPacketSize ?? 'unknown'} bytes.
         </p>
-        <p className="text-muted-foreground">This worker copies fingerprint enrollments. Face, card or PIN enrollments alone do not provide fingerprint templates.</p>
+        <p className="text-muted-foreground">Employees need a readable face or fingerprint enrollment on the master. Card and PIN records alone do not provide biometric templates.</p>
+        {(source.reportedFaceCount ?? 0) > 0 && !source.faceProvisioningSupported ? (
+          <p className="text-destructive">This preview used a fingerprint-only worker. Enable the face-capable worker and create a new preview; existing face enrollments do not need to be replaced with fingerprints.</p>
+        ) : null}
+        {(source.reportedFaceCount ?? 0) > 0 && source.faceProvisioningSupported && !source.sourceFaceCount ? (
+          <p className="text-destructive">The master reports faces but none were downloaded. Check device/SDK face support before re-enrolling employees.</p>
+        ) : null}
         {source.reportedUserCount !== null && source.reportedUserCount !== source.sourceUserCount ? (
           <p className="text-destructive">Downloaded user count differs from the device count. Check the device protocol reader before treating these employees as unenrolled.</p>
         ) : null}
@@ -456,10 +465,10 @@ function SourceEnrollmentDiagnostics({ diagnostics: source }: { diagnostics: Bio
             <p className="mt-2 max-h-48 overflow-y-auto font-mono">{source.missingSourceUserIds.join(', ')}</p>
           </details>
         ) : null}
-        {source.sourceUsersWithoutFingerprints.length > 0 ? (
+        {withoutEnrollments.length > 0 ? (
           <details>
-            <summary className="cursor-pointer">Matched IDs without downloaded fingerprints ({source.sourceUsersWithoutFingerprints.length})</summary>
-            <p className="mt-2 max-h-48 overflow-y-auto font-mono">{source.sourceUsersWithoutFingerprints.join(', ')}</p>
+            <summary className="cursor-pointer">Matched IDs without downloaded face or fingerprint enrollments ({withoutEnrollments.length})</summary>
+            <p className="mt-2 max-h-48 overflow-y-auto font-mono">{withoutEnrollments.join(', ')}</p>
           </details>
         ) : null}
         {source.duplicateSourceUserIds.length > 0 ? <p className="text-destructive">Duplicate user IDs on master: {source.duplicateSourceUserIds.join(', ')}</p> : null}
