@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   employeeWorkSchedules,
@@ -18,6 +18,7 @@ import type {
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, isEmployeeVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { writeAuditEvent } from '../../../lib/audit';
+import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 
 type DbClient = typeof db | any;
 
@@ -272,8 +273,11 @@ export async function getEmployeeWorkSchedulesScoped(employeeId: string, scope: 
   return getEmployeeWorkSchedules(employeeId);
 }
 
-export async function getAllEmployeeWorkSchedules() {
+export async function getAllEmployeeWorkSchedules(workingOnly = false) {
   const schedules = await db.query.employeeWorkSchedules.findMany({
+    where: workingOnly ? inArray(employeeWorkSchedules.employeeId,
+      db.select({ id: employees.id }).from(employees)
+        .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))) : undefined,
     with: {
       employee: {
         with: {
@@ -289,7 +293,7 @@ export async function getAllEmployeeWorkSchedules() {
 }
 
 export async function getAllEmployeeWorkSchedulesScoped(scope: EmployeeVisibilityScope) {
-  const schedules = await getAllEmployeeWorkSchedules();
+  const schedules = await getAllEmployeeWorkSchedules(true);
   return schedules.filter((schedule) => isEmployeeVisibleInScope(schedule.employee, scope));
 }
 

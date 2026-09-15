@@ -7,7 +7,6 @@ import {
   CreateLeaveFiscalYearRequestSchema,
   CreateLeaveRequestRequestSchema,
   CreateLeaveTypeRequestSchema,
-  TransferLeaveBalanceRequestSchema,
   ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
   UpdateLeaveRequestRequestSchema,
@@ -16,7 +15,6 @@ import {
 } from '../../../../schemas/core.schema';
 import {
   bulkUpsertLeaveBalancesScoped,
-  bulkUpsertSupervisorLeaveBalances,
   authorizeLeaveInterruption,
   authorizeLeaveRequest,
   changeLeaveRequestStatusScoped,
@@ -30,12 +28,10 @@ import {
   getLeaveTypes,
   reviewLeaveInterruptionScoped,
   setActiveLeaveFiscalYear,
-  transferLeaveBalanceScoped,
   updateLeaveFiscalYear,
   updateLeaveRequestScoped,
   updateLeaveType,
   upsertLeaveBalanceScoped,
-  upsertSupervisorLeaveBalance,
 } from '../../../../db/orm/core/manageLeave';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
@@ -44,7 +40,6 @@ import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import {
   formatLeaveBalance,
-  formatLeaveBalanceTransaction,
   formatLeaveFiscalYear,
   formatLeaveRequest,
   formatLeaveType,
@@ -140,15 +135,12 @@ export async function getLeaveBalancesHandler(c: Context) {
         ? 'authorizations'
         : c.req.query('view') === 'management'
           ? 'management'
-          : c.req.query('view') === 'supervisor'
-            ? 'supervisor'
-            : 'self';
+          : 'self';
     const permissions = view === 'authorizations' ? await getUserPermissionNames(session.user.id) : [];
-    const roles = view === 'supervisor' ? await resolveRoleNames(session) : undefined;
+    if (view === 'management') await assertCanManageLeaveBalances(session);
     const leaveBalances = await getLeaveBalances(fiscalYearId, {
       scope,
       userId: session.user.id,
-      roles,
       view,
       canAuthorize: permissions.includes('leave-authorizations:approve'),
     });
@@ -161,8 +153,9 @@ export async function getLeaveBalancesHandler(c: Context) {
 export async function upsertLeaveBalanceHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    await assertCanManageLeaveBalances(session);
     const scope = await resolveScope(session);
-    const view = c.req.query('view') === 'supervisor' ? 'supervisor' : 'management';
+    if (c.req.query('view') === 'supervisor') throw new Error('Only HR and admins can manage leave balances');
     const parsed = UpsertLeaveBalanceRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const payload = {
@@ -170,9 +163,7 @@ export async function upsertLeaveBalanceHandler(c: Context) {
       createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
       updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
     };
-    const leaveBalance = view === 'supervisor'
-      ? await upsertSupervisorLeaveBalance(payload, session.user.id, await resolveRoleNames(session))
-      : await upsertLeaveBalanceScoped(payload, scope);
+    const leaveBalance = await upsertLeaveBalanceScoped(payload, scope);
     return c.json({ success: true, leaveBalance: formatLeaveBalance(leaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to save leave balance');
@@ -182,8 +173,9 @@ export async function upsertLeaveBalanceHandler(c: Context) {
 export async function bulkUpsertLeaveBalancesHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    await assertCanManageLeaveBalances(session);
     const scope = await resolveScope(session);
-    const view = c.req.query('view') === 'supervisor' ? 'supervisor' : 'management';
+    if (c.req.query('view') === 'supervisor') throw new Error('Only HR and admins can manage leave balances');
     const parsed = BulkUpsertLeaveBalancesRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
     const payload = {
@@ -191,33 +183,10 @@ export async function bulkUpsertLeaveBalancesHandler(c: Context) {
       createdBy: session.user.id ?? c.user?.id ?? parsed.data.createdBy,
       updatedBy: session.user.id ?? c.user?.id ?? parsed.data.updatedBy ?? parsed.data.createdBy,
     };
-    const leaveBalances = view === 'supervisor'
-      ? await bulkUpsertSupervisorLeaveBalances(payload, session.user.id, await resolveRoleNames(session))
-      : await bulkUpsertLeaveBalancesScoped(payload, scope);
+    const leaveBalances = await bulkUpsertLeaveBalancesScoped(payload, scope);
     return c.json({ success: true, leaveBalances: leaveBalances.map(formatLeaveBalance) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to bulk save leave balances');
-  }
-}
-
-export async function transferLeaveBalanceHandler(c: Context) {
-  try {
-    const session = await resolveSession(c);
-    const scope = await resolveScope(session);
-    const parsed = TransferLeaveBalanceRequestSchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
-    const result = await transferLeaveBalanceScoped({
-      ...parsed.data,
-      approvedBy: session.user.id ?? c.user?.id ?? parsed.data.approvedBy,
-    }, scope);
-    return c.json({
-      success: true,
-      fromBalance: formatLeaveBalance(result.fromBalance),
-      toBalance: formatLeaveBalance(result.toBalance),
-      transactions: result.transactions.map(formatLeaveBalanceTransaction),
-    });
-  } catch (error) {
-    return coreErrorResponse(c, error, 'Failed to transfer leave balance');
   }
 }
 
@@ -451,4 +420,15 @@ async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByT
 async function assertLeaveAuthorizationPermission(userId: string) {
   const permissions = await getUserPermissionNames(userId);
   if (!permissions.includes('leave-authorizations:approve')) throw new Error('Leave authorization permission is required');
+}
+
+async function assertCanManageLeaveBalances(session: Awaited<ReturnType<typeof getSessionByToken>>) {
+  const roles = (await resolveRoleNames(session)).map((role) => role.toLowerCase());
+  if (!roles.some((role) => ['human_resource', 'admin', 'super_admin', 'superadmin', 'executive'].includes(role))) {
+    throw new Error('Only HR and admins can manage leave balances');
+  }
+  const permissions = await getUserPermissionNames(session!.user.id);
+  if (!roles.some((role) => ['super_admin', 'superadmin'].includes(role)) && !permissions.includes('leave-balances:read')) {
+    throw new Error('Leave balance management permission is required');
+  }
 }

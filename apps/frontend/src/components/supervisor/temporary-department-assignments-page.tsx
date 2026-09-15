@@ -21,7 +21,7 @@ import {
   useCreateTemporaryDepartmentAssignment,
   useDeactivateTemporaryDepartmentAssignment,
   useDepartments,
-  useEmployees,
+  useWorkingEmployees,
   useTemporaryDepartmentAssignments,
   useUpdateTemporaryDepartmentAssignment,
 } from '@/data/hooks/core.hooks';
@@ -53,7 +53,7 @@ export function TemporaryDepartmentAssignmentsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const assignmentsQuery = useTemporaryDepartmentAssignments();
-  const employeesQuery = useEmployees();
+  const employeesQuery = useWorkingEmployees();
   const departmentsQuery = useDepartments();
   const createAssignment = useCreateTemporaryDepartmentAssignment();
   const updateAssignment = useUpdateTemporaryDepartmentAssignment();

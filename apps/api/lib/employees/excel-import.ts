@@ -20,6 +20,7 @@ type FieldKey =
   | 'department'
   | 'fullNameEn'
   | 'idNo'
+  | 'serialNo'
   | 'employeeStatus'
   | 'gender'
   | 'date'
@@ -32,20 +33,25 @@ type FieldKey =
 
 export const EMPLOYEE_EXCEL_HEADER_ALIASES: Record<FieldKey, string[]> = {
   department: ['department', 'dept', 'department name'],
-  fullNameEn: ['full name < english', 'full name english', 'full name', 'fullname', 'fullName', 'full_name', 'name english', 'employee name'],
+  fullNameEn: ['full name < english', 'full name english', 'full name', 'fullname', 'fullName', 'full_name', 'name english', 'employee name', 'name of employee'],
   idNo: ['employee id no', 'employee id no.', 'employee id number', 'employee id', 'id no', 'id no.', 'id number', 'employee no'],
+  serialNo: ['no.', 'no', 'serial no.', 'serial no', 'serial number'],
   employeeStatus: ['employee status', 'employment status', 'status'],
   gender: ['gender', 'sex'],
   date: ['date', 'hire date', 'employment date', 'start date'],
-  position: ['position', 'job title', 'job position'],
+  position: ['position', 'job title', 'job position', 'current position'],
   code: ['code', 'position code', 'employee code'],
   salary: ['salary', 'monthly salary', 'base salary'],
   step: ['step', 'salary step', 'grade step'],
-  mobile: ['mobile', 'mobile number', 'phone', 'phone number'],
+  mobile: ['mobile', 'mobile number', 'phone', 'phone number', 'tel no.', 'tel no', 'telephone number'],
   email: ['email', 'email address', 'work email'],
 };
 
-export function parseEmployeeWorkbook(fileBuffer: Buffer, fileName: string): ExcelEmployeeRow[] {
+export function parseEmployeeWorkbook(
+  fileBuffer: Buffer,
+  fileName: string,
+  employmentType: 'PERMANENT' | 'CONTRACT' = 'PERMANENT',
+): ExcelEmployeeRow[] {
   if (!/\.(xlsx|xls)$/i.test(fileName)) {
     throw new Error('Only .xls and .xlsx files are supported');
   }
@@ -62,15 +68,33 @@ export function parseEmployeeWorkbook(fileBuffer: Buffer, fileName: string): Exc
   }
 
   const sheet = workbook.Sheets[firstSheetName];
-  return XLSX.utils.sheet_to_json<ExcelEmployeeRow>(sheet, {
+  const rows = XLSX.utils.sheet_to_json<ExcelEmployeeRow>(sheet, {
     defval: null,
     raw: true,
   });
+  // The supplied contract workbook ends with a colour legend, not an employee.
+  return employmentType === 'CONTRACT'
+    ? rows.filter((row) => !(
+      /^employee id colou?r key:/i.test(readString(row, 'fullNameEn'))
+      && !readString(row, 'serialNo')
+      && !readString(row, 'idNo')
+      && !readString(row, 'department')
+    ))
+    : rows;
 }
 
-export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: number): MappedEmployeeRow {
+export function mapExcelRowToEmployeeInput(
+  row: ExcelEmployeeRow,
+  rowNumber: number,
+  employmentType: 'PERMANENT' | 'CONTRACT' = 'PERMANENT',
+): MappedEmployeeRow {
   const errors: string[] = [];
-  const sourceIdNo = readString(row, 'idNo');
+  const rawIdNo = readString(row, 'idNo');
+  const sourceIdNo = employmentType === 'CONTRACT' && /^not\s+found$/i.test(rawIdNo) ? '' : rawIdNo;
+  // The contract roster supplies a list number, not an employee or biometric ID.
+  // Namespace it so repeat uploads update the same record without colliding with permanent IDs.
+  const serialNo = employmentType === 'CONTRACT' ? readString(row, 'serialNo') : '';
+  const employeeCode = sourceIdNo || (serialNo ? `CONTRACT-${serialNo}` : '');
   const fullName = readString(row, 'fullNameEn');
   const departmentName = readString(row, 'department');
   const sourceStatus = readString(row, 'employeeStatus');
@@ -81,10 +105,11 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
   const employment = resolveEmploymentFields(sourceStatus);
   const nameParts = splitFullName(fullName, errors);
 
-  if (!sourceIdNo) errors.push('Employee Id No is required');
+  if (!employeeCode) errors.push(employmentType === 'CONTRACT' ? 'No. or Employee Id No is required' : 'Employee Id No is required');
+  if (employeeCode.length > 50) errors.push('Employee code must be 50 characters or fewer');
   if (!departmentName) errors.push('Department is required');
 
-  if (errors.length > 0 || !sourceIdNo || !departmentName || !nameParts) {
+  if (errors.length > 0 || !employeeCode || !departmentName || !nameParts) {
     return { rowNumber, errors };
   }
 
@@ -92,9 +117,9 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
     rowNumber,
     errors: [],
     input: {
-      employeeCode: sourceIdNo,
-      payrollId: null,
-      biometricId: sourceIdNo,
+      employeeCode,
+      payrollId: employmentType === 'CONTRACT' ? sourceIdNo || null : null,
+      biometricId: sourceIdNo || null,
       firstNameEn: nameParts.firstNameEn,
       middleNameEn: nameParts.middleNameEn,
       lastNameEn: nameParts.lastNameEn,
@@ -105,10 +130,10 @@ export function mapExcelRowToEmployeeInput(row: ExcelEmployeeRow, rowNumber: num
       positionId: null,
       positionName: positionName || null,
       employmentStatus: employment.employmentStatus,
-      employmentType: 'PERMANENT',
+      employmentType,
       hireDate,
       terminationDate: null,
-      sourceIdNo,
+      sourceIdNo: sourceIdNo || null,
       sourceEmployeeCode: sourceEmployeeCode || null,
       sourceEmploymentStatus: sourceStatus || employment.sourceEmploymentStatus,
       sourceDepartmentName: departmentName,

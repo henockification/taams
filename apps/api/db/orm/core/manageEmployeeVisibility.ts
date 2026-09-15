@@ -10,7 +10,6 @@ const HR_PERMISSION_RESOURCES = new Set([
   'hr-dashboard',
   'hr-attendance-approvals',
   'leave-balances',
-  'leave-transfer',
   'leave-fiscal-years',
   'leave-types',
 ]);

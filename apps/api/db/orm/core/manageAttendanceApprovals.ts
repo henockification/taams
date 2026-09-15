@@ -13,7 +13,7 @@ import {
   temporaryDepartmentAssignments,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
-import { isWorkingEmployee } from '../../../lib/employees/employment-status';
+import { isWorkingEmployee, SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
@@ -233,6 +233,7 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     const records = await db.query.attendanceDailyRecords.findMany({
       where: and(
         dateFilter,
+        workingAttendanceEmployeeFilter(),
         inArray(attendanceDailyRecords.status, [
           'PENDING_SUPERVISOR',
           'RETURNED',
@@ -280,6 +281,7 @@ export async function getHrAttendanceDailyRecords(
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       attendanceDateFilter(range.dateFrom, range.dateTo),
+      workingAttendanceEmployeeFilter(),
       eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
     ),
     with: recordRelations,
@@ -599,6 +601,7 @@ async function getAttendanceDailyRecordsByEmployeeIds(
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       inArray(attendanceDailyRecords.employeeId, employeeIds),
+      workingAttendanceEmployeeFilter(),
       attendanceDateFilter(dateFrom, dateTo),
       inArray(attendanceDailyRecords.status, statuses),
     ),
@@ -606,6 +609,11 @@ async function getAttendanceDailyRecordsByEmployeeIds(
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
   return attachEffectiveDepartmentContext(records, clipDateToToday(dateTo)).then(keepWorkingEmployeeRecords);
+}
+
+function workingAttendanceEmployeeFilter() {
+  return inArray(attendanceDailyRecords.employeeId, db.select({ id: employees.id }).from(employees)
+    .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING)));
 }
 
 async function getAttendanceDailyRecordById(id: string, tx: DbClient = db) {

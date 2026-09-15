@@ -94,13 +94,7 @@ const PERMISSIONS = [
     name: 'leave-balances:read',
     resource: 'leave-balances',
     action: 'read',
-    description: 'View leave balances',
-  },
-  {
-    name: 'leave-transfer:read',
-    resource: 'leave-transfer',
-    action: 'read',
-    description: 'View leave carry-forward',
+    description: 'Manage active-year contract employee leave balances',
   },
   {
     name: 'leave-request-approvals:approve',
@@ -456,7 +450,6 @@ const SYSTEM_ROLES = [
       'leave-fiscal-years:read',
       'leave-types:read',
       'leave-balances:read',
-      'leave-transfer:read',
       'leave-request-approvals:approve',
       'leave-authorizations:approve',
       'annual-leave-requests:read',

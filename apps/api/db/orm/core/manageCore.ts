@@ -20,6 +20,7 @@ import type {
   UpdatePositionInput,
 } from '../../../types/core.types';
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
+import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
 import {
@@ -175,9 +176,12 @@ export async function createEmployeeScoped(input: CreateEmployeeInput, scope: Em
   return createEmployee(input);
 }
 
-export async function getEmployees(scope?: EmployeeVisibilityScope) {
+export async function getEmployees(scope?: EmployeeVisibilityScope, workingOnly = false) {
   return db.query.employees.findMany({
-    where: scope ? scopedEmployeeWhere(scope) : undefined,
+    where: and(
+      scope ? scopedEmployeeWhere(scope) : undefined,
+      workingOnly ? eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING) : undefined,
+    ),
     with: {
       department: true,
       position: true,
@@ -386,7 +390,7 @@ export async function upsertPermanentEmployees(
     .onConflictDoUpdate({
       target: employees.employeeCode,
       set: {
-        payrollId: null,
+        payrollId: sql`excluded.payroll_id`,
         biometricId: sql`excluded.biometric_id`,
         userId: sql`COALESCE(${employees.userId}, excluded.user_id)`,
         firstNameEn: sql`excluded.first_name_en`,
@@ -526,7 +530,10 @@ export async function getEmployeeSupervisors(employeeId: string) {
 
 export async function getAllEmployeeSupervisorsScoped(scope: EmployeeVisibilityScope) {
   const visibleEmployees = await db.query.employees.findMany({
-    where: scopedEmployeeWhere(scope),
+    where: and(
+      scopedEmployeeWhere(scope),
+      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+    ),
     columns: { id: true },
   });
   const employeeIds = visibleEmployees.map((employee) => employee.id);
@@ -534,7 +541,11 @@ export async function getAllEmployeeSupervisorsScoped(scope: EmployeeVisibilityS
   if (employeeIds.length === 0) return [];
 
   return db.query.employeeSupervisors.findMany({
-    where: inArray(employeeSupervisors.employeeId, employeeIds),
+    where: and(
+      inArray(employeeSupervisors.employeeId, employeeIds),
+      inArray(employeeSupervisors.supervisorId, db.select({ id: employees.id }).from(employees)
+        .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))),
+    ),
     with: {
       supervisor: {
         with: {
@@ -956,6 +967,8 @@ function employeeMatchesImport(
   return (
     (nullableString(employee.userId) !== null || nullableString(input.userId) === null) &&
     nullableString(employee.employeeCode) === nullableString(input.employeeCode) &&
+    nullableString(employee.payrollId) === nullableString(input.payrollId) &&
+    nullableString(employee.biometricId) === nullableString(input.biometricId) &&
     nullableString(employee.firstNameEn) === nullableString(input.firstNameEn) &&
     nullableString(employee.middleNameEn) === nullableString(input.middleNameEn) &&
     nullableString(employee.lastNameEn) === nullableString(input.lastNameEn) &&

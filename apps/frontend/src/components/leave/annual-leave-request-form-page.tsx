@@ -93,17 +93,8 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
   const [annualRange, setAnnualRange] = useState({ startDate: today(), endDate: today() });
   const [hasInitializedEdit, setHasInitializedEdit] = useState(false);
 
-  const eligibleAnnualFiscalYears = useMemo(() => {
-    if (!currentEmployee) return [];
-    const balanceByFiscalYear = new Map(annualBalances.map((balance) => [balance.fiscalYearId, balance]));
-    if (currentEmployee.employmentType === 'PERMANENT') {
-      return fiscalYears.filter((fiscalYear) => {
-        const balance = balanceByFiscalYear.get(fiscalYear.id);
-        return !fiscalYear.isActive && balance && Number(balance.available) > 0;
-      });
-    }
-    return activeFiscalYear ? [activeFiscalYear] : [];
-  }, [activeFiscalYear, annualBalances, currentEmployee, fiscalYears]);
+  const isContractEmployee = currentEmployee?.employmentType === 'CONTRACT';
+  const eligibleAnnualFiscalYears = useMemo(() => isContractEmployee && activeFiscalYear ? [activeFiscalYear] : [], [activeFiscalYear, isContractEmployee]);
 
   useEffect(() => {
     if (mode !== 'edit' || !editingRequest || hasInitializedEdit) return;
@@ -158,8 +149,8 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
 
   const saveRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!currentEmployee?.id || !annualType?.id) {
-      notifications.show({ title: common('error'), message: t('currentEmployeeRequired'), color: 'red' });
+    if (!isContractEmployee || !currentEmployee?.id || !annualType?.id) {
+      notifications.show({ title: common('error'), message: t('contractLeaveOnly'), color: 'red' });
       return;
     }
 
@@ -200,8 +191,8 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
     return <p className="text-sm text-muted-foreground">{common('loading')}</p>;
   }
 
-  if (!currentEmployee) {
-    return <EmptyState icon={CalendarCheck} title={t('employeeProfileRequired')} description={t('currentEmployeeRequired')} />;
+  if (!isContractEmployee) {
+    return <EmptyState icon={CalendarCheck} title={t('contractLeaveOnlyTitle')} description={t('contractLeaveOnly')} />;
   }
 
   if (mode === 'edit' && !editingRequest) {

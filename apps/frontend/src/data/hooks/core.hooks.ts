@@ -46,7 +46,6 @@ import type {
   ReportKey,
   ReplaceHrDepartmentAssignmentsInput,
   ReviewLeaveInterruptionInput,
-  TransferLeaveBalanceInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
   UpdateDepartmentInput,
@@ -526,13 +525,17 @@ export function useUpdateHoliday() {
   });
 }
 
-export function useEmployees(enabled = true) {
+export function useEmployees(enabled = true, workingOnly = false) {
   return useQuery({
-    queryKey: coreQueryKeys.employees(),
-    queryFn: () => coreApi.getEmployees(),
+    queryKey: workingOnly ? [...coreQueryKeys.employees(), { workingOnly: true }] : coreQueryKeys.employees(),
+    queryFn: () => coreApi.getEmployees(workingOnly),
     staleTime: 5 * 60 * 1000,
     enabled,
   });
+}
+
+export function useWorkingEmployees(enabled = true) {
+  return useEmployees(enabled, true);
 }
 
 function invalidateHolidayDependentQueries(queryClient: ReturnType<typeof useQueryClient>) {
@@ -1629,22 +1632,6 @@ export function useBulkUpsertLeaveBalances(options?: { view?: LeaveBalanceView }
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.leaveRequestsRoot(),
-      });
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.dashboardSummary(),
-      });
-    },
-  });
-}
-
-export function useTransferLeaveBalance() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: TransferLeaveBalanceInput) => coreApi.transferLeaveBalance(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.leaveBalancesRoot(),
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),

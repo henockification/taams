@@ -24,7 +24,6 @@ import type {
   CreateLeaveFiscalYearInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
-  TransferLeaveBalanceInput,
   UpdateLeaveFiscalYearInput,
   UpdateLeaveRequestInput,
   UpdateLeaveTypeInput,
@@ -33,11 +32,11 @@ import type {
 } from '../../../types/core.types';
 import { assertCanAccessEmployee, isEmployeeVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import {
-  getVisibleEmployeeIdsForSupervisorActor,
   getPrimaryLeaveApprovalEmployeeIds,
   resolveLeaveApprovalActionContext,
 } from './manageSupervisorDelegations';
 import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
+import { assertContractLeaveEmployee } from '../../../lib/employees/leave-eligibility';
 import {
   diffChanges,
   employeeAuditFields,
@@ -47,7 +46,7 @@ import {
   type AuditAction,
 } from '../../../lib/audit';
 
-export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management' | 'supervisor';
+export type LeaveBalanceView = 'self' | 'approvals' | 'authorizations' | 'management';
 
 type DbClient = typeof db | any;
 type AnnualLeaveDateSelection = { date: string; dayValue: number };
@@ -245,7 +244,10 @@ export async function getLeaveBalances(
   context: { scope?: EmployeeVisibilityScope; userId?: string; roles?: string[]; view?: LeaveBalanceView; canAuthorize?: boolean } = {},
 ) {
   const balances = await db.query.leaveBalances.findMany({
-    where: fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
+    where: and(
+      fiscalYearId ? eq(leaveBalances.fiscalYearId, fiscalYearId) : undefined,
+      inArray(leaveBalances.employeeId, db.select({ id: employees.id }).from(employees).where(eq(employees.employmentType, 'CONTRACT'))),
+    ),
     with: {
       employee: {
         with: {
@@ -260,10 +262,6 @@ export async function getLeaveBalances(
 
   const { scope, userId, view = 'self' } = context;
   if (!userId) return [];
-  if (view === 'supervisor') {
-    const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(userId, context.roles ?? []));
-    return balances.filter((balance) => visibleEmployeeIds.has(balance.employeeId) && !balance.fiscalYear?.isActive);
-  }
   if (view === 'management') {
     if (scope?.type !== 'unrestricted' && scope?.type !== 'hr' && scope?.type !== 'hr-departments') throw new Error('Leave balance management access is required');
     return balances.filter((balance) => isEmployeeVisibleInScope(balance.employee, scope));
@@ -351,6 +349,10 @@ export async function upsertLeaveBalance(input: UpsertLeaveBalanceInput, tx: DbC
 
 export async function bulkUpsertLeaveBalances(input: BulkUpsertLeaveBalancesInput) {
   return db.transaction(async (tx) => {
+    // Validate the full batch before writing any balances or audit events.
+    for (const balance of input.balances) {
+      await getEmployeeById(balance.employeeId, tx);
+    }
     const balances = [];
     for (const balance of input.balances) {
       balances.push(await upsertLeaveBalance({
@@ -366,128 +368,17 @@ export async function bulkUpsertLeaveBalances(input: BulkUpsertLeaveBalancesInpu
 }
 
 export async function upsertLeaveBalanceScoped(input: UpsertLeaveBalanceInput, scope: EmployeeVisibilityScope) {
+  assertLeaveBalanceManagementScope(scope);
   await assertCanAccessEmployee(input.employeeId, scope);
   return upsertLeaveBalance(input);
 }
 
 export async function bulkUpsertLeaveBalancesScoped(input: BulkUpsertLeaveBalancesInput, scope: EmployeeVisibilityScope) {
+  assertLeaveBalanceManagementScope(scope);
   for (const balance of input.balances) {
     await assertCanAccessEmployee(balance.employeeId, scope);
   }
   return bulkUpsertLeaveBalances(input);
-}
-
-export async function upsertSupervisorLeaveBalance(
-  input: UpsertLeaveBalanceInput,
-  actorUserId: string,
-  roles?: string[] | null,
-) {
-  await assertSupervisorCanManageLeaveBalance(input.employeeId, actorUserId, roles);
-  await assertInactiveLeaveFiscalYear(input.fiscalYearId);
-  return upsertLeaveBalance(input);
-}
-
-export async function bulkUpsertSupervisorLeaveBalances(
-  input: BulkUpsertLeaveBalancesInput,
-  actorUserId: string,
-  roles?: string[] | null,
-) {
-  await assertInactiveLeaveFiscalYear(input.fiscalYearId);
-  const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(actorUserId, roles ?? []));
-  for (const balance of input.balances) {
-    if (!visibleEmployeeIds.has(balance.employeeId)) throw new Error('Employee not found');
-  }
-  return bulkUpsertLeaveBalances(input);
-}
-
-export async function transferLeaveBalanceScoped(input: TransferLeaveBalanceInput, scope: EmployeeVisibilityScope) {
-  await assertCanAccessEmployee(input.employeeId, scope);
-  return transferLeaveBalance(input);
-}
-
-export async function transferLeaveBalance(input: TransferLeaveBalanceInput) {
-  return db.transaction(async (tx) => {
-    const employee = await getEmployeeById(input.employeeId, tx);
-    if (!employee) throw new Error('Employee not found');
-    if (employee.employmentType !== 'PERMANENT') {
-      throw new Error('Only permanent employees can carry annual leave forward');
-    }
-    if (input.approvedBy) await assertUserExists(input.approvedBy, tx);
-
-    const days = parseDays(input.days, 'transfer days');
-    const fromFiscalYear = await getLeaveFiscalYearById(input.fromFiscalYearId, tx);
-    const toFiscalYear = await getLeaveFiscalYearById(input.toFiscalYearId, tx);
-    if (!fromFiscalYear || !toFiscalYear) throw new Error('Fiscal year not found');
-    assertTransferWindow(fromFiscalYear, toFiscalYear);
-
-    const fromBalance = await getEmployeeFiscalYearBalance(input.employeeId, input.fromFiscalYearId, tx);
-    const toBalance = await getEmployeeFiscalYearBalance(input.employeeId, input.toFiscalYearId, tx);
-    if (!fromBalance || !toBalance) throw new Error('Both source and target balances are required before transfer');
-    if (numeric(fromBalance.available) < days) throw new Error('Transfer amount exceeds available source balance');
-
-    const [updatedFrom] = await tx.update(leaveBalances)
-      .set({
-        available: sql`${leaveBalances.available} - ${days}`,
-        updatedBy: input.approvedBy ?? null,
-        updatedAt: new Date(),
-      } as any)
-      .where(and(eq(leaveBalances.id, fromBalance.id), gte(leaveBalances.available, fixed(days))))
-      .returning();
-    if (!updatedFrom) throw new Error('Transfer amount exceeds available source balance');
-
-    const [updatedTo] = await tx.update(leaveBalances)
-      .set({
-        transferredIn: sql`${leaveBalances.transferredIn} + ${days}`,
-        available: sql`${leaveBalances.available} + ${days}`,
-        updatedBy: input.approvedBy ?? null,
-        updatedAt: new Date(),
-      } as any)
-      .where(eq(leaveBalances.id, toBalance.id))
-      .returning();
-
-    const [outTx] = await tx.insert(leaveBalanceTransactions).values({
-      leaveBalanceId: updatedFrom.id,
-      employeeId: input.employeeId,
-      fiscalYearId: input.fromFiscalYearId,
-      type: 'TRANSFER_OUT',
-      days: fixed(days),
-      note: input.note ?? 'Carry-forward transfer out',
-      createdBy: input.approvedBy ?? null,
-    } as any).returning();
-
-    const [inTx] = await tx.insert(leaveBalanceTransactions).values({
-      leaveBalanceId: updatedTo.id,
-      employeeId: input.employeeId,
-      fiscalYearId: input.toFiscalYearId,
-      linkedTransactionId: outTx.id,
-      type: 'TRANSFER_IN',
-      days: fixed(days),
-      note: input.note ?? 'Carry-forward transfer in',
-      createdBy: input.approvedBy ?? null,
-    } as any).returning();
-
-    await tx.update(leaveBalanceTransactions)
-      .set({ linkedTransactionId: inTx.id } as any)
-      .where(eq(leaveBalanceTransactions.id, outTx.id));
-
-    await writeAuditEvent(tx, {
-      action: 'LEAVE_BALANCE_TRANSFERRED',
-      resourceType: 'leave_balance',
-      resourceId: updatedTo.id,
-      resourceLabel: `${formatEmployeeLabel(employee)} leave transfer`,
-      ...employeeAuditFields(employee),
-      metadata: {
-        days,
-        fromFiscalYearId: input.fromFiscalYearId,
-        toFiscalYearId: input.toFiscalYearId,
-      },
-    });
-    return {
-      fromBalance: await getLeaveBalanceById(updatedFrom.id, tx),
-      toBalance: await getLeaveBalanceById(updatedTo.id, tx),
-      transactions: [outTx, inTx],
-    };
-  });
 }
 
 export async function getLeaveRequests(
@@ -497,6 +388,7 @@ export async function getLeaveRequests(
   await ensureKnownLeaveTypes();
   await reconcileAnnualLeaveConsumption();
   const requests = await db.query.leaveRequests.findMany({
+    where: inArray(leaveRequests.employeeId, db.select({ id: employees.id }).from(employees).where(eq(employees.employmentType, 'CONTRACT'))),
     with: {
       employee: {
         with: {
@@ -527,6 +419,7 @@ export async function reconcileAnnualLeaveConsumption(cutoffDate = yesterday()) 
   return runWithAuditContext({ actorType: 'SYSTEM' }, () => db.transaction(async (tx) => {
     const scheduledDates = await tx.query.annualLeaveRequestDates.findMany({
       where: and(
+        inArray(annualLeaveRequestDates.employeeId, tx.select({ id: employees.id }).from(employees).where(eq(employees.employmentType, 'CONTRACT'))),
         eq(annualLeaveRequestDates.status, 'APPROVED'),
         eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'),
         lte(annualLeaveRequestDates.leaveDate, cutoffDate),
@@ -676,7 +569,7 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
       if (!fiscalYear) throw new Error('Leave fiscal year not found');
       const employee = await getEmployeeById(request.employeeId, tx);
       if (!employee) throw new Error('Employee not found');
-      await assertAnnualFiscalYearAllowed(employee, fiscalYear);
+      await assertAnnualFiscalYearAllowed(employee, fiscalYear, tx);
 
       const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
       await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, dateSelections.map((selection) => selection.date), tx);
@@ -1022,12 +915,13 @@ export async function authorizeLeaveInterruption(id: string, input: AuthorizeLea
   return db.transaction(async (tx) => {
     const interruption = await getLeaveInterruptionById(id, tx);
     if (!interruption) throw new Error('Leave interruption not found');
-    if (interruption.status === input.status) return getLeaveRequestById(interruption.leaveRequestId, tx);
+    const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
+    if (!request) throw new Error('Leave request not found');
+    if (input.scope) await assertCanAccessEmployee(request.employeeId, input.scope, tx);
+    if (interruption.status === input.status) return request;
     if (interruption.status !== 'APPROVED') throw new Error('Only supervisor-approved leave interruptions can be authorized');
     await assertUserExists(input.actorUserId, tx);
-    const request = await getLeaveRequestById(interruption.leaveRequestId, tx);
     if (!request || request.status !== 'AUTHORIZED') throw new Error('The original leave request is not authorized');
-    if (input.scope) await assertCanAccessEmployee(request.employeeId, input.scope, tx);
 
     if (input.status === 'AUTHORIZATION_REJECTED') {
       if (!input.rejectionReason?.trim()) throw new Error('Authorization rejection reason is required');
@@ -1397,66 +1291,16 @@ function insertInterruptionDates(
 }
 
 async function assertAnnualFiscalYearAllowed(employee: any, fiscalYear: any, tx: DbClient = db) {
-  await assertFiscalYearMatchesEmploymentType(
-    employee,
-    fiscalYear,
-    tx,
-    'Permanent employees can request annual leave only from previous fiscal-year balances',
-    'Contract and non-permanent employees can request annual leave only from the current fiscal year',
-  );
+  assertContractLeaveEmployee(employee);
+  const activeFiscalYear = await getActiveLeaveFiscalYear(tx);
+  if (!activeFiscalYear) throw new Error('Active leave fiscal year is required');
+  if (fiscalYear.id !== activeFiscalYear.id) {
+    throw new Error('Contract employees can use annual leave balances only for the current fiscal year');
+  }
 }
 
 async function assertLeaveBalanceFiscalYearAllowed(employee: any, fiscalYear: any, tx: DbClient = db) {
-  await assertFiscalYearMatchesEmploymentType(
-    employee,
-    fiscalYear,
-    tx,
-    'Permanent employees can have leave balances only for previous fiscal years',
-    'Contract and non-permanent employees can have leave balances only for the current fiscal year',
-  );
-}
-
-async function assertSupervisorCanManageLeaveBalance(
-  employeeId: string,
-  actorUserId: string,
-  roles?: string[] | null,
-) {
-  const visibleEmployeeIds = new Set(await getVisibleEmployeeIdsForSupervisorActor(actorUserId, roles ?? []));
-  if (!visibleEmployeeIds.has(employeeId)) throw new Error('Employee not found');
-}
-
-async function assertInactiveLeaveFiscalYear(fiscalYearId: string, tx: DbClient = db) {
-  const fiscalYear = await getLeaveFiscalYearById(fiscalYearId, tx);
-  if (!fiscalYear) throw new Error('Leave fiscal year not found');
-  if (fiscalYear.isActive) {
-    throw new Error('Supervisors can set leave balances only for previous fiscal years');
-  }
-}
-
-async function assertFiscalYearMatchesEmploymentType(
-  employee: any,
-  fiscalYear: any,
-  tx: DbClient,
-  permanentError: string,
-  nonPermanentError: string,
-) {
-  const activeFiscalYear = await tx.query.leaveFiscalYears.findFirst({
-    where: eq(leaveFiscalYears.isActive, true),
-    columns: { id: true },
-  });
-
-  if (!activeFiscalYear) throw new Error('Active leave fiscal year is required');
-
-  if (employee.employmentType === 'PERMANENT') {
-    if (fiscalYear.id === activeFiscalYear.id) {
-      throw new Error(permanentError);
-    }
-    return;
-  }
-
-  if (fiscalYear.id !== activeFiscalYear.id) {
-    throw new Error(nonPermanentError);
-  }
+  await assertAnnualFiscalYearAllowed(employee, fiscalYear, tx);
 }
 
 function normalizeAnnualLeaveDateSelections(
@@ -1549,7 +1393,7 @@ async function getLeaveBalanceById(id: string, tx: DbClient = db) {
 }
 
 async function getLeaveRequestById(id: string, tx: DbClient = db) {
-  return tx.query.leaveRequests.findFirst({
+  const request = await tx.query.leaveRequests.findFirst({
     where: eq(leaveRequests.id, id),
     with: {
       employee: {
@@ -1569,13 +1413,17 @@ async function getLeaveRequestById(id: string, tx: DbClient = db) {
       },
     },
   });
+  if (request) assertContractLeaveEmployee(request.employee);
+  return request;
 }
 
 async function getLeaveInterruptionById(id: string, tx: DbClient = db) {
-  return tx.query.leaveInterruptions.findFirst({
+  const interruption = await tx.query.leaveInterruptions.findFirst({
     where: eq(leaveInterruptions.id, id),
     with: { dates: true },
   });
+  if (interruption) await getLeaveRequestById(interruption.leaveRequestId, tx);
+  return interruption;
 }
 
 async function getEmployeeFiscalYearBalance(employeeId: string, fiscalYearId: string, tx: DbClient = db) {
@@ -1588,7 +1436,15 @@ async function getEmployeeFiscalYearBalance(employeeId: string, fiscalYearId: st
 }
 
 async function getEmployeeById(id: string, tx: DbClient = db) {
-  return tx.query.employees.findFirst({ where: eq(employees.id, id) });
+  const employee = await tx.query.employees.findFirst({ where: eq(employees.id, id) });
+  assertContractLeaveEmployee(employee);
+  return employee;
+}
+
+function assertLeaveBalanceManagementScope(scope: EmployeeVisibilityScope) {
+  if (!['unrestricted', 'hr', 'hr-departments'].includes(scope.type)) {
+    throw new Error('Leave balance management access is required');
+  }
 }
 
 async function getLeaveTypeById(id: string, tx: DbClient = db) {
@@ -1721,16 +1577,6 @@ function assertWithinAllowedDays(leaveType: any, requestedDays: number) {
 function assertDateRange(startDate: string, endDate: string) {
   if (new Date(`${startDate}T00:00:00Z`).getTime() > new Date(`${endDate}T00:00:00Z`).getTime()) {
     throw new Error('Start date must be before or equal to end date');
-  }
-}
-
-function assertTransferWindow(fromFiscalYear: any, toFiscalYear: any) {
-  const fromEnd = new Date(`${formatDateValue(fromFiscalYear.endsAt)}T00:00:00Z`).getTime();
-  const toStart = new Date(`${formatDateValue(toFiscalYear.startsAt)}T00:00:00Z`).getTime();
-  if (toStart <= fromEnd) throw new Error('Target fiscal year must be after source fiscal year');
-  const maxCarryForwardMs = 2 * 366 * 24 * 60 * 60 * 1000;
-  if (toStart - fromEnd > maxCarryForwardMs) {
-    throw new Error('Annual leave cannot be carried forward beyond two fiscal years');
   }
 }
 

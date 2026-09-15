@@ -21,8 +21,7 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('temporary-assignment:edit', 'temporary-assignment', 'edit', 'Update temporary department assignments'),
   ('leave-fiscal-years:read', 'leave-fiscal-years', 'read', 'View leave fiscal years'),
   ('leave-types:read', 'leave-types', 'read', 'View leave types'),
-  ('leave-balances:read', 'leave-balances', 'read', 'View leave balances'),
-  ('leave-transfer:read', 'leave-transfer', 'read', 'View leave carry-forward'),
+  ('leave-balances:read', 'leave-balances', 'read', 'Manage active-year contract employee leave balances'),
   ('leave-request-approvals:approve', 'leave-request-approvals', 'approve', 'Approve or reject supervised leave requests'),
   ('leave-authorizations:approve', 'leave-authorizations', 'approve', 'Authorize or reject supervisor-approved leave requests'),
   ('annual-leave-requests:read', 'annual-leave-requests', 'read', 'View annual leave requests'),
@@ -102,7 +101,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
   ('human_resource', 'Human resources user with employee, leave, attendance, schedule, and report access', ARRAY[
     'hr-dashboard:read', 'employees:read', 'employees:create', 'employees:update', 'permanent-employees:read',
     'temporary-assignment:read', 'temporary-assignment:add', 'temporary-assignment:edit',
-    'leave-fiscal-years:read', 'leave-types:read', 'leave-balances:read', 'leave-transfer:read',
+    'leave-fiscal-years:read', 'leave-types:read', 'leave-balances:read',
     'leave-request-approvals:approve', 'leave-authorizations:approve', 'annual-leave-requests:read', 'other-leave-requests:read',
     'overtime-requests:read', 'manual-punch-requests:read', 'manual-punch-requests:approve',
     'work-schedules:read', 'holidays:read', 'holidays:create', 'holidays:update', 'shifts:read',

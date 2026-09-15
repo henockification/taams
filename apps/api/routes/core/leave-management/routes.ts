@@ -11,14 +11,12 @@ import {
   CreateLeaveTypeRequestSchema,
   LeaveBalanceResponseSchema,
   LeaveBalancesResponseSchema,
-  LeaveBalanceTransferResponseSchema,
   LeaveFiscalYearResponseSchema,
   LeaveFiscalYearsResponseSchema,
   LeaveRequestResponseSchema,
   LeaveRequestsResponseSchema,
   LeaveTypeResponseSchema,
   LeaveTypesResponseSchema,
-  TransferLeaveBalanceRequestSchema,
   ReviewLeaveInterruptionRequestSchema,
   UpdateLeaveFiscalYearRequestSchema,
   UpdateLeaveRequestRequestSchema,
@@ -41,7 +39,6 @@ import {
   getLeaveTypesHandler,
   reviewLeaveInterruptionHandler,
   setActiveLeaveFiscalYearHandler,
-  transferLeaveBalanceHandler,
   updateLeaveFiscalYearHandler,
   updateLeaveRequestHandler,
   updateLeaveTypeHandler,
@@ -126,7 +123,7 @@ export const getLeaveBalancesRoute = createRoute({
   summary: 'Get Leave Balances',
   request: { query: z.object({
     fiscalYearId: z.string().uuid().optional(),
-    view: z.enum(['self', 'approvals', 'authorizations', 'management', 'supervisor']).optional(),
+    view: z.enum(['self', 'approvals', 'authorizations', 'management']).optional(),
   }) },
   responses: { 200: { content: { 'application/json': { schema: LeaveBalancesResponseSchema } }, description: 'Leave balances' } },
 });
@@ -147,15 +144,6 @@ export const bulkUpsertLeaveBalancesRoute = createRoute({
   summary: 'Bulk Create or Update Initial Leave Balances',
   request: { body: { content: { 'application/json': { schema: BulkUpsertLeaveBalancesRequestSchema } } } },
   responses: { 200: { content: { 'application/json': { schema: LeaveBalancesResponseSchema } }, description: 'Saved leave balances' } },
-});
-
-export const transferLeaveBalanceRoute = createRoute({
-  method: 'post',
-  path: '/leave/balances/transfer',
-  tags: ['Core', 'Leave Management'],
-  summary: 'Transfer Annual Leave Balance',
-  request: { body: { content: { 'application/json': { schema: TransferLeaveBalanceRequestSchema } } } },
-  responses: { 200: { content: { 'application/json': { schema: LeaveBalanceTransferResponseSchema } }, description: 'Transferred leave balance' } },
 });
 
 export const getLeaveRequestsRoute = createRoute({
@@ -240,10 +228,9 @@ leaveManagementApp.post('/leave/fiscal-years/:id/active', requirePermission('lea
 leaveManagementApp.get('/leave/types', requirePermission('leave-types:read', 'annual-leave-requests:read', 'other-leave-requests:read'), getLeaveTypesHandler);
 leaveManagementApp.post('/leave/types', requirePermission('leave-types:read'), createLeaveTypeHandler);
 leaveManagementApp.put('/leave/types/:id', requirePermission('leave-types:read'), updateLeaveTypeHandler);
-leaveManagementApp.get('/leave/balances', requirePermissionOrDelegation('leave-balances:read', 'annual-leave-requests:read', 'leave-request-approvals:approve'), getLeaveBalancesHandler);
-leaveManagementApp.post('/leave/balances', requirePermissionOrDelegation('leave-balances:read', 'leave-request-approvals:approve'), upsertLeaveBalanceHandler);
-leaveManagementApp.post('/leave/balances/bulk', requirePermissionOrDelegation('leave-balances:read', 'leave-request-approvals:approve'), bulkUpsertLeaveBalancesHandler);
-leaveManagementApp.post('/leave/balances/transfer', requirePermission('leave-transfer:read'), transferLeaveBalanceHandler);
+leaveManagementApp.get('/leave/balances', requirePermissionOrDelegation('leave-balances:read', 'annual-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveBalancesHandler);
+leaveManagementApp.post('/leave/balances', requirePermission('leave-balances:read'), upsertLeaveBalanceHandler);
+leaveManagementApp.post('/leave/balances/bulk', requirePermission('leave-balances:read'), bulkUpsertLeaveBalancesHandler);
 leaveManagementApp.get('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), createLeaveRequestHandler);
 leaveManagementApp.put('/leave/requests/:id', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), updateLeaveRequestHandler);
@@ -264,7 +251,6 @@ openApiApp
   .openapi(getLeaveBalancesRoute, getLeaveBalancesHandler as any)
   .openapi(upsertLeaveBalanceRoute, upsertLeaveBalanceHandler as any)
   .openapi(bulkUpsertLeaveBalancesRoute, bulkUpsertLeaveBalancesHandler as any)
-  .openapi(transferLeaveBalanceRoute, transferLeaveBalanceHandler as any)
   .openapi(getLeaveRequestsRoute, getLeaveRequestsHandler as any)
   .openapi(createLeaveRequestRoute, createLeaveRequestHandler as any)
   .openapi(updateLeaveRequestRoute, updateLeaveRequestHandler as any)

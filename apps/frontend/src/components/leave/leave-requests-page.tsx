@@ -147,17 +147,9 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     : leaveTypes.filter((type) => type.code.toUpperCase() !== 'ANNUAL');
 
   const annualBalances = leaveBalancesQuery.data?.leaveBalances ?? [];
-  const eligibleAnnualFiscalYears = useMemo(() => {
-    if (!currentEmployee) return [];
-    const balanceByFiscalYear = new Map(annualBalances.map((balance) => [balance.fiscalYearId, balance]));
-    if (currentEmployee.employmentType === 'PERMANENT') {
-      return fiscalYears.filter((fiscalYear) => {
-        const balance = balanceByFiscalYear.get(fiscalYear.id);
-        return !fiscalYear.isActive && balance && Number(balance.available) > 0;
-      });
-    }
-    return activeFiscalYear ? [activeFiscalYear] : [];
-  }, [activeFiscalYear, annualBalances, currentEmployee, fiscalYears]);
+  const isContractEmployee = currentEmployee?.employmentType === 'CONTRACT';
+  const eligibleAnnualFiscalYears = useMemo(() => isContractEmployee && activeFiscalYear ? [activeFiscalYear] : [], [activeFiscalYear, isContractEmployee]);
+
   const selectedYearBalance = useMemo(() => {
     if (!currentEmployee?.id) return null;
     return annualBalances.find((balance) => balance.employeeId === currentEmployee.id && balance.fiscalYearId === form.fiscalYearId) ?? null;
@@ -223,8 +215,8 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const saveRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!currentEmployee?.id) {
-      notifications.show({ title: common('error'), message: t('currentEmployeeRequired'), color: 'red' });
+    if (!isContractEmployee || !currentEmployee?.id) {
+      notifications.show({ title: common('error'), message: t('contractLeaveOnly'), color: 'red' });
       return;
     }
 
@@ -363,7 +355,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
           </Button>
         </div>
         {kind === 'annual' ? (
-          isLoading || !currentEmployee ? (
+          isLoading || !isContractEmployee ? (
             <Button disabled className="w-full lg:w-auto">
               <Plus className="size-4" />
               {t('requestLeave')}
@@ -377,7 +369,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
             </Button>
           )
         ) : (
-          <Button onClick={openDialog} disabled={isLoading || !currentEmployee} className="w-full lg:w-auto">
+          <Button onClick={openDialog} disabled={isLoading || !isContractEmployee} className="w-full lg:w-auto">
             <Plus className="size-4" />
             {t('requestLeave')}
           </Button>
@@ -388,11 +380,11 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
-          ) : !currentEmployee ? (
+          ) : !isContractEmployee ? (
             <EmptyState
               icon={CalendarCheck}
-              title={t('employeeProfileRequired')}
-              description={t('currentEmployeeRequired')}
+              title={t('contractLeaveOnlyTitle')}
+              description={t('contractLeaveOnly')}
             />
           ) : requests.length === 0 ? (
             <EmptyState icon={CalendarCheck} title={t('noLeaveRequests')} description={t('noLeaveRequestsDescription')} />
@@ -698,6 +690,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                 type="submit"
                 disabled={
                   createRequest.isPending
+                  || !isContractEmployee
                   || !currentEmployee?.id
                   || !selectedLeaveTypeId
                   || (requiresFiscalYearBalance && (!form.fiscalYearId || !selectedYearBalance))

@@ -1077,14 +1077,6 @@ export type BulkUpsertLeaveBalancesInput = {
   updatedBy?: string | null;
 };
 
-export type TransferLeaveBalanceInput = {
-  employeeId: string;
-  fromFiscalYearId: string;
-  toFiscalYearId: string;
-  days: string | number;
-  approvedBy?: string | null;
-  note?: string | null;
-};
 
 export type CreateLeaveRequestInput = {
   employeeId: string;
@@ -1159,12 +1151,7 @@ export type LeaveBalanceResponse = {
   success: boolean;
   leaveBalance: LeaveBalance;
 };
-export type LeaveBalanceTransferResponse = {
-  success: boolean;
-  fromBalance: LeaveBalance;
-  toBalance: LeaveBalance;
-  transactions: LeaveBalanceTransaction[];
-};
+
 export type LeaveRequestsResponse = {
   success: boolean;
   leaveRequests: LeaveRequest[];

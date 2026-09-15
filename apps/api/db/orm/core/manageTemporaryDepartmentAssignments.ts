@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, employees, temporaryDepartmentAssignments } from '../../schema';
 import type {
@@ -8,6 +8,7 @@ import type {
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
 import { employeeAuditFields, formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
+import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 
 type DbClient = typeof db | any;
 
@@ -19,6 +20,8 @@ type AssignmentContext = {
 
 export async function getTemporaryDepartmentAssignments(context: AssignmentContext) {
   const assignments = await db.query.temporaryDepartmentAssignments.findMany({
+    where: inArray(temporaryDepartmentAssignments.employeeId, db.select({ id: employees.id }).from(employees)
+      .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))),
     with: assignmentRelations,
     orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
   });

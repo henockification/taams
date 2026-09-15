@@ -117,9 +117,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
       case 'leaveTypes':
         return coreT('leaveTypesDescription');
       case 'leaveBalances':
-        return coreT('supervisorLeaveBalancesDescription');
-      case 'leaveTransfer':
-        return coreT('leaveTransferDescription');
+        return coreT('initialBalancesDescription');
       case 'leaveAuthorizations':
         return coreT('leaveAuthorizationsDescription');
       case 'temporaryAssignments':

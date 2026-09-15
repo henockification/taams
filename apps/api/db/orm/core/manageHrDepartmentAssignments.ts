@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db';
-import { departments, hrDepartmentAssignments, roles, user, userRoles } from '../../schema';
+import { departments, employees, hrDepartmentAssignments, roles, user, userRoles } from '../../schema';
+import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 import { diffChanges, writeAuditEvent } from '../../../lib/audit';
 import { normalizeRoleName } from '../../../lib/privileged-roles';
 
@@ -41,6 +42,8 @@ export async function assertCanManageHrDepartmentAssignments(input: {
 
 export async function getHrDepartmentAssignmentUsers() {
   const users = await db.query.user.findMany({
+    where: inArray(user.id, db.select({ userId: employees.userId }).from(employees)
+      .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))),
     with: {
       userRoles: {
         with: {

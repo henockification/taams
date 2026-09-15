@@ -54,7 +54,7 @@ import {
   useCreateWorkScheduleDay,
   useDeleteEmployeeWorkSchedule,
   useDepartments,
-  useEmployees,
+  useWorkingEmployees,
   useShiftSegments,
   useShifts,
   useUpdateShift,
@@ -147,7 +147,7 @@ export function WorkSchedulesPage({
   const { formatDate } = useCalendarPreference();
   const { data: shiftsResponse, isLoading: shiftsLoading } = useShifts();
   const { data: workSchedulesResponse, isLoading: workSchedulesLoading } = useWorkSchedules();
-  const { data: employeesResponse, isLoading: employeesLoading } = useEmployees();
+  const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
   const { data: departmentsResponse } = useDepartments();
 
   const shifts = shiftsResponse?.shifts ?? [];

@@ -48,7 +48,6 @@ export type AppNavItem = {
     | 'fiscalYears'
     | 'leaveTypes'
     | 'leaveBalances'
-    | 'leaveTransfer'
     | 'leaveRequestApprovals'
     | 'leaveAuthorizations'
     | 'supervisorDelegation'
@@ -222,12 +221,12 @@ export const appNavGroups: AppNavGroup[] = [
         icon: ListChecks,
       },
       {
-        titleKey: 'leaveTransfer',
-        url: '/leave-management/carry-forward',
-        permissionResource: 'leave-transfer',
-        requiredPermission: 'leave-transfer:read',
+        titleKey: 'leaveBalances',
+        url: '/leave-management/balances',
+        permissionResource: 'leave-balances',
+        requiredPermission: 'leave-balances:read',
         legacyPermissions: ['leave-management:read'],
-        icon: ArrowRightLeft,
+        icon: Scale,
       },
       {
         titleKey: 'leaveAuthorizations',
@@ -264,14 +263,6 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'leave-request-approvals:approve',
         legacyPermissions: ['leave-requests:approve'],
         icon: FileCheck2,
-      },
-      {
-        titleKey: 'leaveBalances',
-        url: '/leave-balances',
-        permissionResource: 'leave-balances',
-        requiredPermission: 'leave-balances:read',
-        legacyPermissions: ['leave-management:read'],
-        icon: Scale,
       },
       {
         titleKey: 'overtimeAssignments',
@@ -563,7 +554,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/leave-management/authorizations') return userHasPermission(user, 'leave-authorizations:approve');
-  if (item.url === '/leave-balances') return hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user) || isSuperAdmin(user);
+  if (item.url === '/leave-management/balances') return hasLeaveBalanceManagementAccess(user);
   if (item.url === '/temporary-assignments') return hasTemporaryAssignmentAccess(user);
   if (item.url === '/department-assignments') return hasHrDepartmentAssignmentManagementAccess(user);
   if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
@@ -643,7 +634,6 @@ function isHrCapabilityPermission(permission: string) {
       'hr-attendance-approvals',
       'manual-punch-requests',
       'leave-balances',
-      'leave-transfer',
       'leave-fiscal-years',
       'leave-types',
       'leave-request-approvals',
@@ -709,8 +699,9 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/supervisor-delegations' || pathname.startsWith('/supervisor-delegations/'))
     return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (pathname === '/leave-balances' || pathname.startsWith('/leave-balances/'))
-    return hasExactSupervisorRole(user) || hasDelegatedSupervisorAccess(user) || isSuperAdmin(user);
-  if (pathname === '/leave-management/balances' || pathname.startsWith('/leave-management/balances/')) return false;
+    return hasLeaveBalanceManagementAccess(user);
+  if (pathname === '/leave-management/balances' || pathname.startsWith('/leave-management/balances/')) return hasLeaveBalanceManagementAccess(user);
+  if (pathname === '/leave-management/carry-forward' || pathname.startsWith('/leave-management/carry-forward/')) return false;
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
@@ -816,6 +807,10 @@ function hasUnrestrictedRole(user: AuthzUser) {
 function hasHumanResourceRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => role === 'human_resource');
+}
+
+function hasLeaveBalanceManagementAccess(user: AuthzUser) {
+  return (hasUnrestrictedRole(user) || hasHumanResourceRole(user)) && userHasPermission(user, 'leave-balances:read');
 }
 
 function hasHrDepartmentAssignmentManagementAccess(user: AuthzUser) {

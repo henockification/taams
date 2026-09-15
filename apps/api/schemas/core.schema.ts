@@ -1176,14 +1176,6 @@ export const BulkUpsertLeaveBalancesRequestSchema = z.object({
   updatedBy: z.string().nullable().optional(),
 });
 
-export const TransferLeaveBalanceRequestSchema = z.object({
-  employeeId: UuidSchema,
-  fromFiscalYearId: UuidSchema,
-  toFiscalYearId: UuidSchema,
-  days: z.union([z.string(), z.number()]),
-  approvedBy: z.string().nullable().optional(),
-  note: z.string().nullable().optional(),
-});
 
 export const CreateLeaveRequestRequestSchema = z.object({
   employeeId: UuidSchema,
@@ -1580,12 +1572,6 @@ export const LeaveBalanceResponseSchema = z.object({
   leaveBalance: LeaveBalanceSchema,
 });
 
-export const LeaveBalanceTransferResponseSchema = z.object({
-  success: z.boolean(),
-  fromBalance: LeaveBalanceSchema,
-  toBalance: LeaveBalanceSchema,
-  transactions: z.array(LeaveBalanceTransactionSchema),
-});
 
 export const LeaveRequestsResponseSchema = z.object({
   success: z.boolean(),

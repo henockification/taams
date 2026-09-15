@@ -1,5 +1,6 @@
-import { LeaveBalancesSection } from '@/components/leave/leave-management-sections';
+import { redirect } from '@/i18n';
 
-export default function SupervisorLeaveBalancesRoute() {
-  return <LeaveBalancesSection view="supervisor" />;
+export default async function LeaveBalancesRedirect({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  redirect({ href: '/leave-management/balances', locale });
 }

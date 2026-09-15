@@ -75,7 +75,6 @@ import type {
   LeaveBalanceResponse,
   LeaveBalanceView,
   LeaveBalancesResponse,
-  LeaveBalanceTransferResponse,
   LeaveFiscalYearResponse,
   LeaveFiscalYearsResponse,
   LeaveRequestResponse,
@@ -106,7 +105,6 @@ import type {
   TemporaryDepartmentAssignmentResponse,
   TemporaryDepartmentAssignmentsResponse,
   TimeOperationsSummaryResponse,
-  TransferLeaveBalanceInput,
   UpdateDepartmentInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
@@ -338,7 +336,7 @@ export const coreApi = {
 
     return coreFetch<NotificationLogsResponse>(`/notification-logs${suffix}`);
   },
-  getEmployees: () => coreFetch<EmployeesResponse>('/employees'),
+  getEmployees: (workingOnly = false) => coreFetch<EmployeesResponse>(workingOnly ? '/employees?workingOnly=true' : '/employees'),
   getEmployeesPaginated: (params: EmployeesPaginatedParams = {}) => {
     const query = new URLSearchParams();
     if (params.page) query.set('page', String(params.page));
@@ -675,11 +673,6 @@ export const coreApi = {
       body: JSON.stringify(input),
     });
   },
-  transferLeaveBalance: (input: TransferLeaveBalanceInput) =>
-    coreFetch<LeaveBalanceTransferResponse>('/leave/balances/transfer', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
   getLeaveRequests: (kind?: 'annual' | 'other', view: LeaveRequestView = 'self') => {
     const query = new URLSearchParams({ view });
     if (kind) query.set('kind', kind);

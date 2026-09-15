@@ -68,7 +68,7 @@ export async function createEmployeeHandler(c: Context) {
 export async function getEmployeesHandler(c: Context) {
   try {
     const scope = await resolveScope(c);
-    const result = await getEmployees(scope);
+    const result = await getEmployees(scope, c.req.query('workingOnly') === 'true');
 
     return c.json({
       success: true,
@@ -196,13 +196,14 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
     }
 
     const buffer = Buffer.from(await upload.arrayBuffer());
-    const rows = parseEmployeeWorkbook(buffer, upload.name);
+    const rows = parseEmployeeWorkbook(buffer, upload.name, employmentType);
     const seenEmployeeCodes = new Set<string>();
     const errors: { rowNumber: number; employeeCode: string | null; errors: string[] }[] = [];
     const validInputs = [];
 
     for (const [index, row] of rows.entries()) {
-      const mapped = mapExcelRowToEmployeeInput(row, index + 2);
+      const rowNumber = typeof row.__rowNum__ === 'number' ? row.__rowNum__ + 1 : index + 2;
+      const mapped = mapExcelRowToEmployeeInput(row, rowNumber, employmentType);
 
       if (!mapped.input) {
         errors.push({
@@ -217,7 +218,7 @@ async function importEmployeesFromWorkbook(c: Context, employmentType: 'PERMANEN
         errors.push({
           rowNumber: mapped.rowNumber,
           employeeCode: mapped.input.employeeCode,
-          errors: [`Duplicate Employee Id No in uploaded file: ${mapped.input.employeeCode}`],
+          errors: [`Duplicate employee code in uploaded file: ${mapped.input.employeeCode}`],
         });
         continue;
       }

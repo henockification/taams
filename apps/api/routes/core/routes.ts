@@ -223,6 +223,11 @@ export const getEmployeesRoute = createRoute({
   path: '/employees',
   tags: ['Core', 'Employees'],
   summary: 'Get Employees',
+  request: {
+    query: z.object({
+      workingOnly: z.enum(['true', 'false']).optional(),
+    }),
+  },
   responses: {
     200: {
       content: { 'application/json': { schema: EmployeesResponseSchema } },

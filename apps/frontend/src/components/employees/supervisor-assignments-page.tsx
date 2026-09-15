@@ -43,7 +43,7 @@ import {
   useAllEmployeeSupervisors,
   useBulkCreateEmployeeSupervisors,
   useDepartments,
-  useEmployees,
+  useWorkingEmployees,
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
@@ -53,7 +53,7 @@ import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 const allDepartmentsValue = '__all_departments';
 const allStatusesValue = '__all_statuses';
 const allEmploymentTypesValue = '__all_employment_types';
-const pageSizes = [25, 50, 100];
+const pageSizes = [25, 50, 100, 300];
 const employmentStatuses: EmploymentStatus[] = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'];
 const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
 
@@ -65,7 +65,7 @@ export function SupervisorAssignmentsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const { formatDate } = useCalendarPreference();
-  const { data: employeesResponse, isLoading: employeesLoading } = useEmployees();
+  const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
   const { data: departmentsResponse } = useDepartments();
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useAllEmployeeSupervisors();
   const bulkAssign = useBulkCreateEmployeeSupervisors();

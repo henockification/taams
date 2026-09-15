@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { ArrowRightLeft, CalendarPlus, Edit, Plus } from 'lucide-react';
+import { CalendarPlus, Edit, Plus } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -27,20 +27,16 @@ import {
   useCreateLeaveFiscalYear,
   useCreateLeaveType,
   useDepartments,
-  useEmployees,
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveTypes,
   useSetActiveLeaveFiscalYear,
-  useTransferLeaveBalance,
   useUpdateLeaveFiscalYear,
   useUpdateLeaveType,
   useUpsertLeaveBalance,
   useEmployeesPaginated,
 } from '@/data/hooks/core.hooks';
-import { useUsers } from '@/data/hooks/users.hooks';
 import type { Employee, LeaveBalance, LeaveFiscalYear, LeaveType } from '@/data/types/core.types';
-import type { User } from '@/data/types/api';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -67,23 +63,9 @@ const initialBalanceForm = {
   fiscalYearId: '',
   opening: '',
 };
-const initialTransferForm = {
-  employeeId: '',
-  fromFiscalYearId: '',
-  toFiscalYearId: '',
-  days: '',
-  approvedBy: '',
-  note: '',
-};
-
 function employeeName(employee?: Employee | null) {
   if (!employee) return '';
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
-function userName(user?: User | null) {
-  if (!user) return '';
-  return user.name || user.email;
 }
 
 function normalize(value: string) {
@@ -436,23 +418,10 @@ export function LeaveTypesSection() {
   );
 }
 
-function fiscalYearsForEmploymentType(
-  fiscalYears: LeaveFiscalYear[],
-  employmentType: 'all' | Employee['employmentType'] = 'all',
-) {
-  const inactive = fiscalYears
-    .filter((fiscalYear) => !fiscalYear.isActive)
-    .sort((left, right) => right.startsAt.localeCompare(left.startsAt));
-  const active = fiscalYears.filter((fiscalYear) => fiscalYear.isActive);
-  if (employmentType === 'PERMANENT') return inactive;
-  if (employmentType === 'all') return [...inactive, ...active];
-  return active;
-}
-
-export function LeaveBalancesSection({ view = 'management' }: { view?: 'management' | 'supervisor' }) {
+export function LeaveBalancesSection() {
+  const view = 'management' as const;
   const t = useTranslations('core');
   const common = useTranslations('common');
-  const isSupervisorView = view === 'supervisor';
   const fiscalYearsQuery = useLeaveFiscalYears();
   const departmentsQuery = useDepartments();
   const saveBalance = useUpsertLeaveBalance({ view });
@@ -460,7 +429,6 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
   const departments = departmentsQuery.data?.departments ?? [];
   const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
-  const [employmentTypeFilter, setEmploymentTypeFilter] = useState<'all' | Employee['employmentType']>(isSupervisorView ? 'PERMANENT' : 'all');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -468,36 +436,17 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
   const [editingBalance, setEditingBalance] = useState<LeaveBalance | null>(null);
   const [balanceForm, setBalanceForm] = useState(initialBalanceForm);
 
-  const visibleFiscalYears = useMemo(
-    () => isSupervisorView
-      ? fiscalYears.filter((fiscalYear) => !fiscalYear.isActive).sort((left, right) => right.startsAt.localeCompare(left.startsAt))
-      : fiscalYearsForEmploymentType(fiscalYears, employmentTypeFilter),
-    [employmentTypeFilter, fiscalYears, isSupervisorView],
-  );
-  const selectedFiscalYear = visibleFiscalYears.find((fiscalYear) => fiscalYear.id === selectedFiscalYearId);
-  const employeeListFilters = useMemo(() => {
-    const departmentId = departmentFilter === allDepartmentsValue ? undefined : departmentFilter;
-    if (isSupervisorView) {
-      return { employmentType: 'PERMANENT' as const, departmentId };
-    }
-    if (employmentTypeFilter !== 'all') {
-      return { employmentType: employmentTypeFilter, departmentId };
-    }
-    if (selectedFiscalYear?.isActive) {
-      return { excludeEmploymentType: 'PERMANENT' as const, departmentId };
-    }
-    if (selectedFiscalYearId) {
-      return { employmentType: 'PERMANENT' as const, departmentId };
-    }
-    return { departmentId };
-  }, [departmentFilter, employmentTypeFilter, isSupervisorView, selectedFiscalYear?.isActive, selectedFiscalYearId]);
+  const visibleFiscalYears = useMemo(() => fiscalYears.filter((year) => year.isActive), [fiscalYears]);
+  const employeeListFilters = {
+    employmentType: 'CONTRACT' as const,
+    departmentId: departmentFilter === allDepartmentsValue ? undefined : departmentFilter,
+  };
 
   const balancesQuery = useLeaveBalances(selectedFiscalYearId || undefined, { view });
   const employeesQuery = useEmployeesPaginated({
     page,
     pageSize,
     search: balanceSearch,
-    scope: isSupervisorView ? 'supervisor' : undefined,
     ...employeeListFilters,
   });
 
@@ -513,7 +462,7 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
 
   useEffect(() => {
     setPage(1);
-  }, [balanceSearch, departmentFilter, employmentTypeFilter, pageSize, selectedFiscalYearId]);
+  }, [balanceSearch, departmentFilter, pageSize, selectedFiscalYearId]);
 
   const leaveBalances = balancesQuery.data?.leaveBalances ?? [];
   const balanceByEmployee = useMemo(() => new Map(leaveBalances.map((balance) => [balance.employeeId, balance])), [leaveBalances]);
@@ -523,21 +472,10 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
   const totalPages = Math.max(1, Math.ceil(totalEmployees / pageSize));
   const startIndex = totalEmployees === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, totalEmployees);
-  const selectedDialogEmployee = employeePageRows.find((employee) => employee.id === balanceForm.employeeId);
-  const dialogFiscalYears = fiscalYearsForEmploymentType(
-    isSupervisorView ? visibleFiscalYears : fiscalYears,
-    selectedDialogEmployee?.employmentType ?? employmentTypeFilter,
-  );
-
-  const eligibleFiscalYearId = (
-    employee: Employee | undefined,
-    preferredFiscalYearId: string,
-  ) => {
-    const years = isSupervisorView
-      ? visibleFiscalYears
-      : fiscalYearsForEmploymentType(fiscalYears, employee?.employmentType ?? employmentTypeFilter);
-    if (years.some((fiscalYear) => fiscalYear.id === preferredFiscalYearId)) return preferredFiscalYearId;
-    return years[0]?.id ?? '';
+  const dialogFiscalYears = visibleFiscalYears;
+  const eligibleFiscalYearId = (_employee: Employee | undefined, preferredFiscalYearId: string) => {
+    if (visibleFiscalYears.some((year) => year.id === preferredFiscalYearId)) return preferredFiscalYearId;
+    return visibleFiscalYears[0]?.id ?? '';
   };
 
   const openBalanceDialog = (employee?: Employee, balance?: LeaveBalance | null) => {
@@ -585,20 +523,6 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
           <Field label={t('employeeSearch')} id="leave-balance-search">
             <Input id="leave-balance-search" value={balanceSearch} onChange={(event) => setBalanceSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:min-w-64 md:max-w-sm" />
           </Field>
-          {!isSupervisorView ? (
-            <Field label={t('employmentType')} id="leave-balance-employment-type">
-              <Select value={employmentTypeFilter} onValueChange={(value) => setEmploymentTypeFilter(value as typeof employmentTypeFilter)}>
-                <SelectTrigger id="leave-balance-employment-type" className="w-full md:w-48"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('allEmploymentTypes')}</SelectItem>
-                  <SelectItem value="PERMANENT">PERMANENT</SelectItem>
-                  <SelectItem value="CONTRACT">CONTRACT</SelectItem>
-                  <SelectItem value="TEMPORARY">TEMPORARY</SelectItem>
-                  <SelectItem value="DAILY">DAILY</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : null}
           <Field label={t('department')} id="leave-balance-department">
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
               <SelectTrigger id="leave-balance-department" className="w-full md:w-64"><SelectValue placeholder={t('selectDepartment')} /></SelectTrigger>
@@ -633,7 +557,6 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
                       <TableHead>{t('employee')}</TableHead>
                       <TableHead>{t('employmentType')}</TableHead>
                       <TableHead>{t('openingBalance')}</TableHead>
-                      <TableHead>{t('transferredIn')}</TableHead>
                       <TableHead>{t('usedBalance')}</TableHead>
                       <TableHead>{t('reservedBalance')}</TableHead>
                       <TableHead>{t('availableBalance')}</TableHead>
@@ -653,7 +576,6 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
                           </TableCell>
                           <TableCell>{employee.employmentType}</TableCell>
                           <TableCell>{balance?.opening ?? '-'}</TableCell>
-                          <TableCell>{balance?.transferredIn ?? '0'}</TableCell>
                           <TableCell>{balance?.used ?? '0'}</TableCell>
                           <TableCell>{balance?.reserved ?? '0'}</TableCell>
                           <TableCell>{balance?.available ?? '-'}</TableCell>
@@ -703,7 +625,7 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingBalance ? t('editLeaveBalance') : t('addLeaveBalance')}</DialogTitle>
-            <DialogDescription>{isSupervisorView ? t('supervisorLeaveBalancesDescription') : t('initialBalancesDescription')}</DialogDescription>
+            <DialogDescription>{t('initialBalancesDescription')}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveBalanceForm}>
             <Field label={t('employee')} id="balance-employee">
@@ -746,207 +668,6 @@ export function LeaveBalancesSection({ view = 'management' }: { view?: 'manageme
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
               <Button type="submit" disabled={saveBalance.isPending || !balanceForm.employeeId || !balanceForm.fiscalYearId || !balanceForm.opening}>
                 {saveBalance.isPending ? t('saving') : common('save')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-export function CarryForwardSection() {
-  const t = useTranslations('core');
-  const common = useTranslations('common');
-  const fiscalYearsQuery = useLeaveFiscalYears();
-  const employeesQuery = useEmployees();
-  const usersQuery = useUsers({}, { pageSize: 100 });
-  const transferBalance = useTransferLeaveBalance();
-  const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
-  const employees = employeesQuery.data?.employees ?? [];
-  const users = usersQuery.data?.users ?? [];
-  const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [sourceFiscalYearId, setSourceFiscalYearId] = useState('');
-  const [transferForm, setTransferForm] = useState(initialTransferForm);
-  const balancesQuery = useLeaveBalances(sourceFiscalYearId || undefined, { view: 'management' });
-  const sourceBalances = balancesQuery.data?.leaveBalances ?? [];
-
-  const filteredSourceBalances = useMemo(() => {
-    const query = normalize(search);
-    return sourceBalances.filter((balance) => {
-      const employee = balance.employee;
-      return !query || normalize(`${employeeName(employee)} ${employee?.employeeCode ?? ''} ${employee?.sourceDepartmentName ?? ''}`).includes(query);
-    });
-  }, [search, sourceBalances]);
-
-  useEffect(() => {
-    if (!transferForm.toFiscalYearId && activeFiscalYear?.id) {
-      setTransferForm((current) => ({ ...current, toFiscalYearId: activeFiscalYear.id }));
-    }
-  }, [activeFiscalYear?.id, transferForm.toFiscalYearId]);
-
-  const openTransferDialog = (balance?: LeaveBalance) => {
-    setTransferForm({
-      ...initialTransferForm,
-      employeeId: balance?.employeeId ?? '',
-      fromFiscalYearId: balance?.fiscalYearId ?? sourceFiscalYearId,
-      toFiscalYearId: activeFiscalYear?.id ?? '',
-    });
-    setDialogOpen(true);
-  };
-
-  const saveTransfer = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    try {
-      await transferBalance.mutateAsync({
-        employeeId: transferForm.employeeId,
-        fromFiscalYearId: transferForm.fromFiscalYearId,
-        toFiscalYearId: transferForm.toFiscalYearId,
-        days: transferForm.days,
-        approvedBy: transferForm.approvedBy || null,
-        note: transferForm.note.trim() || null,
-      });
-      setDialogOpen(false);
-      setTransferForm({ ...initialTransferForm, toFiscalYearId: activeFiscalYear?.id ?? '' });
-      notifications.show({ title: common('success'), message: t('balanceTransferred'), color: 'green' });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  };
-
-  return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Select value={sourceFiscalYearId || noneValue} onValueChange={(value) => setSourceFiscalYearId(value === noneValue ? '' : value)}>
-            <SelectTrigger className="w-full md:w-64"><SelectValue placeholder={t('fromFiscalYear')} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={noneValue}>{t('fromFiscalYear')}</SelectItem>
-              {fiscalYears.map((fiscalYear) => (
-                <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('searchEmployees')} className="w-full md:max-w-sm" />
-        </div>
-        <Button onClick={() => openTransferDialog()} className="w-full lg:w-auto">
-          <ArrowRightLeft className="size-4" />
-          {t('transferBalance')}
-        </Button>
-      </div>
-      <Card className="rounded-lg">
-        <CardContent className="space-y-4">
-          {!sourceFiscalYearId ? (
-            <EmptyState icon={ArrowRightLeft} title={t('fromFiscalYear')} description={t('leaveTransferDescription')} />
-          ) : filteredSourceBalances.length === 0 ? (
-            <EmptyState icon={ArrowRightLeft} title={t('noLeaveBalances')} description={t('noLeaveBalancesDescription')} />
-          ) : (
-            <div className="overflow-hidden rounded-md border border-border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('employee')}</TableHead>
-                    <TableHead>{t('fromFiscalYear')}</TableHead>
-                    <TableHead>{t('openingBalance')}</TableHead>
-                    <TableHead>{t('usedBalance')}</TableHead>
-                    <TableHead>{t('reservedBalance')}</TableHead>
-                    <TableHead>{t('availableBalance')}</TableHead>
-                    <TableHead className="text-right">{t('actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredSourceBalances.map((balance) => (
-                    <TableRow key={balance.id}>
-                      <TableCell>
-                        <div className="min-w-0">
-                          <p className="truncate font-medium">{employeeName(balance.employee)}</p>
-                          <p className="truncate text-xs text-muted-foreground">{balance.employee?.employeeCode ?? '-'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{balance.fiscalYear?.name ?? '-'}</TableCell>
-                      <TableCell>{balance.opening}</TableCell>
-                      <TableCell>{balance.used}</TableCell>
-                      <TableCell>{balance.reserved}</TableCell>
-                      <TableCell>{balance.available}</TableCell>
-                      <TableCell className="text-right">
-                        <Button type="button" size="sm" variant="outline" onClick={() => openTransferDialog(balance)}>
-                          <ArrowRightLeft className="size-4" />
-                          {t('transferBalance')}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{t('transferBalance')}</DialogTitle>
-            <DialogDescription>{t('leaveTransferDescription')}</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={saveTransfer}>
-            <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('employee')} id="transfer-employee">
-              <Select value={transferForm.employeeId || noneValue} onValueChange={(value) => setTransferForm((current) => ({ ...current, employeeId: value === noneValue ? '' : value }))}>
-                <SelectTrigger id="transfer-employee"><SelectValue placeholder={t('selectEmployee')} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={noneValue}>{t('selectEmployee')}</SelectItem>
-                  {employees.map((employee) => (
-                    <SelectItem key={employee.id} value={employee.id}>{employeeName(employee)} · {employee.employeeCode}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('fromFiscalYear')} id="transfer-from">
-              <Select value={transferForm.fromFiscalYearId || noneValue} onValueChange={(value) => setTransferForm((current) => ({ ...current, fromFiscalYearId: value === noneValue ? '' : value }))}>
-                <SelectTrigger id="transfer-from"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-                  {fiscalYears.map((fiscalYear) => (
-                    <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('toFiscalYear')} id="transfer-to">
-              <Select value={transferForm.toFiscalYearId || noneValue} onValueChange={(value) => setTransferForm((current) => ({ ...current, toFiscalYearId: value === noneValue ? '' : value }))}>
-                <SelectTrigger id="transfer-to"><SelectValue placeholder={t('selectFiscalYear')} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={noneValue}>{t('selectFiscalYear')}</SelectItem>
-                  {fiscalYears.map((fiscalYear) => (
-                    <SelectItem key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('days')} id="transfer-days">
-              <Input id="transfer-days" type="number" min="0.5" step="0.5" value={transferForm.days} onChange={(event) => setTransferForm((current) => ({ ...current, days: event.target.value }))} required />
-            </Field>
-            <Field label={t('selectReviewer')} id="transfer-approved-by">
-              <Select value={transferForm.approvedBy || noneValue} onValueChange={(value) => setTransferForm((current) => ({ ...current, approvedBy: value === noneValue ? '' : value }))}>
-                <SelectTrigger id="transfer-approved-by"><SelectValue placeholder={t('selectReviewer')} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={noneValue}>{t('selectReviewer')}</SelectItem>
-                  {users.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>{userName(user)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('note')} id="transfer-note">
-              <Input id="transfer-note" value={transferForm.note} onChange={(event) => setTransferForm((current) => ({ ...current, note: event.target.value }))} />
-            </Field>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
-              <Button type="submit" disabled={transferBalance.isPending || !transferForm.employeeId || !transferForm.fromFiscalYearId || !transferForm.toFiscalYearId || !transferForm.days}>
-                {transferBalance.isPending ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
           </form>
