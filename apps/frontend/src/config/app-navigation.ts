@@ -527,6 +527,7 @@ type AuthzUser =
   | {
       role?: string[];
       permissions?: string[];
+      employeeEmploymentType?: string | null;
       delegatedSupervisorCapabilities?: Array<{
         id: string;
         endsAt?: string | null;
@@ -547,6 +548,7 @@ export function userHasPermission(user: AuthzUser, permission: string) {
 }
 
 export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
+  if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return hasContractEmployee(user);
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
@@ -563,18 +565,13 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
       hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve'))
     );
   if (item.url === '/leave-request-approvals')
-    return (
-      hasDelegatedSupervisorAccess(user) ||
-      (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve'))
-    );
+    return hasLeaveRequestApprovalAccess(user);
   if (item.url === '/attendance-correction-approvals')
     return (
       hasDelegatedSupervisorAccess(user) ||
       (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve'))
     );
   if (
-    item.url === '/annual-leave-requests' ||
-    item.url === '/other-leave-requests' ||
     item.url === '/overtime-requests' ||
     item.url === '/attendance-corrections'
   )
@@ -686,7 +683,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/'))
-    return hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve');
+    return hasLeaveRequestApprovalAccess(user);
   if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/'))
     return (
       hasDelegatedSupervisorAccess(user) || (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'overtime-requests:approve'))
@@ -702,7 +699,8 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
     return hasLeaveBalanceManagementAccess(user);
   if (pathname === '/leave-management/balances' || pathname.startsWith('/leave-management/balances/')) return hasLeaveBalanceManagementAccess(user);
   if (pathname === '/leave-management/carry-forward' || pathname.startsWith('/leave-management/carry-forward/')) return false;
-  if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return Boolean(user);
+  if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return hasContractEmployee(user);
+  if (pathname === '/other-leave-requests' || pathname.startsWith('/other-leave-requests/')) return hasContractEmployee(user);
   if (pathname === '/overtime-requests') return Boolean(user);
   if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
   if (pathname === '/manual-punch-requests' || pathname.startsWith('/manual-punch-requests/')) return Boolean(user);
@@ -795,13 +793,24 @@ export function getFirstAccessiblePath(user: AuthzUser) {
   if (hasExecutiveRole(user)) return '/executive-dashboard';
   if (hasHrDashboardAccess(user)) return '/hr-dashboard';
   if (hasSupervisorRole(user)) return '/department-head-dashboard';
-  if (hasDelegatedSupervisorAccess(user)) return '/leave-request-approvals';
+  if (hasDelegatedSupervisorAccess(user) && hasContractEmployee(user)) return '/leave-request-approvals';
   return getAccessibleNavGroups(user)[0]?.items[0]?.url ?? null;
 }
 
 function hasUnrestrictedRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => role === 'super_admin' || role === 'superadmin' || role === 'admin' || role === 'executive');
+}
+
+function hasContractEmployee(user: AuthzUser) {
+  return user?.employeeEmploymentType === 'CONTRACT';
+}
+
+function hasLeaveRequestApprovalAccess(user: AuthzUser) {
+  return hasContractEmployee(user) && (
+    hasDelegatedSupervisorAccess(user) ||
+    (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve'))
+  );
 }
 
 function hasHumanResourceRole(user: AuthzUser) {

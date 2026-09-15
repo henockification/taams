@@ -12,6 +12,7 @@ export function formatTimestamp(value: unknown) {
 
 export function formatDepartment(department: any) {
   return {
+    isContract: department.isContract,
     id: department.id,
     nameEn: department.nameEn,
     nameAm: department.nameAm ?? null,

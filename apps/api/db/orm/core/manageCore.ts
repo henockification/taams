@@ -20,6 +20,7 @@ import type {
   UpdatePositionInput,
 } from '../../../types/core.types';
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
+import { buildDepartmentImportCache, findOrCreateImportDepartment } from '../../../lib/employees/department-import';
 import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
@@ -330,7 +331,7 @@ export async function upsertPermanentEmployees(
     return { created: 0, updated: 0, skipped: 0, employees: [] };
   }
 
-  const departmentCache = await buildDepartmentImportCache();
+  const departmentCache = buildDepartmentImportCache(await getDepartments());
   const existingEmployees = await db
     .select()
     .from(employees)
@@ -346,8 +347,9 @@ export async function upsertPermanentEmployees(
   const canCreateImportDepartments = !options.scope || options.scope.type === 'unrestricted' || options.scope.type === 'hr';
 
   for (const input of inputs) {
-    const department = await findOrCreateDepartmentByName(input.sourceDepartmentName, departmentCache, {
+    const department = await findOrCreateImportDepartment(input.sourceDepartmentName, departmentCache, createDepartment, {
       allowCreate: canCreateImportDepartments,
+      isContract: options.employmentType === 'CONTRACT',
     });
     if (!isDepartmentVisibleInScope(department.id, options.scope)) {
       throw new Error(`Department not found: ${department.nameEn}`);
@@ -668,39 +670,6 @@ async function getEmployeeByCode(employeeCode: string, tx: DbClient = db) {
   });
 }
 
-async function buildDepartmentImportCache() {
-  const cache = new Map<string, Awaited<ReturnType<typeof getDepartments>>[number]>();
-  const allDepartments = await getDepartments();
-  allDepartments.forEach((department) => {
-    [department.nameEn, department.nameAm ?? '', department.code ?? '']
-      .map(normalizeLookup)
-      .filter(Boolean)
-      .forEach((key) => cache.set(key, department));
-  });
-  return cache;
-}
-
-async function findOrCreateDepartmentByName(
-  name: string,
-  cache: Map<string, Awaited<ReturnType<typeof getDepartments>>[number]>,
-  options: { allowCreate?: boolean } = {},
-) {
-  const normalizedName = normalizeLookup(name);
-  const found = cache.get(normalizedName);
-
-  if (found) return found;
-  if (options.allowCreate === false) throw new Error(`Department not found: ${name}`);
-
-  const department = await createDepartment({
-    nameEn: name,
-    code: null,
-    isActive: true,
-  });
-
-  cache.set(normalizedName, department);
-  return department;
-}
-
 async function ensureImportUserAccounts(
   inputs: PermanentEmployeeImportInput[],
   existingEmployeeByCode: Map<string, typeof employees.$inferSelect>
@@ -896,6 +865,7 @@ async function assertEmployeeReferences(input: Partial<CreateEmployeeInput>) {
 
 function normalizeDepartmentInput(input: UpdateDepartmentInput) {
   return removeUndefined({
+    isContract: input.isContract,
     nameEn: input.nameEn,
     nameAm: input.nameAm,
     code: input.code,

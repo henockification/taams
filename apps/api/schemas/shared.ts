@@ -51,6 +51,7 @@ export const SessionResponseSchema = z.object({
     id: z.string().openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
     email: z.string().email().openapi({ example: 'user@example.com' }),
     name: z.string().optional().openapi({ example: 'John Doe' }),
+    employeeEmploymentType: z.enum(['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY']).nullable().optional(),
   }).optional(),
   session: z.object({
     id: z.string().openapi({ example: 'session-id' }),

@@ -74,6 +74,10 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
     return null;
   }
 
+  if (!userCanAccessPath(session.user, pathname)) {
+    return null;
+  }
+
   const handleSignOut = async () => {
     try {
       await signOut();

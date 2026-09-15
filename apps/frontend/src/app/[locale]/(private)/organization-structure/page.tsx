@@ -37,6 +37,7 @@ type DepartmentNode = Department & { children: DepartmentNode[] };
 type OrganizationView = 'tree' | 'chart';
 
 const departmentInitialForm = {
+  isContract: false,
   nameEn: '',
   nameAm: '',
   code: '',
@@ -245,13 +246,18 @@ export default function OrganizationStructurePage() {
 
   const openCreateDepartment = (parentDepartmentId: string | null = null) => {
     setEditingDepartment(null);
-    setDepartmentForm({ ...departmentInitialForm, parentDepartmentId });
+    setDepartmentForm({
+      ...departmentInitialForm,
+      parentDepartmentId,
+      isContract: departments.find((department) => department.id === parentDepartmentId)?.isContract ?? false,
+    });
     setDepartmentDialogOpen(true);
   };
 
   const openEditDepartment = (department: Department) => {
     setEditingDepartment(department);
     setDepartmentForm({
+      isContract: department.isContract,
       nameEn: department.nameEn,
       nameAm: department.nameAm ?? '',
       code: department.code ?? '',
@@ -281,6 +287,7 @@ export default function OrganizationStructurePage() {
 
     try {
       const payload = {
+        isContract: departmentForm.isContract,
         nameEn: departmentForm.nameEn.trim(),
         nameAm: departmentForm.nameAm.trim() || null,
         code: departmentForm.code.trim() || null,
@@ -440,6 +447,14 @@ export default function OrganizationStructurePage() {
                 id="department-code"
                 value={departmentForm.code}
                 onChange={(event) => setDepartmentForm((current) => ({ ...current, code: event.target.value }))}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border p-3">
+              <Label htmlFor="department-is-contract">{t('contractDepartment')}</Label>
+              <Switch
+                id="department-is-contract"
+                checked={departmentForm.isContract}
+                onCheckedChange={(checked) => setDepartmentForm((current) => ({ ...current, isContract: checked }))}
               />
             </div>
             <div className="flex items-center justify-between rounded-md border border-border p-3">
@@ -611,6 +626,10 @@ function DepartmentDetailsGrid({
       <div>
         <p className="text-xs text-muted-foreground">{t('code')}</p>
         <p className="font-medium">{selectedDepartment.code || '-'}</p>
+      </div>
+      <div>
+        <p className="text-xs text-muted-foreground">{t('departmentClassification')}</p>
+        <p className="font-medium">{selectedDepartment.isContract ? t('contractDepartment') : t('permanentDepartment')}</p>
       </div>
       <div>
         <p className="text-xs text-muted-foreground">{t('status')}</p>

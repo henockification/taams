@@ -1,4 +1,5 @@
 export type CreateDepartmentInput = {
+  isContract?: boolean;
   nameEn: string;
   nameAm?: string | null;
   code?: string | null;
@@ -18,6 +19,7 @@ export type CreatePositionInput = {
 export type UpdatePositionInput = Partial<CreatePositionInput>;
 
 export type Department = {
+  isContract: boolean;
   id: string;
   nameEn: string;
   nameAm: string | null;

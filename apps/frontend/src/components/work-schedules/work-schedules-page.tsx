@@ -65,7 +65,7 @@ import {
   useWorkScheduleDays,
   useWorkSchedules,
 } from '@/data/hooks/core.hooks';
-import type { DayOfWeek, Employee, EmployeeWorkSchedule, Shift, ShiftSegment, WorkSchedule, WorkScheduleDay } from '@/data/types/core.types';
+import type { DayOfWeek, EmploymentType, Employee, EmployeeWorkSchedule, Shift, ShiftSegment, WorkSchedule, WorkScheduleDay } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -114,6 +114,8 @@ const employeeWorkScheduleInitialForm = {
 };
 
 const allDepartmentsValue = '__all_departments';
+const allEmploymentTypesValue = '__all_employment_types';
+const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);
@@ -148,12 +150,10 @@ export function WorkSchedulesPage({
   const { data: shiftsResponse, isLoading: shiftsLoading } = useShifts();
   const { data: workSchedulesResponse, isLoading: workSchedulesLoading } = useWorkSchedules();
   const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
-  const { data: departmentsResponse } = useDepartments();
 
   const shifts = shiftsResponse?.shifts ?? [];
   const workSchedules = workSchedulesResponse?.workSchedules ?? [];
   const employees = employeesResponse?.employees ?? [];
-  const departments = departmentsResponse?.departments ?? [];
 
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [selectedWorkScheduleId, setSelectedWorkScheduleId] = useState('');
@@ -190,6 +190,12 @@ export function WorkSchedulesPage({
   const [assignmentDialogOpen, setAssignmentDialogOpen] = useState(false);
   const [assignmentSearch, setAssignmentSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
+  const [typeFilter, setTypeFilter] = useState<EmploymentType | typeof allEmploymentTypesValue>(allEmploymentTypesValue);
+  const hasEmploymentType = typeFilter !== allEmploymentTypesValue;
+  const { data: departmentsResponse, isLoading: departmentsLoading } = useDepartments(hasEmploymentType);
+  const departments = hasEmploymentType
+    ? (departmentsResponse?.departments ?? []).filter((department) => department.isContract === (typeFilter === 'CONTRACT'))
+    : [];
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   const [assignmentPage, setAssignmentPage] = useState(1);
   const [assignmentPageSize, setAssignmentPageSize] = useState(50);
@@ -216,6 +222,7 @@ export function WorkSchedulesPage({
   const filteredEmployees = useMemo(() => {
     const query = assignmentSearch.trim().toLowerCase();
     return employees.filter((employee) => {
+      if (hasEmploymentType && employee.employmentType !== typeFilter) return false;
       if (departmentFilter !== allDepartmentsValue) {
         const departmentId = employee.department?.id ?? employee.departmentId;
         if (departmentId !== departmentFilter) return false;
@@ -237,7 +244,7 @@ export function WorkSchedulesPage({
 
       return haystack.includes(query);
     });
-  }, [assignmentSearch, departmentFilter, employees]);
+  }, [assignmentSearch, departmentFilter, employees, hasEmploymentType, typeFilter]);
 
   const assignmentTotal = filteredEmployees.length;
   const assignmentTotalPages = Math.max(1, Math.ceil(assignmentTotal / assignmentPageSize));
@@ -278,7 +285,7 @@ export function WorkSchedulesPage({
 
   useEffect(() => {
     setAssignmentPage(1);
-  }, [assignmentPageSize, assignmentSearch, departmentFilter]);
+  }, [assignmentPageSize, assignmentSearch, departmentFilter, typeFilter]);
 
   useEffect(() => {
     if (assignmentCurrentPage !== assignmentPage) {
@@ -727,10 +734,23 @@ export function WorkSchedulesPage({
                   className="min-w-64 md:max-w-sm"
                 />
               </Field>
+              <Field label={t('employmentType')} id="assignment-employment-type">
+                <Select value={typeFilter} onValueChange={(value) => {
+                  setTypeFilter(value as EmploymentType | typeof allEmploymentTypesValue);
+                  setDepartmentFilter(allDepartmentsValue);
+                  setSelectedEmployeeIds(new Set());
+                }}>
+                  <SelectTrigger id="assignment-employment-type" className="w-full sm:w-52"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={allEmploymentTypesValue}>{t('allEmploymentTypes')}</SelectItem>
+                    {employmentTypes.map((type) => <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
               <Field label={t('department')} id="assignment-department">
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!hasEmploymentType || departmentsLoading}>
                   <SelectTrigger id="assignment-department" className="w-full sm:w-64">
-                    <SelectValue placeholder={t('selectDepartment')} />
+                    {hasEmploymentType ? <SelectValue placeholder={t('selectDepartment')} /> : <span>{t('selectEmploymentTypeFirst')}</span>}
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>

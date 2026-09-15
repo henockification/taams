@@ -476,6 +476,10 @@
     "lockedUntil": "እስከሚከፈት"
   },
   "core": {
+    "selectEmploymentTypeFirst": "መጀመሪያ የቅጥር አይነት ይምረጡ",
+    "contractDepartment": "የኮንትራት ሰራተኞች ክፍል",
+    "permanentDepartment": "የቋሚ ሰራተኞች ክፍል",
+    "departmentClassification": "የክፍል ምድብ",
     "ifmisAttendanceTitle": "የIFMIS መገኘት",
     "ifmisAttendanceDescription": "በሰው ሀብት የጸደቀውን የወር መገኘት ይመልከቱ እና ወደ IFMIS ይላኩ።",
     "refreshPreview": "ቅድመ እይታን አድስ",

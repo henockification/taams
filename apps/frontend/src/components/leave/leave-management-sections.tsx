@@ -426,7 +426,7 @@ export function LeaveBalancesSection() {
   const departmentsQuery = useDepartments();
   const saveBalance = useUpsertLeaveBalance({ view });
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
-  const departments = departmentsQuery.data?.departments ?? [];
+  const departments = (departmentsQuery.data?.departments ?? []).filter((department) => department.isContract);
   const [selectedFiscalYearId, setSelectedFiscalYearId] = useState('');
   const [balanceSearch, setBalanceSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);

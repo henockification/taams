@@ -110,6 +110,7 @@ export const userRoles = pgTable('user_roles', {
 }));
 
 export const departments = pgTable('departments', {
+  isContract: boolean('is_contract').notNull().default(false),
   id: uuid('id').primaryKey().defaultRandom(),
   nameEn: varchar('name_en', { length: 150 }).notNull(),
   nameAm: varchar('name_am', { length: 150 }),

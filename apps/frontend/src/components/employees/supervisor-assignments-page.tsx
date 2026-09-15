@@ -66,7 +66,6 @@ export function SupervisorAssignmentsPage() {
   const common = useTranslations('common');
   const { formatDate } = useCalendarPreference();
   const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
-  const { data: departmentsResponse } = useDepartments();
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useAllEmployeeSupervisors();
   const bulkAssign = useBulkCreateEmployeeSupervisors();
 
@@ -74,6 +73,8 @@ export function SupervisorAssignmentsPage() {
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [statusFilter, setStatusFilter] = useState<EmploymentStatus | typeof allStatusesValue>('ACTIVE');
   const [typeFilter, setTypeFilter] = useState<EmploymentType | typeof allEmploymentTypesValue>(allEmploymentTypesValue);
+  const hasEmploymentType = typeFilter !== allEmploymentTypesValue;
+  const { data: departmentsResponse, isLoading: departmentsLoading } = useDepartments(hasEmploymentType);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -84,7 +85,9 @@ export function SupervisorAssignmentsPage() {
   const [effectiveTo, setEffectiveTo] = useState('');
 
   const employees = employeesResponse?.employees ?? [];
-  const departments = departmentsResponse?.departments ?? [];
+  const departments = hasEmploymentType
+    ? (departmentsResponse?.departments ?? []).filter((department) => department.isContract === (typeFilter === 'CONTRACT'))
+    : [];
   const supervisorAssignments = supervisorsResponse?.supervisors ?? [];
 
   const currentPrimaryByEmployeeId = useMemo(() => {
@@ -243,10 +246,27 @@ export function SupervisorAssignmentsPage() {
                   className="min-w-64 md:max-w-sm"
                 />
               </Field>
-              <Field label={t('department')} id="supervisor-assignment-department">
-                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                  <SelectTrigger id="supervisor-assignment-department" className="w-full sm:w-64">
+              <Field label={t('employmentType')} id="supervisor-assignment-type">
+                <Select value={typeFilter} onValueChange={(value) => {
+                  setTypeFilter(value as EmploymentType | typeof allEmploymentTypesValue);
+                  setDepartmentFilter(allDepartmentsValue);
+                  setSelectedEmployeeIds(new Set());
+                }}>
+                  <SelectTrigger id="supervisor-assignment-type" className="w-full sm:w-52">
                     <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={allEmploymentTypesValue}>{t('allEmploymentTypes')}</SelectItem>
+                    {employmentTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label={t('department')} id="supervisor-assignment-department">
+                <Select value={departmentFilter} onValueChange={setDepartmentFilter} disabled={!hasEmploymentType || departmentsLoading}>
+                  <SelectTrigger id="supervisor-assignment-department" className="w-full sm:w-64">
+                    {hasEmploymentType ? <SelectValue /> : <span>{t('selectEmploymentTypeFirst')}</span>}
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>
@@ -265,19 +285,6 @@ export function SupervisorAssignmentsPage() {
                     <SelectItem value={allStatusesValue}>{t('allEmploymentStatuses')}</SelectItem>
                     {employmentStatuses.map((status) => (
                       <SelectItem key={status} value={status}>{t(status.toLowerCase() as 'active')}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label={t('employmentType')} id="supervisor-assignment-type">
-                <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as EmploymentType | typeof allEmploymentTypesValue)}>
-                  <SelectTrigger id="supervisor-assignment-type" className="w-full sm:w-52">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={allEmploymentTypesValue}>{t('allEmploymentTypes')}</SelectItem>
-                    {employmentTypes.map((type) => (
-                      <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

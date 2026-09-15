@@ -20,6 +20,7 @@ export const NotificationChannelSchema = z.enum(['EMAIL', 'SMS']);
 export const NotificationStatusSchema = z.enum(['PENDING', 'SENT', 'FAILED', 'SKIPPED']);
 
 export const DepartmentSchema = z.object({
+  isContract: z.boolean().openapi({ example: false }),
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
   nameEn: z.string().openapi({ example: 'Human Resources' }),
   nameAm: z.string().nullable().openapi({ example: 'የሰው ሀብት' }),
@@ -588,6 +589,7 @@ export const OvertimeRequestSchema = z.object({
 });
 
 export const CreateDepartmentRequestSchema = z.object({
+  isContract: z.boolean().optional(),
   nameEn: z.string().min(1).max(150),
   nameAm: z.string().max(150).nullable().optional(),
   code: OptionalCodeSchema,

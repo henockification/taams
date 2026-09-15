@@ -1,4 +1,5 @@
 export type Department = {
+  isContract: boolean;
   id: string;
   nameEn: string;
   nameAm: string | null;
@@ -1474,6 +1475,7 @@ export type AuditEventsResponse = {
 };
 
 export type CreateDepartmentInput = {
+  isContract?: boolean;
   nameEn: string;
   nameAm?: string | null;
   code?: string | null;

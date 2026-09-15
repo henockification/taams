@@ -476,6 +476,10 @@
     "lockedUntil": "Locked until"
   },
   "core": {
+    "selectEmploymentTypeFirst": "Select employment type first",
+    "contractDepartment": "Contract department",
+    "permanentDepartment": "Permanent department",
+    "departmentClassification": "Department classification",
     "ifmisAttendanceTitle": "IFMIS attendance",
     "ifmisAttendanceDescription": "Review complete, HR-approved monthly attendance and send it to IFMIS.",
     "refreshPreview": "Refresh preview",

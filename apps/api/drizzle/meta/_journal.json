@@ -225,6 +225,13 @@
       "when": 1788789600000,
       "tag": "0035_hr_department_assignments",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789430400000,
+      "tag": "0036_contract_departments",
+      "breakpoints": true
     }
   ]
 }

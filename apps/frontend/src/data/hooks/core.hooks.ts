@@ -212,10 +212,11 @@ export function useDepartmentHeadDashboardSummary(params: { date: string }) {
   });
 }
 
-export function useDepartments() {
+export function useDepartments(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.departments(),
     queryFn: () => coreApi.getDepartments(),
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -593,6 +594,7 @@ export function useUpdateEmployee() {
   return useMutation({
     mutationFn: (input: UpdateEmployeeInput) => coreApi.updateEmployee(input),
     onSuccess: (data) => {
+      window.dispatchEvent(new CustomEvent('taams-session-refresh'));
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.employee(data.employee.id),

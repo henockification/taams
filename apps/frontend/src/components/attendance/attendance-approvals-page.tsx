@@ -47,7 +47,7 @@ import {
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
 } from '@/data/hooks/core.hooks';
-import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, Employee } from '@/data/types/core.types';
+import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -56,6 +56,8 @@ type AttendanceApprovalMode = 'supervisor' | 'hr';
 type ApprovalFilter = 'all' | 'approved' | 'unapproved';
 type DateFilter = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 const allDepartmentsValue = '__all_departments';
+const allEmploymentTypesValue = '__all_employment_types';
+const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
 const defaultPageSize = 50;
 
 function dateToYmd(date: Date) {
@@ -117,6 +119,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const [returnReason, setReturnReason] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
+  const [typeFilter, setTypeFilter] = useState<EmploymentType | typeof allEmploymentTypesValue>(allEmploymentTypesValue);
+  const hasEmploymentType = typeFilter !== allEmploymentTypesValue;
   const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
@@ -143,13 +147,16 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const summary = useMemo(() => summarize(records), [records]);
   const isHrMode = mode === 'hr';
   const departments = useMemo(() => {
+    if (!hasEmploymentType) return [];
     const byId = new Map<string, { id: string; nameEn: string }>();
     for (const record of records) {
       const department = record.effectiveDepartment ?? record.employee?.department;
-      if (department?.id) byId.set(department.id, { id: department.id, nameEn: department.nameEn });
+      if (department?.id && department.isContract === (typeFilter === 'CONTRACT')) {
+        byId.set(department.id, { id: department.id, nameEn: department.nameEn });
+      }
     }
     return [...byId.values()].sort((left, right) => left.nameEn.localeCompare(right.nameEn));
-  }, [records]);
+  }, [hasEmploymentType, typeFilter, records]);
   const filteredRecords = useMemo(() => {
     const search = deferredEmployeeSearch.trim().toLowerCase();
     return records.filter((record) => {
@@ -167,9 +174,10 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       const matchesApproval = approvalFilter === 'all'
         || (approvalFilter === 'approved' && isAttendanceApproved(record, mode))
         || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode));
-      return matchesEmployee && matchesDepartment && matchesApproval;
+      const matchesType = !isHrMode || !hasEmploymentType || employee?.employmentType === typeFilter;
+      return matchesEmployee && matchesDepartment && matchesApproval && matchesType;
     });
-  }, [approvalFilter, departmentFilter, deferredEmployeeSearch, isHrMode, mode, records]);
+  }, [approvalFilter, departmentFilter, deferredEmployeeSearch, hasEmploymentType, isHrMode, mode, records, typeFilter]);
   const approvableRecords = useMemo(
     () => filteredRecords.filter((record) => canApprove(record, mode)),
     [filteredRecords, mode],
@@ -356,13 +364,29 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
             </Select>
           </FilterField>
           {isHrMode ? (
+            <FilterField label={t('employmentType')} htmlFor="attendance-approval-employment-type-filter">
+              <Select value={typeFilter} onValueChange={(value) => {
+                setTypeFilter(value as EmploymentType | typeof allEmploymentTypesValue);
+                setDepartmentFilter(allDepartmentsValue);
+                setSelectedRecordIds([]);
+                setPage(1);
+              }}>
+                <SelectTrigger id="attendance-approval-employment-type-filter" className="w-full md:w-52"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={allEmploymentTypesValue}>{t('allEmploymentTypes')}</SelectItem>
+                  {employmentTypes.map((type) => <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </FilterField>
+          ) : null}
+          {isHrMode ? (
             <FilterField label={t('department')} htmlFor="attendance-approval-department-filter">
-              <Select value={departmentFilter} onValueChange={(value) => {
+              <Select disabled={!hasEmploymentType} value={departmentFilter} onValueChange={(value) => {
                 setDepartmentFilter(value);
                 setPage(1);
               }}>
                 <SelectTrigger id="attendance-approval-department-filter" className="w-full md:w-64">
-                  <SelectValue placeholder={t('selectDepartment')} />
+                  {hasEmploymentType ? <SelectValue placeholder={t('selectDepartment')} /> : <span>{t('selectEmploymentTypeFirst')}</span>}
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={allDepartmentsValue}>{t('allDepartments')}</SelectItem>

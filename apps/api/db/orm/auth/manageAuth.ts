@@ -1,7 +1,7 @@
 import { and, desc, eq, isNull, ne, or } from 'drizzle-orm';
 import { createHmac, randomBytes } from 'crypto';
 import { db } from '../../db';
-import { authCredentials, authSessions, authVerificationTokens, user } from '../../schema';
+import { authCredentials, authSessions, authVerificationTokens, employees, user } from '../../schema';
 import { generateOtpCode, hashOtp, OTP_TTL_MINUTES, OtpPurpose, verifyOtp } from '../../../lib/otp';
 import { hashPassword, runDummyPasswordHash, verifyPassword } from '../../../lib/password';
 import { assertPasswordPolicy } from '../../../lib/password-policy';
@@ -18,6 +18,14 @@ export const LOCKOUT_MINUTES = 15;
 
 export type AuthUser = typeof user.$inferSelect;
 export type AuthSession = typeof authSessions.$inferSelect;
+
+export async function getEmployeeEmploymentTypeForUser(userId: string) {
+  const employee = await db.query.employees.findFirst({
+    where: eq(employees.userId, userId),
+    columns: { employmentType: true },
+  });
+  return employee?.employmentType ?? null;
+}
 
 export function createSessionToken() {
   return randomBytes(32).toString('hex');

@@ -32,6 +32,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
     id?: string
     role?: string[]
     permissions?: string[]
+    employeeEmploymentType?: string | null
   }
 }
 
