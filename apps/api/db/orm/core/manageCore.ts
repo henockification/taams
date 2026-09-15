@@ -279,17 +279,21 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
   }
 
   const updatedEmployee = await db.transaction(async (tx) => {
+    const current = await getEmployeeById(id, tx);
+    if (!current) throw new Error('Employee not found');
+
     await tx
       .update(employees)
       .set({ ...updateData, updatedAt: new Date() })
       .where(eq(employees.id, id));
 
     const updated = await getEmployeeById(id, tx);
-    if (updated?.userId) {
-      await syncLinkedUserContact(updated.userId, {
-        email: updated.email,
-        phoneNumber: updated.phoneNumber,
-      }, tx);
+    const contactChanges = {
+      email: input.email !== undefined && input.email !== current.email ? updated?.email : undefined,
+      phoneNumber: input.phoneNumber !== undefined && input.phoneNumber !== current.phoneNumber ? updated?.phoneNumber : undefined,
+    };
+    if (updated?.userId && (contactChanges.email !== undefined || contactChanges.phoneNumber !== undefined)) {
+      await syncLinkedUserContact(updated.userId, contactChanges, tx);
     }
     return updated;
   });

@@ -44,9 +44,8 @@ import {
   useEmployeeSupervisors,
   useUpdateEmployee,
 } from '@/data/hooks/core.hooks';
-import type { Employee } from '@/data/types/core.types';
+import { buildEmployeeProfileUpdate, toDraft, type ProfileDraft } from '@/lib/employee-profile-update';
 import {
-  canonicalSourceEmploymentStatus,
   displayEmploymentStatus,
   resolveEmploymentFields,
   SOURCE_EMPLOYMENT_STATUS_OPTIONS,
@@ -55,30 +54,6 @@ import {
 type EmployeeDetailPageProps = {
   employeeId: string;
   backHref: '/employees' | '/contract-employees' | '/permanent-employees';
-};
-
-type ProfileDraft = {
-  firstNameEn: string;
-  middleNameEn: string;
-  lastNameEn: string;
-  firstNameAm: string;
-  middleNameAm: string;
-  lastNameAm: string;
-  payrollId: string;
-  biometricId: string;
-  gender: string;
-  phoneNumber: string;
-  email: string;
-  departmentId: string;
-  positionName: string;
-  sourcePositionCode: string;
-  sourceEmploymentStatus: string;
-  hireDate: string;
-  terminationDate: string;
-  salary: string;
-  salaryStep: string;
-  nationalId: string;
-  paidByIfmis: boolean;
 };
 
 export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageProps) {
@@ -140,34 +115,10 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
     if (!employee || !draft) return;
     if (!draft.firstNameEn.trim() || !draft.lastNameEn.trim()) return;
 
-    const selectedDepartment = departments.find((department) => department.id === draft.departmentId);
-
     try {
       await updateEmployee.mutateAsync({
         employeeId,
-        firstNameEn: draft.firstNameEn.trim(),
-        middleNameEn: emptyToNull(draft.middleNameEn),
-        lastNameEn: draft.lastNameEn.trim(),
-        firstNameAm: emptyToNull(draft.firstNameAm),
-        middleNameAm: emptyToNull(draft.middleNameAm),
-        lastNameAm: emptyToNull(draft.lastNameAm),
-        payrollId: emptyToNull(draft.payrollId),
-        biometricId: emptyToNull(draft.biometricId),
-        gender: emptyToNull(draft.gender),
-        phoneNumber: emptyToNull(draft.phoneNumber),
-        email: emptyToNull(draft.email),
-        departmentId: draft.departmentId,
-        sourceDepartmentName: selectedDepartment?.nameEn ?? employee.sourceDepartmentName,
-        positionName: emptyToNull(draft.positionName),
-        sourcePositionName: emptyToNull(draft.positionName),
-        sourcePositionCode: emptyToNull(draft.sourcePositionCode),
-        ...resolveEmploymentFields(draft.sourceEmploymentStatus),
-        hireDate: emptyToNull(draft.hireDate),
-        terminationDate: emptyToNull(draft.terminationDate),
-        salary: emptyToNull(draft.salary),
-        salaryStep: emptyToNull(draft.salaryStep),
-        nationalId: emptyToNull(draft.nationalId),
-        paidByIfmis: draft.paidByIfmis,
+        ...buildEmployeeProfileUpdate(employee, draft, departments),
       });
       setIsEditing(false);
       setDraft(null);
@@ -488,37 +439,6 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
       </Dialog>
     </div>
   );
-}
-
-function toDraft(employee: Employee): ProfileDraft {
-  return {
-    firstNameEn: employee.firstNameEn,
-    middleNameEn: employee.middleNameEn ?? '',
-    lastNameEn: employee.lastNameEn,
-    firstNameAm: employee.firstNameAm ?? '',
-    middleNameAm: employee.middleNameAm ?? '',
-    lastNameAm: employee.lastNameAm ?? '',
-    payrollId: employee.payrollId ?? '',
-    biometricId: employee.biometricId ?? '',
-    gender: employee.gender ?? '',
-    phoneNumber: employee.phoneNumber ?? '',
-    email: employee.email ?? '',
-    departmentId: employee.departmentId,
-    positionName: employee.positionName ?? employee.position?.nameEn ?? employee.sourcePositionName ?? '',
-    sourcePositionCode: employee.sourcePositionCode ?? employee.sourceEmployeeCode ?? '',
-    sourceEmploymentStatus: canonicalSourceEmploymentStatus(employee.sourceEmploymentStatus, employee.employmentStatus),
-    hireDate: employee.hireDate ?? '',
-    terminationDate: employee.terminationDate ?? '',
-    salary: employee.salary ?? '',
-    salaryStep: employee.salaryStep ?? '',
-    nationalId: employee.nationalId ?? '',
-    paidByIfmis: employee.paidByIfmis ?? true,
-  };
-}
-
-function emptyToNull(value: string) {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
 }
 
 function employmentStatusSelectOptions(currentValue?: string) {

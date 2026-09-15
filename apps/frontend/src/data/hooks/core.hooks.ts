@@ -593,15 +593,13 @@ export function useUpdateEmployee() {
 
   return useMutation({
     mutationFn: (input: UpdateEmployeeInput) => coreApi.updateEmployee(input),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(coreQueryKeys.employee(data.employee.id), data);
       window.dispatchEvent(new CustomEvent('taams-session-refresh'));
-      queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.employee(data.employee.id),
-      });
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.dashboardSummary(),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() }),
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() }),
+      ]);
     },
   });
 }
