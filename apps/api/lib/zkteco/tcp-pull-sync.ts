@@ -7,6 +7,7 @@ import { attendancePunches, employees } from "../../db/schema";
 import {
   completeBiometricDeviceSyncBatch,
   createAttendancePunch,
+  findExistingDeviceAttendancePunch,
   createBiometricDeviceSyncBatch,
   acquireBiometricDeviceLock,
   releaseBiometricDeviceLock,
@@ -90,38 +91,42 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
             columns: { id: true },
           });
 
-          const alreadyImported = await db.query.attendancePunches.findFirst({
-            where: and(eq(attendancePunches.deviceId, device.id), eq(attendancePunches.externalUid, parsed.externalUid)),
-            columns: { id: true, employeeId: true },
-          });
+          let alreadyImported = await findExistingDeviceAttendancePunch(
+            device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid,
+          );
+          if (!alreadyImported) {
+            const created = await createAttendancePunch({
+              employeeId: employee?.id ?? null,
+              biometricId: parsed.biometricId,
+              deviceId: device.id,
+              syncBatchId: batch.id,
+              externalUid: parsed.externalUid,
+              punchTime: parsed.punchTime.toISOString(),
+              punchType: parsed.punchType,
+              verificationType: parsed.verificationType,
+              devicePunchId: parsed.devicePunchId,
+              source: "DEVICE",
+              isManual: false,
+              rawPayload: log,
+            }, db, { ignoreDuplicates: true });
 
-          if (alreadyImported) {
-            if (!alreadyImported.employeeId && employee) {
-              await db
-                .update(attendancePunches)
-                .set({ employeeId: employee.id } as any)
-                .where(and(eq(attendancePunches.id, alreadyImported.id), isNull(attendancePunches.employeeId)));
+            if (created) {
+              successfulRecords += 1;
+              continue;
             }
-
-            continue;
+            // Another importer may have saved this punch after our initial lookup.
+            alreadyImported = await findExistingDeviceAttendancePunch(
+              device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid,
+            );
+            if (!alreadyImported) throw new Error("Conflicting attendance punch could not be found");
           }
 
-          await createAttendancePunch({
-            employeeId: employee?.id ?? null,
-            biometricId: parsed.biometricId,
-            deviceId: device.id,
-            syncBatchId: batch.id,
-            externalUid: parsed.externalUid,
-            punchTime: parsed.punchTime.toISOString(),
-            punchType: parsed.punchType,
-            verificationType: parsed.verificationType,
-            devicePunchId: parsed.devicePunchId,
-            source: "DEVICE",
-            isManual: false,
-            rawPayload: log,
-          });
-
-          successfulRecords += 1;
+          if (!alreadyImported.employeeId && employee) {
+            await db
+              .update(attendancePunches)
+              .set({ employeeId: employee.id } as any)
+              .where(and(eq(attendancePunches.id, alreadyImported.id), isNull(attendancePunches.employeeId)));
+          }
         } catch (error) {
           failedRecords += 1;
           errors.push(describeDeviceError(error));

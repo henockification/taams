@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, user } from '../../schema';
 import type {
@@ -223,7 +223,30 @@ export async function markBiometricDeviceConnectionTestResult(id: string, input:
   return getBiometricDeviceById(id);
 }
 
-export async function createAttendancePunch(input: CreateAttendancePunchInput, tx: DbClient = db) {
+export async function findExistingDeviceAttendancePunch(
+  deviceId: string,
+  biometricId: string,
+  punchTime: Date,
+  externalUid: string,
+  tx: DbClient = db,
+) {
+  return tx.query.attendancePunches.findFirst({
+    where: and(
+      eq(attendancePunches.deviceId, deviceId),
+      or(
+        eq(attendancePunches.externalUid, externalUid),
+        and(eq(attendancePunches.biometricId, biometricId), eq(attendancePunches.punchTime, punchTime)),
+      ),
+    ),
+    columns: { id: true, employeeId: true },
+  });
+}
+
+export async function createAttendancePunch(
+  input: CreateAttendancePunchInput,
+  tx: DbClient = db,
+  options: { ignoreDuplicates?: boolean } = {},
+) {
   let device: { id: string; deviceCode: string } | null = null;
 
   if (input.employeeId) {
@@ -245,7 +268,7 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
   const punchTime = new Date(input.punchTime);
   const externalUid = input.externalUid ?? (device ? generateAttendancePunchExternalUid(device.deviceCode, input.biometricId, punchTime) : null);
 
-  const [punch] = await tx
+  let insert = tx
     .insert(attendancePunches)
     .values({
       employeeId: input.employeeId ?? null,
@@ -266,8 +289,10 @@ export async function createAttendancePunch(input: CreateAttendancePunchInput, t
       supervisorDelegationId: input.supervisorDelegationId ?? null,
       processedAt: input.processedAt ? new Date(input.processedAt) : null,
       rawPayload: input.rawPayload ?? null,
-    } as any)
-    .returning();
+    } as any);
+  if (options.ignoreDuplicates) insert = insert.onConflictDoNothing();
+  const [punch] = await insert.returning();
+  if (!punch) return undefined;
 
   const createdPunch = await getAttendancePunchById(punch.id, tx);
   await writeAuditEvent(tx, {
