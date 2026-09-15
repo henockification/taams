@@ -21,6 +21,7 @@ from psycopg.rows import dict_row
 
 from device_adapter import DeviceAdapter, DeviceConfig, DeviceUser, FingerTemplate, PyzkDeviceAdapter
 from provisioning_errors import safe_provisioning_error
+from source_diagnostics import source_diagnostics
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
@@ -63,7 +64,8 @@ class ProvisioningWorker:
             except Exception as error:
                 LOGGER.error("Job %s failed: %s", job["id"], self._safe_error(error))
                 self._fail_unfinished_results(connection, job["id"], self._safe_error(error))
-                self._finish_job(connection, job["id"], "FAILED", {}, self._safe_error(error))
+                summary = {"source": job["source_diagnostics"]} if "source_diagnostics" in job else {}
+                self._finish_job(connection, job["id"], "FAILED", summary, self._safe_error(error))
             return True
 
     def _process_job(self, connection: psycopg.Connection, job: dict[str, Any]) -> None:
@@ -79,8 +81,11 @@ class ProvisioningWorker:
         try:
             source_adapter.connect()
             self._update_device_metadata(connection, source, source_adapter.metadata())
-            source_users = {user.user_id: user for user in source_adapter.users()}
+            source_user_list = source_adapter.users()
+            source_users = {user.user_id: user for user in source_user_list}
             source_templates = self._templates_by_uid(source_adapter.templates())
+            counts = getattr(source_adapter, "inventory_counts", lambda: {})()
+            job["source_diagnostics"] = source_diagnostics(employees, source_user_list, source_templates, counts)
 
             if job["mode"] == "FULL_SYNC":
                 desired = employees
@@ -106,6 +111,7 @@ class ProvisioningWorker:
         failed = sum(1 for result in results if result["status"] == "FAILED")
         completed = sum(1 for result in results if result["status"] == "COMPLETED")
         summary = {
+            "source": job["source_diagnostics"],
             "devicesTotal": len(results),
             "devicesCompleted": completed,
             "devicesFailed": failed,

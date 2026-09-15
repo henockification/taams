@@ -50,6 +50,19 @@ class ProvisioningErrorsTest(unittest.TestCase):
         adapter.connect()
         sdk.connect.assert_called_once()
 
+    def test_inventory_counts_do_not_issue_additional_device_reads(self):
+        sdk = Mock()
+        sdk.connect.return_value.users = 635
+        sdk.connect.return_value.fingers = 800
+        sdk.connect.return_value.faces = 12
+        sdk.connect.return_value.user_packet_size = 72
+        module = self.load_adapter(Mock(return_value=sdk))
+        adapter = module.PyzkDeviceAdapter(module.DeviceConfig("source", "10.0.109.11", 4370, 0))
+        adapter.connect()
+        self.assertEqual(adapter.inventory_counts(), {"users": 635, "fingerprints": 800, "faces": 12, "userPacketSize": 72})
+        sdk.connect.return_value.get_users.assert_not_called()
+        sdk.connect.return_value.get_templates.assert_not_called()
+
     def test_connection_and_read_errors_identify_stage_and_device(self):
         sdk = Mock()
         sdk.connect.side_effect = ConnectionRefusedError("private packet")

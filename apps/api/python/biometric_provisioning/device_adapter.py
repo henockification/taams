@@ -162,6 +162,20 @@ class PyzkDeviceAdapter:
         except Exception:
             return None
 
+    def inventory_counts(self) -> dict[str, int | float | None]:
+        self._require_connection()
+        # pyzk updates these values while downloading users and templates.
+        # Reading them adds no device commands and exposes no enrollment bytes.
+        def count(attribute):
+            value = getattr(self._connection, attribute, None)
+            return value if isinstance(value, (int, float)) else None
+        return {
+            "users": count("users"),
+            "fingerprints": count("fingers"),
+            "faces": count("faces"),
+            "userPacketSize": count("user_packet_size"),
+        }
+
     def _require_connection(self) -> None:
         if self._connection is None:
             raise RuntimeError("Device is not connected")

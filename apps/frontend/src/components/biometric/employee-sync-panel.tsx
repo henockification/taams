@@ -18,7 +18,7 @@ import {
   useEmployees,
   useRetryBiometricProvisioningJob,
 } from '@/data/hooks/core.hooks';
-import type { BiometricDevice, BiometricProvisioningJob, BiometricProvisioningMode } from '@/data/types/core.types';
+import type { BiometricDevice, BiometricProvisioningJob, BiometricProvisioningMode, BiometricProvisioningSourceDiagnostics } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -364,6 +364,7 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
       {job.errorMessage ? (
         <p role="alert" className="mt-2 text-sm text-destructive">{job.errorMessage}</p>
       ) : null}
+      {job.summary?.source ? <SourceEnrollmentDiagnostics diagnostics={job.summary.source} /> : null}
       {results.some((result) => result.errorMessage) ? (
         <div className="mt-2 space-y-1">
           {results
@@ -385,7 +386,7 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
               <div className="space-y-2">
                 <p className="font-medium">Missing on enrollment source</p>
                 <p className="text-muted-foreground">
-                  These employee biometric IDs have no matching user or readable fingerprints on the master. Match the ID exactly, including leading zeros, and enroll their fingerprints before creating a new preview.
+                  These IDs have no matching downloaded user or fingerprint data. Review the source diagnostics first: an ID formatting or download problem does not mean the employee is unenrolled.
                 </p>
                 <div className="max-h-48 overflow-y-auto rounded border border-border p-2">
                   {result.differences!.missingSourceTemplates.map((biometricId) => <p key={biometricId} className="font-mono">{biometricId}</p>)}
@@ -413,5 +414,56 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
         </details>
       ))}
     </div>
+  );
+}
+
+function SourceEnrollmentDiagnostics({ diagnostics: source }: { diagnostics: BiometricProvisioningSourceDiagnostics }) {
+  return (
+    <details className="mt-3 rounded-md border border-border p-3" open>
+      <summary className="cursor-pointer text-sm font-medium">Enrollment source diagnostics</summary>
+      <div className="mt-3 space-y-3 text-sm">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <p>{source.employeeCount} database employees checked</p>
+          <p>{source.sourceUserCount} users downloaded from master</p>
+          <p>{source.sourceFingerprintCount} fingerprint templates downloaded</p>
+          <p>{source.sourceUsersWithFingerprints} master users with downloaded fingerprints</p>
+          <p>{source.exactMatchedEmployeeCount} employee IDs matched exactly</p>
+          <p>{source.missingSourceUserIds.length} employee IDs absent from downloaded master users</p>
+          <p>{source.sourceUsersWithoutFingerprints.length} matched employees without downloaded fingerprints</p>
+        </div>
+        <p className="text-muted-foreground">
+          Device reports {source.reportedUserCount ?? 'unknown'} users, {source.reportedFingerprintCount ?? 'unknown'} fingerprints and {source.reportedFaceCount ?? 'unknown'} faces. User record size: {source.userPacketSize ?? 'unknown'} bytes.
+        </p>
+        <p className="text-muted-foreground">This worker copies fingerprint enrollments. Face, card or PIN enrollments alone do not provide fingerprint templates.</p>
+        {source.reportedUserCount !== null && source.reportedUserCount !== source.sourceUserCount ? (
+          <p className="text-destructive">Downloaded user count differs from the device count. Check the device protocol reader before treating these employees as unenrolled.</p>
+        ) : null}
+        {source.reportedFingerprintCount !== null && source.reportedFingerprintCount !== source.sourceFingerprintCount ? (
+          <p className="text-destructive">Downloaded fingerprint count differs from the device count. Missing downloaded fingerprints may indicate a device read problem.</p>
+        ) : null}
+        {source.possibleIdMismatches.length > 0 ? (
+          <div className="space-y-2">
+            <p className="font-medium">Possible ID formatting mismatches ({source.possibleIdMismatches.length})</p>
+            <p className="text-muted-foreground">These numeric IDs differ by leading zeros or surrounding spaces. They are listed for review; they have not been automatically matched.</p>
+            <div className="max-h-48 overflow-y-auto rounded border border-border p-2">
+              {source.possibleIdMismatches.map((match) => <p key={match.employeeBiometricId}>Database {match.employeeBiometricId} → master {match.sourceUserIds.join(', ')}</p>)}
+            </div>
+          </div>
+        ) : null}
+        {source.missingSourceUserIds.length > 0 ? (
+          <details>
+            <summary className="cursor-pointer">Employee IDs not found on master ({source.missingSourceUserIds.length})</summary>
+            <p className="mt-2 max-h-48 overflow-y-auto font-mono">{source.missingSourceUserIds.join(', ')}</p>
+          </details>
+        ) : null}
+        {source.sourceUsersWithoutFingerprints.length > 0 ? (
+          <details>
+            <summary className="cursor-pointer">Matched IDs without downloaded fingerprints ({source.sourceUsersWithoutFingerprints.length})</summary>
+            <p className="mt-2 max-h-48 overflow-y-auto font-mono">{source.sourceUsersWithoutFingerprints.join(', ')}</p>
+          </details>
+        ) : null}
+        {source.duplicateSourceUserIds.length > 0 ? <p className="text-destructive">Duplicate user IDs on master: {source.duplicateSourceUserIds.join(', ')}</p> : null}
+      </div>
+    </details>
   );
 }

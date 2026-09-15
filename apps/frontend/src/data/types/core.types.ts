@@ -499,6 +499,22 @@ export type BiometricProvisioningDeviceResult = {
   device?: BiometricDevice | null;
 };
 
+export type BiometricProvisioningSourceDiagnostics = {
+  employeeCount: number;
+  sourceUserCount: number;
+  sourceFingerprintCount: number;
+  sourceUsersWithFingerprints: number;
+  exactMatchedEmployeeCount: number;
+  missingSourceUserIds: string[];
+  sourceUsersWithoutFingerprints: string[];
+  possibleIdMismatches: Array<{ employeeBiometricId: string; sourceUserIds: string[] }>;
+  duplicateSourceUserIds: string[];
+  reportedUserCount: number | null;
+  reportedFingerprintCount: number | null;
+  reportedFaceCount: number | null;
+  userPacketSize: number | null;
+};
+
 export type BiometricProvisioningJob = {
   id: string;
   previewJobId: string | null;
@@ -508,7 +524,7 @@ export type BiometricProvisioningJob = {
   isPreview: boolean;
   requestedEmployeeIds: string[];
   requestedTargetDeviceIds: string[];
-  summary: Record<string, unknown> | null;
+  summary: (Record<string, unknown> & { source?: BiometricProvisioningSourceDiagnostics }) | null;
   errorMessage: string | null;
   requestedBy: string;
   startedAt: string | null;

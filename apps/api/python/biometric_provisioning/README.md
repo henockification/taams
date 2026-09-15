@@ -6,6 +6,15 @@ The pyzk dependency is pinned to commit `f29709c17bb8f1bbb5382d2670b493207cb35ff
 
 Only sanitized IDs, counts, conflicts, status, and errors are persisted. Fingerprint template objects remain in worker memory, are never serialized, and are released after each job.
 
+New previews include `summary.source` with downloaded user/template counts,
+device-reported inventory counts and user record size. Employee IDs absent from
+downloaded users are reported separately from matched users without downloaded
+fingerprints. Numeric IDs that differ only by padding are diagnostic candidates;
+they are not automatically merged. These summaries contain counts and IDs only.
+Compare downloaded counts with reported counts before re-enrolling employees.
+This worker transfers fingerprints; face/card/PIN enrollments alone cannot supply
+the fingerprint templates required by the current provisioning workflow.
+
 Environment:
 
 - `DATABASE_URL` (required)
