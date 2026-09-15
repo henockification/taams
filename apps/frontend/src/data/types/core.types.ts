@@ -468,6 +468,19 @@ export type BiometricDevice = {
   department?: Department | null;
 };
 
+export type BiometricProvisioningDifferences = {
+  missingUsers: string[];
+  updatedUsers: string[];
+  removals: string[];
+  missingSourceTemplates: string[];
+  uidConflicts: Array<{
+    uid: number;
+    expectedBiometricId: string;
+    actualBiometricId?: string;
+    actualUid?: number;
+  }>;
+};
+
 export type BiometricProvisioningDeviceResult = {
   id: string;
   jobId: string;
@@ -478,7 +491,7 @@ export type BiometricProvisioningDeviceResult = {
   removedUsers: number;
   missingTemplates: number;
   uidConflicts: number;
-  differences: Record<string, unknown> | null;
+  differences: BiometricProvisioningDifferences | null;
   errorMessage: string | null;
   attempts: number;
   startedAt: string | null;

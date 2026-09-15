@@ -375,6 +375,43 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
             ))}
         </div>
       ) : null}
+      {results.filter((result) => result.missingTemplates > 0 || result.uidConflicts > 0).map((result) => (
+        <details key={result.id} className="mt-3 rounded-md border border-border p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            {result.device?.deviceName ?? result.deviceId}: {result.missingTemplates} missing source enrollments or fingerprints · {result.uidConflicts} UID conflicts
+          </summary>
+          <div className="mt-3 space-y-4 text-sm">
+            {(result.differences?.missingSourceTemplates?.length ?? 0) > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium">Missing on enrollment source</p>
+                <p className="text-muted-foreground">
+                  These employee biometric IDs have no matching user or readable fingerprints on the master. Match the ID exactly, including leading zeros, and enroll their fingerprints before creating a new preview.
+                </p>
+                <div className="max-h-48 overflow-y-auto rounded border border-border p-2">
+                  {result.differences!.missingSourceTemplates.map((biometricId) => <p key={biometricId} className="font-mono">{biometricId}</p>)}
+                </div>
+              </div>
+            ) : null}
+            {(result.differences?.uidConflicts?.length ?? 0) > 0 ? (
+              <div className="space-y-2">
+                <p className="font-medium">Conflicting target UID slots</p>
+                <p className="text-muted-foreground">
+                  UID is the terminal's internal user slot. Review the conflicting target records before changing them; provisioning cannot overwrite a different employee's enrollment.
+                </p>
+                <div className="max-h-48 space-y-2 overflow-y-auto rounded border border-border p-2">
+                  {result.differences!.uidConflicts.map((conflict, index) => (
+                    <p key={`${conflict.uid}-${conflict.expectedBiometricId}-${index}`}>
+                      Master UID {conflict.uid}, biometric ID {conflict.expectedBiometricId}: {conflict.actualBiometricId !== undefined
+                        ? `target UID is occupied by biometric ID ${conflict.actualBiometricId}`
+                        : `this employee is stored at target UID ${conflict.actualUid}`}.
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ))}
     </div>
   );
 }

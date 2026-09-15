@@ -356,7 +356,12 @@ class ProvisioningWorker:
         connection.commit()
 
     def _complete_result(self, connection: psycopg.Connection, job: dict[str, Any], device: dict[str, Any], differences: dict[str, Any], failed: bool) -> None:
-        error = "UID conflict or missing source enrollment blocks this device" if failed else None
+        blockers = []
+        if differences["missingSourceTemplates"]:
+            blockers.append(f'{len(differences["missingSourceTemplates"])} employee(s) missing enrollment or fingerprints on the source')
+        if differences["uidConflicts"]:
+            blockers.append(f'{len(differences["uidConflicts"])} target UID conflict(s)')
+        error = "; ".join(blockers) + ". Review preview details before applying." if failed else None
         connection.execute(
             """UPDATE biometric_provisioning_device_results SET status=%s,
                       added_users=%s, updated_users=%s, removed_users=%s,
