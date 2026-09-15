@@ -14,6 +14,8 @@ import {
 } from "../../db/orm/core/manageBiometricDevices";
 import type { DeviceIntegrationMode, PunchType, SyncStatus } from "../../types/core.types";
 
+export const ATTENDANCE_SYNC_VERSION = "device-biometric-time-deduplication-v1";
+
 type PullBiometricDevice = {
   id: string;
   deviceCode: string;

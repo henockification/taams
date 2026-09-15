@@ -361,13 +361,16 @@ function JobRow({ job, onApply, onRetry }: { job: BiometricProvisioningJob; onAp
         <span className={conflicts ? 'text-destructive' : ''}>{conflicts} UID conflicts</span>
         <span className={missing ? 'text-destructive' : ''}>{missing} missing templates</span>
       </div>
+      {job.errorMessage ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">{job.errorMessage}</p>
+      ) : null}
       {results.some((result) => result.errorMessage) ? (
         <div className="mt-2 space-y-1">
           {results
             .filter((result) => result.errorMessage)
             .map((result) => (
               <p key={result.id} className="text-xs text-destructive">
-                {result.device?.deviceName}: {result.errorMessage}
+                {result.device?.deviceName ?? result.deviceId}{result.attempts === 0 && !result.startedAt ? ' (not attempted)' : ''}: {result.errorMessage}
               </p>
             ))}
         </div>

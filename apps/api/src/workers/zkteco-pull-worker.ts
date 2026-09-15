@@ -1,13 +1,16 @@
 import { and, eq, or } from "drizzle-orm";
 import { db } from "../../db/db";
 import { biometricDevices } from "../../db/schema";
-import { pullZktecoAttendanceForDevice } from "../../lib/zkteco/tcp-pull-sync";
+import { ATTENDANCE_SYNC_VERSION, pullZktecoAttendanceForDevice } from "../../lib/zkteco/tcp-pull-sync";
 import type { DeviceIntegrationMode } from "../../types/core.types";
 
 const INTERVAL_MS = Number(process.env.ZK_SYNC_INTERVAL_MS ?? 5 * 60 * 1000);
 
 async function main() {
-  console.log("ZKTeco TCP pull worker started");
+  console.log("ZKTeco TCP pull worker started", {
+    syncVersion: ATTENDANCE_SYNC_VERSION,
+    intervalMs: INTERVAL_MS,
+  });
 
   while (true) {
     try {
@@ -50,11 +53,14 @@ async function syncAllTcpPullDevices() {
       integrationMode: device.integrationMode as DeviceIntegrationMode,
     });
     console.log("ZKTeco TCP pull sync completed", {
+      syncVersion: ATTENDANCE_SYNC_VERSION,
+      batchId: result.id,
       deviceCode: device.deviceCode,
       syncStatus: result.syncStatus,
       totalRecords: result.totalRecords,
       successfulRecords: result.successfulRecords,
       failedRecords: result.failedRecords,
+      errorMessage: result.errorMessage,
     });
   }
 }

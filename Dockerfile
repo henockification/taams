@@ -223,6 +223,7 @@ COPY apps/api/python/biometric_provisioning/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY apps/api/python/biometric_provisioning/device_adapter.py ./device_adapter.py
+COPY apps/api/python/biometric_provisioning/provisioning_errors.py ./provisioning_errors.py
 COPY apps/api/python/biometric_provisioning/worker.py ./worker.py
 
 RUN useradd --create-home --uid 10001 provisioning

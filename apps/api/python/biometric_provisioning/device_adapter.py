@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from zk import ZK
 from zk.user import User
+from provisioning_errors import device_operation
 
 
 @dataclass(frozen=True)
@@ -58,18 +59,23 @@ class PyzkDeviceAdapter:
             timeout=timeout,
             password=config.communication_key,
             force_udp=False,
-            ommit_ping=False,
+            # Reachability is determined by the device connection, not ICMP or
+            # availability of a system ping binary in the worker container.
+            ommit_ping=True,
         )
         self._connection: Any = None
 
+    @device_operation("Connect")
     def connect(self) -> None:
         self._connection = self._zk.connect()
 
+    @device_operation("Disconnect")
     def disconnect(self) -> None:
         if self._connection is not None:
             self._connection.disconnect()
             self._connection = None
 
+    @device_operation("Read users")
     def users(self) -> list[DeviceUser]:
         self._require_connection()
         return [
@@ -77,6 +83,7 @@ class PyzkDeviceAdapter:
             for user in self._connection.get_users()
         ]
 
+    @device_operation("Read fingerprints")
     def templates(self) -> list[FingerTemplate]:
         self._require_connection()
         templates = []
@@ -86,18 +93,22 @@ class PyzkDeviceAdapter:
                 templates.append(FingerTemplate(int(finger.uid), finger_id, finger))
         return templates
 
+    @device_operation("Disable device")
     def disable(self) -> None:
         self._require_connection()
         self._connection.disable_device()
 
+    @device_operation("Enable device")
     def enable(self) -> None:
         self._require_connection()
         self._connection.enable_device()
 
+    @device_operation("Refresh device")
     def refresh(self) -> None:
         self._require_connection()
         self._connection.refresh_data()
 
+    @device_operation("Write enrollment")
     def upsert_user_with_templates(self, user: DeviceUser, templates: list[FingerTemplate]) -> None:
         self._require_connection()
         existing_slots = [
@@ -127,6 +138,7 @@ class PyzkDeviceAdapter:
         # sanitized user so passwords, cards, groups, and privileges are excluded.
         self._connection.save_user_template(sanitized_user, [template.raw for template in templates])
 
+    @device_operation("Remove enrollment")
     def delete_user(self, user: DeviceUser) -> None:
         self._require_connection()
         self._connection.delete_user(uid=user.uid, user_id=user.user_id)

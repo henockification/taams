@@ -4,7 +4,7 @@ import {
   getBiometricDeviceById,
   getAttendanceSyncBatchesByDeviceId,
 } from '../../../../db/orm/core/manageBiometricDevices';
-import { pullZktecoAttendanceForDevice } from '../../../../lib/zkteco/tcp-pull-sync';
+import { ATTENDANCE_SYNC_VERSION, pullZktecoAttendanceForDevice } from '../../../../lib/zkteco/tcp-pull-sync';
 import { writeAuditEvent } from '../../../../lib/audit';
 import { db } from '../../../../db/db';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -30,6 +30,13 @@ export async function syncBiometricDeviceHandler(c: Context) {
     }
 
     const attendanceSyncBatch = await pullZktecoAttendanceForDevice(biometricDevice);
+    console.log('Manual biometric attendance sync completed', {
+      syncVersion: ATTENDANCE_SYNC_VERSION,
+      batchId: attendanceSyncBatch.id,
+      syncStatus: attendanceSyncBatch.syncStatus,
+      successfulRecords: attendanceSyncBatch.successfulRecords,
+      failedRecords: attendanceSyncBatch.failedRecords,
+    });
     await writeAuditEvent(db, {
       action: 'BIOMETRIC_DEVICE_SYNCED',
       resourceType: 'biometric_device',

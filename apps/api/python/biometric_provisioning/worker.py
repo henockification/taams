@@ -20,6 +20,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from device_adapter import DeviceAdapter, DeviceConfig, DeviceUser, FingerTemplate, PyzkDeviceAdapter
+from provisioning_errors import safe_provisioning_error
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
@@ -96,6 +97,8 @@ class ProvisioningWorker:
         finally:
             try:
                 source_adapter.disconnect()
+            except Exception as error:
+                LOGGER.warning("Job %s source disconnect failed: %s", job["id"], self._safe_error(error))
             finally:
                 self._release_lock(connection, source["id"], owner_id)
 
@@ -454,10 +457,7 @@ class ProvisioningWorker:
 
     @staticmethod
     def _safe_error(error: Exception) -> str:
-        # Do not serialize exception messages from protocol code: they may embed packet bytes.
-        if isinstance(error, OSError):
-            return f"{error.__class__.__name__}: device network operation failed"
-        return f"{error.__class__.__name__}: device provisioning operation failed"
+        return safe_provisioning_error(error)
 
     @contextmanager
     def _connect(self) -> Iterator[psycopg.Connection]:
