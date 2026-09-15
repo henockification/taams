@@ -1,4 +1,5 @@
 import ZKLib from "node-zklib";
+import { describeDeviceError } from "./sync-errors";
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, or } from "drizzle-orm";
 import { db } from "../../db/db";
@@ -158,31 +159,6 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
   }
 }
 
-function describeDeviceError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  if (typeof error === "string" && error.trim() && error.trim() !== "[object Object]") return error.trim();
-
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    for (const key of ["message", "error", "err", "reason", "details", "code"]) {
-      const value = record[key];
-      if (value === error) continue;
-      const description = describeDeviceError(value);
-      if (description !== "Unknown biometric device error") {
-        return key === "code" ? `Device error code: ${description}` : description;
-      }
-    }
-
-    const details = Object.entries(record)
-      .filter(([, value]) => ["string", "number", "boolean"].includes(typeof value))
-      .slice(0, 4)
-      .map(([key, value]) => `${key}: ${String(value)}`)
-      .join(", ");
-    if (details) return details;
-  }
-
-  return "Unknown biometric device error";
-}
 
 function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLog) {
   const biometricId = String(log.deviceUserId ?? log.userId ?? "").trim();
