@@ -20,6 +20,7 @@ Environment:
 
 - `DATABASE_URL` (required)
 - `PROVISIONING_DEVICE_BACKEND`: `pyzk` (default, fingerprint-only) or `zkteco-sdk` (Windows, face and fingerprint)
+- `PROVISIONING_SDK_PASSWORD_MODE`: `auto` (default, prefer extended SDK password API), `legacy`, or `extended`. Use an explicit mode only after checking connectivity with the registered SDK.
 - `PROVISIONING_POLL_SECONDS` (default `3`)
 - `PROVISIONING_WRITES_ENABLED` (default `false`; set to `true` only after the documented compatibility gate passes)
 - `LOG_LEVEL` (default `INFO`)
@@ -70,6 +71,18 @@ the selected user's faces and user enrollment without clearing attendance logs.
 No public face API, template database table, or SDK DLL redistribution is added.
 
 ## Research and validation
+
+For persistent SDK connection failures, stop the provisioning and attendance pull
+workers and run `python sdk_connection_check.py --ip MASTER_IP` on Windows. It
+tests legacy and extended SDK password methods with no database connection, pyzk
+session, or enrollment reads/writes. It uses the SDK's default protocol; optional
+`--protocol standalone` tests the documented protocol selector independently and
+stops if selection fails. It prints connection status, numeric errors, SDK
+version, registered DLL location, and companion DLL names, never passwords.
+The default communication key is zero; a nonzero key can be supplied through
+`PROVISIONING_TEST_COMM_KEY` in the process environment. If only legacy succeeds,
+set `PROVISIONING_SDK_PASSWORD_MODE=legacy` before restarting the worker. If both
+fail, investigate the SDK/device connection independently before another apply.
 
 - [ZKTeco iFace SDK handbook](https://soporte.tvc.mx/Ingenieria/ZK/MANUALES/Manuales%20SDK/Equipos%20iFace/iFace%20Series%20Communication%20Protocol%20SDK%20Development%20Handbook-V6.14.pdf): documented face template read/write functions and index 50.
 - [ZKTeco Standalone SDK manual](https://studylib.net/doc/25367562/zkteco-standalone-sdk-development-manual-v2.1-a.2-en): native template length and SDK error meanings.

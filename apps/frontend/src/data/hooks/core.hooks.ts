@@ -94,12 +94,14 @@ export const coreQueryKeys = {
   notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
   auditEvents: (params: Record<string, string>) => [...coreQueryKeys.all, 'audit-events', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
+  supervisorCandidates: () => [...coreQueryKeys.employees(), 'supervisor-candidates'] as const,
   employeesPaginated: (params: EmployeesPaginatedParams) => [...coreQueryKeys.all, 'employees', 'paginated', params] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
   allEmployeeSupervisors: () => [...coreQueryKeys.all, 'employee-supervisors'] as const,
   supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
   temporaryDepartmentAssignments: () => [...coreQueryKeys.all, 'temporary-department-assignments'] as const,
+  temporaryAssignmentEligibleEmployees: () => [...coreQueryKeys.temporaryDepartmentAssignments(), 'eligible-employees'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
   allEmployeeWorkSchedules: () => [...coreQueryKeys.all, 'employee-work-schedules'] as const,
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
@@ -539,6 +541,15 @@ export function useWorkingEmployees(enabled = true) {
   return useEmployees(enabled, true);
 }
 
+export function useSupervisorCandidates(enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.supervisorCandidates(),
+    queryFn: () => coreApi.getSupervisorCandidates(),
+    staleTime: 60 * 1000,
+    enabled,
+  });
+}
+
 function invalidateHolidayDependentQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: coreQueryKeys.holidays() });
   queryClient.invalidateQueries({ queryKey: coreQueryKeys.dashboardSummary() });
@@ -735,6 +746,15 @@ export function useTemporaryDepartmentAssignments() {
     queryKey: coreQueryKeys.temporaryDepartmentAssignments(),
     queryFn: () => coreApi.getTemporaryDepartmentAssignments(),
     staleTime: 30 * 1000,
+  });
+}
+
+export function useTemporaryAssignmentEligibleEmployees(enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.temporaryAssignmentEligibleEmployees(),
+    queryFn: () => coreApi.getTemporaryAssignmentEligibleEmployees(),
+    staleTime: 60 * 1000,
+    enabled,
   });
 }
 

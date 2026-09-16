@@ -6,15 +6,24 @@ import {
 import {
   createTemporaryDepartmentAssignment,
   deactivateTemporaryDepartmentAssignment,
+  getTemporaryAssignmentEligibleEmployees,
   getTemporaryDepartmentAssignments,
   updateTemporaryDepartmentAssignment,
 } from '../../../../db/orm/core/manageTemporaryDepartmentAssignments';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
-import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
-import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
-import { formatTemporaryDepartmentAssignment } from '../../helpers/formatters';
+import { formatEmployee, formatTemporaryDepartmentAssignment } from '../../helpers/formatters';
+
+export async function getTemporaryAssignmentEligibleEmployeesHandler(c: Context) {
+  try {
+    await resolveContext(c);
+    const employees = await getTemporaryAssignmentEligibleEmployees();
+    return c.json({ success: true, employees: employees.map((employee) => formatEmployee(employee)) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch eligible employees');
+  }
+}
 
 export async function getTemporaryDepartmentAssignmentsHandler(c: Context) {
   try {
@@ -97,7 +106,6 @@ async function resolveContext(c: Context) {
     throw new Error('Authentication required');
   }
 
-  const permissions = await getUserPermissionNames(session.user.id);
   const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
   const canManageTemporaryAssignments = roles.some((role) =>
     ['super_admin', 'superadmin', 'admin', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'].includes(role),
@@ -106,15 +114,9 @@ async function resolveContext(c: Context) {
     throw new Error('Human Resources permission is required to manage temporary assignments');
   }
 
-  const scope = await resolveEmployeeVisibilityScope({
-    userId: session.user.id,
-    roles: session.user.role ?? [],
-    permissions,
-  });
-
   return {
     userId: session.user.id,
     roles: session.user.role ?? [],
-    scope,
+    scope: { type: 'unrestricted' as const },
   };
 }

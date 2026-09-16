@@ -21,7 +21,7 @@ import {
   useCreateTemporaryDepartmentAssignment,
   useDeactivateTemporaryDepartmentAssignment,
   useDepartments,
-  useWorkingEmployees,
+  useTemporaryAssignmentEligibleEmployees,
   useTemporaryDepartmentAssignments,
   useUpdateTemporaryDepartmentAssignment,
 } from '@/data/hooks/core.hooks';
@@ -52,15 +52,15 @@ export function TemporaryDepartmentAssignmentsPage() {
   const { formatDate } = useCalendarPreference();
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const [dialogOpen, setDialogOpen] = useState(false);
   const assignmentsQuery = useTemporaryDepartmentAssignments();
-  const employeesQuery = useWorkingEmployees();
+  const employeesQuery = useTemporaryAssignmentEligibleEmployees(dialogOpen);
   const departmentsQuery = useDepartments();
   const createAssignment = useCreateTemporaryDepartmentAssignment();
   const updateAssignment = useUpdateTemporaryDepartmentAssignment();
   const deactivateAssignment = useDeactivateTemporaryDepartmentAssignment();
   const [filter, setFilter] = useState<AssignmentFilter>('active');
   const [search, setSearch] = useState('');
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAssignment, setEditingAssignment] = useState<TemporaryDepartmentAssignment | null>(null);
   const [form, setForm] = useState<FormState>(() => emptyForm());
 
@@ -292,13 +292,14 @@ export function TemporaryDepartmentAssignmentsPage() {
                   value={form.employeeId || undefined}
                   onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}
                   disabled={Boolean(editingAssignment)}
-                  options={employees
-                    .filter((employee) => employee.isActive)
-                    .map((employee) => ({
-                      value: employee.id,
-                      label: employeeName(employee),
-                      description: employee.employeeCode,
-                    }))}
+                  options={employees.map((employee) => ({
+                    value: employee.id,
+                    label: employeeName(employee),
+                    description: employee.employeeCode,
+                    searchText: [employee.firstNameAm, employee.middleNameAm, employee.lastNameAm, employee.payrollId, employee.biometricId]
+                      .filter(Boolean)
+                      .join(' '),
+                  }))}
                   placeholder={t('selectEmployee')}
                   searchPlaceholder={t('searchEmployee')}
                   emptyMessage={t('noMatchingEmployees')}
@@ -384,6 +385,7 @@ type SearchableSelectOption = {
   value: string;
   label: string;
   description?: string | null;
+  searchText?: string;
 };
 
 function SearchableSelect({
@@ -437,7 +439,7 @@ function SearchableSelect({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={`${option.label} ${option.description ?? ''}`}
+                  value={`${option.label} ${option.description ?? ''} ${option.searchText ?? ''}`}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);

@@ -3,6 +3,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import {
   CreateTemporaryDepartmentAssignmentRequestSchema,
+  EmployeesResponseSchema,
   TemporaryDepartmentAssignmentResponseSchema,
   TemporaryDepartmentAssignmentsResponseSchema,
   UpdateTemporaryDepartmentAssignmentRequestSchema,
@@ -11,6 +12,7 @@ import { openApiApp } from '../../../lib/openapi';
 import {
   createTemporaryDepartmentAssignmentHandler,
   deactivateTemporaryDepartmentAssignmentHandler,
+  getTemporaryAssignmentEligibleEmployeesHandler,
   getTemporaryDepartmentAssignmentsHandler,
   updateTemporaryDepartmentAssignmentHandler,
 } from './handlers/temporaryDepartmentAssignments';
@@ -31,6 +33,19 @@ export const getTemporaryDepartmentAssignmentsRoute = createRoute({
     200: {
       content: { 'application/json': { schema: TemporaryDepartmentAssignmentsResponseSchema } },
       description: 'Temporary department assignments',
+    },
+  },
+});
+
+export const getTemporaryAssignmentEligibleEmployeesRoute = createRoute({
+  method: 'get',
+  path: '/temporary-department-assignments/eligible-employees',
+  tags: ['Core', 'Temporary Department Assignments'],
+  summary: 'Get Active Working Employees Eligible for Temporary Assignment',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeesResponseSchema } },
+      description: 'Eligible employees across the roster',
     },
   },
 });
@@ -107,12 +122,14 @@ export const deactivateTemporaryDepartmentAssignmentRoute = createRoute({
 });
 
 temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', requirePermission('temporary-assignment:read'), getTemporaryDepartmentAssignmentsHandler);
+temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments/eligible-employees', requirePermission('temporary-assignment:read'), getTemporaryAssignmentEligibleEmployeesHandler);
 temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', requirePermission('temporary-assignment:add'), createTemporaryDepartmentAssignmentHandler);
 temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', requirePermission('temporary-assignment:edit'), updateTemporaryDepartmentAssignmentHandler);
 temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments/:id/deactivate', requirePermission('temporary-assignment:edit'), deactivateTemporaryDepartmentAssignmentHandler);
 
 openApiApp
   .openapi(getTemporaryDepartmentAssignmentsRoute, getTemporaryDepartmentAssignmentsHandler as any)
+  .openapi(getTemporaryAssignmentEligibleEmployeesRoute, getTemporaryAssignmentEligibleEmployeesHandler as any)
   .openapi(createTemporaryDepartmentAssignmentRoute, createTemporaryDepartmentAssignmentHandler as any)
   .openapi(updateTemporaryDepartmentAssignmentRoute, updateTemporaryDepartmentAssignmentHandler as any)
   .openapi(deactivateTemporaryDepartmentAssignmentRoute, deactivateTemporaryDepartmentAssignmentHandler as any);

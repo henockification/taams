@@ -191,6 +191,17 @@ export async function getEmployees(scope?: EmployeeVisibilityScope, workingOnly 
   });
 }
 
+export async function getSupervisorCandidates() {
+  return db.query.employees.findMany({
+    where: and(
+      eq(employees.isActive, true),
+      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+    ),
+    with: { department: true, position: true },
+    orderBy: (table, { asc }) => [asc(table.employeeCode)],
+  });
+}
+
 export async function getEmployeesPaginated({
   page = 1,
   pageSize = 50,
@@ -457,7 +468,7 @@ export async function upsertPermanentEmployees(
 
 export async function createEmployeeSupervisor(employeeId: string, input: CreateEmployeeSupervisorInput) {
   await assertEmployeeExists(employeeId);
-  await assertEmployeeExists(input.supervisorId);
+  await assertActiveWorkingSupervisor(input.supervisorId);
 
   if (employeeId === input.supervisorId) {
     throw new Error('Employee cannot be their own supervisor');
@@ -480,7 +491,7 @@ export async function bulkCreateEmployeeSupervisorsScoped(
   input: BulkCreateEmployeeSupervisorInput,
   scope: EmployeeVisibilityScope,
 ) {
-  await assertCanAccessEmployee(input.supervisorId, scope);
+  await assertActiveWorkingSupervisor(input.supervisorId);
 
   const employeeIds = [...new Set(input.employeeIds)];
   const errors: Array<{ employeeId: string; message: string }> = [];
@@ -515,6 +526,18 @@ export async function bulkCreateEmployeeSupervisorsScoped(
     failed: errors.length,
     errors,
   };
+}
+
+async function assertActiveWorkingSupervisor(supervisorId: string) {
+  const supervisor = await db.query.employees.findFirst({
+    where: and(
+      eq(employees.id, supervisorId),
+      eq(employees.isActive, true),
+      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+    ),
+    columns: { id: true },
+  });
+  if (!supervisor) throw new Error('Supervisor must be an active working employee');
 }
 
 export async function getEmployeeSupervisors(employeeId: string) {

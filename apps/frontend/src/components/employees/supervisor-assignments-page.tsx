@@ -43,6 +43,7 @@ import {
   useAllEmployeeSupervisors,
   useBulkCreateEmployeeSupervisors,
   useDepartments,
+  useSupervisorCandidates,
   useWorkingEmployees,
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
@@ -79,6 +80,7 @@ export function SupervisorAssignmentsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const { data: supervisorCandidatesResponse, isLoading: supervisorCandidatesLoading } = useSupervisorCandidates(dialogOpen);
   const [supervisorId, setSupervisorId] = useState('');
   const [isPrimary, setIsPrimary] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState(todayInput());
@@ -151,10 +153,10 @@ export function SupervisorAssignmentsPage() {
   );
   const selectedEmployeeSet = useMemo(() => new Set(selectedEmployeeIds), [selectedEmployeeIds]);
   const supervisorOptions = useMemo(() => (
-    employees
-      .filter((employee) => employee.employmentStatus === 'ACTIVE' && !selectedEmployeeSet.has(employee.id))
+    (supervisorCandidatesResponse?.employees ?? [])
+      .filter((employee) => !selectedEmployeeSet.has(employee.id))
       .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }))
-  ), [employees, selectedEmployeeSet]);
+  ), [supervisorCandidatesResponse, selectedEmployeeSet]);
 
   useEffect(() => {
     if (currentPage !== page) setPage(currentPage);
@@ -409,6 +411,7 @@ export function SupervisorAssignmentsPage() {
                   value={supervisorId}
                   onValueChange={setSupervisorId}
                   employees={supervisorOptions}
+                  disabled={supervisorCandidatesLoading}
                   placeholder={t('selectSupervisor')}
                   searchPlaceholder={t('searchEmployees')}
                   emptyMessage={t('noMatchingEmployees')}
@@ -468,6 +471,7 @@ function SearchableEmployeeSelect({
   value,
   onValueChange,
   employees,
+  disabled,
   placeholder,
   searchPlaceholder,
   emptyMessage,
@@ -476,6 +480,7 @@ function SearchableEmployeeSelect({
   value: string;
   onValueChange: (value: string) => void;
   employees: Employee[];
+  disabled?: boolean;
   placeholder: string;
   searchPlaceholder: string;
   emptyMessage: string;
@@ -492,6 +497,7 @@ function SearchableEmployeeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className="h-10 w-full justify-between font-normal"
         >
           <span className="truncate">
@@ -514,11 +520,18 @@ function SearchableEmployeeSelect({
                   employee.email,
                   employee.phoneNumber,
                 ].filter(Boolean).join(' ');
+                const searchTerms = [
+                  employee.firstNameAm,
+                  employee.middleNameAm,
+                  employee.lastNameAm,
+                  employee.payrollId,
+                  employee.biometricId,
+                ].filter(Boolean).join(' ');
 
                 return (
                   <CommandItem
                     key={employee.id}
-                    value={`${name} ${description}`}
+                    value={`${name} ${description} ${searchTerms}`}
                     onSelect={() => {
                       onValueChange(employee.id);
                       setOpen(false);

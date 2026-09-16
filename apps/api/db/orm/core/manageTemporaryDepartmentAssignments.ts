@@ -32,6 +32,17 @@ export async function getTemporaryDepartmentAssignments(context: AssignmentConte
   return assignments.filter((assignment) => managedIds.includes(assignment.employeeId) || assignment.createdBy === context.userId);
 }
 
+export async function getTemporaryAssignmentEligibleEmployees() {
+  return db.query.employees.findMany({
+    where: and(
+      eq(employees.isActive, true),
+      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+    ),
+    with: { department: true, position: true },
+    orderBy: (table, { asc }) => [asc(table.employeeCode)],
+  });
+}
+
 export async function createTemporaryDepartmentAssignment(input: CreateTemporaryDepartmentAssignmentInput, context: AssignmentContext) {
   const effectiveFrom = parseDate(input.effectiveFrom, 'effectiveFrom');
   const effectiveTo = parseDate(input.effectiveTo, 'effectiveTo');
@@ -40,10 +51,13 @@ export async function createTemporaryDepartmentAssignment(input: CreateTemporary
   return db.transaction(async (tx) => {
     const employee = await tx.query.employees.findFirst({
       where: eq(employees.id, input.employeeId),
-      columns: { id: true, departmentId: true, isActive: true },
+      columns: { id: true, departmentId: true, isActive: true, sourceEmploymentStatus: true },
     });
     if (!employee) throw new Error('Employee not found');
     if (!employee.isActive) throw new Error('Employee must be active');
+    if (employee.sourceEmploymentStatus !== SOURCE_EMPLOYMENT_STATUS.WORKING) {
+      throw new Error('Employee must be working');
+    }
 
     const targetDepartment = await tx.query.departments.findFirst({
       where: eq(departments.id, input.targetDepartmentId),

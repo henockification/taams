@@ -337,6 +337,7 @@ export const coreApi = {
     return coreFetch<NotificationLogsResponse>(`/notification-logs${suffix}`);
   },
   getEmployees: (workingOnly = false) => coreFetch<EmployeesResponse>(workingOnly ? '/employees?workingOnly=true' : '/employees'),
+  getSupervisorCandidates: () => coreFetch<EmployeesResponse>('/employees/supervisor-candidates'),
   getEmployeesPaginated: (params: EmployeesPaginatedParams = {}) => {
     const query = new URLSearchParams();
     if (params.page) query.set('page', String(params.page));
@@ -402,6 +403,7 @@ export const coreApi = {
       method: 'POST',
     }),
   getTemporaryDepartmentAssignments: () => coreFetch<TemporaryDepartmentAssignmentsResponse>('/temporary-department-assignments'),
+  getTemporaryAssignmentEligibleEmployees: () => coreFetch<EmployeesResponse>('/temporary-department-assignments/eligible-employees'),
   createTemporaryDepartmentAssignment: (input: CreateTemporaryDepartmentAssignmentInput) =>
     coreFetch<TemporaryDepartmentAssignmentResponse>('/temporary-department-assignments', {
       method: 'POST',

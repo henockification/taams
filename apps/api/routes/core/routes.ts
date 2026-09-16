@@ -51,7 +51,7 @@ import ifmisAttendanceApp from './ifmis-attendance/routes';
 import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
-import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
+import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 import { requirePermission, requirePermissionOrDelegation } from '../../middleware/rbac';
 
 const coreApp = new Hono();
@@ -232,6 +232,19 @@ export const getEmployeesRoute = createRoute({
     200: {
       content: { 'application/json': { schema: EmployeesResponseSchema } },
       description: 'Employee list',
+    },
+  },
+});
+
+export const getSupervisorCandidatesRoute = createRoute({
+  method: 'get',
+  path: '/employees/supervisor-candidates',
+  tags: ['Core', 'Employees'],
+  summary: 'Get Active Working Supervisor Candidates',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeesResponseSchema } },
+      description: 'Supervisor candidates across the roster',
     },
   },
 });
@@ -608,6 +621,7 @@ coreApp.get('/positions', requirePermission('employees:read', 'permanent-employe
 coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
 coreApp.post('/employees', requirePermission('employees:create'), createEmployeeHandler);
 coreApp.get('/employees', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeesHandler);
+coreApp.get('/employees/supervisor-candidates', requirePermission('employees:update'), getSupervisorCandidatesHandler);
 coreApp.get('/employees/paginated', requirePermissionOrDelegation('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'leave-request-approvals:approve'), getEmployeesPaginatedHandler);
 coreApp.post('/employees/permanent/import', requirePermission('employees:create'), importPermanentEmployeesHandler);
 coreApp.post('/employees/contract/import', requirePermission('employees:create'), importContractEmployeesHandler);
@@ -652,6 +666,7 @@ openApiApp
   .openapi(updatePositionRoute, updatePositionHandler as any)
   .openapi(createEmployeeRoute, createEmployeeHandler as any)
   .openapi(getEmployeesRoute, getEmployeesHandler as any)
+  .openapi(getSupervisorCandidatesRoute, getSupervisorCandidatesHandler as any)
   .openapi(getEmployeesPaginatedRoute, getEmployeesPaginatedHandler as any)
   .openapi(importPermanentEmployeesRoute, importPermanentEmployeesHandler as any)
   .openapi(importContractEmployeesRoute, importContractEmployeesHandler as any)

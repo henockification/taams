@@ -16,6 +16,7 @@ import {
   getEmployeeByIdScoped,
   getEmployees,
   getEmployeesPaginated,
+  getSupervisorCandidates,
   getEmployeeSupervisors,
   upsertPermanentEmployees,
   updateEmployeeScoped,
@@ -76,6 +77,19 @@ export async function getEmployeesHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch employees');
+  }
+}
+
+export async function getSupervisorCandidatesHandler(c: Context) {
+  try {
+    await resolveScope(c);
+    const candidates = await getSupervisorCandidates();
+    return c.json({
+      success: true,
+      employees: candidates.map((employee) => formatEmployee(employee)),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch supervisor candidates');
   }
 }
 

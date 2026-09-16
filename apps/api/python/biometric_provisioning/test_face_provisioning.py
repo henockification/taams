@@ -27,6 +27,102 @@ device, sdk_module, worker_module = load_modules()
 
 
 class FaceSdkTest(unittest.TestCase):
+    def setUp(self):
+        self.sleep = patch.object(sdk_module.time, "sleep").start()
+        self.addCleanup(patch.stopall)
+
+    def test_busy_connection_retries_after_pyzk_session_closes(self):
+        adapter, sdk = self.adapter()
+        def connect(*args):
+            self.assertIsNone(adapter._connection)
+            return sdk.Connect_Net.call_count >= 3
+        sdk.Connect_Net.side_effect = connect
+        sdk.GetLastError.return_value = -201
+        sdk.GetUserFaceStr.return_value = (True, "PRIVATE-FACE", 100)
+        self.assertEqual(len(adapter.face_templates([device.DeviceUser(1, "001", "", None)])), 1)
+        self.assertEqual(sdk.Connect_Net.call_count, 3)
+        self.assertEqual([call.args[0] for call in self.sleep.call_args_list], [0.5, 1, 2])
+
+    def test_persistent_busy_connection_stops_without_enrollment_writes(self):
+        adapter, sdk = self.adapter()
+        sdk.Connect_Net.side_effect = None
+        sdk.Connect_Net.return_value = False
+        sdk.GetLastError.return_value = -201
+        with self.assertRaisesRegex(DeviceOperationError, "device remains busy after 5 attempts"):
+            adapter.face_templates([device.DeviceUser(1, "001", "", None)])
+        self.assertEqual(sdk.Connect_Net.call_count, 5)
+        sdk.GetUserFaceStr.assert_not_called()
+        sdk.SetUserFaceStr.assert_not_called()
+        self.assertIsNotNone(adapter._connection)
+
+    def test_authentication_failure_is_not_retried(self):
+        adapter, sdk = self.adapter()
+        sdk.Connect_Net.side_effect = None
+        sdk.Connect_Net.return_value = False
+        sdk.GetLastError.return_value = -6
+        with self.assertRaisesRegex(DeviceOperationError, "SDK error -6"):
+            adapter.face_templates([])
+        self.assertEqual(sdk.Connect_Net.call_count, 1)
+
+    def test_sdk_probe_default_does_not_override_protocol(self):
+        from sdk_connection_check import probe
+        native = Mock()
+        native.Connect_Net.return_value = True
+        dynamic = ModuleType("win32com.client.dynamic")
+        dynamic.DumbDispatch = Mock(return_value=native)
+        with patch.dict(sys.modules, {"win32com.client.dynamic": dynamic, "face_sdk_adapter": sdk_module}):
+            result = probe("10.0.0.1", 4370, "legacy")
+        self.assertTrue(result["connected"])
+        native.SetCommProType.assert_not_called()
+        native.Disconnect.assert_called_once()
+
+    def test_failed_protocol_selection_stops_before_connection(self):
+        from sdk_connection_check import probe
+        native = Mock()
+        native.SetCommProType.return_value = False
+        dynamic = ModuleType("win32com.client.dynamic")
+        dynamic.DumbDispatch = Mock(return_value=native)
+        with patch.dict(sys.modules, {"win32com.client.dynamic": dynamic, "face_sdk_adapter": sdk_module}), patch.object(sdk_module.ComFaceSdk, "GetLastError", return_value=-13000):
+            result = probe("10.0.0.1", 4370, "legacy", protocol_mode="standalone")
+        self.assertEqual(result["failedOperation"], "SetCommProType")
+        self.assertEqual(result["sdkError"], -13000)
+        native.Connect_Net.assert_not_called()
+
+    def test_windows_loader_uses_untyped_dispatch_for_explicit_output_variants(self):
+        dynamic = ModuleType("win32com.client.dynamic")
+        dynamic.DumbDispatch = Mock(return_value=Mock())
+        dynamic.Dispatch = Mock(side_effect=TypeError("typed binding rejects VARIANT"))
+        with patch.dict(sys.modules, {"win32com.client.dynamic": dynamic}), patch.object(sys, "platform", "win32"):
+            sdk_module.SdkFaceDeviceAdapter._windows_sdk()
+        dynamic.DumbDispatch.assert_called_once_with("zkemkeeper.ZKEM.1")
+        dynamic.Dispatch.assert_not_called()
+
+    def test_explicit_legacy_password_mode_does_not_call_extended_api(self):
+        native = Mock()
+        with patch.dict(os.environ, {"PROVISIONING_SDK_PASSWORD_MODE": "legacy"}):
+            sdk_module.ComFaceSdk(native).SetCommPassword(0)
+        native.SetCommPassword.assert_called_once_with(0)
+        native.SetCommPasswordEx.assert_not_called()
+
+    def test_com_wrapper_returns_mutated_output_variants_and_native_length(self):
+        pythoncom = ModuleType("pythoncom")
+        pythoncom.VT_BYREF, pythoncom.VT_BSTR, pythoncom.VT_I4 = 16384, 8, 3
+        client = ModuleType("win32com.client")
+        client.VARIANT = lambda kind, value: SimpleNamespace(varianttype=kind, value=value)
+        native = Mock()
+        def read(machine, user_id, index, value, length):
+            self.assertEqual((machine, user_id, index), (1, "00012", 50))
+            self.assertEqual(value.varianttype, 16384 | 8)
+            self.assertEqual(length.varianttype, 16384 | 3)
+            value.value, length.value = "PRIVATE-FACE", 1234
+            return True
+        native.GetUserFaceStr.side_effect = read
+        native.GetLastError.side_effect = lambda code: setattr(code, "value", -8)
+        with patch.dict(sys.modules, {"pythoncom": pythoncom, "win32com.client": client}):
+            wrapper = sdk_module.ComFaceSdk(native)
+            self.assertEqual(wrapper.GetUserFaceStr(1, "00012", 50), (True, "PRIVATE-FACE", 1234))
+            self.assertEqual(wrapper.GetLastError(), -8)
+
     def adapter(self):
         sdk = Mock()
         sdk.SetCommPassword.return_value = True
