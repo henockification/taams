@@ -27,6 +27,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, TemporaryDepartmentAssignment } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -291,19 +292,18 @@ export function TemporaryDepartmentAssignmentsPage() {
                   id="temporary-assignment-employee"
                   value={form.employeeId || undefined}
                   onValueChange={(value) => setForm((current) => ({ ...current, employeeId: value }))}
-                  disabled={Boolean(editingAssignment)}
+                  disabled={Boolean(editingAssignment) || employeesQuery.isLoading}
                   options={employees.map((employee) => ({
                     value: employee.id,
                     label: employeeName(employee),
                     description: employee.employeeCode,
-                    searchText: [employee.firstNameAm, employee.middleNameAm, employee.lastNameAm, employee.payrollId, employee.biometricId]
-                      .filter(Boolean)
-                      .join(' '),
+                    employee,
                   }))}
                   placeholder={t('selectEmployee')}
                   searchPlaceholder={t('searchEmployee')}
                   emptyMessage={t('noMatchingEmployees')}
                 />
+                {employeesQuery.isError ? <p className="text-sm text-destructive">{employeesQuery.error.message}</p> : null}
               </div>
               <div className="min-w-0 space-y-2">
                 <Label htmlFor="temporary-assignment-department">{t('temporaryDepartment')}</Label>
@@ -385,7 +385,7 @@ type SearchableSelectOption = {
   value: string;
   label: string;
   description?: string | null;
-  searchText?: string;
+  employee?: Employee;
 };
 
 function SearchableSelect({
@@ -408,10 +408,15 @@ function SearchableSelect({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selectedOption = options.find((option) => option.value === value);
+  const terms = search.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const matchingOptions = options.filter((option) => option.employee
+    ? matchesEmployeePickerSearch(option.employee, search)
+    : terms.every((term) => `${option.label} ${option.description ?? ''}`.normalize('NFKC').toLowerCase().includes(term)));
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setSearch(''); }}>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -431,15 +436,16 @@ function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <p className="px-2 py-1 text-xs text-muted-foreground">{matchingOptions.length} / {options.length}</p>
             <CommandGroup>
-              {options.map((option) => (
+              {matchingOptions.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={`${option.label} ${option.description ?? ''} ${option.searchText ?? ''}`}
+                  value={option.value}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);

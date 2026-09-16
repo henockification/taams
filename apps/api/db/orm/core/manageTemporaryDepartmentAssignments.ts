@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, employees, temporaryDepartmentAssignments } from '../../schema';
 import type {
@@ -8,7 +8,7 @@ import type {
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
 import { employeeAuditFields, formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
-import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 
 type DbClient = typeof db | any;
 
@@ -20,27 +20,27 @@ type AssignmentContext = {
 
 export async function getTemporaryDepartmentAssignments(context: AssignmentContext) {
   const assignments = await db.query.temporaryDepartmentAssignments.findMany({
-    where: inArray(temporaryDepartmentAssignments.employeeId, db.select({ id: employees.id }).from(employees)
-      .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))),
     with: assignmentRelations,
     orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
   });
+  const workingAssignments = assignments.filter((assignment) => isWorkingEmployee(assignment.employee));
 
-  if (canManageAll(context.scope)) return assignments;
+  if (canManageAll(context.scope)) return workingAssignments;
 
   const managedIds = await getVisibleEmployeeIdsForSupervisorActor(context.userId, context.roles);
-  return assignments.filter((assignment) => managedIds.includes(assignment.employeeId) || assignment.createdBy === context.userId);
+  return workingAssignments.filter((assignment) => managedIds.includes(assignment.employeeId) || assignment.createdBy === context.userId);
 }
 
 export async function getTemporaryAssignmentEligibleEmployees() {
-  return db.query.employees.findMany({
+  const candidates = await db.query.employees.findMany({
     where: and(
       eq(employees.isActive, true),
-      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+      eq(employees.employmentStatus, 'ACTIVE'),
     ),
     with: { department: true, position: true },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
   });
+  return candidates.filter(isWorkingEmployee);
 }
 
 export async function createTemporaryDepartmentAssignment(input: CreateTemporaryDepartmentAssignmentInput, context: AssignmentContext) {
@@ -51,11 +51,11 @@ export async function createTemporaryDepartmentAssignment(input: CreateTemporary
   return db.transaction(async (tx) => {
     const employee = await tx.query.employees.findFirst({
       where: eq(employees.id, input.employeeId),
-      columns: { id: true, departmentId: true, isActive: true, sourceEmploymentStatus: true },
+      columns: { id: true, departmentId: true, isActive: true, employmentStatus: true, sourceEmploymentStatus: true },
     });
     if (!employee) throw new Error('Employee not found');
     if (!employee.isActive) throw new Error('Employee must be active');
-    if (employee.sourceEmploymentStatus !== SOURCE_EMPLOYMENT_STATUS.WORKING) {
+    if (!isWorkingEmployee(employee)) {
       throw new Error('Employee must be working');
     }
 

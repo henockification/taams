@@ -21,7 +21,7 @@ import type {
 } from '../../../types/core.types';
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
 import { buildDepartmentImportCache, findOrCreateImportDepartment } from '../../../lib/employees/department-import';
-import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
 import {
@@ -178,28 +178,27 @@ export async function createEmployeeScoped(input: CreateEmployeeInput, scope: Em
 }
 
 export async function getEmployees(scope?: EmployeeVisibilityScope, workingOnly = false) {
-  return db.query.employees.findMany({
-    where: and(
-      scope ? scopedEmployeeWhere(scope) : undefined,
-      workingOnly ? eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING) : undefined,
-    ),
+  const result = await db.query.employees.findMany({
+    where: scope ? scopedEmployeeWhere(scope) : undefined,
     with: {
       department: true,
       position: true,
     },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
   });
+  return workingOnly ? result.filter(isWorkingEmployee) : result;
 }
 
 export async function getSupervisorCandidates() {
-  return db.query.employees.findMany({
+  const candidates = await db.query.employees.findMany({
     where: and(
       eq(employees.isActive, true),
-      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
+      eq(employees.employmentStatus, 'ACTIVE'),
     ),
     with: { department: true, position: true },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
   });
+  return candidates.filter(isWorkingEmployee);
 }
 
 export async function getEmployeesPaginated({
@@ -530,14 +529,10 @@ export async function bulkCreateEmployeeSupervisorsScoped(
 
 async function assertActiveWorkingSupervisor(supervisorId: string) {
   const supervisor = await db.query.employees.findFirst({
-    where: and(
-      eq(employees.id, supervisorId),
-      eq(employees.isActive, true),
-      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
-    ),
-    columns: { id: true },
+    where: eq(employees.id, supervisorId),
+    columns: { id: true, isActive: true, employmentStatus: true, sourceEmploymentStatus: true },
   });
-  if (!supervisor) throw new Error('Supervisor must be an active working employee');
+  if (!isWorkingEmployee(supervisor)) throw new Error('Supervisor must be an active working employee');
 }
 
 export async function getEmployeeSupervisors(employeeId: string) {
@@ -559,22 +554,15 @@ export async function getEmployeeSupervisors(employeeId: string) {
 
 export async function getAllEmployeeSupervisorsScoped(scope: EmployeeVisibilityScope) {
   const visibleEmployees = await db.query.employees.findMany({
-    where: and(
-      scopedEmployeeWhere(scope),
-      eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING),
-    ),
-    columns: { id: true },
+    where: scopedEmployeeWhere(scope),
+    columns: { id: true, isActive: true, employmentStatus: true, sourceEmploymentStatus: true },
   });
-  const employeeIds = visibleEmployees.map((employee) => employee.id);
+  const employeeIds = visibleEmployees.filter(isWorkingEmployee).map((employee) => employee.id);
 
   if (employeeIds.length === 0) return [];
 
-  return db.query.employeeSupervisors.findMany({
-    where: and(
-      inArray(employeeSupervisors.employeeId, employeeIds),
-      inArray(employeeSupervisors.supervisorId, db.select({ id: employees.id }).from(employees)
-        .where(eq(employees.sourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS.WORKING))),
-    ),
+  const assignments = await db.query.employeeSupervisors.findMany({
+    where: inArray(employeeSupervisors.employeeId, employeeIds),
     with: {
       supervisor: {
         with: {
@@ -585,6 +573,7 @@ export async function getAllEmployeeSupervisorsScoped(scope: EmployeeVisibilityS
     },
     orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
   });
+  return assignments.filter((assignment) => isWorkingEmployee(assignment.supervisor));
 }
 
 async function assignEmployeeSupervisor(employeeId: string, input: CreateEmployeeSupervisorInput) {

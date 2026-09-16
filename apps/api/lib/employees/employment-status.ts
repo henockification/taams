@@ -11,7 +11,7 @@ export const SOURCE_EMPLOYMENT_STATUS_OPTIONS = [
     value: SOURCE_EMPLOYMENT_STATUS.WORKING,
     employmentStatus: 'ACTIVE' as const satisfies EmploymentStatus,
     isActive: true,
-    matches: ['በስራ ላይ', 'በ ስራ ላይ', 'working', 'active', 'on duty', 'employed'],
+    matches: ['በስራ ላይ', 'በ ስራ ላይ', 'በሥራ ላይ', 'በ ሥራ ላይ', 'working', 'active', 'on duty', 'employed'],
   },
   {
     value: SOURCE_EMPLOYMENT_STATUS.RESIGNED,
@@ -82,10 +82,9 @@ export function isWorkingEmployee(employee: {
   isActive?: boolean | null;
 } | null | undefined) {
   if (!employee) return false;
+  if (employee.isActive === false || (employee.employmentStatus && employee.employmentStatus !== 'ACTIVE')) return false;
   const matched = matchSourceEmploymentStatus(employee.sourceEmploymentStatus);
   if (matched) return matched.isActive;
   if (employee.sourceEmploymentStatus?.trim()) return false;
-  return employee.isActive !== false && employee.employmentStatus !== 'INACTIVE'
-    && employee.employmentStatus !== 'TERMINATED'
-    && employee.employmentStatus !== 'SUSPENDED';
+  return true;
 }

@@ -48,6 +48,7 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -80,7 +81,7 @@ export function SupervisorAssignmentsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const { data: supervisorCandidatesResponse, isLoading: supervisorCandidatesLoading } = useSupervisorCandidates(dialogOpen);
+  const { data: supervisorCandidatesResponse, isLoading: supervisorCandidatesLoading, error: supervisorCandidatesError } = useSupervisorCandidates(dialogOpen);
   const [supervisorId, setSupervisorId] = useState('');
   const [isPrimary, setIsPrimary] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState(todayInput());
@@ -416,6 +417,7 @@ export function SupervisorAssignmentsPage() {
                   searchPlaceholder={t('searchEmployees')}
                   emptyMessage={t('noMatchingEmployees')}
                 />
+                {supervisorCandidatesError ? <p className="text-sm text-destructive">{supervisorCandidatesError.message}</p> : null}
               </Field>
               <Field label={t('effectiveFrom')} id="bulk-supervisor-effective-from">
                 <CalendarDateField id="bulk-supervisor-effective-from" value={effectiveFrom} onChange={setEffectiveFrom} required />
@@ -486,10 +488,12 @@ function SearchableEmployeeSelect({
   emptyMessage: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const selectedEmployee = employees.find((employee) => employee.id === value);
+  const matchingEmployees = employees.filter((employee) => matchesEmployeePickerSearch(employee, search));
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setSearch(''); }}>
       <PopoverTrigger asChild>
         <Button
           id={id}
@@ -507,12 +511,13 @@ function SearchableEmployeeSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-        <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
           <CommandList>
             <CommandEmpty>{emptyMessage}</CommandEmpty>
+            <p className="px-2 py-1 text-xs text-muted-foreground">{matchingEmployees.length} / {employees.length}</p>
             <CommandGroup>
-              {employees.map((employee) => {
+              {matchingEmployees.map((employee) => {
                 const name = employeeName(employee);
                 const description = [
                   employee.employeeCode,
@@ -520,18 +525,10 @@ function SearchableEmployeeSelect({
                   employee.email,
                   employee.phoneNumber,
                 ].filter(Boolean).join(' ');
-                const searchTerms = [
-                  employee.firstNameAm,
-                  employee.middleNameAm,
-                  employee.lastNameAm,
-                  employee.payrollId,
-                  employee.biometricId,
-                ].filter(Boolean).join(' ');
-
                 return (
                   <CommandItem
                     key={employee.id}
-                    value={`${name} ${description} ${searchTerms}`}
+                    value={employee.id}
                     onSelect={() => {
                       onValueChange(employee.id);
                       setOpen(false);
