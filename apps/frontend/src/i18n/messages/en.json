@@ -676,6 +676,7 @@
     "dayFRIDAY": "Friday",
     "daySATURDAY": "Saturday",
     "daySUNDAY": "Sunday",
+    "dayROSTER": "Roster duty",
     "startTime": "Start time",
     "endTime": "End time",
     "gracePeriodMinutes": "Grace period minutes",
