@@ -232,6 +232,27 @@
       "when": 1789430400000,
       "tag": "0036_contract_departments",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789434000000,
+      "tag": "0037_attendance_tolerance_metrics",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789437600000,
+      "tag": "0038_attendance_overtime_exceptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789441200000,
+      "tag": "0039_attendance_break_metrics",
+      "breakpoints": true
     }
   ]
 }

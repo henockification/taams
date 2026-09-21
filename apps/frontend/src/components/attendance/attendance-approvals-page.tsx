@@ -46,6 +46,9 @@ import {
   useSupervisorApproveAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
+  useAttendanceOvertimeExceptions,
+  useConvertAttendanceOvertimeException,
+  useDismissAttendanceOvertimeException,
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
@@ -141,6 +144,9 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const hrApprove = useHrApproveAttendanceDailyRecord();
   const hrBatchApprove = useHrApproveAttendanceDailyRecords();
   const returnRecord = useReturnAttendanceDailyRecord();
+  const overtimeExceptions = useAttendanceOvertimeExceptions(dateRange);
+  const dismissOvertimeException = useDismissAttendanceOvertimeException();
+  const convertOvertimeException = useConvertAttendanceOvertimeException();
   const session = useSession();
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
   const records = query.data?.attendanceDailyRecords ?? [];
@@ -272,6 +278,24 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       notifications.show({ title: common('success'), message: t('attendanceReturned'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  }
+
+  async function handleDismissException(id: string) {
+    try {
+      await dismissOvertimeException.mutateAsync({ id, note: 'Reviewed and dismissed from attendance approvals' });
+      notifications.show({ title: common('success'), message: 'Overtime exception dismissed', color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : common('saveFailed'), color: 'red' });
+    }
+  }
+
+  async function handleConvertException(id: string) {
+    try {
+      await convertOvertimeException.mutateAsync(id);
+      notifications.show({ title: common('success'), message: 'Overtime assignment created for approval', color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : common('saveFailed'), color: 'red' });
     }
   }
 
@@ -424,6 +448,26 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         <Summary label={t('payrollReady')} value={summary.HR_APPROVED} />
       </div>
 
+      {(overtimeExceptions.data?.exceptions?.length ?? 0) > 0 ? (
+        <Card className="rounded-lg border-amber-200 bg-amber-50/40">
+          <CardContent className="space-y-3 pt-6">
+            <div><h3 className="font-semibold">Detected unapproved overtime</h3><p className="text-sm text-muted-foreground">These punches are excluded from payroll overtime until explicitly authorized.</p></div>
+            <div className="overflow-x-auto rounded-md border border-border bg-background">
+              <Table>
+                <TableHeader><TableRow><TableHead>{t('employee')}</TableHead><TableHead>{t('attendanceDate')}</TableHead><TableHead>Detected minutes</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>{overtimeExceptions.data?.exceptions.map((exception) => <TableRow key={exception.id}>
+                  <TableCell>{employeeName(exception.employee) || exception.employeeId}</TableCell>
+                  <TableCell>{formatDate(exception.overtimeDate)}</TableCell>
+                  <TableCell>{exception.detectedMinutes} min</TableCell>
+                  <TableCell><Badge variant="outline">{exception.status}</Badge></TableCell>
+                  <TableCell className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={dismissOvertimeException.isPending || convertOvertimeException.isPending} onClick={() => handleDismissException(exception.id)}>Dismiss</Button><Button size="sm" disabled={dismissOvertimeException.isPending || convertOvertimeException.isPending} onClick={() => handleConvertException(exception.id)}>Create overtime assignment</Button></div></TableCell>
+                </TableRow>)}</TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="rounded-lg">
         <CardContent>
           {query.isLoading ? (
@@ -458,6 +502,10 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('attendanceDate')}</TableHead>
                     <TableHead>{t('checkIn')}</TableHead>
                     <TableHead>{t('checkOut')}</TableHead>
+                    <TableHead>Late</TableHead>
+                    <TableHead>Early break</TableHead>
+                    <TableHead>Early out</TableHead>
+                    <TableHead>Unapproved OT</TableHead>
                     <TableHead>{t('attendanceDays')}</TableHead>
                     <TableHead>{t('leaveDays')}</TableHead>
                     <TableHead>{t('holidayDays')}</TableHead>
@@ -505,6 +553,10 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell className="whitespace-nowrap">{formatDate(record.attendanceDate)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
+                      <TableCell>{record.lateMinutes ?? 0} min{record.lateReturnMinutes ? ` + ${record.lateReturnMinutes} return` : ''}</TableCell>
+                      <TableCell>{record.earlyBreakMinutes ?? 0} min</TableCell>
+                      <TableCell>{record.earlyDepartureMinutes ?? 0} min</TableCell>
+                      <TableCell className={record.unapprovedOvertimeMinutes ? 'font-medium text-amber-600' : undefined}>{record.unapprovedOvertimeMinutes ?? 0} min</TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
                       <TableCell>{record.leaveDays}</TableCell>
                       <TableCell>{record.holidayDays}</TableCell>

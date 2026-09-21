@@ -357,6 +357,9 @@ function normalizeWorkScheduleInput(input: Partial<CreateWorkScheduleInput>) {
     nameEn: input.nameEn,
     nameAm: input.nameAm,
     description: input.description,
+    scheduleType: input.scheduleType,
+    rosterOnDays: input.rosterOnDays,
+    rosterOffDays: input.rosterOffDays,
     isDefault: input.isDefault,
     isActive: input.isActive,
   });

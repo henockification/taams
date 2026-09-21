@@ -11,6 +11,9 @@ import {
   leaveRequests,
   leaveTypes,
   temporaryDepartmentAssignments,
+  employeeWorkSchedules,
+  overtimeRequests,
+  attendanceOvertimeExceptions,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee, SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
@@ -18,6 +21,7 @@ import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
+import { evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import {
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
@@ -57,7 +61,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   }
   const dayRange = getDayRange(attendanceDate);
 
-  const [allEmployees, punches, approvedLeaves, activeExemptions, activeHoliday] = await Promise.all([
+  const [allEmployees, punches, approvedLeaves, activeExemptions, activeHoliday, scheduleAssignments, approvedOvertime] = await Promise.all([
     db.query.employees.findMany({
       columns: {
         id: true,
@@ -71,7 +75,9 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       where: and(
         sql`${attendancePunches.employeeId} IS NOT NULL`,
         gte(attendancePunches.punchTime, dayRange.start),
-        lte(attendancePunches.punchTime, dayRange.end),
+        // Include the following morning so an overnight roster shift can
+        // associate its handover punch with the preceding duty date.
+        lte(attendancePunches.punchTime, new Date(dayRange.end.getTime() + 86_400_000)),
       ),
       orderBy: (table, { asc }) => [asc(table.employeeId), asc(table.punchTime)],
     }),
@@ -97,6 +103,24 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       ),
       orderBy: (table, { asc }) => [asc(table.startDate), asc(table.nameEn)],
     }),
+    db.query.employeeWorkSchedules.findMany({
+      where: inArray(employeeWorkSchedules.employeeId, db.select({ id: employees.id }).from(employees)),
+      with: {
+        workSchedule: {
+          with: {
+            days: {
+              with: {
+                shift: { with: { segments: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+    db.query.overtimeRequests.findMany({
+      where: and(eq(overtimeRequests.overtimeDate, attendanceDate), eq(overtimeRequests.status, 'APPROVED')),
+      columns: { employeeId: true, approvedMinutes: true },
+    }),
   ]);
 
   const activeEmployees = allEmployees.filter(isWorkingEmployee);
@@ -104,6 +128,11 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
   const unpaidLeaveDaysByEmployee = new Map<string, number>();
+  const approvedOvertimeMinutesByEmployee = new Map<string, number>();
+
+  for (const overtime of approvedOvertime) {
+    approvedOvertimeMinutesByEmployee.set(overtime.employeeId, (approvedOvertimeMinutesByEmployee.get(overtime.employeeId) ?? 0) + Number(overtime.approvedMinutes ?? 0));
+  }
 
   for (const punch of punches) {
     if (!punch.employeeId) continue;
@@ -117,10 +146,24 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   }
 
   const dailyRecordRows = activeEmployees.map((employee) => {
-    const employeePunches = punchesByEmployee.get(employee.id) ?? [];
+    const employeePunchesForCalendarDay = punchesByEmployee.get(employee.id) ?? [];
+    const assignment = scheduleAssignments
+      .filter((item) => item.employeeId === employee.id && item.isActive)
+      .filter((item) => String(item.effectiveFrom) <= attendanceDate && (!item.effectiveTo || String(item.effectiveTo) >= attendanceDate))
+      .sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0];
+    const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${attendanceDate}T12:00:00`).getDay()];
+    const shift = assignment?.workSchedule?.days?.find((day) => day.isActive && (day.dayOfWeek.toUpperCase() === dayName || day.dayOfWeek.toUpperCase() === 'ROSTER') && !day.isOffDay)?.shift ?? null;
+    const scheduleIsRosterRestDay = assignment?.workSchedule?.scheduleType === 'ROSTER'
+      && rosterCycleIndex(attendanceDate, String(assignment.effectiveFrom), Number(assignment.workSchedule.rosterOnDays ?? 1), Number(assignment.workSchedule.rosterOffDays ?? 0)) >= Number(assignment.workSchedule.rosterOnDays ?? 1);
+    const employeePunches = (shift?.isOvernight && !scheduleIsRosterRestDay)
+      ? employeePunchesForCalendarDay
+      : employeePunchesForCalendarDay.filter((punch) => punch.punchTime >= dayRange.start && punch.punchTime <= dayRange.end);
+    const evaluation = scheduleIsRosterRestDay
+      ? evaluateAttendancePunches(attendanceDate, employeePunches, null)
+      : evaluateAttendancePunches(attendanceDate, employeePunches, shift);
     const firstPunch = employeePunches[0] ?? null;
     const lastPunch = employeePunches[employeePunches.length - 1] ?? null;
-    const checkOutAt = employeePunches.length > 1 ? lastPunch?.punchTime ?? null : null;
+    const checkOutAt = evaluation.checkOutAt;
     const attendanceDays = getAttendanceDays(employeePunches.length);
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
@@ -142,6 +185,14 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       lastPunchId: lastPunch?.id ?? null,
       checkInAt: firstPunch?.punchTime ?? null,
       checkOutAt,
+      scheduledStartAt: evaluation.scheduledStartAt,
+      scheduledEndAt: evaluation.scheduledEndAt,
+      lateMinutes: evaluation.lateMinutes,
+      lateReturnMinutes: evaluation.lateReturnMinutes,
+      earlyBreakMinutes: evaluation.earlyBreakMinutes,
+      earlyDepartureMinutes: evaluation.earlyDepartureMinutes,
+      unapprovedOvertimeMinutes: Math.max(0, evaluation.unapprovedOvertimeMinutes - (approvedOvertimeMinutesByEmployee.get(employee.id) ?? 0)),
+      toleranceStatus: evaluation.toleranceStatus,
       totalPunches: employeePunches.length,
       attendanceDays: formatDayValue(attendanceDays),
       leaveDays: formatDayValue(leaveDays),
@@ -172,6 +223,14 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
           lastPunchId: sql.raw('excluded."last_punch_id"'),
           checkInAt: sql.raw('excluded."check_in_at"'),
           checkOutAt: sql.raw('excluded."check_out_at"'),
+          scheduledStartAt: sql.raw('excluded."scheduled_start_at"'),
+          scheduledEndAt: sql.raw('excluded."scheduled_end_at"'),
+          lateMinutes: sql.raw('excluded."late_minutes"'),
+          lateReturnMinutes: sql.raw('excluded."late_return_minutes"'),
+          earlyBreakMinutes: sql.raw('excluded."early_break_minutes"'),
+          earlyDepartureMinutes: sql.raw('excluded."early_departure_minutes"'),
+          unapprovedOvertimeMinutes: sql.raw('excluded."unapproved_overtime_minutes"'),
+          toleranceStatus: sql.raw('excluded."tolerance_status"'),
           totalPunches: sql.raw('excluded."total_punches"'),
           attendanceDays: sql.raw('excluded."attendance_days"'),
           leaveDays: sql.raw('excluded."leave_days"'),
@@ -193,6 +252,28 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   await syncApprovedOvertimeForDate(attendanceDate);
 
   const generated = await getAttendanceDailyRecordsByIds(records.map((record) => record.id));
+
+  const detectedExceptions = generated.filter((record: any) => Number(record.unapprovedOvertimeMinutes ?? 0) > 0);
+  if (detectedExceptions.length > 0) {
+    await db.insert(attendanceOvertimeExceptions).values(detectedExceptions.map((record: any) => ({
+      employeeId: record.employeeId,
+      attendanceDailyRecordId: record.id,
+      overtimeDate: attendanceDate,
+      observedStartAt: record.scheduledEndAt ?? null,
+      observedEndAt: punchesByEmployee.get(record.employeeId)?.at(-1)?.punchTime ?? record.checkOutAt ?? null,
+      detectedMinutes: Number(record.unapprovedOvertimeMinutes),
+      status: 'REVIEW_REQUIRED',
+    })) as any).onConflictDoUpdate({
+      target: [attendanceOvertimeExceptions.employeeId, attendanceOvertimeExceptions.overtimeDate],
+      set: {
+        attendanceDailyRecordId: sql.raw('excluded."attendance_daily_record_id"'),
+        observedStartAt: sql.raw('excluded."observed_start_at"'),
+        observedEndAt: sql.raw('excluded."observed_end_at"'),
+        detectedMinutes: sql.raw('excluded."detected_minutes"'),
+        updatedAt: sql`CURRENT_TIMESTAMP`,
+      } as any,
+    });
+  }
 
   if (options?.recordAudit) {
     await writeAuditEvent(db, {
@@ -255,6 +336,85 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     'RETURNED',
     'SUPERVISOR_APPROVED',
   ]);
+}
+
+export async function getAttendanceOvertimeExceptions(input: {
+  userId: string;
+  roles?: string[] | null;
+  scope?: EmployeeVisibilityScope;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  status?: string | null;
+}) {
+  const rows = await db.query.attendanceOvertimeExceptions.findMany({
+    where: and(
+      input.dateFrom ? gte(attendanceOvertimeExceptions.overtimeDate, input.dateFrom) : undefined,
+      input.dateTo ? lte(attendanceOvertimeExceptions.overtimeDate, input.dateTo) : undefined,
+      input.status ? eq(attendanceOvertimeExceptions.status, input.status) : undefined,
+    ),
+    with: { employee: { with: { department: true, position: true } } },
+    orderBy: (table, { desc }) => [desc(table.overtimeDate), desc(table.createdAt)],
+  });
+  if (!input.scope || input.scope.type === 'unrestricted' || input.scope.type === 'hr') return rows;
+  const visibleIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db);
+  return rows.filter((row) => visibleIds.includes(row.employeeId));
+}
+
+export async function dismissAttendanceOvertimeException(id: string, reviewerUserId: string, note?: string | null) {
+  const [updated] = await db.update(attendanceOvertimeExceptions).set({
+    status: 'DISMISSED',
+    reviewedBy: reviewerUserId,
+    reviewedAt: new Date(),
+    reviewNote: note?.trim() || null,
+    updatedAt: new Date(),
+  }).where(and(eq(attendanceOvertimeExceptions.id, id), eq(attendanceOvertimeExceptions.status, 'REVIEW_REQUIRED'))).returning();
+  if (!updated) throw new Error('Overtime exception not found or already reviewed');
+  return updated;
+}
+
+export async function convertAttendanceOvertimeException(id: string, reviewerUserId: string, roles?: string[] | null) {
+  return db.transaction(async (tx) => {
+    const exception = await tx.query.attendanceOvertimeExceptions.findFirst({ where: eq(attendanceOvertimeExceptions.id, id), with: { employee: true } });
+    if (!exception || exception.status !== 'REVIEW_REQUIRED') throw new Error('Overtime exception not found or already reviewed');
+    if (!exception.observedStartAt || !exception.observedEndAt) throw new Error('The exception has no usable punch interval');
+    const observedStart = new Date(exception.observedStartAt);
+    const observedEnd = new Date(exception.observedEndAt);
+    if (observedEnd.getTime() <= observedStart.getTime()) throw new Error('The exception punch interval is invalid');
+    if (exception.attendanceDailyRecordId) {
+      const dailyRecord = await tx.query.attendanceDailyRecords.findFirst({ where: eq(attendanceDailyRecords.id, exception.attendanceDailyRecordId), columns: { status: true } });
+      if (dailyRecord?.status === 'HR_APPROVED') throw new Error('Cannot convert overtime after the attendance day is approved for payroll');
+    }
+    const approvedOverlap = await tx.query.overtimeRequests.findFirst({
+      where: and(eq(overtimeRequests.employeeId, exception.employeeId), eq(overtimeRequests.overtimeDate, exception.overtimeDate), eq(overtimeRequests.status, 'APPROVED'), lte(overtimeRequests.startAt, exception.observedEndAt), gte(overtimeRequests.endAt, exception.observedStartAt)),
+      columns: { id: true },
+    });
+    if (approvedOverlap) throw new Error('This punch interval is already covered by approved overtime');
+    const actionContext = await resolveSupervisorActionContext({ actorUserId: reviewerUserId, roles, targetEmployeeId: exception.employeeId, tx });
+    const requestedMinutes = Math.floor((observedEnd.getTime() - observedStart.getTime()) / 60_000);
+    if (requestedMinutes <= 0 || requestedMinutes < Number(exception.detectedMinutes)) throw new Error('The overtime evidence is incomplete or shorter than the detected exception');
+    const [request] = await tx.insert(overtimeRequests).values({
+      employeeId: exception.employeeId,
+      attendanceDailyRecordId: exception.attendanceDailyRecordId,
+      overtimeDate: exception.overtimeDate,
+      startAt: exception.observedStartAt,
+      endAt: exception.observedEndAt,
+      requestedMinutes,
+      approvedMinutes: 0,
+      overtimeDays: '0.00',
+      reason: `Detected after-hours work (${exception.detectedMinutes} minutes); requires authorization`,
+      status: 'ASSIGNED',
+      requestedBy: reviewerUserId,
+      requestedSupervisorDelegationId: actionContext.supervisorDelegationId,
+    } as any).returning();
+    await tx.update(attendanceOvertimeExceptions).set({
+      status: 'CONVERTED',
+      reviewedBy: reviewerUserId,
+      reviewedAt: new Date(),
+      reviewNote: `Converted to overtime request ${request.id}`,
+      updatedAt: new Date(),
+    }).where(eq(attendanceOvertimeExceptions.id, id));
+    return request;
+  });
 }
 
 export async function refreshAttendanceForAuthorizedLeave(request: any) {
@@ -887,6 +1047,14 @@ function parseDayInput(value: string | number, fieldName: string) {
 function parseHolidayDays(value: string | number | null | undefined) {
   const parsed = Number(value ?? 1);
   return parsed === 0.5 ? 0.5 : 1;
+}
+
+function rosterCycleIndex(date: string, effectiveFrom: string, onDays: number, offDays: number) {
+  const start = new Date(`${effectiveFrom}T00:00:00`);
+  const current = new Date(`${date}T00:00:00`);
+  const elapsed = Math.max(0, Math.floor((current.getTime() - start.getTime()) / 86_400_000));
+  const cycleLength = Math.max(1, onDays + offDays);
+  return elapsed % cycleLength;
 }
 
 const recordRelations = {

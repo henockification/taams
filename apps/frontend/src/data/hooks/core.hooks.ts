@@ -3,6 +3,7 @@ import { coreApi } from '../api/core.api';
 import type {
   AttendanceDailyRecord,
   AttendanceDailyRecordsResponse,
+  AttendanceOvertimeExceptionsResponse,
   CreateAttendancePunchInput,
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
@@ -127,6 +128,7 @@ export const coreQueryKeys = {
   ),
   manualPunchRequests: (params?: { mine?: boolean }) => [...coreQueryKeys.all, 'manual-punch-requests', params ?? {}] as const,
   overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
+  overtimeExceptions: (params?: { dateFrom?: string; dateTo?: string; status?: string }) => [...coreQueryKeys.all, 'overtime-exceptions', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
   leaveBalancesRoot: () => [...coreQueryKeys.all, 'leave', 'balances'] as const,
@@ -1493,6 +1495,20 @@ export function useOvertimeRequests(
     queryFn: () => coreApi.getOvertimeRequests(params),
     staleTime: 60 * 1000,
   });
+}
+
+export function useAttendanceOvertimeExceptions(params: { dateFrom?: string; dateTo?: string; status?: string } = {}) {
+  return useQuery<AttendanceOvertimeExceptionsResponse>({ queryKey: coreQueryKeys.overtimeExceptions(params), queryFn: () => coreApi.getAttendanceOvertimeExceptions(params), staleTime: 30_000 });
+}
+
+export function useDismissAttendanceOvertimeException() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ id, note }: { id: string; note?: string | null }) => coreApi.dismissAttendanceOvertimeException(id, note), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.overtimeExceptions() }) });
+}
+
+export function useConvertAttendanceOvertimeException() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => coreApi.convertAttendanceOvertimeException(id), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.all }) });
 }
 
 export function useCreateOvertimeRequest() {

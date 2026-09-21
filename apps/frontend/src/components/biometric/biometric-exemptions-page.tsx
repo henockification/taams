@@ -56,6 +56,12 @@ type FormState = {
   supportingEvidenceUrl: string;
   supportingEvidenceMimeType: string;
   supportingEvidenceSize: number;
+  arrangementType: string;
+  authorizedLocation: string;
+  effectiveFrom: string;
+  effectiveTo: string;
+  reviewDueAt: string;
+  responsibleAuthority: string;
 };
 
 const initialForm: FormState = {
@@ -66,6 +72,12 @@ const initialForm: FormState = {
   supportingEvidenceUrl: '',
   supportingEvidenceMimeType: '',
   supportingEvidenceSize: 0,
+  arrangementType: 'BIOMETRIC_EXEMPTION',
+  authorizedLocation: '',
+  effectiveFrom: '',
+  effectiveTo: '',
+  reviewDueAt: '',
+  responsibleAuthority: '',
 };
 
 function fullName(employee: Pick<Employee, 'firstNameEn' | 'middleNameEn' | 'lastNameEn'>) {
@@ -148,6 +160,12 @@ export default function BiometricExemptionsPage() {
       supportingEvidenceUrl: exemption.supportingEvidenceUrl ?? '',
       supportingEvidenceMimeType: exemption.supportingEvidenceMimeType ?? '',
       supportingEvidenceSize: exemption.supportingEvidenceSize ?? 0,
+      arrangementType: exemption.arrangementType ?? 'BIOMETRIC_EXEMPTION',
+      authorizedLocation: exemption.authorizedLocation ?? '',
+      effectiveFrom: exemption.effectiveFrom ?? '',
+      effectiveTo: exemption.effectiveTo ?? '',
+      reviewDueAt: exemption.reviewDueAt ?? '',
+      responsibleAuthority: exemption.responsibleAuthority ?? '',
     });
     setDialogOpen(true);
   };
@@ -164,6 +182,12 @@ export default function BiometricExemptionsPage() {
         supportingEvidenceUrl: form.supportingEvidenceUrl || null,
         supportingEvidenceMimeType: form.supportingEvidenceMimeType || null,
         supportingEvidenceSize: form.supportingEvidenceSize || null,
+        arrangementType: form.arrangementType || 'BIOMETRIC_EXEMPTION',
+        authorizedLocation: form.authorizedLocation || null,
+        effectiveFrom: form.effectiveFrom || null,
+        effectiveTo: form.effectiveTo || null,
+        reviewDueAt: form.reviewDueAt || null,
+        responsibleAuthority: form.responsibleAuthority || null,
       };
 
       if (editingExemption) {
@@ -432,6 +456,15 @@ export default function BiometricExemptionsPage() {
                 required
                 className="min-h-24"
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label>Arrangement type</Label><Input value={form.arrangementType} onChange={(event) => setForm((current) => ({ ...current, arrangementType: event.target.value }))} placeholder="OFF_SITE, DRIVER, EXTERNAL_OFFICE" /></div>
+              <div className="space-y-2"><Label>Responsible authority</Label><Input value={form.responsibleAuthority} onChange={(event) => setForm((current) => ({ ...current, responsibleAuthority: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>Authorized location</Label><Input value={form.authorizedLocation} onChange={(event) => setForm((current) => ({ ...current, authorizedLocation: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>Review due</Label><Input type="date" value={form.reviewDueAt} onChange={(event) => setForm((current) => ({ ...current, reviewDueAt: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>Effective from</Label><Input type="date" value={form.effectiveFrom} onChange={(event) => setForm((current) => ({ ...current, effectiveFrom: event.target.value }))} /></div>
+              <div className="space-y-2"><Label>Effective to</Label><Input type="date" value={form.effectiveTo} onChange={(event) => setForm((current) => ({ ...current, effectiveTo: event.target.value }))} /></div>
             </div>
 
             <div className="space-y-2">

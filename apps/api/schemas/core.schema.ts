@@ -9,7 +9,7 @@ const OptionalDateSchema = z
   .optional();
 const RequiredDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const TimeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/);
-export const DayOfWeekSchema = z.enum(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+export const DayOfWeekSchema = z.enum(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY', 'ROSTER']);
 
 export const EmploymentStatusSchema = z.enum(['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED']);
 export const EmploymentTypeSchema = z.enum(['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY']);
@@ -89,6 +89,9 @@ export const WorkScheduleSchema = z.object({
   nameEn: z.string().openapi({ example: 'Standard Office Schedule' }),
   nameAm: z.string().nullable().openapi({ example: 'መደበኛ የስራ መርሃ ግብር' }),
   description: z.string().nullable().openapi({ example: 'Monday to Friday office coverage' }),
+  scheduleType: z.enum(['WEEKLY', 'ROSTER']).openapi({ example: 'WEEKLY' }),
+  rosterOnDays: z.number().int().positive().openapi({ example: 1 }),
+  rosterOffDays: z.number().int().nonnegative().openapi({ example: 0 }),
   isDefault: z.boolean().openapi({ example: true }),
   isActive: z.boolean().openapi({ example: true }),
   createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
@@ -297,6 +300,12 @@ export const CreateBiometricExemptionRequestSchema = z.object({
   supportingEvidenceUrl: z.string().nullable().optional(),
   supportingEvidenceMimeType: z.string().nullable().optional(),
   supportingEvidenceSize: z.number().int().nonnegative().nullable().optional(),
+  arrangementType: z.string().min(1).optional(),
+  authorizedLocation: z.string().nullable().optional(),
+  effectiveFrom: z.string().nullable().optional(),
+  effectiveTo: z.string().nullable().optional(),
+  reviewDueAt: z.string().nullable().optional(),
+  responsibleAuthority: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   requestedBy: z.string().min(1).nullable().optional(),
   createdBy: z.string().min(1).nullable().optional(),
@@ -648,6 +657,9 @@ export const CreateWorkScheduleRequestSchema = z.object({
   nameEn: z.string().min(1).max(100),
   nameAm: z.string().max(100).nullable().optional(),
   description: z.string().nullable().optional(),
+  scheduleType: z.enum(['WEEKLY', 'ROSTER']).optional(),
+  rosterOnDays: z.number().int().positive().optional(),
+  rosterOffDays: z.number().int().nonnegative().optional(),
   isDefault: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -987,6 +999,25 @@ export const UpdateAttendanceDailyRecordPayrollRequestSchema = z.object({
   payableDays: z.union([z.string(), z.number()]).optional(),
   payrollNote: z.string().nullable().optional(),
 });
+
+export const AttendanceOvertimeExceptionSchema = z.object({
+  id: UuidSchema,
+  employeeId: UuidSchema,
+  attendanceDailyRecordId: UuidSchema.nullable(),
+  overtimeDate: z.string(),
+  observedStartAt: z.string().nullable(),
+  observedEndAt: z.string().nullable(),
+  detectedMinutes: z.number(),
+  status: z.enum(['REVIEW_REQUIRED', 'DISMISSED', 'CONVERTED']),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().nullable(),
+  reviewNote: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  employee: EmployeeSchema.nullable().optional(),
+});
+export const AttendanceOvertimeExceptionsResponseSchema = z.object({ success: z.boolean(), exceptions: z.array(AttendanceOvertimeExceptionSchema) });
+export const ReviewAttendanceOvertimeExceptionRequestSchema = z.object({ note: z.string().nullable().optional() });
 
 export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED']);
 export const LeaveBalanceTransactionTypeSchema = z.enum(['INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'RESERVATION', 'CONSUMPTION', 'REVERSAL', 'ADJUSTMENT']);

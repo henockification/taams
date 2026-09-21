@@ -108,6 +108,9 @@ export function formatWorkSchedule(workSchedule: any) {
     nameEn: workSchedule.nameEn,
     nameAm: workSchedule.nameAm ?? null,
     description: workSchedule.description ?? null,
+    scheduleType: workSchedule.scheduleType ?? 'WEEKLY',
+    rosterOnDays: workSchedule.rosterOnDays ?? 1,
+    rosterOffDays: workSchedule.rosterOffDays ?? 0,
     isDefault: workSchedule.isDefault,
     isActive: workSchedule.isActive,
     createdAt: formatTimestamp(workSchedule.createdAt),
@@ -270,6 +273,12 @@ export function formatBiometricExemption(exemption: any) {
     supportingEvidenceUrl: exemption.supportingEvidenceUrl ?? null,
     supportingEvidenceMimeType: exemption.supportingEvidenceMimeType ?? null,
     supportingEvidenceSize: exemption.supportingEvidenceSize ?? null,
+    arrangementType: exemption.arrangementType ?? 'BIOMETRIC_EXEMPTION',
+    authorizedLocation: exemption.authorizedLocation ?? null,
+    effectiveFrom: formatDate(exemption.effectiveFrom),
+    effectiveTo: formatDate(exemption.effectiveTo),
+    reviewDueAt: formatDate(exemption.reviewDueAt),
+    responsibleAuthority: exemption.responsibleAuthority ?? null,
     status: exemption.status ?? (exemption.isActive ? 'APPROVED' : 'INACTIVE'),
     isActive: exemption.isActive,
     requestedBy: exemption.requestedBy ?? null,
@@ -446,6 +455,14 @@ export function formatAttendanceDailyRecord(record: any) {
     lastPunchId: record.lastPunchId ?? null,
     checkInAt: formatTimestamp(record.checkInAt),
     checkOutAt: formatTimestamp(record.checkOutAt),
+    scheduledStartAt: formatTimestamp(record.scheduledStartAt),
+    scheduledEndAt: formatTimestamp(record.scheduledEndAt),
+    lateMinutes: record.lateMinutes ?? 0,
+    lateReturnMinutes: record.lateReturnMinutes ?? 0,
+    earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
+    earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+    unapprovedOvertimeMinutes: record.unapprovedOvertimeMinutes ?? 0,
+    toleranceStatus: record.toleranceStatus ?? 'NONE',
     totalPunches: record.totalPunches,
     attendanceDays: record.attendanceDays,
     leaveDays: record.leaveDays,
@@ -477,6 +494,25 @@ export function formatAttendanceDailyRecord(record: any) {
     firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
     lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
     holiday: record.holiday ? formatHoliday(record.holiday) : null,
+  };
+}
+
+export function formatAttendanceOvertimeException(exception: any) {
+  return {
+    id: exception.id,
+    employeeId: exception.employeeId,
+    attendanceDailyRecordId: exception.attendanceDailyRecordId ?? null,
+    overtimeDate: formatDate(exception.overtimeDate),
+    observedStartAt: formatTimestamp(exception.observedStartAt),
+    observedEndAt: formatTimestamp(exception.observedEndAt),
+    detectedMinutes: exception.detectedMinutes,
+    status: exception.status,
+    reviewedBy: exception.reviewedBy ?? null,
+    reviewedAt: formatTimestamp(exception.reviewedAt),
+    reviewNote: exception.reviewNote ?? null,
+    createdAt: formatTimestamp(exception.createdAt),
+    updatedAt: formatTimestamp(exception.updatedAt),
+    employee: exception.employee ? formatEmployee(exception.employee) : null,
   };
 }
 

@@ -2,6 +2,7 @@ import type {
   AttendanceApprovalBatchResponse,
   AttendanceDailyRecordResponse,
   AttendanceDailyRecordsResponse,
+  AttendanceOvertimeExceptionsResponse,
   AttendancePunchesResponse,
   AttendancePunchResponse,
   AttendanceSyncBatchesResponse,
@@ -543,6 +544,16 @@ export const coreApi = {
 
     return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/hr${suffix}`);
   },
+  getAttendanceOvertimeExceptions: (params: { dateFrom?: string; dateTo?: string; status?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+    if (params.status) query.set('status', params.status);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return coreFetch<AttendanceOvertimeExceptionsResponse>(`/attendance-approvals/overtime-exceptions${suffix}`);
+  },
+  dismissAttendanceOvertimeException: (id: string, note?: string | null) => coreFetch<any>(`/attendance-approvals/overtime-exceptions/${id}/dismiss`, { method: 'POST', body: JSON.stringify({ note: note ?? null }) }),
+  convertAttendanceOvertimeException: (id: string) => coreFetch<any>(`/attendance-approvals/overtime-exceptions/${id}/convert`, { method: 'POST' }),
   generateAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);

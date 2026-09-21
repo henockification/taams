@@ -96,6 +96,9 @@ const workScheduleInitialForm = {
   description: '',
   isDefault: false,
   isActive: true,
+  scheduleType: 'WEEKLY' as 'WEEKLY' | 'ROSTER',
+  rosterOnDays: 1,
+  rosterOffDays: 0,
 };
 
 const workScheduleDayInitialForm = {
@@ -346,6 +349,9 @@ export function WorkSchedulesPage({
       description: workSchedule.description ?? '',
       isDefault: workSchedule.isDefault,
       isActive: workSchedule.isActive,
+      scheduleType: workSchedule.scheduleType ?? 'WEEKLY',
+      rosterOnDays: workSchedule.rosterOnDays ?? 1,
+      rosterOffDays: workSchedule.rosterOffDays ?? 0,
     });
     setWorkScheduleDialogOpen(true);
   };
@@ -480,6 +486,9 @@ export function WorkSchedulesPage({
       nameEn: workScheduleForm.nameEn.trim(),
       nameAm: workScheduleForm.nameAm.trim() || null,
       description: workScheduleForm.description.trim() || null,
+      scheduleType: workScheduleForm.scheduleType,
+      rosterOnDays: workScheduleForm.rosterOnDays,
+      rosterOffDays: workScheduleForm.rosterOffDays,
       isDefault: workScheduleForm.isDefault,
       isActive: workScheduleForm.isActive,
     };
@@ -1022,6 +1031,10 @@ export function WorkSchedulesPage({
               <Field label={t('nameAm')} id="schedule-name-am"><Input id="schedule-name-am" value={workScheduleForm.nameAm} onChange={(event) => setWorkScheduleForm((current) => ({ ...current, nameAm: event.target.value }))} /></Field>
             </div>
             <Field label={t('description')} id="schedule-description"><Textarea id="schedule-description" value={workScheduleForm.description} onChange={(event) => setWorkScheduleForm((current) => ({ ...current, description: event.target.value }))} /></Field>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2"><Label htmlFor="schedule-type">Schedule type</Label><Select value={workScheduleForm.scheduleType} onValueChange={(value: 'WEEKLY' | 'ROSTER') => setWorkScheduleForm((current) => ({ ...current, scheduleType: value }))}><SelectTrigger id="schedule-type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="WEEKLY">Weekly</SelectItem><SelectItem value="ROSTER">Roster cycle</SelectItem></SelectContent></Select></div>
+              {workScheduleForm.scheduleType === 'ROSTER' ? <><Field label="Duty days" id="roster-on-days"><Input id="roster-on-days" type="number" min={1} value={workScheduleForm.rosterOnDays} onChange={(event) => setWorkScheduleForm((current) => ({ ...current, rosterOnDays: Math.max(1, Number(event.target.value) || 1) }))} /></Field><Field label="Rest days" id="roster-off-days"><Input id="roster-off-days" type="number" min={0} value={workScheduleForm.rosterOffDays} onChange={(event) => setWorkScheduleForm((current) => ({ ...current, rosterOffDays: Math.max(0, Number(event.target.value) || 0) }))} /></Field></> : null}
+            </div>
             <SwitchRow label={t('defaultSchedule')} checked={workScheduleForm.isDefault} onCheckedChange={(checked) => setWorkScheduleForm((current) => ({ ...current, isDefault: checked }))} />
             <SwitchRow label={t('active')} checked={workScheduleForm.isActive} onCheckedChange={(checked) => setWorkScheduleForm((current) => ({ ...current, isActive: checked }))} />
             <DialogFooter><Button type="button" variant="outline" onClick={() => setWorkScheduleDialogOpen(false)}>{common('cancel')}</Button><Button type="submit" disabled={workScheduleSaving || !workScheduleForm.nameEn.trim()}>{workScheduleSaving ? t('saving') : common('save')}</Button></DialogFooter>

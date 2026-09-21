@@ -8,6 +8,8 @@ import {
   GenerateAttendanceDailyRecordsResponseSchema,
   ReturnAttendanceDailyRecordRequestSchema,
   UpdateAttendanceDailyRecordPayrollRequestSchema,
+  AttendanceOvertimeExceptionsResponseSchema,
+  ReviewAttendanceOvertimeExceptionRequestSchema,
 } from '../../../schemas/core.schema';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import { openApiApp } from '../../../lib/openapi';
@@ -21,6 +23,9 @@ import {
   supervisorApproveAttendanceDailyRecordHandler,
   supervisorApproveAttendanceDailyRecordsHandler,
   updateSupervisorAttendanceDailyRecordPayrollHandler,
+  getAttendanceOvertimeExceptionsHandler,
+  dismissAttendanceOvertimeExceptionHandler,
+  convertAttendanceOvertimeExceptionHandler,
 } from './handlers/attendanceApprovals';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
@@ -78,6 +83,24 @@ export const getHrAttendanceDailyRecordsRoute = createRoute({
       description: 'HR attendance approvals',
     },
   },
+});
+
+export const getAttendanceOvertimeExceptionsRoute = createRoute({
+  method: 'get', path: '/attendance-approvals/overtime-exceptions', tags: ['Core', 'Attendance Approvals'],
+  summary: 'Get detected unapproved overtime exceptions', request: { query: dateRangeQuery },
+  responses: { 200: { content: { 'application/json': { schema: AttendanceOvertimeExceptionsResponseSchema } }, description: 'Overtime exceptions' } },
+});
+
+export const dismissAttendanceOvertimeExceptionRoute = createRoute({
+  method: 'post', path: '/attendance-approvals/overtime-exceptions/{id}/dismiss', tags: ['Core', 'Attendance Approvals'],
+  summary: 'Dismiss an overtime exception', request: { params: uuidParam, body: { content: { 'application/json': { schema: ReviewAttendanceOvertimeExceptionRequestSchema } } } },
+  responses: { 200: { content: { 'application/json': { schema: z.any() } }, description: 'Dismissed overtime exception' } },
+});
+
+export const convertAttendanceOvertimeExceptionRoute = createRoute({
+  method: 'post', path: '/attendance-approvals/overtime-exceptions/{id}/convert', tags: ['Core', 'Attendance Approvals'],
+  summary: 'Convert an overtime exception to an assignment', request: { params: uuidParam },
+  responses: { 200: { content: { 'application/json': { schema: z.any() } }, description: 'Created overtime assignment' } },
 });
 
 export const supervisorApproveAttendanceDailyRecordRoute = createRoute({
@@ -183,6 +206,9 @@ export const returnAttendanceDailyRecordRoute = createRoute({
 attendanceApprovalsApp.post('/attendance-approvals/generate', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), generateAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/supervisor', requirePermissionOrDelegation('attendance-approvals:approve'), getSupervisorAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/hr', requirePermission('hr-attendance-approvals:approve'), getHrAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.get('/attendance-approvals/overtime-exceptions', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), getAttendanceOvertimeExceptionsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/overtime-exceptions/:id/dismiss', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), dismissAttendanceOvertimeExceptionHandler);
+attendanceApprovalsApp.post('/attendance-approvals/overtime-exceptions/:id/convert', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), convertAttendanceOvertimeExceptionHandler);
 attendanceApprovalsApp.post('/attendance-approvals/supervisor/batch', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/hr/batch', requirePermission('hr-attendance-approvals:approve'), hrApproveAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-approve', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordHandler);
@@ -194,6 +220,9 @@ openApiApp
   .openapi(generateAttendanceDailyRecordsRoute, generateAttendanceDailyRecordsHandler as any)
   .openapi(getSupervisorAttendanceDailyRecordsRoute, getSupervisorAttendanceDailyRecordsHandler as any)
   .openapi(getHrAttendanceDailyRecordsRoute, getHrAttendanceDailyRecordsHandler as any)
+  .openapi(getAttendanceOvertimeExceptionsRoute, getAttendanceOvertimeExceptionsHandler as any)
+  .openapi(dismissAttendanceOvertimeExceptionRoute, dismissAttendanceOvertimeExceptionHandler as any)
+  .openapi(convertAttendanceOvertimeExceptionRoute, convertAttendanceOvertimeExceptionHandler as any)
   .openapi(supervisorApproveAttendanceDailyRecordsRoute, supervisorApproveAttendanceDailyRecordsHandler as any)
   .openapi(hrApproveAttendanceDailyRecordsRoute, hrApproveAttendanceDailyRecordsHandler as any)
   .openapi(supervisorApproveAttendanceDailyRecordRoute, supervisorApproveAttendanceDailyRecordHandler as any)

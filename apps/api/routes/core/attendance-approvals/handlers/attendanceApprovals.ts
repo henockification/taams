@@ -7,6 +7,9 @@ import {
   hrApproveAttendanceDailyRecords,
   returnAttendanceDailyRecord,
   supervisorApproveAttendanceDailyRecords,
+  getAttendanceOvertimeExceptions,
+  dismissAttendanceOvertimeException,
+  convertAttendanceOvertimeException,
 } from '../../../../db/orm/core/manageAttendanceApprovals';
 import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
@@ -16,9 +19,10 @@ import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/hel
 import {
   AttendanceApprovalBatchRequestSchema,
   ReturnAttendanceDailyRecordRequestSchema,
+  ReviewAttendanceOvertimeExceptionRequestSchema,
 } from '../../../../schemas/core.schema';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
-import { formatAttendanceDailyRecord } from '../../helpers/formatters';
+import { formatAttendanceDailyRecord, formatAttendanceOvertimeException } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function generateAttendanceDailyRecordsHandler(c: Context) {
@@ -88,6 +92,46 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch HR attendance approvals');
+  }
+}
+
+export async function getAttendanceOvertimeExceptionsHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const scope = await resolveScope(session);
+    const exceptions = await getAttendanceOvertimeExceptions({
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+      scope,
+      dateFrom: c.req.query('dateFrom'),
+      dateTo: c.req.query('dateTo'),
+      status: c.req.query('status'),
+    });
+    return c.json({ success: true, exceptions: exceptions.map(formatAttendanceOvertimeException) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch overtime exceptions');
+  }
+}
+
+export async function dismissAttendanceOvertimeExceptionHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const parsed = ReviewAttendanceOvertimeExceptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const exception = await dismissAttendanceOvertimeException(c.req.param('id'), session.user.id, parsed.data.note);
+    return c.json({ success: true, exception: formatAttendanceOvertimeException(exception) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to dismiss overtime exception');
+  }
+}
+
+export async function convertAttendanceOvertimeExceptionHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const request = await convertAttendanceOvertimeException(c.req.param('id'), session.user.id, session.user.role ?? []);
+    return c.json({ success: true, overtimeRequest: request });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to convert overtime exception');
   }
 }
 

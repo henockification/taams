@@ -91,13 +91,16 @@ export type WorkSchedule = {
   nameEn: string;
   nameAm: string | null;
   description: string | null;
+  scheduleType?: 'WEEKLY' | 'ROSTER';
+  rosterOnDays?: number;
+  rosterOffDays?: number;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
-export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
+export type DayOfWeek = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY' | 'ROSTER';
 
 export type WorkScheduleDay = {
   id: string;
@@ -208,6 +211,12 @@ export type BiometricExemption = {
   supportingEvidenceUrl: string | null;
   supportingEvidenceMimeType: string | null;
   supportingEvidenceSize: number | null;
+  arrangementType?: string;
+  authorizedLocation?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  reviewDueAt?: string | null;
+  responsibleAuthority?: string | null;
   status: BiometricExemptionStatus;
   isActive: boolean;
   requestedBy: string | null;
@@ -594,6 +603,14 @@ export type AttendanceDailyRecord = {
   lastPunchId: string | null;
   checkInAt: string | null;
   checkOutAt: string | null;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  lateMinutes?: number;
+  lateReturnMinutes?: number;
+  earlyBreakMinutes?: number;
+  earlyDepartureMinutes?: number;
+  unapprovedOvertimeMinutes?: number;
+  toleranceStatus?: string;
   totalPunches: number;
   attendanceDays: string;
   leaveDays: string;
@@ -635,6 +652,12 @@ export type CreateBiometricExemptionInput = {
   supportingEvidenceUrl?: string | null;
   supportingEvidenceMimeType?: string | null;
   supportingEvidenceSize?: number | null;
+  arrangementType?: string;
+  authorizedLocation?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  reviewDueAt?: string | null;
+  responsibleAuthority?: string | null;
   isActive?: boolean;
   requestedBy?: string | null;
   createdBy?: string | null;
@@ -1240,6 +1263,26 @@ export type AttendanceDailyRecordsResponse = {
   success: boolean;
   attendanceDailyRecords: AttendanceDailyRecord[];
 };
+export type AttendanceOvertimeException = {
+  id: string;
+  employeeId: string;
+  attendanceDailyRecordId: string | null;
+  overtimeDate: string;
+  observedStartAt: string | null;
+  observedEndAt: string | null;
+  detectedMinutes: number;
+  status: 'REVIEW_REQUIRED' | 'DISMISSED' | 'CONVERTED';
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  employee?: Employee | null;
+};
+export type AttendanceOvertimeExceptionsResponse = {
+  success: boolean;
+  exceptions: AttendanceOvertimeException[];
+};
 export type AttendanceDailyRecordResponse = {
   success: boolean;
   attendanceDailyRecord: AttendanceDailyRecord;
@@ -1575,6 +1618,9 @@ export type CreateWorkScheduleInput = {
   nameEn: string;
   nameAm?: string | null;
   description?: string | null;
+  scheduleType?: 'WEEKLY' | 'ROSTER';
+  rosterOnDays?: number;
+  rosterOffDays?: number;
   isDefault?: boolean;
   isActive?: boolean;
 };

@@ -77,6 +77,9 @@ export const roles = pgTable('roles', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull().unique(),
   description: text('description'),
+  scheduleType: varchar('schedule_type', { length: 40 }).notNull().default('WEEKLY'),
+  rosterOnDays: integer('roster_on_days').notNull().default(1),
+  rosterOffDays: integer('roster_off_days').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
@@ -157,6 +160,12 @@ export const biometricExemptions = pgTable('biometric_exemptions', {
   supportingEvidenceUrl: text('supporting_evidence_url'),
   supportingEvidenceMimeType: varchar('supporting_evidence_mime_type', { length: 150 }),
   supportingEvidenceSize: integer('supporting_evidence_size'),
+  arrangementType: varchar('arrangement_type', { length: 40 }).notNull().default('BIOMETRIC_EXEMPTION'),
+  authorizedLocation: text('authorized_location'),
+  effectiveFrom: date('effective_from'),
+  effectiveTo: date('effective_to'),
+  reviewDueAt: date('review_due_at'),
+  responsibleAuthority: text('responsible_authority'),
   status: varchar('status', { length: 30 }).notNull().default('PENDING_SUPERVISOR'),
   isActive: boolean('is_active').notNull().default(false),
   requestedBy: text('requested_by').references(() => user.id),
@@ -172,6 +181,7 @@ export const biometricExemptions = pgTable('biometric_exemptions', {
 }, (table) => ({
   employeeOrPositionCheck: check('chk_biometric_exemption_target', sql`num_nonnulls(${table.employeeId}, ${table.positionId}) = 1`),
   statusCheck: check('chk_biometric_exemption_status', sql`${table.status} IN ('PENDING_SUPERVISOR', 'APPROVED', 'REJECTED', 'INACTIVE')`),
+  effectiveDateCheck: check('chk_biometric_exemption_effective_dates', sql`${table.effectiveTo} IS NULL OR ${table.effectiveFrom} IS NULL OR ${table.effectiveFrom} <= ${table.effectiveTo}`),
   activeEmployeeUnique: uniqueIndex('biometric_exemptions_active_employee_unique')
     .on(table.employeeId)
     .where(sql`${table.isActive} = true AND ${table.employeeId} IS NOT NULL`),
@@ -227,11 +237,18 @@ export const workSchedules = pgTable('work_schedules', {
   nameEn: varchar('name_en', { length: 100 }).notNull(),
   nameAm: varchar('name_am', { length: 100 }),
   description: text('description'),
+  scheduleType: varchar('schedule_type', { length: 40 }).notNull().default('WEEKLY'),
+  rosterOnDays: integer('roster_on_days').notNull().default(1),
+  rosterOffDays: integer('roster_off_days').notNull().default(0),
   isDefault: boolean('is_default').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
-});
+}, (table) => ({
+  scheduleTypeCheck: check('chk_work_schedule_type', sql`${table.scheduleType} IN ('WEEKLY', 'ROSTER')`),
+  rosterOnDaysCheck: check('chk_work_schedule_roster_on_days', sql`${table.rosterOnDays} > 0`),
+  rosterOffDaysCheck: check('chk_work_schedule_roster_off_days', sql`${table.rosterOffDays} >= 0`),
+}));
 
 export const workScheduleDays = pgTable('work_schedule_days', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -544,6 +561,14 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   lastPunchId: uuid('last_punch_id').references(() => attendancePunches.id),
   checkInAt: timestamp('check_in_at', { withTimezone: false }),
   checkOutAt: timestamp('check_out_at', { withTimezone: false }),
+  scheduledStartAt: timestamp('scheduled_start_at', { withTimezone: false }),
+  scheduledEndAt: timestamp('scheduled_end_at', { withTimezone: false }),
+  lateMinutes: integer('late_minutes').notNull().default(0),
+  lateReturnMinutes: integer('late_return_minutes').notNull().default(0),
+  earlyBreakMinutes: integer('early_break_minutes').notNull().default(0),
+  earlyDepartureMinutes: integer('early_departure_minutes').notNull().default(0),
+  unapprovedOvertimeMinutes: integer('unapproved_overtime_minutes').notNull().default(0),
+  toleranceStatus: varchar('tolerance_status', { length: 30 }).notNull().default('NONE'),
   totalPunches: integer('total_punches').notNull().default(0),
   attendanceDays: numeric('attendance_days', { precision: 4, scale: 2 }).notNull().default('0'),
   leaveDays: numeric('leave_days', { precision: 4, scale: 2 }).notNull().default('0'),
@@ -577,6 +602,11 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   payableDaysCheck: check('chk_attendance_daily_record_payable_days', sql`${table.payableDays} >= 0 AND ${table.payableDays} <= 1`),
   absenceDaysCheck: check('chk_attendance_daily_record_absence_days', sql`${table.absenceDays} >= 0 AND ${table.absenceDays} <= 1`),
   overtimeMinutesCheck: check('chk_attendance_daily_record_overtime_minutes', sql`${table.overtimeMinutes} >= 0`),
+  lateMinutesCheck: check('chk_attendance_daily_record_late_minutes', sql`${table.lateMinutes} >= 0`),
+  lateReturnMinutesCheck: check('chk_attendance_daily_record_late_return_minutes', sql`${table.lateReturnMinutes} >= 0`),
+  earlyBreakMinutesCheck: check('chk_attendance_daily_record_early_break_minutes', sql`${table.earlyBreakMinutes} >= 0`),
+  earlyDepartureMinutesCheck: check('chk_attendance_daily_record_early_departure_minutes', sql`${table.earlyDepartureMinutes} >= 0`),
+  unapprovedOvertimeMinutesCheck: check('chk_attendance_daily_record_unapproved_overtime_minutes', sql`${table.unapprovedOvertimeMinutes} >= 0`),
   overtimeHoursCheck: check('chk_attendance_daily_record_overtime_hours', sql`${table.overtimeHours} >= 0`),
   overtimeDaysCheck: check('chk_attendance_daily_record_overtime_days', sql`${table.overtimeDays} >= 0`),
   employeeDateUnique: uniqueIndex('ux_attendance_daily_records_employee_date').on(table.employeeId, table.attendanceDate),
@@ -584,6 +614,27 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   attendanceDateIdx: index('idx_attendance_daily_records_attendance_date').on(table.attendanceDate),
   holidayIdIdx: index('idx_attendance_daily_records_holiday_id').on(table.holidayId),
   statusIdx: index('idx_attendance_daily_records_status').on(table.status),
+}));
+
+export const attendanceOvertimeExceptions = pgTable('attendance_overtime_exceptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  attendanceDailyRecordId: uuid('attendance_daily_record_id').references(() => attendanceDailyRecords.id, { onDelete: 'cascade' }),
+  overtimeDate: date('overtime_date').notNull(),
+  observedStartAt: timestamp('observed_start_at', { withTimezone: false }),
+  observedEndAt: timestamp('observed_end_at', { withTimezone: false }),
+  detectedMinutes: integer('detected_minutes').notNull(),
+  status: varchar('status', { length: 30 }).notNull().default('REVIEW_REQUIRED'),
+  reviewedBy: text('reviewed_by').references(() => user.id),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: false }),
+  reviewNote: text('review_note'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  detectedMinutesCheck: check('chk_attendance_overtime_exception_minutes', sql`${table.detectedMinutes} > 0`),
+  statusCheck: check('chk_attendance_overtime_exception_status', sql`${table.status} IN ('REVIEW_REQUIRED', 'DISMISSED', 'CONVERTED')`),
+  employeeDateUnique: uniqueIndex('ux_attendance_overtime_exception_employee_date').on(table.employeeId, table.overtimeDate),
+  employeeDateIdx: index('idx_attendance_overtime_exception_employee_date').on(table.employeeId, table.overtimeDate),
 }));
 
 export const ifmisExportBatches = pgTable('ifmis_export_batches', {
@@ -1321,6 +1372,12 @@ export const attendanceDailyRecordsRelations = relations(attendanceDailyRecords,
   adjustments: many(attendanceDailyRecordAdjustments),
 }));
 
+export const attendanceOvertimeExceptionsRelations = relations(attendanceOvertimeExceptions, ({ one }) => ({
+  employee: one(employees, { fields: [attendanceOvertimeExceptions.employeeId], references: [employees.id] }),
+  attendanceDailyRecord: one(attendanceDailyRecords, { fields: [attendanceOvertimeExceptions.attendanceDailyRecordId], references: [attendanceDailyRecords.id] }),
+  reviewer: one(user, { fields: [attendanceOvertimeExceptions.reviewedBy], references: [user.id] }),
+}));
+
 export const notificationLogsRelations = relations(notificationLogs, ({ one }) => ({
   recipientUser: one(user, {
     fields: [notificationLogs.recipientUserId],
@@ -1541,6 +1598,7 @@ export const allTables = {
   attendanceSyncBatches,
   attendancePunches,
   attendanceDailyRecords,
+  attendanceOvertimeExceptions,
   attendanceDailyRecordAdjustments,
   manualPunchRequests,
   overtimeRequests,

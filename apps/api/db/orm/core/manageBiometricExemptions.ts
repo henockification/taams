@@ -64,6 +64,12 @@ export async function createBiometricExemption(input: CreateBiometricExemptionIn
       supportingEvidenceUrl: input.supportingEvidenceUrl ?? null,
       supportingEvidenceMimeType: input.supportingEvidenceMimeType ?? null,
       supportingEvidenceSize: input.supportingEvidenceSize ?? null,
+      arrangementType: input.arrangementType ?? 'BIOMETRIC_EXEMPTION',
+      authorizedLocation: input.authorizedLocation ?? null,
+      effectiveFrom: input.effectiveFrom ?? null,
+      effectiveTo: input.effectiveTo ?? null,
+      reviewDueAt: input.reviewDueAt ?? null,
+      responsibleAuthority: input.responsibleAuthority ?? null,
       status: 'PENDING_SUPERVISOR',
       isActive: false,
       requestedBy: input.requestedBy ?? input.createdBy ?? null,
@@ -124,6 +130,12 @@ export async function updateBiometricExemption(
       supportingEvidenceUrl: input.supportingEvidenceUrl ?? existing.supportingEvidenceUrl ?? null,
       supportingEvidenceMimeType: input.supportingEvidenceMimeType ?? existing.supportingEvidenceMimeType ?? null,
       supportingEvidenceSize: input.supportingEvidenceSize ?? existing.supportingEvidenceSize ?? null,
+      arrangementType: input.arrangementType ?? existing.arrangementType ?? 'BIOMETRIC_EXEMPTION',
+      authorizedLocation: input.authorizedLocation ?? existing.authorizedLocation ?? null,
+      effectiveFrom: input.effectiveFrom ?? existing.effectiveFrom ?? null,
+      effectiveTo: input.effectiveTo ?? existing.effectiveTo ?? null,
+      reviewDueAt: input.reviewDueAt ?? existing.reviewDueAt ?? null,
+      responsibleAuthority: input.responsibleAuthority ?? existing.responsibleAuthority ?? null,
       isActive: existing.status === 'APPROVED' ? input.isActive ?? existing.isActive : false,
       updatedBy: input.updatedBy ?? input.createdBy ?? existing.updatedBy ?? existing.createdBy ?? null,
       updatedAt: new Date(),
@@ -206,6 +218,14 @@ export async function changeBiometricExemptionStatus(
   }
 
   if (input.status === 'APPROVED') {
+    if (existing.arrangementType && existing.arrangementType !== 'BIOMETRIC_EXEMPTION') {
+      if (!existing.effectiveFrom || !existing.reviewDueAt || !existing.responsibleAuthority?.trim()) {
+        throw new Error('Special attendance arrangements require effective dates, a review date, and a responsible authority before approval');
+      }
+      if (existing.effectiveTo && String(existing.effectiveTo) < String(existing.effectiveFrom)) {
+        throw new Error('Special attendance arrangement effective dates are invalid');
+      }
+    }
     if (existing.employeeId) {
       await assertNoActiveDuplicateExemption('EMPLOYEE', existing.employeeId, id, tx);
     } else if (existing.positionId) {
