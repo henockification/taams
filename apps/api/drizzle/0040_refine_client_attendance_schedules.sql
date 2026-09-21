@@ -162,3 +162,35 @@ WHERE d."work_schedule_id" = ws."id"
   AND ws."name_en" = 'Security Roster'
   AND sh."name_en" = 'Security 24h Duty (06:30-06:30)'
   AND d."is_off_day" = false;
+
+INSERT INTO "work_schedule_days" ("work_schedule_id", "day_of_week", "shift_id", "is_off_day", "is_active")
+SELECT ws."id", days."day_of_week", sh."id", false, true
+FROM "work_schedules" ws
+CROSS JOIN (VALUES ('MONDAY'), ('TUESDAY'), ('WEDNESDAY'), ('THURSDAY'), ('FRIDAY')) AS days("day_of_week")
+JOIN "shifts" sh ON sh."name_en" = 'Cleaner (06:30-10:00)'
+WHERE ws."name_en" = 'Cleaner'
+  AND NOT EXISTS (
+    SELECT 1 FROM "work_schedule_days" d
+    WHERE d."work_schedule_id" = ws."id" AND d."day_of_week" = days."day_of_week"
+  );
+
+INSERT INTO "work_schedule_days" ("work_schedule_id", "day_of_week", "shift_id", "is_off_day", "is_active")
+SELECT ws."id", days."day_of_week", sh."id", false, true
+FROM "work_schedules" ws
+CROSS JOIN (VALUES ('MONDAY'), ('TUESDAY'), ('WEDNESDAY'), ('THURSDAY'), ('FRIDAY')) AS days("day_of_week")
+JOIN "shifts" sh ON sh."name_en" = 'Cafeteria (06:30-16:30)'
+WHERE ws."name_en" = 'Cafeteria'
+  AND NOT EXISTS (
+    SELECT 1 FROM "work_schedule_days" d
+    WHERE d."work_schedule_id" = ws."id" AND d."day_of_week" = days."day_of_week"
+  );
+
+INSERT INTO "work_schedule_days" ("work_schedule_id", "day_of_week", "shift_id", "is_off_day", "is_active")
+SELECT ws."id", 'ROSTER', sh."id", false, true
+FROM "work_schedules" ws
+JOIN "shifts" sh ON sh."name_en" = 'Security 24h Duty (06:30-06:30)'
+WHERE ws."name_en" = 'Security Roster'
+  AND NOT EXISTS (
+    SELECT 1 FROM "work_schedule_days" d
+    WHERE d."work_schedule_id" = ws."id" AND d."day_of_week" = 'ROSTER'
+  );
