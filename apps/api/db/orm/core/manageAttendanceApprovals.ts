@@ -152,7 +152,9 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       .filter((item) => String(item.effectiveFrom) <= attendanceDate && (!item.effectiveTo || String(item.effectiveTo) >= attendanceDate))
       .sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0];
     const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${attendanceDate}T12:00:00`).getDay()];
-    const shift = assignment?.workSchedule?.days?.find((day) => day.isActive && (day.dayOfWeek.toUpperCase() === dayName || day.dayOfWeek.toUpperCase() === 'ROSTER') && !day.isOffDay)?.shift ?? null;
+    const shift = assignment?.workSchedule?.days?.find((day) => day.isActive
+      && !day.isOffDay
+      && (assignment.workSchedule.scheduleType === 'ROSTER' || day.dayOfWeek.toUpperCase() === dayName || day.dayOfWeek.toUpperCase() === 'ROSTER'))?.shift ?? null;
     const scheduleIsRosterRestDay = assignment?.workSchedule?.scheduleType === 'ROSTER'
       && rosterCycleIndex(attendanceDate, String(assignment.effectiveFrom), Number(assignment.workSchedule.rosterOnDays ?? 1), Number(assignment.workSchedule.rosterOffDays ?? 0)) >= Number(assignment.workSchedule.rosterOnDays ?? 1);
     const employeePunches = (shift?.isOvernight && !scheduleIsRosterRestDay)

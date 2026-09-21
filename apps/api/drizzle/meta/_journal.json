@@ -253,6 +253,13 @@
       "when": 1789441200000,
       "tag": "0039_attendance_break_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789444800000,
+      "tag": "0040_refine_client_attendance_schedules",
+      "breakpoints": true
     }
   ]
 }
