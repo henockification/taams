@@ -115,14 +115,21 @@ function employeeName(employee?: Employee | null) {
 }
 
 function attendanceRule(record: AttendanceDailyRecord) {
-  if (record.checkInAt && record.checkOutAt) return 'Check-in / check-out';
+  if (record.checkInAt && record.checkOutAt) {
+    if ((record.lateMinutes ?? 0) > 0 && (record.earlyDepartureMinutes ?? 0) > 0) return 'Late check-in / early check-out';
+    if ((record.lateMinutes ?? 0) > 0) return 'Late check-in / check-out';
+    if ((record.earlyDepartureMinutes ?? 0) > 0) return 'Check-in / early check-out';
+    return 'Check-in / check-out';
+  }
   if (!record.checkInAt) return 'No punch direction available';
   if (record.scheduledStartAt && record.scheduledEndAt) {
     const start = new Date(record.scheduledStartAt).getTime();
     const end = new Date(record.scheduledEndAt).getTime();
-    return new Date(record.checkInAt).getTime() <= start + (end - start) / 2
-      ? 'Schedule-based check-in'
-      : 'Schedule-based check-out';
+    if (new Date(record.checkInAt).getTime() <= start + (end - start) / 2) {
+      if ((record.lateMinutes ?? 0) > 0) return 'Late check-in';
+      return new Date(record.checkInAt).getTime() < start ? 'Early check-in' : 'Schedule-based check-in';
+    }
+    return (record.earlyDepartureMinutes ?? 0) > 0 ? 'Early check-out' : 'Schedule-based check-out';
   }
   return 'Direction not supplied by device';
 }

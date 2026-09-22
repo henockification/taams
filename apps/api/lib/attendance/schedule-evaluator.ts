@@ -50,8 +50,12 @@ export function evaluateAttendancePunches(
 ): AttendanceScheduleEvaluation {
   const sorted = [...punches].sort((a, b) => asDate(a.punchTime).getTime() - asDate(b.punchTime).getTime());
   const ordered = sorted.filter((punch, index) => {
-    if (index === 0 || !punch.punchType || punch.punchType === 'UNKNOWN') return true;
+    if (index === 0 || !punch.punchType) return true;
     const previous = sorted[index - 1];
+    if (punch.punchType === 'UNKNOWN' && previous.punchType === 'UNKNOWN') {
+      return asDate(punch.punchTime).getTime() - asDate(previous.punchTime).getTime() > 2 * 60_000;
+    }
+    if (punch.punchType === 'UNKNOWN' || previous.punchType === 'UNKNOWN') return true;
     return previous.punchType !== punch.punchType || asDate(punch.punchTime).getTime() - asDate(previous.punchTime).getTime() > 2 * 60_000;
   });
   const segments = [...(shift?.segments ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));

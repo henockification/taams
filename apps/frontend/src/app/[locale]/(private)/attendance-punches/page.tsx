@@ -63,18 +63,6 @@ function employeeName(employee?: Employee | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
-function inferredRule(punch: { punchType: string; employeeId: string | null; punchTime: string }, all: Array<{ punchType: string; employeeId: string | null; punchTime: string }>) {
-  if (punch.punchType !== 'UNKNOWN' || !punch.employeeId) return null;
-  const day = punch.punchTime.slice(0, 10);
-  const sequence = all.filter((item) => item.employeeId === punch.employeeId && item.punchTime.slice(0, 10) === day).sort((a, b) => a.punchTime.localeCompare(b.punchTime));
-  const index = sequence.findIndex((item) => item.punchTime === punch.punchTime);
-  if (index < 0) return null;
-  if (sequence.length === 1) return 'Inferred check-in (single punch)';
-  if (index === 0) return 'Inferred check-in';
-  if (index === sequence.length - 1) return 'Inferred check-out';
-  return index % 2 === 1 ? 'Inferred break start' : 'Inferred break return';
-}
-
 export default function AttendancePunchesPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
@@ -301,7 +289,7 @@ export default function AttendancePunchesPage() {
                         <TableCell>{punch.device?.deviceName ?? '-'}</TableCell>
                         <TableCell><Badge variant="secondary">{punch.punchType}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : punch.inferredPunchType === 'IN' ? 'Schedule-based check-in' : punch.inferredPunchType === 'OUT' ? 'Schedule-based check-out' : inferredRule(punch, punches) ?? 'Direction not supplied by device'}
+                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : punch.inferredRule === 'SCHEDULE_EARLY_IN' ? 'Early check-in' : punch.inferredRule === 'SCHEDULE_LATE_IN' ? 'Late check-in' : punch.inferredRule === 'SCHEDULE_ON_TIME_IN' ? 'On-time check-in' : punch.inferredRule === 'SCHEDULE_EARLY_OUT' ? 'Early check-out' : punch.inferredPunchType === 'OUT' ? 'Schedule-based check-out' : 'Direction not supplied by device'}
                         </TableCell>
                         <TableCell>{punch.source}</TableCell>
                         <TableCell>

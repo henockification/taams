@@ -416,10 +416,19 @@ export async function getAttendancePunchesPaginated({
   try {
     const duplicateIds = await findDuplicatePunchIds(scopedPunches);
     scopedPunches.forEach((punch: any) => { punch.isDuplicate = duplicateIds.has(punch.id); });
-    await annotateScheduleBasedPunchRules(scopedPunches);
   } catch {
     // Enrichment is diagnostic only; never prevent the raw punch list from loading.
     scopedPunches.forEach((punch: any) => { punch.isDuplicate = false; });
+  }
+  try {
+    await annotateScheduleBasedPunchRules(scopedPunches);
+  } catch {
+    scopedPunches.forEach((punch: any) => {
+      if (punch.punchType === 'UNKNOWN') {
+        punch.inferredPunchType = null;
+        punch.inferredRule = null;
+      }
+    });
   }
 
   return {
@@ -435,8 +444,8 @@ async function findDuplicatePunchIds(punches: Array<{ id: string }>) {
   const ids = punches.map((punch) => punch.id);
   const rows = await db.select({ id: attendancePunches.id }).from(attendancePunches).where(and(
     inArray(attendancePunches.id, ids),
-    sql`${attendancePunches.employeeId} IS NOT NULL AND ${attendancePunches.punchType} <> 'UNKNOWN'`,
-    sql`EXISTS (SELECT 1 FROM attendance_punches q WHERE q.id <> ${attendancePunches.id} AND q.employee_id = ${attendancePunches.employeeId} AND q.punch_type = ${attendancePunches.punchType} AND q.punch_time BETWEEN ${attendancePunches.punchTime} - interval '2 minutes' AND ${attendancePunches.punchTime} + interval '2 minutes')`,
+    sql`${attendancePunches.employeeId} IS NOT NULL`,
+    sql`EXISTS (SELECT 1 FROM attendance_punches q WHERE q.id <> ${attendancePunches.id} AND q.employee_id = ${attendancePunches.employeeId} AND (q.punch_type = ${attendancePunches.punchType} OR q.punch_type = 'UNKNOWN' OR ${attendancePunches.punchType} = 'UNKNOWN') AND q.punch_time BETWEEN ${attendancePunches.punchTime} - interval '2 minutes' AND ${attendancePunches.punchTime} + interval '2 minutes')`,
   ));
   return new Set(rows.map((row) => row.id));
 }
@@ -457,15 +466,25 @@ async function annotateScheduleBasedPunchRules(punches: any[]) {
     const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T12:00:00`).getDay()];
     const day = assignment?.workSchedule?.days?.find((candidate: any) => candidate.isActive && !candidate.isOffDay && (candidate.dayOfWeek === dayName || candidate.dayOfWeek === 'ROSTER'));
     const segments = [...(day?.shift?.segments ?? [])].sort((a: any, b: any) => Number(a.sortOrder) - Number(b.sortOrder));
-    if (!segments.length) continue;
+    const shift = day?.shift;
+    if (!segments.length || !shift) continue;
     const start = new Date(`${date}T${segments[0].startTime}`);
     const end = new Date(`${date}T${segments[segments.length - 1].endTime}`);
     if (end <= start) end.setDate(end.getDate() + 1);
     const threshold = start.getTime() + (end.getTime() - start.getTime()) / 2;
+    const graceStart = start.getTime() - Number(shift.gracePeriodMinutes ?? 0) * 60_000;
+    const lateStart = start.getTime() + (Number(shift.gracePeriodMinutes ?? 0) + Number(shift.lateAfterMinutes ?? 0)) * 60_000;
+    const earlyOut = end.getTime() - Number(shift.earlyOutBeforeMinutes ?? 0) * 60_000;
     for (const punch of group) {
       if (punch.punchType !== 'UNKNOWN') continue;
-      punch.inferredPunchType = new Date(punch.punchTime).getTime() <= threshold ? 'IN' : 'OUT';
-      punch.inferredRule = 'SCHEDULE_THRESHOLD';
+      const time = new Date(punch.punchTime).getTime();
+      if (time <= threshold) {
+        punch.inferredPunchType = 'IN';
+        punch.inferredRule = time < graceStart ? 'SCHEDULE_EARLY_IN' : time > lateStart ? 'SCHEDULE_LATE_IN' : 'SCHEDULE_ON_TIME_IN';
+      } else {
+        punch.inferredPunchType = 'OUT';
+        punch.inferredRule = time < earlyOut ? 'SCHEDULE_EARLY_OUT' : 'SCHEDULE_OUT';
+      }
     }
   }
 }
