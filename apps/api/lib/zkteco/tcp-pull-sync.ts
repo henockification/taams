@@ -99,7 +99,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
           });
 
           let alreadyImported = await findExistingDeviceAttendancePunch(
-            device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid,
+            device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid, parsed.devicePunchId,
           );
           if (!alreadyImported) {
             const created = await createAttendancePunch({
@@ -123,9 +123,14 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
             }
             // Another importer may have saved this punch after our initial lookup.
             alreadyImported = await findExistingDeviceAttendancePunch(
-              device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid,
+              device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid, parsed.devicePunchId,
             );
             if (!alreadyImported) throw new Error("Conflicting attendance punch could not be found");
+          }
+
+          if (alreadyImported.devicePunchId && parsed.devicePunchId && alreadyImported.devicePunchId === parsed.devicePunchId
+            && new Date(alreadyImported.punchTime).getTime() !== parsed.punchTime.getTime()) {
+            await db.update(attendancePunches).set({ punchTime: parsed.punchTime, externalUid: parsed.externalUid } as any).where(eq(attendancePunches.id, alreadyImported.id));
           }
 
           if (!alreadyImported.employeeId && employee) {
@@ -180,7 +185,7 @@ function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLo
     return null;
   }
 
-  const punchTime = new Date(recordTime);
+  const punchTime = parseZktecoPunchTime(recordTime);
   if (Number.isNaN(punchTime.getTime())) {
     throw new Error(`Invalid ZKTeco punch time: ${String(recordTime)}`);
   }
@@ -195,6 +200,27 @@ function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLo
     verificationType: stringifyOptional(log.verifyType ?? log.verificationType),
     devicePunchId: stringifyOptional(log.uid ?? log.id),
   };
+}
+
+/** ZKTeco commonly returns a local wall-clock value without an offset. The
+ * devices are configured for Ethiopia (UTC+03:00), so interpret that value in
+ * Addis Ababa before serializing it as UTC for storage and API responses. */
+function parseZktecoPunchTime(value: string | Date) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return value;
+    // Treat the calendar/time components supplied by the device as Ethiopian
+    // wall-clock components, regardless of the worker host timezone.
+    return new Date(Date.UTC(
+      value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(),
+      value.getUTCHours() - 3, value.getUTCMinutes(), value.getUTCSeconds(), value.getUTCMilliseconds(),
+    ));
+  }
+  const text = String(value).trim();
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(text)) return new Date(text);
+  const match = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(text);
+  if (!match) return new Date(text);
+  const [, year, month, day, hour, minute, second = '0', fraction = '0'] = match;
+  return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour) - 3, Number(minute), Number(second), Number(fraction.padEnd(3, '0'))));
 }
 
 function mapZktecoPunchType(value: unknown): PunchType {

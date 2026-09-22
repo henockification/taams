@@ -228,6 +228,7 @@ export async function findExistingDeviceAttendancePunch(
   biometricId: string,
   punchTime: Date,
   externalUid: string,
+  devicePunchId?: string | null,
   tx: DbClient = db,
 ) {
   return tx.query.attendancePunches.findFirst({
@@ -236,9 +237,10 @@ export async function findExistingDeviceAttendancePunch(
       or(
         eq(attendancePunches.externalUid, externalUid),
         and(eq(attendancePunches.biometricId, biometricId), eq(attendancePunches.punchTime, punchTime)),
+        devicePunchId ? eq(attendancePunches.devicePunchId, devicePunchId) : undefined,
       ),
     ),
-    columns: { id: true, employeeId: true },
+    columns: { id: true, employeeId: true, devicePunchId: true, punchTime: true },
   });
 }
 
