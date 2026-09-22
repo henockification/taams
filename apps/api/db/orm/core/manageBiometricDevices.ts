@@ -413,9 +413,14 @@ export async function getAttendancePunchesPaginated({
   const [totalResult, punches] = await Promise.all([whereClause ? totalQuery.where(whereClause) : totalQuery, punchQuery]);
 
   const scopedPunches = filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
-  const duplicateIds = await findDuplicatePunchIds(scopedPunches);
-  scopedPunches.forEach((punch: any) => { punch.isDuplicate = duplicateIds.has(punch.id); });
-  await annotateScheduleBasedPunchRules(scopedPunches);
+  try {
+    const duplicateIds = await findDuplicatePunchIds(scopedPunches);
+    scopedPunches.forEach((punch: any) => { punch.isDuplicate = duplicateIds.has(punch.id); });
+    await annotateScheduleBasedPunchRules(scopedPunches);
+  } catch {
+    // Enrichment is diagnostic only; never prevent the raw punch list from loading.
+    scopedPunches.forEach((punch: any) => { punch.isDuplicate = false; });
+  }
 
   return {
     attendancePunches: scopedPunches,
