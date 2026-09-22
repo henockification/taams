@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, ChevronsUpDown, Clock3, ListFilter, RotateCcw, ScanLine } from 'lucide-react';
+import { Check, ChevronsUpDown, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -36,7 +36,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   useBiometricExemptions,
   useAttendancePunchesPaginated,
@@ -62,6 +61,18 @@ function presetDates(preset: DatePreset) {
 function employeeName(employee?: Employee | null) {
   if (!employee) return '';
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
+}
+
+function inferredRule(punch: { punchType: string; employeeId: string | null; punchTime: string }, all: Array<{ punchType: string; employeeId: string | null; punchTime: string }>) {
+  if (punch.punchType !== 'UNKNOWN' || !punch.employeeId) return null;
+  const day = punch.punchTime.slice(0, 10);
+  const sequence = all.filter((item) => item.employeeId === punch.employeeId && item.punchTime.slice(0, 10) === day).sort((a, b) => a.punchTime.localeCompare(b.punchTime));
+  const index = sequence.findIndex((item) => item.punchTime === punch.punchTime);
+  if (index < 0) return null;
+  if (sequence.length === 1) return 'Inferred check-in (single punch)';
+  if (index === 0) return 'Inferred check-in';
+  if (index === sequence.length - 1) return 'Inferred check-out';
+  return index % 2 === 1 ? 'Inferred break start' : 'Inferred break return';
 }
 
 export default function AttendancePunchesPage() {
@@ -154,19 +165,14 @@ export default function AttendancePunchesPage() {
               <SelectItem value="THIS_WEEK">This week</SelectItem><SelectItem value="THIS_MONTH">This month</SelectItem><SelectItem value="CUSTOM">Custom range</SelectItem>
             </SelectContent>
           </Select>
-          <Tabs
-            value={status}
-            onValueChange={(value) => {
-              setStatus(value as 'all' | 'processed' | 'unprocessed');
-              resetToFirstPage();
-            }}
-          >
-            <TabsList>
-              <TabsTrigger value="all"><Clock3 className="size-4" />{t('allPunches')}</TabsTrigger>
-              <TabsTrigger value="unprocessed"><ListFilter className="size-4" />{t('unprocessed')}</TabsTrigger>
-              <TabsTrigger value="processed"><ListFilter className="size-4" />{t('processed')}</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <Select value={status} onValueChange={(value) => { setStatus(value as 'all' | 'processed' | 'unprocessed'); resetToFirstPage(); }}>
+            <SelectTrigger className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allPunches')}</SelectItem>
+              <SelectItem value="unprocessed">{t('unprocessed')}</SelectItem>
+              <SelectItem value="processed">{t('processed')}</SelectItem>
+            </SelectContent>
+          </Select>
           <EmployeeCombobox
             value={employeeId}
             onValueChange={(value) => {
@@ -198,7 +204,7 @@ export default function AttendancePunchesPage() {
               ))}
             </SelectContent>
           </Select>
-          <Field label={t('startDate')} id="attendance-punches-date-from">
+          {datePreset === 'CUSTOM' ? <Field label={t('startDate')} id="attendance-punches-date-from">
             <CalendarDateField
               id="attendance-punches-date-from"
               value={dateFrom}
@@ -209,8 +215,8 @@ export default function AttendancePunchesPage() {
               }}
               className="w-full md:w-44"
             />
-          </Field>
-          <Field label={t('endDate')} id="attendance-punches-date-to">
+          </Field> : null}
+          {datePreset === 'CUSTOM' ? <Field label={t('endDate')} id="attendance-punches-date-to">
             <CalendarDateField
               id="attendance-punches-date-to"
               value={dateTo}
@@ -221,9 +227,9 @@ export default function AttendancePunchesPage() {
               }}
               className="w-full md:w-44"
             />
-          </Field>
+          </Field> : null}
           <Button type="button" variant="outline" onClick={clearFilters}><RotateCcw className="size-4" />Clear filters</Button>
-          <Field label={t('startTime')} id="attendance-punches-time-from">
+          {datePreset === 'CUSTOM' ? <Field label={t('startTime')} id="attendance-punches-time-from">
             <Input
               id="attendance-punches-time-from"
               type="time"
@@ -234,8 +240,8 @@ export default function AttendancePunchesPage() {
               }}
               className="w-full md:w-36"
             />
-          </Field>
-          <Field label={t('endTime')} id="attendance-punches-time-to">
+          </Field> : null}
+          {datePreset === 'CUSTOM' ? <Field label={t('endTime')} id="attendance-punches-time-to">
             <Input
               id="attendance-punches-time-to"
               type="time"
@@ -246,7 +252,7 @@ export default function AttendancePunchesPage() {
               }}
               className="w-full md:w-36"
             />
-          </Field>
+          </Field> : null}
         </div>
       </div>
 
@@ -295,7 +301,7 @@ export default function AttendancePunchesPage() {
                         <TableCell>{punch.device?.deviceName ?? '-'}</TableCell>
                         <TableCell><Badge variant="secondary">{punch.punchType}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : 'Review direction'}
+                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : inferredRule(punch, punches) ?? 'Direction not supplied by device'}
                         </TableCell>
                         <TableCell>{punch.source}</TableCell>
                         <TableCell>

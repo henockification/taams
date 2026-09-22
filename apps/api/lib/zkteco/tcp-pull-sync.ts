@@ -33,6 +33,11 @@ type ZktecoAttendanceLog = {
   attTime?: string | Date;
   type?: string | number;
   recordType?: string | number;
+  state?: string | number;
+  status?: string | number;
+  punchState?: string | number;
+  inOutMode?: string | number;
+  attState?: string | number;
   verifyType?: string | number;
   verificationType?: string | number;
   uid?: string | number;
@@ -186,21 +191,29 @@ function parseAttendanceLog(device: PullBiometricDevice, log: ZktecoAttendanceLo
     biometricId,
     punchTime,
     externalUid,
-    punchType: mapZktecoPunchType(log.type ?? log.recordType),
+    punchType: mapZktecoPunchType(log.type ?? log.recordType ?? log.state ?? log.status ?? log.punchState ?? log.inOutMode ?? log.attState),
     verificationType: stringifyOptional(log.verifyType ?? log.verificationType),
     devicePunchId: stringifyOptional(log.uid ?? log.id),
   };
 }
 
 function mapZktecoPunchType(value: unknown): PunchType {
-  switch (String(value ?? "")) {
+  switch (String(value ?? "").trim().toUpperCase()) {
     case "0":
+    case "IN":
+    case "CHECK-IN":
       return "IN";
     case "1":
+    case "OUT":
+    case "CHECK-OUT":
       return "OUT";
     case "2":
+    case "BREAK_OUT":
+    case "BREAK-OUT":
       return "BREAK_OUT";
     case "3":
+    case "BREAK_IN":
+    case "BREAK-IN":
       return "BREAK_IN";
     default:
       return "UNKNOWN";
