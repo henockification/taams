@@ -301,7 +301,7 @@ export default function AttendancePunchesPage() {
                         <TableCell>{punch.device?.deviceName ?? '-'}</TableCell>
                         <TableCell><Badge variant="secondary">{punch.punchType}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : inferredRule(punch, punches) ?? 'Direction not supplied by device'}
+                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : punch.inferredPunchType === 'IN' ? 'Schedule-based check-in' : punch.inferredPunchType === 'OUT' ? 'Schedule-based check-out' : inferredRule(punch, punches) ?? 'Direction not supplied by device'}
                         </TableCell>
                         <TableCell>{punch.source}</TableCell>
                         <TableCell>

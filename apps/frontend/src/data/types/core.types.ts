@@ -594,6 +594,8 @@ export type AttendancePunch = {
   device?: BiometricDevice | null;
   syncBatch?: AttendanceSyncBatch | null;
   isDuplicate?: boolean;
+  inferredPunchType?: PunchType | null;
+  inferredRule?: string | null;
 };
 
 export type AttendanceDailyRecord = {

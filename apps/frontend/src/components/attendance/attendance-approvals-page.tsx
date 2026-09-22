@@ -114,6 +114,19 @@ function employeeName(employee?: Employee | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
+function attendanceRule(record: AttendanceDailyRecord) {
+  if (record.checkInAt && record.checkOutAt) return 'Check-in / check-out';
+  if (!record.checkInAt) return 'No punch direction available';
+  if (record.scheduledStartAt && record.scheduledEndAt) {
+    const start = new Date(record.scheduledStartAt).getTime();
+    const end = new Date(record.scheduledEndAt).getTime();
+    return new Date(record.checkInAt).getTime() <= start + (end - start) / 2
+      ? 'Schedule-based check-in'
+      : 'Schedule-based check-out';
+  }
+  return 'Direction not supplied by device';
+}
+
 export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
@@ -309,13 +322,13 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   return (
     <div className="flex w-full flex-col gap-6">
       {isHrMode ? (
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
-            <div className="flex-1"><div className="font-medium">Permanent employee leave verification</div><div className="text-sm text-muted-foreground">Import the ISMIS Ethiopian-calendar report and confirm the check before payroll.</div></div>
-            <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="max-w-sm" />
-            <Button disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo })}>I checked leave</Button> : null}
-            {latestLeave.data?.batch ? <span className="text-sm text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
+        <Card className="border-dashed">
+          <CardContent className="flex flex-wrap items-center gap-2 p-2">
+            <div className="min-w-52 flex-1"><div className="text-xs font-medium">Permanent employee leave verification</div><div className="text-[11px] text-muted-foreground">Import ISMIS leave and confirm before payroll.</div></div>
+            <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="h-8 max-w-xs text-xs" />
+            <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo })}>I checked leave</Button> : null}
+            {latestLeave.data?.batch ? <span className="text-xs text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
           </CardContent>
         </Card>
       ) : null}
@@ -520,6 +533,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('attendanceDate')}</TableHead>
                     <TableHead>{t('checkIn')}</TableHead>
                     <TableHead>{t('checkOut')}</TableHead>
+                    <TableHead>Attendance rule</TableHead>
                     <TableHead>Late</TableHead>
                     <TableHead>Early break</TableHead>
                     <TableHead>Early out</TableHead>
@@ -571,6 +585,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell className="whitespace-nowrap">{formatDate(record.attendanceDate)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{attendanceRule(record)}</TableCell>
                       <TableCell>{record.lateMinutes ?? 0} min{record.lateReturnMinutes ? ` + ${record.lateReturnMinutes} return` : ''}</TableCell>
                       <TableCell>{record.earlyBreakMinutes ?? 0} min</TableCell>
                       <TableCell>{record.earlyDepartureMinutes ?? 0} min</TableCell>

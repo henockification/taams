@@ -54,8 +54,6 @@ type ApprovalScope = {
   scope?: EmployeeVisibilityScope;
 };
 
-const MAX_REFRESH_GENERATE_DAYS = 31;
-
 export async function generateAttendanceDailyRecords(date?: string | null, options?: { recordAudit?: boolean }) {
   const attendanceDate = normalizeDateParam(date);
   if (attendanceDate < new Date().toISOString().slice(0, 10)) {
@@ -306,10 +304,6 @@ export async function generateAttendanceDailyRecordsInRange(dateFrom?: string | 
   const range = resolveAttendanceDateRange({ dateFrom, dateTo });
   const days = listDatesInclusive(range.dateFrom, clipDateToToday(range.dateTo));
   if (days.length === 0) return generateAttendanceDailyRecords(clipDateToToday(range.dateTo), options);
-  if (days.length > MAX_REFRESH_GENERATE_DAYS) {
-    return generateAttendanceDailyRecords(days[days.length - 1], options);
-  }
-
   let generated: any[] = [];
   for (const day of days) {
     generated = await generateAttendanceDailyRecords(day, options);

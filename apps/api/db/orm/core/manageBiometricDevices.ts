@@ -1,6 +1,6 @@
-import { and, asc, count, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
-import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, user } from '../../schema';
+import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, employeeWorkSchedules, user } from '../../schema';
 import type {
   CreateAttendancePunchInput,
   CreateBiometricDeviceInput,
@@ -415,6 +415,7 @@ export async function getAttendancePunchesPaginated({
   const scopedPunches = filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
   const duplicateIds = await findDuplicatePunchIds(scopedPunches);
   scopedPunches.forEach((punch: any) => { punch.isDuplicate = duplicateIds.has(punch.id); });
+  await annotateScheduleBasedPunchRules(scopedPunches);
 
   return {
     attendancePunches: scopedPunches,
@@ -433,6 +434,35 @@ async function findDuplicatePunchIds(punches: Array<{ id: string }>) {
     sql`EXISTS (SELECT 1 FROM attendance_punches q WHERE q.id <> ${attendancePunches.id} AND q.employee_id = ${attendancePunches.employeeId} AND q.punch_type = ${attendancePunches.punchType} AND q.punch_time BETWEEN ${attendancePunches.punchTime} - interval '2 minutes' AND ${attendancePunches.punchTime} + interval '2 minutes')`,
   ));
   return new Set(rows.map((row) => row.id));
+}
+
+async function annotateScheduleBasedPunchRules(punches: any[]) {
+  const employeeIds = [...new Set(punches.map((punch) => punch.employeeId).filter(Boolean))];
+  if (!employeeIds.length) return;
+  const dates = punches.map((punch) => String(punch.punchTime).slice(0, 10)).sort();
+  const assignments = await db.query.employeeWorkSchedules.findMany({
+    where: and(inArray(employeeWorkSchedules.employeeId, employeeIds), lte(employeeWorkSchedules.effectiveFrom, dates.at(-1)!), or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, dates[0]))),
+    with: { workSchedule: { with: { days: { with: { shift: { with: { segments: true } } } } } } },
+  });
+  const grouped = new Map<string, any[]>();
+  for (const punch of punches) grouped.set(`${punch.employeeId}:${String(punch.punchTime).slice(0, 10)}`, [...(grouped.get(`${punch.employeeId}:${String(punch.punchTime).slice(0, 10)}`) ?? []), punch]);
+  for (const [key, group] of grouped) {
+    const [employeeId, date] = key.split(':');
+    const assignment = assignments.filter((item: any) => item.employeeId === employeeId && String(item.effectiveFrom) <= date && (!item.effectiveTo || String(item.effectiveTo) >= date)).sort((a: any, b: any) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0];
+    const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T12:00:00`).getDay()];
+    const day = assignment?.workSchedule?.days?.find((candidate: any) => candidate.isActive && !candidate.isOffDay && (candidate.dayOfWeek === dayName || candidate.dayOfWeek === 'ROSTER'));
+    const segments = [...(day?.shift?.segments ?? [])].sort((a: any, b: any) => Number(a.sortOrder) - Number(b.sortOrder));
+    if (!segments.length) continue;
+    const start = new Date(`${date}T${segments[0].startTime}`);
+    const end = new Date(`${date}T${segments[segments.length - 1].endTime}`);
+    if (end <= start) end.setDate(end.getDate() + 1);
+    const threshold = start.getTime() + (end.getTime() - start.getTime()) / 2;
+    for (const punch of group) {
+      if (punch.punchType !== 'UNKNOWN') continue;
+      punch.inferredPunchType = new Date(punch.punchTime).getTime() <= threshold ? 'IN' : 'OUT';
+      punch.inferredRule = 'SCHEDULE_THRESHOLD';
+    }
+  }
 }
 
 export async function getAttendancePunchesByEmployeeId(employeeId: string, scope?: EmployeeVisibilityScope) {
