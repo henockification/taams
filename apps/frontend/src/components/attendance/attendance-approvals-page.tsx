@@ -49,6 +49,9 @@ import {
   useAttendanceOvertimeExceptions,
   useConvertAttendanceOvertimeException,
   useDismissAttendanceOvertimeException,
+  useCompleteIsmisLeave,
+  useIsmisLeaveImport,
+  useLatestIsmisLeaveImport,
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
@@ -147,11 +150,15 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const overtimeExceptions = useAttendanceOvertimeExceptions(dateRange);
   const dismissOvertimeException = useDismissAttendanceOvertimeException();
   const convertOvertimeException = useConvertAttendanceOvertimeException();
+  const isHrMode = mode === 'hr';
+  const leaveImport = useIsmisLeaveImport();
+  const completeLeave = useCompleteIsmisLeave();
+  const latestLeave = useLatestIsmisLeaveImport(isHrMode);
+  const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const session = useSession();
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
   const records = query.data?.attendanceDailyRecords ?? [];
   const summary = useMemo(() => summarize(records), [records]);
-  const isHrMode = mode === 'hr';
   const departments = useMemo(() => {
     if (!hasEmploymentType) return [];
     const byId = new Map<string, { id: string; nameEn: string }>();
@@ -301,6 +308,17 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
 
   return (
     <div className="flex w-full flex-col gap-6">
+      {isHrMode ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-6 md:flex-row md:items-center">
+            <div className="flex-1"><div className="font-medium">Permanent employee leave verification</div><div className="text-sm text-muted-foreground">Import the ISMIS Ethiopian-calendar report and confirm the check before payroll.</div></div>
+            <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="max-w-sm" />
+            <Button disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo })}>I checked leave</Button> : null}
+            {latestLeave.data?.batch ? <span className="text-sm text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
+          </CardContent>
+        </Card>
+      ) : null}
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
 
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">

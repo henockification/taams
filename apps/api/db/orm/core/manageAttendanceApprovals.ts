@@ -14,6 +14,8 @@ import {
   employeeWorkSchedules,
   overtimeRequests,
   attendanceOvertimeExceptions,
+  ismisLeaveDays,
+  attendanceLeaveVerifications,
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee, SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
@@ -61,7 +63,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   }
   const dayRange = getDayRange(attendanceDate);
 
-  const [allEmployees, punches, approvedLeaves, activeExemptions, activeHoliday, scheduleAssignments, approvedOvertime] = await Promise.all([
+  const [allEmployees, punches, approvedLeaves, activeExemptions, activeHoliday, scheduleAssignments, approvedOvertime, externalLeaveDays] = await Promise.all([
     db.query.employees.findMany({
       columns: {
         id: true,
@@ -121,6 +123,13 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       where: and(eq(overtimeRequests.overtimeDate, attendanceDate), eq(overtimeRequests.status, 'APPROVED')),
       columns: { employeeId: true, approvedMinutes: true },
     }),
+    db.query.ismisLeaveDays.findMany({
+      where: and(
+        eq(ismisLeaveDays.attendanceDate, attendanceDate),
+        sql`EXISTS (SELECT 1 FROM "ismis_leave_import_batches" b WHERE b."id" = ${ismisLeaveDays.batchId} AND b."status" = 'COMPLETED')`,
+      ),
+      columns: { employeeId: true },
+    }),
   ]);
 
   const activeEmployees = allEmployees.filter(isWorkingEmployee);
@@ -129,6 +138,10 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   const leaveDaysByEmployee = new Map<string, number>();
   const unpaidLeaveDaysByEmployee = new Map<string, number>();
   const approvedOvertimeMinutesByEmployee = new Map<string, number>();
+
+  for (const leaveDay of externalLeaveDays) {
+    if (leaveDay.employeeId) leaveDaysByEmployee.set(leaveDay.employeeId, 1);
+  }
 
   for (const overtime of approvedOvertime) {
     approvedOvertimeMinutesByEmployee.set(overtime.employeeId, (approvedOvertimeMinutesByEmployee.get(overtime.employeeId) ?? 0) + Number(overtime.approvedMinutes ?? 0));
@@ -475,6 +488,16 @@ export async function supervisorApproveAttendanceDailyRecords(
   return db.transaction(async (tx) => {
     const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
     if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
+    const permanentDates = records.filter((record: any) => record.employee?.employmentType === 'PERMANENT').map((record: any) => String(record.attendanceDate));
+    if (permanentDates.length > 0) {
+      const dateFrom = permanentDates.sort()[0];
+      const dateTo = permanentDates.sort().at(-1)!;
+      const verified = await tx.query.attendanceLeaveVerifications.findFirst({
+        where: and(lte(attendanceLeaveVerifications.dateFrom, dateFrom), gte(attendanceLeaveVerifications.dateTo, dateTo)),
+        columns: { id: true },
+      });
+      if (!verified) throw new Error('Complete the ISMIS permanent-employee leave verification before HR approval');
+    }
     const approvalContexts = [];
     for (const record of records) {
       if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {

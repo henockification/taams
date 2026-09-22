@@ -28,6 +28,7 @@ import {
   convertAttendanceOvertimeExceptionHandler,
 } from './handlers/attendanceApprovals';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
+import { completeIsmisLeaveVerification, getLatestIsmisLeaveImport, importIsmisLeaveWorkbook } from '../../../db/orm/core/manageIsmisLeave';
 
 const attendanceApprovalsApp = new Hono();
 
@@ -204,6 +205,25 @@ export const returnAttendanceDailyRecordRoute = createRoute({
 });
 
 attendanceApprovalsApp.post('/attendance-approvals/generate', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), generateAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.get('/attendance-approvals/ismis-leave', requirePermission('hr-attendance-approvals:approve'), async (c) => c.json({ success: true, batch: await getLatestIsmisLeaveImport() }));
+attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/import', requirePermission('hr-attendance-approvals:approve'), async (c) => {
+  try {
+    const form = await c.req.formData();
+    const file = form.get('file');
+    if (!file || typeof file === 'string' || typeof (file as any).arrayBuffer !== 'function') return c.json({ success: false, error: 'An ISMIS .xlsx file is required' }, 400);
+    const user = c.get('user');
+    const result = await importIsmisLeaveWorkbook(Buffer.from(await (file as File).arrayBuffer()), (file as File).name, user.id);
+    return c.json({ success: true, ...result });
+  } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'ISMIS leave import failed' }, 400); }
+});
+attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/complete', requirePermission('hr-attendance-approvals:approve'), async (c) => {
+  try {
+    const body = await c.req.json();
+    const user = c.get('user');
+    const result = await completeIsmisLeaveVerification(String(body.batchId), String(body.dateFrom), String(body.dateTo), user.id);
+    return c.json({ success: true, verification: result });
+  } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'ISMIS leave verification failed' }, 400); }
+});
 attendanceApprovalsApp.get('/attendance-approvals/supervisor', requirePermissionOrDelegation('attendance-approvals:approve'), getSupervisorAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/hr', requirePermission('hr-attendance-approvals:approve'), getHrAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/overtime-exceptions', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), getAttendanceOvertimeExceptionsHandler);

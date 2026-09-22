@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gte, inArray, lte, or } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, user } from '../../schema';
 import type {
@@ -268,6 +268,24 @@ export async function createAttendancePunch(
   const punchTime = new Date(input.punchTime);
   const externalUid = input.externalUid ?? (device ? generateAttendancePunchExternalUid(device.deviceCode, input.biometricId, punchTime) : null);
 
+  // The same employee can be read by several machines at a compound entrance.
+  // Treat a near-simultaneous same-direction device punch as one event. IN and
+  // OUT remain separate events, and UNKNOWN punches are retained for review.
+  if (input.source === 'DEVICE' && input.employeeId && input.punchType && input.punchType !== 'UNKNOWN') {
+    const windowStart = new Date(punchTime.getTime() - 2 * 60_000);
+    const windowEnd = new Date(punchTime.getTime() + 2 * 60_000);
+    const duplicate = await tx.query.attendancePunches.findFirst({
+      where: and(
+        eq(attendancePunches.employeeId, input.employeeId),
+        eq(attendancePunches.punchType, input.punchType),
+        gte(attendancePunches.punchTime, windowStart),
+        lte(attendancePunches.punchTime, windowEnd),
+      ),
+      orderBy: (table: any, { asc }: any) => [asc(table.punchTime)],
+    });
+    if (duplicate) return getAttendancePunchById(duplicate.id, tx);
+  }
+
   let insert = tx
     .insert(attendancePunches)
     .values({
@@ -395,6 +413,8 @@ export async function getAttendancePunchesPaginated({
   const [totalResult, punches] = await Promise.all([whereClause ? totalQuery.where(whereClause) : totalQuery, punchQuery]);
 
   const scopedPunches = filterPunchesByScope(await hydratePunchEmployeesByBiometricId(punches), scope);
+  const duplicateIds = await findDuplicatePunchIds(scopedPunches);
+  scopedPunches.forEach((punch: any) => { punch.isDuplicate = duplicateIds.has(punch.id); });
 
   return {
     attendancePunches: scopedPunches,
@@ -402,6 +422,17 @@ export async function getAttendancePunchesPaginated({
     page: safePage,
     pageSize: safePageSize,
   };
+}
+
+async function findDuplicatePunchIds(punches: Array<{ id: string }>) {
+  if (punches.length === 0) return new Set<string>();
+  const ids = punches.map((punch) => punch.id);
+  const rows = await db.select({ id: attendancePunches.id }).from(attendancePunches).where(and(
+    inArray(attendancePunches.id, ids),
+    sql`${attendancePunches.employeeId} IS NOT NULL AND ${attendancePunches.punchType} <> 'UNKNOWN'`,
+    sql`EXISTS (SELECT 1 FROM attendance_punches q WHERE q.id <> ${attendancePunches.id} AND q.employee_id = ${attendancePunches.employeeId} AND q.punch_type = ${attendancePunches.punchType} AND q.punch_time BETWEEN ${attendancePunches.punchTime} - interval '2 minutes' AND ${attendancePunches.punchTime} + interval '2 minutes')`,
+  ));
+  return new Set(rows.map((row) => row.id));
 }
 
 export async function getAttendancePunchesByEmployeeId(employeeId: string, scope?: EmployeeVisibilityScope) {

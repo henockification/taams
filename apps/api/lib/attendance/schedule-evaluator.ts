@@ -12,7 +12,7 @@ export type AttendanceScheduleShift = {
   segments?: AttendanceScheduleSegment[];
 };
 
-export type AttendancePunchLike = { id: string; punchTime: Date | string };
+export type AttendancePunchLike = { id: string; punchTime: Date | string; punchType?: string | null };
 
 export type AttendanceScheduleEvaluation = {
   checkInAt: Date | null;
@@ -48,7 +48,12 @@ export function evaluateAttendancePunches(
   punches: AttendancePunchLike[],
   shift?: AttendanceScheduleShift | null,
 ): AttendanceScheduleEvaluation {
-  const ordered = [...punches].sort((a, b) => asDate(a.punchTime).getTime() - asDate(b.punchTime).getTime());
+  const sorted = [...punches].sort((a, b) => asDate(a.punchTime).getTime() - asDate(b.punchTime).getTime());
+  const ordered = sorted.filter((punch, index) => {
+    if (index === 0 || !punch.punchType || punch.punchType === 'UNKNOWN') return true;
+    const previous = sorted[index - 1];
+    return previous.punchType !== punch.punchType || asDate(punch.punchTime).getTime() - asDate(previous.punchTime).getTime() > 2 * 60_000;
+  });
   const segments = [...(shift?.segments ?? [])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   if (!shift || segments.length === 0 || ordered.length === 0) {
     return {

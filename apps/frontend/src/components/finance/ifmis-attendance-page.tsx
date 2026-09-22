@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useIfmisAttendancePreview, usePushIfmisAttendance } from '@/data/hooks/core.hooks';
+import { useCompleteIsmisLeave, useIfmisAttendancePreview, useIsmisLeaveImport, useLatestIsmisLeaveImport, usePushIfmisAttendance } from '@/data/hooks/core.hooks';
 import type { IfmisExportStatus } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
@@ -38,10 +38,16 @@ export function IfmisAttendancePage() {
   const [payYear, setPayYear] = useState(initial.payYear);
   const preview = useIfmisAttendancePreview({ payMonth, payYear });
   const push = usePushIfmisAttendance();
+  const leaveImport = useIsmisLeaveImport();
+  const completeLeave = useCompleteIsmisLeave();
+  const latestLeave = useLatestIsmisLeaveImport();
   const session = useSession();
   const data = preview.data;
   const succeeded = data?.batches.some((batch) => batch.status === 'SUCCEEDED') ?? false;
   const canPush = userHasPermission(session.data?.user, 'ifmis-attendance:push');
+  const [leaveFile, setLeaveFile] = useState<File | null>(null);
+  const monthStart = `${payYear}-${String(payMonth).padStart(2, '0')}-01`;
+  const monthEnd = new Date(Date.UTC(payYear, payMonth, 0)).toISOString().slice(0, 10);
 
   async function handlePush() {
     try {
@@ -92,6 +98,16 @@ export function IfmisAttendancePage() {
         <Summary label={t('readinessIssues')} value={data?.issues.length ?? 0} />
         <Summary label={t('exportStatus')} value={succeeded ? t('exported') : data?.ready ? t('ready') : t('notReady')} />
       </div>
+
+      <Card>
+        <CardHeader><CardTitle>Permanent employee leave verification</CardTitle><CardDescription>Import the ISMIS Ethiopian-calendar report, review unmatched IDs, then confirm the check before payroll.</CardDescription></CardHeader>
+        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
+          <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} />
+          <Button disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
+          {latestLeave.data?.batch?.status === 'PENDING' ? <Button variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: monthStart, dateTo: monthEnd })}>I checked permanent employee leave</Button> : null}
+          {latestLeave.data?.batch ? <span className="text-sm text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched IDs</span> : null}
+        </CardContent>
+      </Card>
 
       {data?.issues.length ? (
         <Alert variant="destructive">

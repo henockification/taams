@@ -167,6 +167,9 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 }
 
 export const coreApi = {
+  getIsmisLeaveImport: () => coreFetch<{ success: true; batch: any | null }>('/attendance-approvals/ismis-leave'),
+  importIsmisLeave: (file: File) => { const form = new FormData(); form.append('file', file); return coreFetch<{ success: true; id: string; unmatchedEmployeeIds?: string[] }>('/attendance-approvals/ismis-leave/import', { method: 'POST', body: form }); },
+  completeIsmisLeave: (params: { batchId: string; dateFrom: string; dateTo: string }) => coreFetch<{ success: true; verification: any }>('/attendance-approvals/ismis-leave/complete', { method: 'POST', body: JSON.stringify(params) }),
   getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
     const query = new URLSearchParams({
       payMonth: String(params.payMonth),

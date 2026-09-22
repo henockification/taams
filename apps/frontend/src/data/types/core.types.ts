@@ -593,6 +593,7 @@ export type AttendancePunch = {
   employee?: Employee | null;
   device?: BiometricDevice | null;
   syncBatch?: AttendanceSyncBatch | null;
+  isDuplicate?: boolean;
 };
 
 export type AttendanceDailyRecord = {

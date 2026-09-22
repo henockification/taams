@@ -814,6 +814,51 @@ export const leaveTypes = pgTable('leave_types', {
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 });
 
+export const ismisLeaveImportBatches = pgTable('ismis_leave_import_batches', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceFileName: varchar('source_file_name', { length: 255 }).notNull(),
+  importedBy: text('imported_by').notNull().references(() => user.id),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING'),
+  rowCount: integer('row_count').notNull().default(0),
+  matchedCount: integer('matched_count').notNull().default(0),
+  unmatchedCount: integer('unmatched_count').notNull().default(0),
+  completedBy: text('completed_by').references(() => user.id),
+  completedAt: timestamp('completed_at', { withTimezone: true, precision: 6 }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  statusCheck: check('chk_ismis_leave_import_status', sql`${table.status} IN ('PENDING', 'COMPLETED', 'REJECTED')`),
+}));
+
+export const ismisLeaveDays = pgTable('ismis_leave_days', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  batchId: uuid('batch_id').notNull().references(() => ismisLeaveImportBatches.id, { onDelete: 'cascade' }),
+  sourceEmployeeId: varchar('source_employee_id', { length: 80 }).notNull(),
+  employeeId: uuid('employee_id').references(() => employees.id),
+  sourceName: varchar('source_name', { length: 255 }),
+  sourceLeaveType: varchar('source_leave_type', { length: 150 }),
+  sourceStartDate: varchar('source_start_date', { length: 30 }).notNull(),
+  sourceEndDate: varchar('source_end_date', { length: 30 }).notNull(),
+  sourceLeaveDays: numeric('source_leave_days', { precision: 8, scale: 2 }),
+  attendanceDate: date('attendance_date').notNull(),
+  matchStatus: varchar('match_status', { length: 20 }).notNull(),
+  note: text('note'),
+}, (table) => ({
+  batchDateIdx: index('idx_ismis_leave_days_batch_date').on(table.batchId, table.attendanceDate),
+  employeeDateIdx: index('idx_ismis_leave_days_employee_date').on(table.employeeId, table.attendanceDate),
+  uniqueDay: unique('ux_ismis_leave_days_batch_employee_date').on(table.batchId, table.sourceEmployeeId, table.attendanceDate),
+}));
+
+export const attendanceLeaveVerifications = pgTable('attendance_leave_verifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  dateFrom: date('date_from').notNull(),
+  dateTo: date('date_to').notNull(),
+  batchId: uuid('batch_id').notNull().references(() => ismisLeaveImportBatches.id),
+  checkedBy: text('checked_by').notNull().references(() => user.id),
+  checkedAt: timestamp('checked_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  periodIdx: index('idx_attendance_leave_verifications_period').on(table.dateFrom, table.dateTo),
+}));
+
 export const leaveBalances = pgTable('leave_balances', {
   id: uuid('id').primaryKey().defaultRandom(),
   employeeId: uuid('employee_id').notNull().references(() => employees.id),

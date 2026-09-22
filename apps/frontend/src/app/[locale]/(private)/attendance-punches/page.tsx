@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Check, ChevronsUpDown, Clock3, ListFilter, ScanLine } from 'lucide-react';
+import { Check, ChevronsUpDown, Clock3, ListFilter, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,17 @@ import type { Employee } from '@/data/types/core.types';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allDevicesValue = '__all';
+type DatePreset = 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'CUSTOM';
+
+function ymd(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`; }
+function presetDates(preset: DatePreset) {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (preset === 'YESTERDAY') { end.setDate(end.getDate() - 1); return { from: ymd(end), to: ymd(end) }; }
+  if (preset === 'THIS_WEEK') { const start = new Date(end); start.setDate(end.getDate() - ((end.getDay() + 6) % 7)); return { from: ymd(start), to: ymd(end) }; }
+  if (preset === 'THIS_MONTH') return { from: ymd(new Date(end.getFullYear(), end.getMonth(), 1)), to: ymd(end) };
+  return { from: ymd(end), to: ymd(end) };
+}
 
 function employeeName(employee?: Employee | null) {
   if (!employee) return '';
@@ -60,8 +71,9 @@ export default function AttendancePunchesPage() {
   const [employeeId, setEmployeeId] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [status, setStatus] = useState<'all' | 'processed' | 'unprocessed'>('all');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(() => presetDates('TODAY').from);
+  const [dateTo, setDateTo] = useState(() => presetDates('TODAY').to);
+  const [datePreset, setDatePreset] = useState<DatePreset>('TODAY');
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo] = useState('');
   const [page, setPage] = useState(1);
@@ -96,6 +108,7 @@ export default function AttendancePunchesPage() {
   const punches = punchesQuery.data?.attendancePunches ?? [];
   const pagination = punchesQuery.data?.pagination;
   const totalRecords = pagination?.total ?? 0;
+  const duplicateRecords = punches.filter((punch) => punch.isDuplicate).length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   const startIndex = totalRecords === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIndex = Math.min(page * pageSize, totalRecords);
@@ -107,16 +120,40 @@ export default function AttendancePunchesPage() {
     setPage(1);
   }
 
+  function applyDatePreset(value: DatePreset) {
+    setDatePreset(value);
+    if (value !== 'CUSTOM') {
+      const dates = presetDates(value);
+      setDateFrom(dates.from);
+      setDateTo(dates.to);
+    }
+    resetToFirstPage();
+  }
+
+  function clearFilters() {
+    setEmployeeId(''); setDeviceId(''); setStatus('all'); setDatePreset('TODAY');
+    const dates = presetDates('TODAY'); setDateFrom(dates.from); setDateTo(dates.to);
+    setTimeFrom(''); setTimeTo(''); resetToFirstPage();
+  }
+
   return (
     <div className="flex w-full flex-col gap-6">
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-4">
         <Summary label={t('records')} value={totalRecords} />
         <Summary label={t('page')} value={page} />
         <Summary label={t('pageSize')} value={pageSize} />
+        <Summary label="Possible duplicates" value={duplicateRecords} />
       </div>
 
       <div className="flex w-full flex-col gap-3">
         <div className="flex flex-1 flex-wrap items-end gap-2">
+          <Select value={datePreset} onValueChange={(value) => applyDatePreset(value as DatePreset)}>
+            <SelectTrigger className="w-full sm:w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TODAY">Today</SelectItem><SelectItem value="YESTERDAY">Yesterday</SelectItem>
+              <SelectItem value="THIS_WEEK">This week</SelectItem><SelectItem value="THIS_MONTH">This month</SelectItem><SelectItem value="CUSTOM">Custom range</SelectItem>
+            </SelectContent>
+          </Select>
           <Tabs
             value={status}
             onValueChange={(value) => {
@@ -167,6 +204,7 @@ export default function AttendancePunchesPage() {
               value={dateFrom}
               onChange={(value) => {
                 setDateFrom(value);
+                setDatePreset('CUSTOM');
                 resetToFirstPage();
               }}
               className="w-full md:w-44"
@@ -178,11 +216,13 @@ export default function AttendancePunchesPage() {
               value={dateTo}
               onChange={(value) => {
                 setDateTo(value);
+                setDatePreset('CUSTOM');
                 resetToFirstPage();
               }}
               className="w-full md:w-44"
             />
           </Field>
+          <Button type="button" variant="outline" onClick={clearFilters}><RotateCcw className="size-4" />Clear filters</Button>
           <Field label={t('startTime')} id="attendance-punches-time-from">
             <Input
               id="attendance-punches-time-from"
@@ -231,6 +271,7 @@ export default function AttendancePunchesPage() {
                       <TableHead>{t('biometricId')}</TableHead>
                       <TableHead>{t('device')}</TableHead>
                       <TableHead>{t('punchType')}</TableHead>
+                      <TableHead>Attendance rule</TableHead>
                       <TableHead>{t('source')}</TableHead>
                       <TableHead>{t('status')}</TableHead>
                     </TableRow>
@@ -253,11 +294,15 @@ export default function AttendancePunchesPage() {
                         <TableCell>{punch.biometricId}</TableCell>
                         <TableCell>{punch.device?.deviceName ?? '-'}</TableCell>
                         <TableCell><Badge variant="secondary">{punch.punchType}</Badge></TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : 'Review direction'}
+                        </TableCell>
                         <TableCell>{punch.source}</TableCell>
                         <TableCell>
-                          <Badge variant={punch.isProcessed ? 'default' : 'secondary'}>
-                            {punch.isProcessed ? t('processed') : t('notProcessed')}
-                          </Badge>
+                          <div className="flex flex-wrap gap-1">
+                            <Badge variant={punch.isProcessed ? 'default' : 'secondary'}>{punch.isProcessed ? t('processed') : t('notProcessed')}</Badge>
+                            {punch.isDuplicate ? <Badge variant="destructive">Possible duplicate</Badge> : null}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

@@ -158,6 +158,20 @@ export function usePushIfmisAttendance() {
   });
 }
 
+export function useIsmisLeaveImport() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (file: File) => coreApi.importIsmisLeave(file), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.all }) });
+}
+
+export function useLatestIsmisLeaveImport(enabled = true) {
+  return useQuery({ queryKey: [...coreQueryKeys.all, 'ismis-leave-import'], queryFn: coreApi.getIsmisLeaveImport, enabled });
+}
+
+export function useCompleteIsmisLeave() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: coreApi.completeIsmisLeave, onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.all }) });
+}
+
 export function useDashboardSummary(userId?: string | null) {
   return useQuery({
     queryKey: coreQueryKeys.dashboardSummary(userId),

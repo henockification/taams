@@ -3,6 +3,7 @@ export type IfmisReadinessIssueCode =
   | 'INVALID_SCHEDULE'
   | 'MISSING_RECORD'
   | 'NOT_HR_APPROVED'
+  | 'LEAVE_NOT_VERIFIED'
   | 'DUPLICATE_NAME';
 
 export type IfmisReadinessIssue = {

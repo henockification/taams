@@ -440,6 +440,7 @@ export function formatAttendancePunch(punch: any) {
     processedAt: formatTimestamp(punch.processedAt),
     rawPayload: punch.rawPayload ?? null,
     createdAt: formatTimestamp(punch.createdAt),
+    isDuplicate: Boolean(punch.isDuplicate),
     employee: punch.employee ? formatEmployee(punch.employee) : null,
     device: punch.device ? formatBiometricDevice(punch.device) : null,
     syncBatch: punch.syncBatch ? formatAttendanceSyncBatch(punch.syncBatch) : null,

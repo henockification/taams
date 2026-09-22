@@ -10,10 +10,17 @@ import {
 import { buildIfmisAttendancePreview, getGregorianMonthRange, type IfmisAttendanceRow } from '../../../lib/ifmis/attendance';
 import { pushIfmisAttendanceRows } from '../../../lib/ifmis/oracle';
 import { writeAuditEvent } from '../../../lib/audit';
+import { isPermanentLeaveVerified } from './manageIsmisLeave';
 
 export async function getIfmisAttendancePreview(payMonth: number, payYear: number) {
   const source = await loadSource(payMonth, payYear);
   const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
+  const { start, end } = getGregorianMonthRange(payMonth, payYear);
+  const hasPermanentEmployees = source.employees.some((employee: any) => employee.employmentType === 'PERMANENT');
+  if (hasPermanentEmployees && !(await isPermanentLeaveVerified(start, end))) {
+    preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
+    preview.ready = false;
+  }
   const batches = await db.query.ifmisExportBatches.findMany({
     where: and(eq(ifmisExportBatches.payMonth, payMonth), eq(ifmisExportBatches.payYear, payYear)),
     orderBy: (table, { desc }) => [desc(table.createdAt)],
@@ -25,6 +32,11 @@ export async function getIfmisAttendancePreview(payMonth: number, payYear: numbe
 export async function pushIfmisAttendance(payMonth: number, payYear: number, pushedBy: string) {
   const source = await loadSource(payMonth, payYear);
   const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
+  const period = getGregorianMonthRange(payMonth, payYear);
+  if (source.employees.some((employee: any) => employee.employmentType === 'PERMANENT') && !(await isPermanentLeaveVerified(period.start, period.end))) {
+    preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
+    preview.ready = false;
+  }
   if (!preview.ready) throw new IfmisExportError('The payroll month is not ready for IFMIS', 'NOT_READY', preview.issues);
 
   let batchId: string | null = null;
