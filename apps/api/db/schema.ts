@@ -77,9 +77,6 @@ export const roles = pgTable('roles', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull().unique(),
   description: text('description'),
-  scheduleType: varchar('schedule_type', { length: 40 }).notNull().default('WEEKLY'),
-  rosterOnDays: integer('roster_on_days').notNull().default(1),
-  rosterOffDays: integer('roster_off_days').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
 });
