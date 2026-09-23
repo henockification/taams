@@ -566,6 +566,20 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   earlyDepartureMinutes: integer('early_departure_minutes').notNull().default(0),
   unapprovedOvertimeMinutes: integer('unapproved_overtime_minutes').notNull().default(0),
   toleranceStatus: varchar('tolerance_status', { length: 30 }).notNull().default('NONE'),
+  sessionEvaluations: jsonb('session_evaluations').$type<Array<{
+    segmentId: string;
+    name: string;
+    sortOrder: number;
+    scheduledStartAt: string;
+    scheduledEndAt: string;
+    checkInAt: string | null;
+    checkOutAt: string | null;
+    checkInStatus: string;
+    checkOutStatus: string;
+    attendanceStatus: string;
+    lateMinutes: number;
+    earlyCheckoutMinutes: number;
+  }>>().notNull().default(sql`'[]'::jsonb`),
   totalPunches: integer('total_punches').notNull().default(0),
   attendanceDays: numeric('attendance_days', { precision: 4, scale: 2 }).notNull().default('0'),
   leaveDays: numeric('leave_days', { precision: 4, scale: 2 }).notNull().default('0'),

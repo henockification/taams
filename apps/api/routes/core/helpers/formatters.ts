@@ -450,6 +450,27 @@ export function formatAttendancePunch(punch: any) {
 }
 
 export function formatAttendanceDailyRecord(record: any) {
+  const attendanceSessions = (record.sessionEvaluations ?? []).map((session: any) => {
+    const completed = new Date(session.scheduledEndAt).getTime() <= Date.now();
+    return {
+      ...session,
+      scheduledStartAt: formatTimestamp(session.scheduledStartAt),
+      scheduledEndAt: formatTimestamp(session.scheduledEndAt),
+      checkInAt: formatTimestamp(session.checkInAt),
+      checkOutAt: formatTimestamp(session.checkOutAt),
+      checkInStatus: session.checkInAt ? session.checkInStatus === 'PENDING' ? 'ON_TIME' : session.checkInStatus : completed ? 'MISSING' : 'PENDING',
+      checkOutStatus: session.checkOutAt ? completed ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME' : 'PENDING' : completed ? 'MISSING' : 'PENDING',
+      attendanceStatus: session.checkInAt && session.checkOutAt ? 'PRESENT' : completed ? 'ABSENT' : 'PENDING',
+    };
+  });
+  const lateMinutes = attendanceSessions.length ? attendanceSessions[0]?.lateMinutes ?? 0 : record.lateMinutes ?? 0;
+  const lateReturnMinutes = attendanceSessions.length ? attendanceSessions.slice(1).reduce((total: number, session: any) => total + session.lateMinutes, 0) : record.lateReturnMinutes ?? 0;
+  const earlyBreakMinutes = attendanceSessions.length ? attendanceSessions.slice(0, -1).reduce((total: number, session: any) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes : 0), 0) : record.earlyBreakMinutes ?? 0;
+  const finalSession = attendanceSessions.at(-1);
+  const earlyDepartureMinutes = attendanceSessions.length
+    ? finalSession?.checkOutStatus === 'EARLY' ? finalSession.earlyCheckoutMinutes : 0
+    : record.earlyDepartureMinutes ?? 0;
+
   return {
     id: record.id,
     employeeId: record.employeeId,
@@ -460,12 +481,13 @@ export function formatAttendanceDailyRecord(record: any) {
     checkOutAt: formatTimestamp(record.checkOutAt),
     scheduledStartAt: formatTimestamp(record.scheduledStartAt),
     scheduledEndAt: formatTimestamp(record.scheduledEndAt),
-    lateMinutes: record.lateMinutes ?? 0,
-    lateReturnMinutes: record.lateReturnMinutes ?? 0,
-    earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
-    earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+    lateMinutes,
+    lateReturnMinutes,
+    earlyBreakMinutes,
+    earlyDepartureMinutes,
     unapprovedOvertimeMinutes: record.unapprovedOvertimeMinutes ?? 0,
     toleranceStatus: record.toleranceStatus ?? 'NONE',
+    attendanceSessions,
     totalPunches: record.totalPunches,
     attendanceDays: record.attendanceDays,
     leaveDays: record.leaveDays,

@@ -53,7 +53,7 @@ import {
   useIsmisLeaveImport,
   useLatestIsmisLeaveImport,
 } from '@/data/hooks/core.hooks';
-import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
+import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, AttendanceSessionEvaluation, EmploymentType, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -74,15 +74,18 @@ function dateToYmd(date: Date) {
 }
 
 function today() {
-  const now = new Date();
-  return dateToYmd(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Addis_Ababa',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string; toDate: string }) {
   if (dateFilter === 'CUSTOM') return custom;
 
-  const now = new Date();
-  const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayDate = new Date(`${today()}T12:00:00`);
   const end = new Date(todayDate);
 
   if (dateFilter === 'TODAY') {
@@ -178,7 +181,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const session = useSession();
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
   const records = query.data?.attendanceDailyRecords ?? [];
-  const summary = useMemo(() => summarize(records), [records]);
   const departments = useMemo(() => {
     if (!hasEmploymentType) return [];
     const byId = new Map<string, { id: string; nameEn: string }>();
@@ -211,6 +213,8 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       return matchesEmployee && matchesDepartment && matchesApproval && matchesType;
     });
   }, [approvalFilter, departmentFilter, deferredEmployeeSearch, hasEmploymentType, isHrMode, mode, records, typeFilter]);
+  const summary = useMemo(() => summarize(filteredRecords), [filteredRecords]);
+  const exceptionSummary = useMemo(() => summarizeExceptions(filteredRecords), [filteredRecords]);
   const approvableRecords = useMemo(
     () => filteredRecords.filter((record) => canApprove(record, mode)),
     [filteredRecords, mode],
@@ -486,6 +490,13 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         <Summary label={t('payrollReady')} value={summary.HR_APPROVED} />
       </div>
 
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <Summary label={t('lateAttendance')} value={exceptionSummary.late.records} detail={t('totalMinutes', { count: exceptionSummary.late.minutes })} />
+        <Summary label={t('earlyBreak')} value={exceptionSummary.earlyBreak.records} detail={t('totalMinutes', { count: exceptionSummary.earlyBreak.minutes })} />
+        <Summary label={t('earlyOut')} value={exceptionSummary.earlyOut.records} detail={t('totalMinutes', { count: exceptionSummary.earlyOut.minutes })} />
+        <Summary label={t('absentSessions')} value={exceptionSummary.absentSessions} />
+      </div>
+
       {(overtimeExceptions.data?.exceptions?.length ?? 0) > 0 ? (
         <Card className="rounded-lg border-amber-200 bg-amber-50/40">
           <CardContent className="space-y-3 pt-6">
@@ -538,12 +549,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('employee')}</TableHead>
                     <TableHead>{t('department')}</TableHead>
                     <TableHead>{t('attendanceDate')}</TableHead>
-                    <TableHead>{t('checkIn')}</TableHead>
-                    <TableHead>{t('checkOut')}</TableHead>
-                    <TableHead>Attendance rule</TableHead>
-                    <TableHead>Late</TableHead>
-                    <TableHead>Early break</TableHead>
-                    <TableHead>Early out</TableHead>
+                    <TableHead>{t('attendanceSessions')}</TableHead>
                     <TableHead>Unapproved OT</TableHead>
                     <TableHead>{t('attendanceDays')}</TableHead>
                     <TableHead>{t('leaveDays')}</TableHead>
@@ -590,12 +596,9 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(record.attendanceDate)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{formatDateTime(record.checkInAt)}</TableCell>
-                      <TableCell className="whitespace-nowrap">{formatDateTime(record.checkOutAt)}</TableCell>
-                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{attendanceRule(record)}</TableCell>
-                      <TableCell>{record.lateMinutes ?? 0} min{record.lateReturnMinutes ? ` + ${record.lateReturnMinutes} return` : ''}</TableCell>
-                      <TableCell>{record.earlyBreakMinutes ?? 0} min</TableCell>
-                      <TableCell>{record.earlyDepartureMinutes ?? 0} min</TableCell>
+                      <TableCell className="min-w-[28rem]">
+                        <AttendanceSessions record={record} formatDateTime={formatDateTime} t={t} />
+                      </TableCell>
                       <TableCell className={record.unapprovedOvertimeMinutes ? 'font-medium text-amber-600' : undefined}>{record.unapprovedOvertimeMinutes ?? 0} min</TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
                       <TableCell>{record.leaveDays}</TableCell>
@@ -752,13 +755,101 @@ function FilterField({ label, htmlFor, children }: { label: string; htmlFor: str
   );
 }
 
-function Summary({ label, value }: { label: string; value: number }) {
+function Summary({ label, value, detail }: { label: string; value: number; detail?: string }) {
   return (
     <div className="rounded-lg border border-border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="text-2xl font-semibold">{value}</p>
+      {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
     </div>
   );
+}
+
+function summarizeExceptions(records: AttendanceDailyRecord[]) {
+  return records.reduce((summary, record) => {
+    const sessions = (record.attendanceSessions ?? []).map(materializeSession);
+    const lateMinutes = sessions.length
+      ? sessions.reduce((total, session) => total + session.lateMinutes, 0)
+      : (record.lateMinutes ?? 0) + (record.lateReturnMinutes ?? 0);
+    const earlyBreakMinutes = sessions.length
+      ? sessions.slice(0, -1).reduce((total, session) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes : 0), 0)
+      : record.earlyBreakMinutes ?? 0;
+    const finalSession = sessions.at(-1);
+    const earlyOutMinutes = sessions.length
+      ? finalSession?.checkOutStatus === 'EARLY' ? finalSession.earlyCheckoutMinutes : 0
+      : record.earlyDepartureMinutes ?? 0;
+    if (lateMinutes > 0) {
+      summary.late.records += 1;
+      summary.late.minutes += lateMinutes;
+    }
+    if (earlyBreakMinutes > 0) {
+      summary.earlyBreak.records += 1;
+      summary.earlyBreak.minutes += earlyBreakMinutes;
+    }
+    if (earlyOutMinutes > 0) {
+      summary.earlyOut.records += 1;
+      summary.earlyOut.minutes += earlyOutMinutes;
+    }
+    summary.absentSessions += sessions.filter((session) => session.attendanceStatus === 'ABSENT').length;
+    return summary;
+  }, {
+    late: { records: 0, minutes: 0 },
+    earlyBreak: { records: 0, minutes: 0 },
+    earlyOut: { records: 0, minutes: 0 },
+    absentSessions: 0,
+  });
+}
+
+function AttendanceSessions({
+  record,
+  formatDateTime,
+  t,
+}: {
+  record: AttendanceDailyRecord;
+  formatDateTime: (value: Date | string | null | undefined, options?: Intl.DateTimeFormatOptions) => string;
+  t: (key: string, values?: Record<string, string | number>) => string;
+}) {
+  if (!record.attendanceSessions?.length) {
+    return <span className="text-sm text-muted-foreground">{attendanceRule(record)}</span>;
+  }
+
+  return <div className="space-y-2">{record.attendanceSessions.map(materializeSession).map((session) => (
+    <div key={`${record.id}:${session.segmentId}`} className="flex flex-wrap items-center gap-1.5 text-sm">
+      <span className="min-w-24 font-medium">{session.name}</span>
+      <span>{sessionPunchLabel(session, 'IN', formatDateTime, t)}</span>
+      <span className="text-muted-foreground">/</span>
+      <span>{sessionPunchLabel(session, 'OUT', formatDateTime, t)}</span>
+      <Badge variant={session.attendanceStatus === 'PRESENT' ? 'default' : session.attendanceStatus === 'ABSENT' ? 'destructive' : 'secondary'}>
+        {t(session.attendanceStatus === 'PRESENT' ? 'sessionPresent' : session.attendanceStatus === 'ABSENT' ? 'sessionAbsent' : 'sessionPending')}
+      </Badge>
+    </div>
+  ))}</div>;
+}
+
+function materializeSession(session: AttendanceSessionEvaluation): AttendanceSessionEvaluation {
+  if (new Date(session.scheduledEndAt).getTime() > Date.now()) return session;
+  return {
+    ...session,
+    checkInStatus: session.checkInAt ? session.checkInStatus === 'PENDING' ? 'ON_TIME' : session.checkInStatus : 'MISSING',
+    checkOutStatus: session.checkOutAt ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME' : 'MISSING',
+    attendanceStatus: session.checkInAt && session.checkOutAt ? 'PRESENT' : 'ABSENT',
+  };
+}
+
+function sessionPunchLabel(
+  session: AttendanceSessionEvaluation,
+  direction: 'IN' | 'OUT',
+  formatDateTime: (value: Date | string | null | undefined, options?: Intl.DateTimeFormatOptions) => string,
+  t: (key: string, values?: Record<string, string | number>) => string,
+) {
+  const value = direction === 'IN' ? session.checkInAt : session.checkOutAt;
+  const status = direction === 'IN' ? session.checkInStatus : session.checkOutStatus;
+  if (!value) return t(status === 'PENDING' ? 'sessionPendingPunch' : direction === 'IN' ? 'missingCheckIn' : 'missingCheckOut');
+  const time = formatDateTime(value, { year: undefined, month: undefined, day: undefined, hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Addis_Ababa' });
+  if (direction === 'IN' && status === 'LATE') return `${time} ${t('lateCheckIn')} (${session.lateMinutes} min)`;
+  if (direction === 'OUT' && status === 'EARLY') return `${time} ${t('earlyCheckOut')} (${session.earlyCheckoutMinutes} min)`;
+  if (status === 'PENDING') return `${time} ${t('sessionPending')}`;
+  return `${time} ${t(direction === 'IN' ? 'checkIn' : 'checkOut')}`;
 }
 
 function summarize(records: AttendanceDailyRecord[]) {
@@ -774,6 +865,7 @@ function summarize(records: AttendanceDailyRecord[]) {
 }
 
 function canApprove(record: AttendanceDailyRecord, mode: AttendanceApprovalMode) {
+  if ((record.attendanceSessions ?? []).some((session) => materializeSession(session).attendanceStatus === 'PENDING')) return false;
   if (mode === 'hr') return record.status === 'SUPERVISOR_APPROVED';
   return record.status === 'PENDING_SUPERVISOR' || record.status === 'RETURNED';
 }

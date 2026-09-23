@@ -23,7 +23,7 @@ import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
-import { evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
+import { addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import {
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
@@ -56,7 +56,7 @@ type ApprovalScope = {
 
 export async function generateAttendanceDailyRecords(date?: string | null, options?: { recordAudit?: boolean }) {
   const attendanceDate = normalizeDateParam(date);
-  if (attendanceDate < new Date().toISOString().slice(0, 10)) {
+  if (attendanceDate < addisToday()) {
     await reconcileAnnualLeaveConsumption(attendanceDate);
   }
   const dayRange = getDayRange(attendanceDate);
@@ -177,7 +177,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
     const firstPunch = employeePunches[0] ?? null;
     const lastPunch = employeePunches[employeePunches.length - 1] ?? null;
     const checkOutAt = evaluation.checkOutAt;
-    const attendanceDays = getAttendanceDays(employeePunches.length);
+    const attendanceDays = evaluation.attendanceDays;
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
     const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions);
@@ -196,7 +196,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       attendanceDate,
       firstPunchId: firstPunch?.id ?? null,
       lastPunchId: lastPunch?.id ?? null,
-      checkInAt: firstPunch?.punchTime ?? null,
+      checkInAt: evaluation.checkInAt,
       checkOutAt,
       scheduledStartAt: evaluation.scheduledStartAt,
       scheduledEndAt: evaluation.scheduledEndAt,
@@ -206,6 +206,13 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       earlyDepartureMinutes: evaluation.earlyDepartureMinutes,
       unapprovedOvertimeMinutes: Math.max(0, evaluation.unapprovedOvertimeMinutes - (approvedOvertimeMinutesByEmployee.get(employee.id) ?? 0)),
       toleranceStatus: evaluation.toleranceStatus,
+      sessionEvaluations: evaluation.sessions.map((session) => ({
+        ...session,
+        scheduledStartAt: session.scheduledStartAt.toISOString(),
+        scheduledEndAt: session.scheduledEndAt.toISOString(),
+        checkInAt: session.checkInAt?.toISOString() ?? null,
+        checkOutAt: session.checkOutAt?.toISOString() ?? null,
+      })),
       totalPunches: employeePunches.length,
       attendanceDays: formatDayValue(attendanceDays),
       leaveDays: formatDayValue(leaveDays),
@@ -244,6 +251,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
           earlyDepartureMinutes: sql.raw('excluded."early_departure_minutes"'),
           unapprovedOvertimeMinutes: sql.raw('excluded."unapproved_overtime_minutes"'),
           toleranceStatus: sql.raw('excluded."tolerance_status"'),
+          sessionEvaluations: sql.raw('excluded."session_evaluations"'),
           totalPunches: sql.raw('excluded."total_punches"'),
           attendanceDays: sql.raw('excluded."attendance_days"'),
           leaveDays: sql.raw('excluded."leave_days"'),
@@ -496,6 +504,11 @@ export async function supervisorApproveAttendanceDailyRecords(
     for (const record of records) {
       if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
         throw new Error('Only pending or returned attendance records can be supervisor approved');
+      }
+      if ((record.sessionEvaluations ?? []).some((session: any) => (
+        session.attendanceStatus === 'PENDING' && new Date(session.scheduledEndAt).getTime() > Date.now()
+      ))) {
+        throw new Error('Attendance cannot be approved while a scheduled session is still in progress');
       }
       approvalContexts.push(input.scope?.type === 'unrestricted'
         ? { supervisorDelegationId: null }
@@ -917,7 +930,7 @@ function isYmd(value?: string | null): value is string {
 
 function normalizeDateParam(date?: string | null) {
   if (isYmd(date)) return date;
-  return new Date().toISOString().slice(0, 10);
+  return addisToday();
 }
 
 function resolveAttendanceDateRange(input: { date?: string | null; dateFrom?: string | null; dateTo?: string | null }) {
@@ -928,7 +941,7 @@ function resolveAttendanceDateRange(input: { date?: string | null; dateFrom?: st
 }
 
 function clipDateToToday(date: string) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = addisToday();
   return date < today ? date : today;
 }
 
@@ -964,16 +977,7 @@ function attendanceDateFilter(dateFrom: string, dateTo: string) {
 }
 
 function getDayRange(date: string) {
-  return {
-    start: new Date(`${date}T00:00:00`),
-    end: new Date(`${date}T23:59:59.999`),
-  };
-}
-
-function getAttendanceDays(totalPunches: number) {
-  if (totalPunches <= 0) return 0;
-  if (totalPunches === 1) return 0.5;
-  return 1;
+  return addisDayRange(date);
 }
 
 function getLeaveDaysForDate(leave: { startDate: string; endDate: string; requestedDays: string; leaveType?: any; annualLeaveDates?: any[] }, attendanceDate: string) {
@@ -1012,7 +1016,7 @@ function resolvePayrollDays(input: {
   const uncoveredAbsenceDays = Math.max(0, absenceDays - unpaidPayrollDays);
   const notes = [];
 
-  if (input.attendanceDays === 0.5) notes.push('Half-day attendance from a single punch');
+  if (input.attendanceDays === 0.5) notes.push('Half-day attendance from one completed schedule session');
   if (input.leaveDays > 0) notes.push(`Approved leave ${formatDayValue(input.leaveDays)} day(s)`);
   if (coveredByHoliday) notes.push(`Holiday/off day ${formatDayValue(input.holidayDays)} day(s): ${input.holidayName ?? 'Institution off day'}`);
   if (unpaidPayrollDays > 0) notes.push(`Approved unpaid leave ${formatDayValue(unpaidPayrollDays)} day(s) for payroll`);

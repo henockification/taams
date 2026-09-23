@@ -13,6 +13,8 @@ import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../.
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendancePunch } from '../../helpers/formatters';
+import { generateAttendanceDailyRecords } from '../../../../db/orm/core/manageAttendanceApprovals';
+import { addisToday } from '../../../../lib/attendance/schedule-evaluator';
 
 export async function createAttendancePunchHandler(c: Context) {
   try {
@@ -32,6 +34,7 @@ export async function createAttendancePunchHandler(c: Context) {
     await assertCanAccessEmployee(parsed.data.employeeId, scope);
 
     const attendancePunch = await createAttendancePunch(parsed.data);
+    await generateAttendanceDailyRecords(addisToday(new Date(parsed.data.punchTime)));
 
     return c.json({
       success: true,

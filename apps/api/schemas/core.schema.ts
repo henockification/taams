@@ -450,6 +450,21 @@ export const AttendancePunchSchema = z.object({
   syncBatch: AttendanceSyncBatchSchema.nullable().optional(),
 });
 
+export const AttendanceSessionEvaluationSchema = z.object({
+  segmentId: z.string(),
+  name: z.string(),
+  sortOrder: z.number().int(),
+  scheduledStartAt: z.string(),
+  scheduledEndAt: z.string(),
+  checkInAt: z.string().nullable(),
+  checkOutAt: z.string().nullable(),
+  checkInStatus: z.enum(['ON_TIME', 'LATE', 'MISSING', 'PENDING']),
+  checkOutStatus: z.enum(['ON_TIME', 'EARLY', 'MISSING', 'PENDING']),
+  attendanceStatus: z.enum(['PRESENT', 'ABSENT', 'PENDING']),
+  lateMinutes: z.number().int().nonnegative(),
+  earlyCheckoutMinutes: z.number().int().nonnegative(),
+});
+
 export const AttendanceDailyRecordSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
   employeeId: UuidSchema,
@@ -458,6 +473,15 @@ export const AttendanceDailyRecordSchema = z.object({
   lastPunchId: z.string().uuid().nullable(),
   checkInAt: z.string().nullable().openapi({ example: '2026-06-09T08:15:00.000Z' }),
   checkOutAt: z.string().nullable().openapi({ example: '2026-06-09T17:32:00.000Z' }),
+  scheduledStartAt: z.string().nullable(),
+  scheduledEndAt: z.string().nullable(),
+  lateMinutes: z.number().int().nonnegative(),
+  lateReturnMinutes: z.number().int().nonnegative(),
+  earlyBreakMinutes: z.number().int().nonnegative(),
+  earlyDepartureMinutes: z.number().int().nonnegative(),
+  unapprovedOvertimeMinutes: z.number().int().nonnegative(),
+  toleranceStatus: z.string(),
+  attendanceSessions: z.array(AttendanceSessionEvaluationSchema),
   totalPunches: z.number().int().nonnegative().openapi({ example: 2 }),
   attendanceDays: z.string().openapi({ example: '0.50' }),
   leaveDays: z.string().openapi({ example: '0.50' }),

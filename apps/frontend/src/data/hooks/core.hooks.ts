@@ -1250,20 +1250,24 @@ export function useCreateAttendancePunch() {
 }
 
 export function useSupervisorAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return useQuery({
     queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(range),
     queryFn: () => coreApi.getSupervisorAttendanceDailyRecords(range),
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
+    refetchInterval: range.dateFrom === today && range.dateTo === today ? 60 * 1000 : false,
   });
 }
 
 export function useHrAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   return useQuery({
     queryKey: coreQueryKeys.hrAttendanceDailyRecords(range),
     queryFn: () => coreApi.getHrAttendanceDailyRecords(range),
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
+    refetchInterval: range.dateFrom === today && range.dateTo === today ? 60 * 1000 : false,
   });
 }
 

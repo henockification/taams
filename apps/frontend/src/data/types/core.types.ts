@@ -598,6 +598,21 @@ export type AttendancePunch = {
   inferredRule?: string | null;
 };
 
+export type AttendanceSessionEvaluation = {
+  segmentId: string;
+  name: string;
+  sortOrder: number;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING';
+  checkOutStatus: 'ON_TIME' | 'EARLY' | 'MISSING' | 'PENDING';
+  attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING';
+  lateMinutes: number;
+  earlyCheckoutMinutes: number;
+};
+
 export type AttendanceDailyRecord = {
   id: string;
   employeeId: string;
@@ -614,6 +629,7 @@ export type AttendanceDailyRecord = {
   earlyDepartureMinutes?: number;
   unapprovedOvertimeMinutes?: number;
   toleranceStatus?: string;
+  attendanceSessions?: AttendanceSessionEvaluation[];
   totalPunches: number;
   attendanceDays: string;
   leaveDays: string;

@@ -75,6 +75,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
     let successfulRecords = 0;
     let failedRecords = 0;
     const errors: string[] = [];
+    const affectedAttendanceDates = new Set<string>();
 
     try {
       await zk.createSocket();
@@ -97,6 +98,11 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
             where: or(eq(employees.biometricId, parsed.biometricId), eq(employees.employeeCode, parsed.biometricId)),
             columns: { id: true },
           });
+          if (employee) {
+            affectedAttendanceDates.add(new Intl.DateTimeFormat('en-CA', {
+              timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit',
+            }).format(parsed.punchTime));
+          }
 
           let alreadyImported = await findExistingDeviceAttendancePunch(
             device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid, parsed.devicePunchId,
@@ -146,6 +152,13 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
       }
 
       const syncStatus = getSyncStatus(totalRecords, failedRecords);
+
+      if (affectedAttendanceDates.size > 0) {
+        const { generateAttendanceDailyRecords } = await import('../../db/orm/core/manageAttendanceApprovals');
+        for (const attendanceDate of affectedAttendanceDates) {
+          await generateAttendanceDailyRecords(attendanceDate);
+        }
+      }
 
       return completeBiometricDeviceSyncBatch(batch.id, {
         syncStatus,
