@@ -273,11 +273,11 @@ function EmployeeDashboard({
   const section = dashboard.sections.employee
   const todayAttendance = section?.todayAttendance
   const leaveBalances = section?.annualLeaveBalances ?? []
-  const isPermanentEmployee = section?.profile.employmentType === "PERMANENT"
+  const showLeaveBalance = section?.profile.employmentType === "CONTRACT"
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+      <div className={cn("grid min-w-0 gap-4", showLeaveBalance && "lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]")}>
         <Card className="overflow-hidden">
           <CardHeader className="border-b border-border px-4 sm:px-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -315,7 +315,7 @@ function EmployeeDashboard({
           </CardContent>
         </Card>
 
-        <Card>
+        {showLeaveBalance ? <Card>
           <CardHeader className="px-4 sm:px-6">
             <CardTitle className="flex items-center gap-2">
               <Wallet className="size-5 text-primary" />
@@ -326,11 +326,11 @@ function EmployeeDashboard({
             {leaveBalances.length === 0 ? (
               <div className="rounded-xl border border-border bg-background p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {isPermanentEmployee ? t("previousFiscalYearBalances") : t("currentFiscalYearBalance")}
+                  {t("currentFiscalYearBalance")}
                 </p>
                 <p className="mt-2 break-words text-2xl font-semibold tracking-tight text-foreground sm:text-4xl">{t("notAvailable")}</p>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {isPermanentEmployee ? t("previousFiscalYears") : t("currentFiscalYear")}
+                  {t("currentFiscalYear")}
                 </p>
               </div>
             ) : (
@@ -338,13 +338,13 @@ function EmployeeDashboard({
                 {leaveBalances.map((balance) => (
                   <div key={balance.id} className="rounded-xl border border-border bg-background p-4">
                     <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {isPermanentEmployee ? t("previousFiscalYearBalance") : t("currentFiscalYearBalance")}
+                      {t("currentFiscalYearBalance")}
                     </p>
                     <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-4xl">
                       {formatLeaveDays(balance.available)}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {balance.fiscalYear?.name ?? (isPermanentEmployee ? t("previousFiscalYears") : t("currentFiscalYear"))}
+                      {balance.fiscalYear?.name ?? t("currentFiscalYear")}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>{t("usedLabel")}: {formatLeaveDays(balance.used)}</span>
@@ -362,7 +362,7 @@ function EmployeeDashboard({
               <ArrowRight className="size-4" />
             </Link>
           </CardContent>
-        </Card>
+        </Card> : null}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">

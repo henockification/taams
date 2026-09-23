@@ -274,6 +274,13 @@
       "when": 1790121600000,
       "tag": "0042_attendance_session_evaluations",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1790208000000,
+      "tag": "0043_auto_approve_biometric_exemptions",
+      "breakpoints": true
     }
   ]
 }

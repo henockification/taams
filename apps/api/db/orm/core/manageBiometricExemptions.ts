@@ -53,6 +53,9 @@ export async function getBiometricExemptionById(id: string, tx: DbClient = db) {
 export async function createBiometricExemption(input: CreateBiometricExemptionInput, tx: DbClient = db) {
   const { employeeId, positionId } = await normalizeTarget(input.targetType, input.targetId, tx);
   await assertNoActiveDuplicateExemption(input.targetType, input.targetId, undefined, tx);
+  validateApprovedArrangement(input);
+  const approvedBy = input.createdBy ?? input.updatedBy ?? input.requestedBy ?? null;
+  const approvedAt = new Date();
 
   const [created] = await tx
     .insert(biometricExemptions)
@@ -70,23 +73,26 @@ export async function createBiometricExemption(input: CreateBiometricExemptionIn
       effectiveTo: input.effectiveTo ?? null,
       reviewDueAt: input.reviewDueAt ?? null,
       responsibleAuthority: input.responsibleAuthority ?? null,
-      status: 'PENDING_SUPERVISOR',
-      isActive: false,
+      status: 'APPROVED',
+      isActive: true,
       requestedBy: input.requestedBy ?? input.createdBy ?? null,
+      approvedBy,
+      approvedAt,
       createdBy: input.createdBy ?? null,
-      updatedBy: input.updatedBy ?? input.createdBy ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      updatedBy: approvedBy,
+      createdAt: approvedAt,
+      updatedAt: approvedAt,
     } as any)
     .returning();
 
   const createdExemption = await getBiometricExemptionById(created.id, tx);
   await writeAuditEvent(tx, {
-    action: 'BIOMETRIC_EXEMPTION_SUBMITTED',
+    action: 'BIOMETRIC_EXEMPTION_APPROVED',
     resourceType: 'biometric_exemption',
     resourceId: created.id,
     resourceLabel: createdExemption?.employee ? `${formatEmployeeLabel(createdExemption.employee)} biometric exemption` : 'Position biometric exemption',
     ...employeeAuditFields(createdExemption?.employee),
+    changes: { status: { from: null, to: 'APPROVED' } },
   });
   return createdExemption;
 }
@@ -218,14 +224,7 @@ export async function changeBiometricExemptionStatus(
   }
 
   if (input.status === 'APPROVED') {
-    if (existing.arrangementType && existing.arrangementType !== 'BIOMETRIC_EXEMPTION') {
-      if (!existing.effectiveFrom || !existing.reviewDueAt || !existing.responsibleAuthority?.trim()) {
-        throw new Error('Special attendance arrangements require effective dates, a review date, and a responsible authority before approval');
-      }
-      if (existing.effectiveTo && String(existing.effectiveTo) < String(existing.effectiveFrom)) {
-        throw new Error('Special attendance arrangement effective dates are invalid');
-      }
-    }
+    validateApprovedArrangement(existing);
     if (existing.employeeId) {
       await assertNoActiveDuplicateExemption('EMPLOYEE', existing.employeeId, id, tx);
     } else if (existing.positionId) {
@@ -460,5 +459,22 @@ async function assertNoActiveDuplicateExemption(
     throw new Error(targetType === 'EMPLOYEE'
       ? 'An active biometric exemption already exists for this employee'
       : 'An active biometric exemption already exists for this position');
+  }
+}
+
+function validateApprovedArrangement(input: {
+  arrangementType?: string | null;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  reviewDueAt?: string | null;
+  responsibleAuthority?: string | null;
+}) {
+  if (input.arrangementType && input.arrangementType !== 'BIOMETRIC_EXEMPTION') {
+    if (!input.effectiveFrom || !input.reviewDueAt || !input.responsibleAuthority?.trim()) {
+      throw new Error('Special attendance arrangements require effective dates, a review date, and a responsible authority before approval');
+    }
+  }
+  if (input.effectiveFrom && input.effectiveTo && String(input.effectiveTo) < String(input.effectiveFrom)) {
+    throw new Error('Special attendance arrangement effective dates are invalid');
   }
 }

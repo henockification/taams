@@ -162,7 +162,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       with: { device: true },
       limit: 20,
     }),
-    currentEmployee
+    currentEmployee?.employmentType === 'CONTRACT'
       ? db.query.leaveBalances.findMany({
         where: eq(leaveBalances.employeeId, currentEmployee.id),
         with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
@@ -339,13 +339,7 @@ function isUnpaidLeaveType(leaveType: any) {
 }
 
 function selectCurrentAnnualLeaveBalance(employee: any, balances: any[], activeFiscalYearId?: string | null) {
-  if (!employee) return null;
-
-  if (employee.employmentType === 'PERMANENT') {
-    return balances
-      .filter((balance) => balance.fiscalYear && !balance.fiscalYear.isActive)
-      .sort((left, right) => String(right.fiscalYear?.startsAt ?? '').localeCompare(String(left.fiscalYear?.startsAt ?? '')))[0] ?? null;
-  }
+  if (employee?.employmentType !== 'CONTRACT') return null;
 
   if (!activeFiscalYearId) return null;
   return balances.find((balance) => balance.fiscalYearId === activeFiscalYearId) ?? null;

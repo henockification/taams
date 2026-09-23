@@ -548,6 +548,7 @@ export function userHasPermission(user: AuthzUser, permission: string) {
 }
 
 export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
+  if (item.url.startsWith('/leave-management/') && isPermanentHumanResourceEmployee(user)) return false;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return hasContractEmployee(user);
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
@@ -680,6 +681,15 @@ export function getNavItemForPath(pathname: string) {
 }
 
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
+  if (
+    isPermanentHumanResourceEmployee(user)
+    && (
+      pathname === '/leave-balances'
+      || pathname.startsWith('/leave-balances/')
+      || pathname === '/leave-management'
+      || pathname.startsWith('/leave-management/')
+    )
+  ) return false;
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/'))
@@ -816,6 +826,12 @@ function hasLeaveRequestApprovalAccess(user: AuthzUser) {
 function hasHumanResourceRole(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some((role) => role === 'human_resource');
+}
+
+function isPermanentHumanResourceEmployee(user: AuthzUser) {
+  return !hasUnrestrictedRole(user)
+    && hasHumanResourceRole(user)
+    && user?.employeeEmploymentType === 'PERMANENT';
 }
 
 function hasLeaveBalanceManagementAccess(user: AuthzUser) {

@@ -139,7 +139,9 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
       },
       orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
     }),
-    getCurrentAnnualLeaveBalance(supervisor.id),
+    supervisor.employmentType === 'CONTRACT'
+      ? getCurrentAnnualLeaveBalance(supervisor.id)
+      : Promise.resolve(null),
   ]);
 
   const punchesByEmployee = groupPunchesByEmployee(dayPunches);

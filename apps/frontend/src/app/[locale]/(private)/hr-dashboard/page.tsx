@@ -38,6 +38,7 @@ import type {
   LeaveBalance,
 } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
+import { useSession } from "@/lib/auth-client"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof HrDashboardSummary["widgets"]
@@ -73,10 +74,12 @@ const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ 
 
 export default function HrDashboardPage() {
   const t = useTranslations("hrDashboard")
+  const { data: session } = useSession()
   const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const { data, isLoading, isFetching, isError, error, refetch } = useHrDashboardSummary({ date })
   const dashboard = data?.hrDashboard
+  const showPersonalLeaveBalance = session?.user?.employeeEmploymentType === "CONTRACT"
 
   if (isLoading) return <HrDashboardSkeleton />
 
@@ -117,9 +120,9 @@ export default function HrDashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className={cn("grid gap-5", showPersonalLeaveBalance && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid dashboard={dashboard} />
-        <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} />
+        {showPersonalLeaveBalance ? <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} /> : null}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">

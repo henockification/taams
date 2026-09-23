@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
-import { CheckCircle2, History, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
+import { ArrowRight, CheckCircle2, History, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -532,7 +532,7 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
             />
           ) : (
             <div className="overflow-x-auto rounded-md border border-border">
-              <Table className="min-w-[96rem]">
+              <Table className={isHrMode ? 'min-w-[118rem]' : 'min-w-[96rem]'}>
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-12">
@@ -547,16 +547,18 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('department')}</TableHead>
                     <TableHead>{t('attendanceDate')}</TableHead>
                     <TableHead>{t('attendanceSessions')}</TableHead>
-                    <TableHead>Unapproved OT</TableHead>
+                    <TableHead>{t('lateMinutes')}</TableHead>
+                    <TableHead>{t('earlyLeaveMinutes')}</TableHead>
                     <TableHead>{t('attendanceDays')}</TableHead>
-                    <TableHead>{t('leaveDays')}</TableHead>
-                    <TableHead>{t('holidayDays')}</TableHead>
-                    <TableHead>{t('overtimeMinutes')}</TableHead>
-                    <TableHead>{t('overtimeHours')}</TableHead>
-                    <TableHead>{t('payableDays')}</TableHead>
+                    {isHrMode ? <TableHead>{t('leaveDays')}</TableHead> : null}
+                    {isHrMode ? <TableHead>{t('holidayDays')}</TableHead> : null}
+                    {isHrMode ? <TableHead>{t('payableDays')}</TableHead> : null}
                     <TableHead>{t('absenceDays')}</TableHead>
                     <TableHead>{t('approvalStatus')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
+                    <TableHead>{t('unapprovedOvertime')}</TableHead>
+                    <TableHead>{t('overtimeMinutes')}</TableHead>
+                    <TableHead>{t('overtimeHours')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -578,31 +580,44 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                         </div>
                       </TableCell>
                       <TableCell className="min-w-56">
-                        <div className="flex flex-col gap-1">
+                        {record.temporaryDepartmentAssignment ? (
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                              <span className="text-muted-foreground line-through decoration-muted-foreground/70" title={t('homeDepartment')}>
+                                {record.temporaryDepartmentAssignment.sourceDepartment?.nameEn ?? record.employee?.department?.nameEn ?? '-'}
+                              </span>
+                              <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                              <span className="font-medium text-foreground">
+                                {record.temporaryDepartmentAssignment.targetDepartment?.nameEn ?? record.effectiveDepartment?.nameEn ?? '-'}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <Badge variant="outline">{t('temporarilyAssigned')}</Badge>
+                              <span className="whitespace-nowrap text-[11px] text-muted-foreground">
+                                {formatDate(record.temporaryDepartmentAssignment.effectiveFrom)}–{formatDate(record.temporaryDepartmentAssignment.effectiveTo)}
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
                           <span className="whitespace-nowrap">
                             {record.effectiveDepartment?.nameEn ?? record.employee?.department?.nameEn ?? record.employee?.sourceDepartmentName ?? '-'}
                           </span>
-                          {record.temporaryDepartmentAssignment ? (
-                            <div className="flex flex-wrap items-center gap-1">
-                              <Badge variant="outline">{t('temporarilyAssigned')}</Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {t('homeDepartment')}: {record.temporaryDepartmentAssignment.sourceDepartment?.nameEn ?? record.employee?.department?.nameEn ?? '-'}
-                              </span>
-                            </div>
-                          ) : null}
-                        </div>
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatDate(record.attendanceDate)}</TableCell>
                       <TableCell className="min-w-[28rem]">
                         <AttendanceSessions record={record} formatDateTime={formatDateTime} t={t} />
                       </TableCell>
-                      <TableCell className={record.unapprovedOvertimeMinutes ? 'font-medium text-amber-600' : undefined}>{record.unapprovedOvertimeMinutes ?? 0} min</TableCell>
+                      <TableCell className={totalLateMinutes(record) > 0 ? 'font-medium text-amber-600' : undefined}>
+                        {totalLateMinutes(record)} min
+                      </TableCell>
+                      <TableCell className={(record.earlyDepartureMinutes ?? 0) > 0 ? 'font-medium text-amber-600' : undefined}>
+                        {record.earlyDepartureMinutes ?? 0} min
+                      </TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
-                      <TableCell>{record.leaveDays}</TableCell>
-                      <TableCell>{record.holidayDays}</TableCell>
-                      <TableCell>{record.overtimeMinutes ?? 0}</TableCell>
-                      <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
-                      <TableCell className="font-medium">{record.payableDays}</TableCell>
+                      {isHrMode ? <TableCell>{record.leaveDays}</TableCell> : null}
+                      {isHrMode ? <TableCell>{record.holidayDays}</TableCell> : null}
+                      {isHrMode ? <TableCell className="font-medium">{record.payableDays}</TableCell> : null}
                       <TableCell>{record.absenceDays}</TableCell>
                       <TableCell>
                         <Badge variant={isAttendanceApproved(record, mode) ? 'default' : 'secondary'}>
@@ -627,6 +642,11 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           <DelegationAuditBadge delegationId={record.supervisorDelegationId} />
                         </div>
                       </TableCell>
+                      <TableCell className={record.unapprovedOvertimeMinutes ? 'font-medium text-amber-600' : undefined}>
+                        {record.unapprovedOvertimeMinutes ?? 0} min
+                      </TableCell>
+                      <TableCell>{record.overtimeMinutes ?? 0}</TableCell>
+                      <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button
@@ -760,6 +780,10 @@ function Summary({ label, value, detail }: { label: string; value: number; detai
       {detail ? <p className="mt-1 text-[10px] leading-tight text-muted-foreground">{detail}</p> : null}
     </div>
   );
+}
+
+function totalLateMinutes(record: AttendanceDailyRecord) {
+  return (record.lateMinutes ?? 0) + (record.lateReturnMinutes ?? 0);
 }
 
 function summarizeExceptions(records: AttendanceDailyRecord[]) {

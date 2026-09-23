@@ -79,7 +79,7 @@ async function buildSuperAdminDashboard(user: DashboardUser, employee: any, gene
     getCount(leaveRequests, eq(leaveRequests.status, 'PENDING')),
     getCount(attendancePunches, eq(attendancePunches.isProcessed, false)),
     getTimeOperationsSummary(),
-    employee ? getCurrentAnnualLeaveBalance(employee.id) : Promise.resolve(null),
+    employee?.employmentType === 'CONTRACT' ? getCurrentAnnualLeaveBalance(employee.id) : Promise.resolve(null),
   ]);
 
   return {
@@ -159,7 +159,7 @@ async function buildManagerDashboard(
         orderBy: (table, { desc }) => [desc(table.punchTime)],
         limit: 8,
       }),
-      getCurrentAnnualLeaveBalance(employee.id),
+      employee.employmentType === 'CONTRACT' ? getCurrentAnnualLeaveBalance(employee.id) : Promise.resolve(null),
     ])
     : [[], [], [], null];
 
@@ -240,15 +240,12 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
       limit: 5,
     }),
     getEmployeeDashboardAnnualLeaveBalances(employee),
-    employee.employmentType === 'PERMANENT' ? Promise.resolve(null) : getCurrentAnnualLeaveBalance(employee.id),
+    employee.employmentType === 'CONTRACT' ? getCurrentAnnualLeaveBalance(employee.id) : Promise.resolve(null),
   ]);
   const todayAttendance = buildTodayAttendance(todayPunches);
   const annualLeaveMetricValue = dashboardAnnualLeaveBalances.length > 0
     ? dashboardAnnualLeaveBalances.map((balance: any) => balance.available).join(' / ')
     : 'Not set';
-  const annualLeaveMetricDescription = employee.employmentType === 'PERMANENT'
-    ? 'Available annual leave from previous fiscal years'
-    : 'Available annual leave in the active fiscal year';
 
   return {
     generatedAt,
@@ -260,12 +257,16 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
     metrics: [
       createMetric('recent-punches', 'Recent punches', recentPunches.length, 'Latest attendance punches linked to your profile', '/attendance-punches'),
       createMetric('manual-requests', 'Manual requests', manualPunchRequestItems.length, 'Your recent correction requests', '/attendance-corrections'),
-      createMetric('annual-leave-balance', 'Annual leave balance', annualLeaveMetricValue, annualLeaveMetricDescription, '/annual-leave-requests'),
+      ...(employee.employmentType === 'CONTRACT'
+        ? [createMetric('annual-leave-balance', 'Annual leave balance', annualLeaveMetricValue, 'Available annual leave in the active fiscal year', '/annual-leave-requests')]
+        : []),
       createMetric('schedule-status', latestWorkSchedule ? 'Schedule assigned' : 'No schedule yet', latestWorkSchedule ? 'Active' : 'Setup needed', 'Latest work schedule assignment', '/work-schedules'),
     ],
     quickActions: [
       createQuickAction('Request manual punch', 'Submit a correction request for a missed or wrong punch.', '/attendance-corrections'),
-      createQuickAction('Request annual leave', 'Submit annual leave for supervisor approval.', '/annual-leave-requests'),
+      ...(employee.employmentType === 'CONTRACT'
+        ? [createQuickAction('Request annual leave', 'Submit annual leave for supervisor approval.', '/annual-leave-requests')]
+        : []),
     ],
     sections: {
       employee: {
@@ -389,36 +390,22 @@ async function getCurrentAnnualLeaveBalance(employeeId: string) {
 }
 
 async function getEmployeeDashboardAnnualLeaveBalances(employee: { id: string; employmentType?: string | null }) {
+  if (employee.employmentType !== 'CONTRACT') return [];
+
   const activeFiscalYear = await db.query.leaveFiscalYears.findFirst({
     where: eq(leaveFiscalYears.isActive, true),
     columns: { id: true, startsAt: true },
   });
   if (!activeFiscalYear) return [];
 
-  if (employee.employmentType !== 'PERMANENT') {
-    const balance = await db.query.leaveBalances.findFirst({
-      where: and(
-        eq(leaveBalances.employeeId, employee.id),
-        eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
-      ),
-      with: { fiscalYear: true },
-    });
-
-    return balance ? [balance] : [];
-  }
-
-  const balances = await db.query.leaveBalances.findMany({
-    where: eq(leaveBalances.employeeId, employee.id),
+  const balance = await db.query.leaveBalances.findFirst({
+    where: and(
+      eq(leaveBalances.employeeId, employee.id),
+      eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
+    ),
     with: { fiscalYear: true },
   });
-
-  return balances
-    .filter((balance) => (
-      balance.fiscalYear
-      && balance.fiscalYear.id !== activeFiscalYear.id
-      && balance.fiscalYear.startsAt < activeFiscalYear.startsAt
-    ))
-    .sort((a, b) => String(b.fiscalYear?.startsAt ?? '').localeCompare(String(a.fiscalYear?.startsAt ?? '')));
+  return balance ? [balance] : [];
 }
 
 async function getCount(table: any, where?: any) {

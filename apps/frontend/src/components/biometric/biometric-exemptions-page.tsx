@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, FileText, Pencil, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
+import { Check, ChevronsUpDown, FileText, Pencil, Plus, ShieldCheck, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -31,7 +31,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   useBiometricExemptions,
-  useChangeBiometricExemptionStatus,
   useCreateBiometricExemption,
   useDeleteBiometricExemption,
   useEmployees,
@@ -43,8 +42,6 @@ import type {
   BiometricExemptionTargetType,
   Employee,
 } from '@/data/types/core.types';
-import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
-import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -104,17 +101,14 @@ export default function BiometricExemptionsPage() {
   const { data: positionsResponse } = usePositions();
   const createExemption = useCreateBiometricExemption();
   const updateExemption = useUpdateBiometricExemption();
-  const changeExemptionStatus = useChangeBiometricExemptionStatus();
   const deleteExemption = useDeleteBiometricExemption();
-  const session = useSession();
 
   const exemptions = exemptionsResponse?.biometricExemptions ?? [];
   const employees = employeesResponse?.employees ?? [];
   const positions = positionsResponse?.positions ?? [];
-  const canSupervisorReview = hasSupervisorApprovalAccess(session.data?.user, 'biometric-exemptions:approve');
   const [search, setSearch] = useState('');
   const [targetTypeFilter, setTargetTypeFilter] = useState<'all' | BiometricExemptionTargetType>('all');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'PENDING_SUPERVISOR' | 'APPROVED' | 'REJECTED' | 'INACTIVE'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'APPROVED' | 'REJECTED' | 'INACTIVE'>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExemption, setEditingExemption] = useState<BiometricExemption | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -236,23 +230,6 @@ export default function BiometricExemptionsPage() {
     reader.readAsDataURL(file);
   };
 
-  const changeStatus = async (exemption: BiometricExemption, status: 'APPROVED' | 'REJECTED') => {
-    try {
-      await changeExemptionStatus.mutateAsync({ biometricExemptionId: exemption.id, status });
-      notifications.show({
-        title: common('success'),
-        message: status === 'APPROVED' ? t('biometricExemptionApproved') : t('biometricExemptionRejected'),
-        color: 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t('saveFailed'),
-        color: 'red',
-      });
-    }
-  };
-
   const removeExemption = async (exemption: BiometricExemption) => {
     if (!window.confirm(t('confirmRemoveBiometricExemption'))) {
       return;
@@ -300,7 +277,6 @@ export default function BiometricExemptionsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t('allStatuses')}</SelectItem>
-              <SelectItem value="PENDING_SUPERVISOR">{t('pendingSupervisorApproval')}</SelectItem>
               <SelectItem value="APPROVED">{t('approved')}</SelectItem>
               <SelectItem value="REJECTED">{t('rejected')}</SelectItem>
               <SelectItem value="INACTIVE">{t('inactive')}</SelectItem>
@@ -380,16 +356,6 @@ export default function BiometricExemptionsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
-                        {exemption.status === 'PENDING_SUPERVISOR' && canSupervisorReview ? (
-                          <>
-                            <Button variant="ghost" size="icon" onClick={() => changeStatus(exemption, 'APPROVED')} disabled={changeExemptionStatus.isPending}>
-                              <Check className="size-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => changeStatus(exemption, 'REJECTED')} disabled={changeExemptionStatus.isPending}>
-                              <X className="size-4" />
-                            </Button>
-                          </>
-                        ) : null}
                         <Button variant="ghost" size="icon" onClick={() => openEditDialog(exemption)}>
                           <Pencil className="size-4" />
                         </Button>

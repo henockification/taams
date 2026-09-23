@@ -106,9 +106,11 @@ export default function DepartmentHeadDashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className={cn("grid gap-5", dashboard.supervisor.employmentType === "CONTRACT" && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid widgets={dashboard.widgets} />
-        <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} />
+        {dashboard.supervisor.employmentType === "CONTRACT"
+          ? <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} />
+          : null}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
