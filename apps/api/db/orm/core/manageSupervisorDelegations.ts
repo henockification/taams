@@ -1,13 +1,11 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { employeeSupervisors, employees, supervisorDelegations, temporaryDepartmentAssignments, user } from '../../schema';
+import { employeeSupervisors, employees, supervisorDelegations, user } from '../../schema';
 import { getUserRoleNames } from '../rbac/manageRbac';
 import { effectivePrimaryEmployeeIds } from './leaveVisibility';
 import { formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
-
-const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 
 export type SupervisorDelegationActionContext = {
   supervisorDelegationId: string | null;
@@ -182,6 +180,44 @@ export async function getVisibleEmployeeIdsForSupervisorActor(
   return [...visibleIds];
 }
 
+export async function getVisibleEmployeeIdsByDateForSupervisorActor(
+  actorUserId: string,
+  referenceDates: string[],
+  tx: DbClient = db,
+): Promise<Map<string, Set<string>>> {
+  const dates = [...new Set(referenceDates)].sort();
+  const visibleIdsByDate = new Map(dates.map((date) => [date, new Set<string>()]));
+  if (dates.length === 0) return visibleIdsByDate;
+
+  const addEffectiveAssignments = async (supervisorUserId: string) => {
+    const supervisor = await getEmployeeByUserId(supervisorUserId, tx);
+    if (!supervisor) return;
+    const assignments = await tx.query.employeeSupervisors.findMany({
+      where: and(
+        eq(employeeSupervisors.supervisorId, supervisor.id),
+        lte(employeeSupervisors.effectiveFrom, dates[dates.length - 1]),
+        or(isNull(employeeSupervisors.effectiveTo), gte(employeeSupervisors.effectiveTo, dates[0])),
+      ),
+      columns: { employeeId: true, effectiveFrom: true, effectiveTo: true },
+    });
+    for (const assignment of assignments) {
+      for (const date of dates) {
+        if (assignment.effectiveFrom <= date && (!assignment.effectiveTo || assignment.effectiveTo >= date)) {
+          visibleIdsByDate.get(date)?.add(assignment.employeeId);
+        }
+      }
+    }
+  };
+
+  await addEffectiveAssignments(actorUserId);
+  const delegations = await getActiveDelegatedSupervisorCapabilities(actorUserId, tx);
+  for (const delegation of delegations) {
+    await addEffectiveAssignments(delegation.supervisorUserId);
+  }
+
+  return visibleIdsByDate;
+}
+
 /**
  * Leave approvals deliberately use a narrower relationship than the general
  * supervisor visibility helpers: only currently-effective primary assignments
@@ -296,18 +332,16 @@ export async function resolveSupervisorActionContext(input: {
 
 export async function getManagedEmployeeIdsForSupervisorUser(
   userId: string,
-  roles?: string[] | null,
+  _roles?: string[] | null,
   tx: DbClient = db,
   referenceDate = today(),
-) {
+): Promise<string[]> {
   const supervisor = await getEmployeeByUserId(userId, tx);
   if (!supervisor) return [];
 
-  const managedIds = new Set<string>();
-  const temporaryAssignments = await getActiveTemporaryAssignmentRows(referenceDate, tx);
-  const temporaryTargetDepartmentByEmployee = new Map<string, string>(
-    temporaryAssignments.map((assignment: any) => [assignment.employeeId, assignment.targetDepartmentId]),
-  );
+  // Supervisor visibility is defined by the explicit, effective assignment.
+  // Sharing a department does not make an employee a direct report, and a
+  // temporary department move must not sever an existing reporting line.
   const assignments = await tx.query.employeeSupervisors.findMany({
     where: and(
       eq(employeeSupervisors.supervisorId, supervisor.id),
@@ -316,35 +350,10 @@ export async function getManagedEmployeeIdsForSupervisorUser(
     ),
     columns: { employeeId: true },
   });
-  const explicitlyAssignedIds = assignments.map((assignment: { employeeId: string }) => assignment.employeeId);
-  const explicitlyAssignedEmployees = explicitlyAssignedIds.length > 0
-    ? await tx.query.employees.findMany({
-      where: inArray(employees.id, explicitlyAssignedIds),
-      columns: { id: true, departmentId: true },
-    })
-    : [];
-  explicitlyAssignedEmployees.forEach((employee: { id: string; departmentId: string }) => {
-    if (getEffectiveDepartmentId(employee, temporaryTargetDepartmentByEmployee) === supervisor.departmentId) {
-      managedIds.add(employee.id);
-    }
-  });
-
-  const normalizedRoles = roles?.length ? roles.map((role) => role.toLowerCase()) : await resolveUserRoles(userId, tx);
-  if (normalizedRoles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role))) {
-    const departmentEmployees = await tx.query.employees.findMany({
-      where: and(
-        eq(employees.isActive, true),
-      ),
-      columns: { id: true, departmentId: true },
-    });
-    departmentEmployees.forEach((employee: { id: string; departmentId: string }) => {
-      if (employee.id !== supervisor.id && getEffectiveDepartmentId(employee, temporaryTargetDepartmentByEmployee) === supervisor.departmentId) {
-        managedIds.add(employee.id);
-      }
-    });
-  }
-
-  return [...managedIds];
+  const employeeIds: string[] = assignments.map(
+    (assignment: { employeeId: string }) => assignment.employeeId,
+  );
+  return [...new Set<string>(employeeIds)];
 }
 
 export async function getSupervisorDelegationById(id: string, tx: DbClient = db) {
@@ -378,27 +387,6 @@ function parseDateTime(value: string | Date, field: string) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
-}
-
-async function getActiveTemporaryAssignmentRows(referenceDate: string, tx: DbClient) {
-  return tx.query.temporaryDepartmentAssignments.findMany({
-    where: and(
-      eq(temporaryDepartmentAssignments.isActive, true),
-      lte(temporaryDepartmentAssignments.effectiveFrom, referenceDate),
-      gte(temporaryDepartmentAssignments.effectiveTo, referenceDate),
-    ),
-    columns: {
-      employeeId: true,
-      targetDepartmentId: true,
-    },
-  });
-}
-
-function getEffectiveDepartmentId(
-  employee: { id: string; departmentId: string },
-  temporaryTargetDepartmentByEmployee: Map<string, string>,
-) {
-  return temporaryTargetDepartmentByEmployee.get(employee.id) ?? employee.departmentId;
 }
 
 const delegationRelations = {

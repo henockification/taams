@@ -25,6 +25,7 @@ import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
 import { addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import {
+  getVisibleEmployeeIdsByDateForSupervisorActor,
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
@@ -344,15 +345,28 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     return attachEffectiveDepartmentContext(records, referenceDate).then(keepWorkingEmployeeRecords);
   }
 
-  const directReportIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db, referenceDate);
+  // Resolve reporting responsibility for each attendance date. This matters
+  // when an effective supervisor assignment accompanies a temporary department
+  // assignment for only part of the selected range.
+  const attendanceDates = listDatesInclusive(range.dateFrom, range.dateTo);
+  const visibilityByDate = await getVisibleEmployeeIdsByDateForSupervisorActor(
+    input.userId,
+    attendanceDates,
+    db,
+  );
+  const visibleEmployeeIds = new Set<string>();
+  for (const employeeIds of visibilityByDate.values()) {
+    employeeIds.forEach((employeeId) => visibleEmployeeIds.add(employeeId));
+  }
 
-  if (directReportIds.length === 0) return [];
+  if (visibleEmployeeIds.size === 0) return [];
 
-  return getAttendanceDailyRecordsByEmployeeIds(directReportIds, range.dateFrom, range.dateTo, [
+  const records = await getAttendanceDailyRecordsByEmployeeIds([...visibleEmployeeIds], range.dateFrom, range.dateTo, [
     'PENDING_SUPERVISOR',
     'RETURNED',
     'SUPERVISOR_APPROVED',
   ]);
+  return records.filter((record) => visibilityByDate.get(record.attendanceDate)?.has(record.employeeId));
 }
 
 export async function getAttendanceOvertimeExceptions(input: {

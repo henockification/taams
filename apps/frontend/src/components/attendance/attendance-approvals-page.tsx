@@ -483,14 +483,11 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-1.5">
         <Summary label={t('pendingSupervisor')} value={summary.PENDING_SUPERVISOR} />
         <Summary label={t('returned')} value={summary.RETURNED} />
         <Summary label={t('supervisorApproved')} value={summary.SUPERVISOR_APPROVED} />
         <Summary label={t('payrollReady')} value={summary.HR_APPROVED} />
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <Summary label={t('lateAttendance')} value={exceptionSummary.late.records} detail={t('totalMinutes', { count: exceptionSummary.late.minutes })} />
         <Summary label={t('earlyBreak')} value={exceptionSummary.earlyBreak.records} detail={t('totalMinutes', { count: exceptionSummary.earlyBreak.minutes })} />
         <Summary label={t('earlyOut')} value={exceptionSummary.earlyOut.records} detail={t('totalMinutes', { count: exceptionSummary.earlyOut.minutes })} />
@@ -757,10 +754,10 @@ function FilterField({ label, htmlFor, children }: { label: string; htmlFor: str
 
 function Summary({ label, value, detail }: { label: string; value: number; detail?: string }) {
   return (
-    <div className="rounded-lg border border-border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-2xl font-semibold">{value}</p>
-      {detail ? <p className="text-xs text-muted-foreground">{detail}</p> : null}
+    <div className="min-w-0 rounded-md border border-border px-2.5 py-2">
+      <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold leading-none">{value}</p>
+      {detail ? <p className="mt-1 text-[10px] leading-tight text-muted-foreground">{detail}</p> : null}
     </div>
   );
 }
