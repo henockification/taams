@@ -25,9 +25,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useEmployeeWorkSchedules, useWorkScheduleDays } from '@/data/hooks/core.hooks';
+import { useEmployeeWorkSchedules, useHolidays, useWorkScheduleDays } from '@/data/hooks/core.hooks';
 import type { LeaveRequest } from '@/data/types/core.types';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
+import { annualLeaveDatesInRange } from '@/components/leave/leave-working-days';
 
 type AnnualLeaveApprovalEditorProps = {
   request: LeaveRequest;
@@ -60,6 +61,7 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
   const employeeSchedulesQuery = useEmployeeWorkSchedules(request.employeeId);
   const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
   const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
+  const holidaysQuery = useHolidays();
   const scheduledWorkingDays = useMemo(() => new Set(
     (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
   ), [workScheduleDaysQuery.data?.days]);
@@ -107,8 +109,8 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
   };
 
   const addApprovalRange = () => {
-    for (const date of workingDateRange(range.startDate, range.endDate, scheduledWorkingDays)) {
-      addApprovalDate(date);
+    for (const { date, dayValue } of annualLeaveDatesInRange(range.startDate, range.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
+      addApprovalDate(date, dayValue);
     }
   };
 
@@ -137,7 +139,7 @@ export function AnnualLeaveApprovalEditor({ request, isSaving, approveLabel, onA
             onSpecificDateChange={setSpecificDate}
             onAddWorkingDays={addApprovalRange}
             onAddDate={() => addApprovalDate(specificDate)}
-            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading}
+            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading || holidaysQuery.isLoading}
             actions={(
               <Button type="button" className="w-full lg:w-auto" variant="outline" onClick={resetToRequested}>
                 {t('approveAsRequested')}
@@ -241,17 +243,3 @@ function normalizeDayValue(value: string | number | null | undefined) {
   return '0.00';
 }
 
-function workingDateRange(startDate: string, endDate: string, workingDays: Set<string>) {
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
-
-  const dates: string[] = [];
-  const current = new Date(start);
-  while (current <= end) {
-    const day = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][current.getUTCDay()];
-    if (workingDays.has(day)) dates.push(current.toISOString().slice(0, 10));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}

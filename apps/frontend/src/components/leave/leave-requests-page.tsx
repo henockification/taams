@@ -62,6 +62,7 @@ import {
   leaveWorkingDates,
   maxEndDateForAllowedDays,
   parseAllowedDays,
+  annualLeaveDatesInRange,
 } from '@/components/leave/leave-working-days';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -128,7 +129,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const scheduledWorkingDays = useMemo(() => new Set(
     (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
   ), [workScheduleDaysQuery.data?.days]);
-  const holidaysQuery = useHolidays({ enabled: kind === 'other' });
+  const holidaysQuery = useHolidays();
   const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(kind === 'annual' && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
   const filteredRequests = useMemo(() => {
@@ -271,8 +272,8 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   };
 
   const addAnnualRange = () => {
-    for (const date of workingDateRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays)) {
-      addAnnualDate(date);
+    for (const { date, dayValue } of annualLeaveDatesInRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
+      addAnnualDate(date, dayValue);
     }
   };
 
@@ -779,17 +780,3 @@ function sumAnnualDates(dates: AnnualDateSelection[]) {
   return dates.reduce((sum, date) => sum + Number(date.dayValue), 0);
 }
 
-function workingDateRange(startDate: string, endDate: string, workingDays: Set<string>) {
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
-
-  const dates: string[] = [];
-  const current = new Date(start);
-  while (current <= end) {
-    const day = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][current.getUTCDay()];
-    if (workingDays.has(day)) dates.push(current.toISOString().slice(0, 10));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}

@@ -5,7 +5,7 @@ import { prettyJSON } from 'hono/pretty-json';
 import { apiReference } from '@scalar/hono-api-reference';
 import dotenv from 'dotenv';
 import { requireAuthUnlessPublic } from './middleware/auth';
-import { authRateLimiter } from './middleware/auth-rate-limit';
+import { authAccountRateLimiter, authIpRateLimiter } from './middleware/auth-rate-limit';
 import { requireCsrfOrigin } from './middleware/csrf';
 import { applyBodyLimit } from './middleware/request-limits';
 import { securityHeaders } from './middleware/security-headers';
@@ -44,7 +44,8 @@ app.use('*', async (c, next) => {
   await next();
 });
 app.use('*', requireCsrfOrigin);
-app.use('/api/auth/*', authRateLimiter);
+app.use('/api/auth/*', authIpRateLimiter);
+app.use('/api/auth/*', authAccountRateLimiter);
 
 app.route('/api/auth', authApp);
 

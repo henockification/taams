@@ -18,6 +18,7 @@ import {
   useCreateLeaveRequest,
   useDashboardSummary,
   useEmployeeWorkSchedules,
+  useHolidays,
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
@@ -28,6 +29,7 @@ import {
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
+import { annualLeaveDatesInRange } from '@/components/leave/leave-working-days';
 
 const noneValue = '__none';
 const dayValueOptions = ['1.00', '0.50'] as const;
@@ -67,6 +69,7 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
   const employeeSchedulesQuery = useEmployeeWorkSchedules(currentEmployee?.id ?? '');
   const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
   const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
+  const holidaysQuery = useHolidays();
   const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(currentEmployee?.id) });
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
@@ -142,8 +145,8 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
   };
 
   const addAnnualRange = () => {
-    for (const date of workingDateRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays)) {
-      addAnnualDate(date);
+    for (const { date, dayValue } of annualLeaveDatesInRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
+      addAnnualDate(date, dayValue);
     }
   };
 
@@ -265,7 +268,7 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
             onSpecificDateChange={setAnnualDateInput}
             onAddWorkingDays={addAnnualRange}
             onAddDate={() => addAnnualDate(annualDateInput)}
-            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading}
+            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading || holidaysQuery.isLoading}
           />
 
           <div className="rounded-md border border-border">
@@ -335,20 +338,6 @@ function sumAnnualDates(dates: AnnualDateSelection[]) {
   return dates.reduce((sum, date) => sum + Number(date.dayValue), 0);
 }
 
-function workingDateRange(startDate: string, endDate: string, workingDays: Set<string>) {
-  const start = new Date(`${startDate}T00:00:00Z`);
-  const end = new Date(`${endDate}T00:00:00Z`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
-
-  const dates: string[] = [];
-  const current = new Date(start);
-  while (current <= end) {
-    const day = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][current.getUTCDay()];
-    if (workingDays.has(day)) dates.push(current.toISOString().slice(0, 10));
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-  return dates;
-}
 
 function formatDateValue(value: string | Date) {
   if (value instanceof Date) return value.toISOString().slice(0, 10);

@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import { Link, useRouter } from '@/i18n';
 import { useCreateEmployee, useDepartments, usePositions } from '@/data/hooks/core.hooks';
 import type { EmploymentType } from '@/data/types/core.types';
@@ -114,6 +115,12 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
     setForm((current) => ({ ...current, ...patch }));
   };
 
+  // Payroll ID, biometric ID and employee ID no. always equal the employee code.
+  const setEmployeeCode = (value: string) => {
+    const code = value.trim();
+    patchForm({ employeeCode: value, payrollId: code, biometricId: code, sourceIdNo: code });
+  };
+
   const saveEmployee = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSave) return;
@@ -121,8 +128,8 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
     try {
       const response = await createEmployee.mutateAsync({
         employeeCode: form.employeeCode.trim(),
-        payrollId: emptyToNull(form.payrollId),
-        biometricId: emptyToNull(form.biometricId),
+        payrollId: form.employeeCode.trim(),
+        biometricId: form.employeeCode.trim(),
         firstNameEn: form.firstNameEn.trim(),
         middleNameEn: emptyToNull(form.middleNameEn),
         lastNameEn: form.lastNameEn.trim(),
@@ -145,7 +152,7 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
         salary: emptyToNull(form.salary),
         salaryStep: emptyToNull(form.salaryStep),
         nationalId: emptyToNull(form.nationalId),
-        sourceIdNo: emptyToNull(form.sourceIdNo),
+        sourceIdNo: form.employeeCode.trim(),
         sourceEmployeeCode: emptyToNull(form.sourceEmployeeCode),
         paidByIfmis: form.paidByIfmis,
       });
@@ -188,7 +195,13 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label={t('employeeCode')} id="employee-code" required>
-              <Input id="employee-code" value={form.employeeCode} onChange={(event) => patchForm({ employeeCode: event.target.value })} required />
+              <Input
+                id="employee-code"
+                value={form.employeeCode}
+                onChange={(event) => setEmployeeCode(event.target.value)}
+                onBlur={() => setEmployeeCode(form.employeeCode.trim())}
+                required
+              />
             </Field>
             <Field label={t('email')} id="employee-email" required>
               <Input id="employee-email" type="email" value={form.email} onChange={(event) => patchForm({ email: event.target.value })} required />
@@ -236,12 +249,14 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label={t('department')} id="employee-department" required>
-              <Select value={form.departmentId} onValueChange={(departmentId) => patchForm({ departmentId })} disabled={departmentsLoading}>
-                <SelectTrigger id="employee-department"><SelectValue placeholder={t('selectDepartment')} /></SelectTrigger>
-                <SelectContent>
-                  {departments.map((department) => <SelectItem key={department.id} value={department.id}>{department.nameEn}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <DepartmentCombobox
+                id="employee-department"
+                departments={departments}
+                isContract={employmentType === 'CONTRACT'}
+                value={form.departmentId}
+                onChange={(departmentId) => patchForm({ departmentId })}
+                disabled={departmentsLoading}
+              />
             </Field>
             <Field label={t('position')} id="employee-position">
               <Select value={form.positionId || noneValue} onValueChange={(value) => patchForm({ positionId: value === noneValue ? '' : value })} disabled={positionsLoading}>
@@ -283,14 +298,14 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
             <CardDescription>{t('additionalDetailsDescription')}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t('payrollId')} id="payroll-id">
-              <Input id="payroll-id" value={form.payrollId} onChange={(event) => patchForm({ payrollId: event.target.value })} />
+            <Field label={t('payrollId')} id="payroll-id" hint={t('sameAsEmployeeCode')}>
+              <Input id="payroll-id" value={form.payrollId} readOnly className="bg-muted" />
             </Field>
-            <Field label={t('biometricId')} id="biometric-id">
-              <Input id="biometric-id" value={form.biometricId} onChange={(event) => patchForm({ biometricId: event.target.value })} />
+            <Field label={t('biometricId')} id="biometric-id" hint={t('sameAsEmployeeCode')}>
+              <Input id="biometric-id" value={form.biometricId} readOnly className="bg-muted" />
             </Field>
-            <Field label={t('idNo')} id="source-id-no">
-              <Input id="source-id-no" value={form.sourceIdNo} onChange={(event) => patchForm({ sourceIdNo: event.target.value })} />
+            <Field label={t('idNo')} id="source-id-no" hint={t('sameAsEmployeeCode')}>
+              <Input id="source-id-no" value={form.sourceIdNo} readOnly className="bg-muted" />
             </Field>
             <Field label={t('sourceEmployeeCode')} id="source-employee-code">
               <Input id="source-employee-code" value={form.sourceEmployeeCode} onChange={(event) => patchForm({ sourceEmployeeCode: event.target.value })} />
@@ -324,7 +339,7 @@ export function EmployeeCreatePage({ employmentType, backHref }: EmployeeCreateP
   );
 }
 
-function Field({ label, id, children, required = false }: { label: ReactNode; id: string; children: ReactNode; required?: boolean }) {
+function Field({ label, id, children, required = false, hint }: { label: ReactNode; id: string; children: ReactNode; required?: boolean; hint?: ReactNode }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>
@@ -332,6 +347,7 @@ function Field({ label, id, children, required = false }: { label: ReactNode; id
         {required ? <span className="ml-1 text-destructive">*</span> : null}
       </Label>
       {children}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }

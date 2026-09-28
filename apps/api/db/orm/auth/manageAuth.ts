@@ -187,6 +187,9 @@ export async function authenticateIdentifierPassword(input: { email?: string | n
     await runDummyPasswordHash(password);
     return { success: false as const, reason: 'ACCOUNT_LOCKED' };
   }
+  // After a lockout expires the user gets a fresh set of attempts; otherwise the
+  // next single mistake would lock the account again immediately.
+  const failedLoginCount = foundUser.lockedUntil ? 0 : foundUser.failedLoginCount;
 
   const credential = await db.query.authCredentials.findFirst({
     where: eq(authCredentials.userId, foundUser.id),
@@ -194,14 +197,14 @@ export async function authenticateIdentifierPassword(input: { email?: string | n
 
   if (!credential) {
     await runDummyPasswordHash(password);
-    await recordFailedLogin(foundUser.id, foundUser.failedLoginCount);
+    await recordFailedLogin(foundUser.id, failedLoginCount);
     return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
 
   const validPassword = await verifyPassword(password, credential.passwordHash);
 
   if (!validPassword) {
-    await recordFailedLogin(foundUser.id, foundUser.failedLoginCount);
+    await recordFailedLogin(foundUser.id, failedLoginCount);
     return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
 

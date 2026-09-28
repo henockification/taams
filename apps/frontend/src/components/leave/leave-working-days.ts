@@ -4,6 +4,7 @@ type HolidayRange = {
   isActive: boolean;
   startDate: string;
   endDate: string;
+  durationDays?: string | number | null;
 };
 
 export function isoDateRange(startDate: string, endDate: string): string[] {
@@ -102,4 +103,27 @@ export function clampLeaveEndDate(
     if (maxEnd && nextEnd > maxEnd) nextEnd = maxEnd;
   }
   return nextEnd;
+}
+
+/**
+ * Annual leave dates for "Add working days": scheduled working days only, with
+ * full-day holidays skipped and half-day holidays limited to a half day.
+ */
+export function annualLeaveDatesInRange(
+  startDate: string,
+  endDate: string,
+  scheduledWorkingDays: Set<string>,
+  holidays: HolidayRange[],
+) {
+  const holidayDays = new Map<string, number>();
+  for (const holiday of holidays) {
+    if (!holiday.isActive) continue;
+    const days = Number(holiday.durationDays ?? 1);
+    for (const date of isoDateRange(holiday.startDate.slice(0, 10), holiday.endDate.slice(0, 10))) {
+      holidayDays.set(date, Math.max(holidayDays.get(date) ?? 0, Number.isFinite(days) ? days : 1));
+    }
+  }
+  return isoDateRange(startDate, endDate)
+    .filter((date) => scheduledWorkingDays.has(weekdayName(date)) && (holidayDays.get(date) ?? 0) < 1)
+    .map((date) => ({ date, dayValue: holidayDays.has(date) ? '0.50' : '1.00' }));
 }

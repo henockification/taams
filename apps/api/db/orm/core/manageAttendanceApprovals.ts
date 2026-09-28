@@ -23,6 +23,7 @@ import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisib
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
 import { ATTENDANCE_CALCULATION_VERSION, addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
+import { rosterCycleIndex } from '../../../lib/attendance/roster';
 import {
   getVisibleEmployeeIdsByDateForSupervisorActor,
   getVisibleEmployeeIdsForSupervisorActor,
@@ -483,7 +484,7 @@ export async function supervisorApproveAttendanceDailyRecords(
         where: and(lte(attendanceLeaveVerifications.dateFrom, dateFrom), gte(attendanceLeaveVerifications.dateTo, dateTo)),
         columns: { id: true },
       });
-      if (!verified) throw new Error('Complete the ISMIS permanent-employee leave verification before HR approval');
+      if (!verified) throw new Error('HR must complete the ISMIS leave verification for permanent employees covering these dates before their attendance can be approved');
     }
     const approvalContexts = [];
     for (const record of records) {
@@ -1056,14 +1057,6 @@ function parseDayInput(value: string | number, fieldName: string) {
 function parseHolidayDays(value: string | number | null | undefined) {
   const parsed = Number(value ?? 1);
   return parsed === 0.5 ? 0.5 : 1;
-}
-
-function rosterCycleIndex(date: string, effectiveFrom: string, onDays: number, offDays: number) {
-  const start = new Date(`${effectiveFrom}T00:00:00`);
-  const current = new Date(`${date}T00:00:00`);
-  const elapsed = Math.max(0, Math.floor((current.getTime() - start.getTime()) / 86_400_000));
-  const cycleLength = Math.max(1, onDays + offDays);
-  return elapsed % cycleLength;
 }
 
 const recordRelations = {

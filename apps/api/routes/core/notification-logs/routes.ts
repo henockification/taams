@@ -4,7 +4,6 @@ import { NotificationLogsResponseSchema } from '../../../schemas/core.schema';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import { openApiApp } from '../../../lib/openapi';
 import { getNotificationLogsHandler } from './handlers/notificationLogs';
-import { requirePermission } from '../../../middleware/rbac';
 
 const notificationLogsApp = new Hono();
 
@@ -36,7 +35,9 @@ export const getNotificationLogsRoute = createRoute({
   },
 });
 
-notificationLogsApp.get('/notification-logs', requirePermission('notification-logs:read'), getNotificationLogsHandler);
+// Every signed-in user may read their own notification log; the handler requires a
+// session and always filters to the caller as recipient.
+notificationLogsApp.get('/notification-logs', getNotificationLogsHandler);
 
 openApiApp.openapi(getNotificationLogsRoute, getNotificationLogsHandler as any);
 

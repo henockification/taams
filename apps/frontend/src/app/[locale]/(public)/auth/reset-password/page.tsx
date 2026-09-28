@@ -201,7 +201,7 @@ export default function ResetPasswordPage() {
                     {...register('password', {
                       required: t('validation.passwordRequired'),
                       minLength: {
-                        value: 12,
+                        value: 8,
                         message: t('validation.passwordMinLength'),
                       },
                     })}

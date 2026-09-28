@@ -424,7 +424,7 @@ export type IfmisAttendancePushResponse = {
   success: boolean;
   batch: IfmisExportBatch;
 };
-export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_HR_REVIEW' | 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED';
+export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_REVIEW' | 'PENDING_HR_REVIEW' | 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED';
 export type OvertimeRequestStatus = 'ASSIGNED' | 'APPROVED' | 'REJECTED';
 export type OvertimeAttendanceCoverage = 'UPCOMING' | 'NONE' | 'PARTIAL' | 'COVERED';
 export type TimeOperationSeverity = 'critical' | 'warning' | 'info' | 'success';
@@ -1806,7 +1806,7 @@ export type CreateManualPunchRequestInput = {
 
 export type ChangeManualPunchRequestStatusInput = {
   manualPunchRequestId: string;
-  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_HR_REVIEW'>;
+  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_REVIEW' | 'PENDING_HR_REVIEW'>;
   approvedBy?: string;
   approvedAt?: string;
   hrReviewedBy?: string;

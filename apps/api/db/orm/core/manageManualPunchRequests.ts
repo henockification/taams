@@ -1,6 +1,7 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
+import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
-import { attendanceDailyRecords, employees, manualPunchRequests, user } from '../../schema';
+import { attendanceDailyRecords, attendancePunches, employees, manualPunchRequests, user } from '../../schema';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import type {
   ChangeManualPunchRequestStatusInput,
@@ -44,6 +45,7 @@ export async function createManualPunchRequest(input: CreateManualPunchRequestIn
       requestedPunchTime: new Date(input.requestedPunchTime),
       requestedPunchType: input.requestedPunchType,
       reason: input.reason,
+      status: 'PENDING_REVIEW',
       supportingDocumentName: input.supportingDocumentName ?? null,
       supportingDocumentUrl: input.supportingDocumentUrl ?? null,
       supportingDocumentMimeType: input.supportingDocumentMimeType ?? null,
@@ -183,6 +185,7 @@ export async function changeManualPunchRequestStatus(
         columns: {
           id: true,
           biometricId: true,
+          employeeCode: true,
         },
       });
 
@@ -190,22 +193,29 @@ export async function changeManualPunchRequestStatus(
         throw new Error('Employee not found');
       }
 
-      if (!employee.biometricId) {
-        throw new Error('Employee biometric ID is required to approve manual punch requests');
-      }
-
-      const attendancePunch = await createAttendancePunch({
+      // Biometric IDs match the employee code; older records may lack one.
+      const biometricId = employee.biometricId?.trim() || employee.employeeCode.trim();
+      const punch = {
         employeeId: employee.id,
-        biometricId: employee.biometricId,
+        biometricId,
         punchTime: request.requestedPunchTime,
         punchType: request.requestedPunchType,
-        source: 'MANUAL',
+        source: 'MANUAL' as const,
         isManual: true,
         manualReason: request.reason,
         approvedBy,
         approvedAt: approvedAt.toISOString(),
         supervisorDelegationId: actionContext.supervisorDelegationId,
-      }, tx);
+      };
+      // A manual punch at exactly this time may already exist; reuse it.
+      const attendancePunch = await createAttendancePunch(punch, tx, { ignoreDuplicates: true })
+        ?? await tx.query.attendancePunches.findFirst({
+          where: and(
+            eq(attendancePunches.biometricId, biometricId),
+            eq(attendancePunches.punchTime, new Date(request.requestedPunchTime)),
+            isNull(attendancePunches.deviceId),
+          ),
+        });
 
       await tx
         .update(manualPunchRequests)
@@ -246,6 +256,10 @@ export async function changeManualPunchRequestStatus(
       if (!rejectedBy) {
         throw new Error('Rejected by is required when rejecting a correction request');
       }
+      const rejectionReason = input.rejectionReason?.trim();
+      if (!rejectionReason) {
+        throw new Error('Rejection reason is required');
+      }
 
       await assertUserExists(rejectedBy, tx);
       const actionContext = await resolveSupervisorActionContext({
@@ -266,7 +280,7 @@ export async function changeManualPunchRequestStatus(
           approvedAt: null,
           rejectedBy,
           rejectedAt,
-          rejectionReason: input.rejectionReason ?? null,
+          rejectionReason,
           supervisorDelegationId: actionContext.supervisorDelegationId,
           updatedAt: new Date(),
         })
@@ -355,7 +369,7 @@ function isProcessedStatus(status: string) {
 }
 
 function canSupervisorDecide(status: string) {
-  return status === 'PENDING_HR_REVIEW' || status === 'HR_REVIEWED' || status === 'PENDING';
+  return PENDING_CORRECTION_STATUSES.includes(status);
 }
 
 // Attendance dates are Addis Ababa calendar days, independent of the server time zone.

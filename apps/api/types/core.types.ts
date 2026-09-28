@@ -694,7 +694,7 @@ export type UpdateHolidayInput = Partial<CreateHolidayInput> & {
   holidayId: string;
 };
 
-export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_HR_REVIEW' | 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED';
+export type ManualPunchRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PENDING_REVIEW' | 'PENDING_HR_REVIEW' | 'HR_REVIEWED' | 'HR_REJECTED' | 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED';
 
 export type ManualPunchRequest = {
   id: string;
@@ -811,7 +811,7 @@ export type CreateManualPunchRequestInput = {
 };
 
 export type ChangeManualPunchRequestStatusInput = {
-  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_HR_REVIEW'>;
+  status: Exclude<ManualPunchRequestStatus, 'PENDING' | 'PENDING_REVIEW' | 'PENDING_HR_REVIEW'>;
   approvedBy?: string | null;
   approvedAt?: string | null;
   hrReviewedBy?: string | null;

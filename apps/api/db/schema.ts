@@ -752,7 +752,7 @@ export const manualPunchRequests = pgTable('manual_punch_requests', {
   supportingDocumentUrl: text('supporting_document_url'),
   supportingDocumentMimeType: varchar('supporting_document_mime_type', { length: 150 }),
   supportingDocumentSize: integer('supporting_document_size'),
-  status: varchar('status', { length: 30 }).notNull().default('PENDING_HR_REVIEW'),
+  status: varchar('status', { length: 30 }).notNull().default('PENDING_REVIEW'),
   requestedBy: text('requested_by').notNull().references(() => user.id),
   hrReviewedBy: text('hr_reviewed_by').references(() => user.id),
   hrReviewedAt: timestamp('hr_reviewed_at', { withTimezone: false }),
@@ -766,7 +766,7 @@ export const manualPunchRequests = pgTable('manual_punch_requests', {
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
-  manualPunchStatusCheck: check('chk_manual_punch_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED', 'PENDING_HR_REVIEW', 'HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED')`),
+  manualPunchStatusCheck: check('chk_manual_punch_status', sql`${table.status} IN ('PENDING', 'APPROVED', 'REJECTED', 'PENDING_REVIEW', 'PENDING_HR_REVIEW', 'HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED')`),
   manualRequestedPunchTypeCheck: check('chk_manual_requested_punch_type', sql`${table.requestedPunchType} IN ('IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN')`),
 }));
 

@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -131,7 +132,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
     }),
     db.query.manualPunchRequests.findMany({
-      where: and(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), scopedManualRequestEmployeeCondition),
+      where: and(inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES), scopedManualRequestEmployeeCondition),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
       limit: 20,

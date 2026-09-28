@@ -2,14 +2,21 @@ const COMMON_PASSWORDS = new Set([
   'password',
   'password123',
   'password1234',
+  '12345678',
+  '123456789',
   '123456789012',
+  'password1',
+  'qwerty123',
+  'admin123',
+  'abc12345',
+  'iloveyou',
   'qwertyuiopas',
   'admin1234567',
   'changeme1234',
   'letmein12345',
 ]);
 
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 8;
 
 export function assertPasswordPolicy(password: string, email?: string | null) {
   if (typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {

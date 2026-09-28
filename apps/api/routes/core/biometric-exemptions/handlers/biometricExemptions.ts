@@ -15,6 +15,7 @@ import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
+import { hasSuperAdminRole, normalizeRoleName } from '../../../../lib/privileged-roles';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatBiometricExemption } from '../../helpers/formatters';
 // import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
@@ -40,6 +41,7 @@ export async function getBiometricExemptionsHandler(c: Context) {
 export async function createBiometricExemptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    assertCanManageBiometricExemptions(session);
     const scope = await resolveScope(session);
     const parsed = CreateBiometricExemptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
@@ -71,6 +73,7 @@ export async function createBiometricExemptionHandler(c: Context) {
 export async function changeBiometricExemptionStatusHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    assertCanManageBiometricExemptions(session);
     const scope = await resolveScope(session);
     const id = c.req.param('id');
     const parsed = ChangeBiometricExemptionStatusRequestSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -106,6 +109,7 @@ export async function changeBiometricExemptionStatusHandler(c: Context) {
 export async function updateBiometricExemptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    assertCanManageBiometricExemptions(session);
     const scope = await resolveScope(session);
     const id = c.req.param('id');
     const parsed = UpdateBiometricExemptionRequestSchema.safeParse(await c.req.json().catch(() => ({})));
@@ -133,6 +137,7 @@ export async function updateBiometricExemptionHandler(c: Context) {
 export async function deleteBiometricExemptionHandler(c: Context) {
   try {
     const session = await resolveSession(c);
+    assertCanManageBiometricExemptions(session);
     const scope = await resolveScope(session);
     const id = c.req.param('id');
     const biometricExemption = await deactivateBiometricExemptionScoped(id, scope, session.user.id ?? c.user?.id ?? null);
@@ -148,6 +153,12 @@ export async function deleteBiometricExemptionHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to remove biometric exemption');
   }
+}
+
+function assertCanManageBiometricExemptions(session: Awaited<ReturnType<typeof resolveSession>>) {
+  const roles = session.user.role ?? [];
+  if (hasSuperAdminRole(roles) || roles.some((role) => normalizeRoleName(role) === 'human_resource')) return;
+  throw new Error('Only human resource users can manage biometric exemptions');
 }
 
 async function resolveSession(c: Context) {

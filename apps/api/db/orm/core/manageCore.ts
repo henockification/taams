@@ -38,9 +38,24 @@ export async function createDepartment(input: CreateDepartmentInput) {
     await assertDepartmentExists(input.parentDepartmentId);
   }
 
+  const nameEn = input.nameEn.trim().replace(/\s+/g, ' ');
+  if (!nameEn) throw new Error('Department name is required');
+  const isContract = input.isContract ?? false;
+  const [existing] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(and(
+      sql`lower(regexp_replace(trim(${departments.nameEn}), '\\s+', ' ', 'g')) = ${nameEn.toLowerCase()}`,
+      eq(departments.isContract, isContract),
+    ))
+    .limit(1);
+  if (existing) {
+    throw new Error(`Duplicate department: ${nameEn} already exists`);
+  }
+
   const [department] = await db
     .insert(departments)
-    .values(normalizeDepartmentInput(input) as any)
+    .values(normalizeDepartmentInput({ ...input, nameEn }) as any)
     .returning();
 
   await writeAuditEvent(db, {

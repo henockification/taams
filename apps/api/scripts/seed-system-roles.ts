@@ -498,15 +498,7 @@ const SYSTEM_ROLES = [
       'overtime-requests:approve',
       'manual-punch-requests:read',
       'manual-punch-requests:approve',
-      'biometric-exemptions:read',
-      'biometric-exemptions:approve',
       'attendance-approvals:approve',
-      'reports-attendance-daily:read',
-      'reports-attendance-punches:read',
-      'reports-late-attendance:read',
-      'reports-overtime:read',
-      'reports-leave-requests:read',
-      'reports-employees:read',
     ],
   },
   {
@@ -518,7 +510,6 @@ const SYSTEM_ROLES = [
       'other-leave-requests:read',
       'overtime-requests:read',
       'manual-punch-requests:read',
-      'biometric-exemptions:read',
     ],
   },
 ] as const;

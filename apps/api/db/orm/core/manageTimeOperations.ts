@@ -1,4 +1,5 @@
 import { and, count, eq, inArray, isNull, notInArray, or } from 'drizzle-orm';
+import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -94,7 +95,7 @@ async function getSuperAdminTimeOperationsSummary() {
     syncFailures,
     setupDevices,
   ] = await Promise.all([
-    getCount(manualPunchRequests, eq(manualPunchRequests.status, 'PENDING_HR_REVIEW')),
+    getCount(manualPunchRequests, inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES)),
     getCount(leaveRequests, eq(leaveRequests.status, 'PENDING')),
     getCount(attendancePunches, eq(attendancePunches.isProcessed, false)),
     getCount(
@@ -122,7 +123,7 @@ async function getSuperAdminTimeOperationsSummary() {
       ),
     ),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
+      where: inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       with: {
         employee: {
           with: {
@@ -211,7 +212,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
       manualPunchRequests,
       and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        inArray(manualPunchRequests.status, ['PENDING_HR_REVIEW', 'HR_REVIEWED', 'PENDING']),
+        inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       ),
     ),
     getCount(
@@ -231,7 +232,7 @@ async function getManagerTimeOperationsSummary(directReportIds: string[]) {
     db.query.manualPunchRequests.findMany({
       where: and(
         inArray(manualPunchRequests.employeeId, directReportIds),
-        inArray(manualPunchRequests.status, ['PENDING_HR_REVIEW', 'HR_REVIEWED', 'PENDING']),
+        inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       ),
       with: {
         employee: {
@@ -291,7 +292,7 @@ async function getEmployeeTimeOperationsSummary(employeeId: string) {
       manualPunchRequests,
       and(
         eq(manualPunchRequests.employeeId, employeeId),
-        or(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), eq(manualPunchRequests.status, 'HR_REVIEWED')),
+        inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       ),
     ),
     getCount(
@@ -304,7 +305,7 @@ async function getEmployeeTimeOperationsSummary(employeeId: string) {
     db.query.manualPunchRequests.findMany({
       where: and(
         eq(manualPunchRequests.employeeId, employeeId),
-        or(eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'), eq(manualPunchRequests.status, 'HR_REVIEWED')),
+        inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       ),
       with: {
         employee: true,

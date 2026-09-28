@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import {
   attendancePunches,
@@ -110,7 +111,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
       limit: 50,
     }),
     db.query.manualPunchRequests.findMany({
-      where: eq(manualPunchRequests.status, 'PENDING_HR_REVIEW'),
+      where: inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
     }),
     db.query.manualPunchRequests.findMany({
       where: and(gte(manualPunchRequests.createdAt, monthRange.start), lte(manualPunchRequests.createdAt, monthRange.end)),

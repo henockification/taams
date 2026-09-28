@@ -37,6 +37,7 @@ import {
 } from './manageSupervisorDelegations';
 import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
 import { assertContractLeaveEmployee } from '../../../lib/employees/leave-eligibility';
+import { rosterCycleIndex } from '../../../lib/attendance/roster';
 import {
   diffChanges,
   employeeAuditFields,
@@ -486,7 +487,7 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   if (requiresBalance) {
     await assertAnnualFiscalYearAllowed(employee, fiscalYear!);
     const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
-    await assertAnnualLeaveDatesAreWorkingDays(input.employeeId, dateSelections.map((selection) => selection.date));
+    await assertAnnualLeaveDatesAreWorkingDays(input.employeeId, dateSelections);
     await assertNoActiveAnnualLeaveDateOverlap(input.employeeId, dateSelections.map((selection) => selection.date));
     const requestedDays = sumDaySelections(dateSelections);
     assertWithinAllowedDays(leaveType, requestedDays);
@@ -572,7 +573,7 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
       await assertAnnualFiscalYearAllowed(employee, fiscalYear, tx);
 
       const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
-      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, dateSelections.map((selection) => selection.date), tx);
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, dateSelections, tx);
       await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, dateSelections.map((selection) => selection.date), tx, request.id);
       const requestedDays = sumDaySelections(dateSelections);
       assertWithinAllowedDays(leaveType, requestedDays);
@@ -713,7 +714,7 @@ export async function changeLeaveRequestStatus(
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
       if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
       const approvedSelections = resolveAnnualApprovalSelections(request, input.approvedDates);
-      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedSelections.map((selection) => selection.date), tx);
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedSelections, tx);
       await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedSelections.map((selection) => selection.date), tx, request.id);
       const days = sumDaySelections(approvedSelections);
       if (days <= 0) throw new Error('At least one annual leave date must be approved');
@@ -871,7 +872,7 @@ export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInp
     if (isAnnualLeaveType(leaveType)) {
       if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
       if (approvedDates.length === 0) throw new Error('Annual leave request has no approved dates');
-      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedDates.map((date) => date.date), tx);
+      await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedDates, tx);
       await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedDates.map((date) => date.date), tx, request.id);
       const days = sumDaySelections(approvedDates);
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
@@ -1258,7 +1259,7 @@ async function validateInterruptionPattern(
       throw new Error(`Continuation date ${selection.date} already exists in the leave utilization pattern`);
     }
   }
-  await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, continuation.map((selection) => selection.date), tx);
+  await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, continuation, tx);
   await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, continuation.map((selection) => selection.date), tx);
 }
 
@@ -1339,11 +1340,18 @@ function resolveAnnualApprovalSelections(
     }));
 }
 
-async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, dates: string[], tx: DbClient = db) {
-  if (dates.length === 0) throw new Error('Annual leave dates are required');
-  const sortedDates = [...dates].sort();
+async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, selections: AnnualLeaveDateSelection[], tx: DbClient = db) {
+  if (selections.length === 0) throw new Error('Annual leave dates are required');
+  const sorted = [...selections].sort((a, b) => a.date.localeCompare(b.date));
+  const overlappingHolidays = await tx.query.holidays.findMany({
+    where: and(
+      eq(holidays.isActive, true),
+      lte(holidays.startDate, sorted[sorted.length - 1].date),
+      gte(holidays.endDate, sorted[0].date),
+    ),
+  });
   const workDaysBySchedule = new Map<string, Set<string>>();
-  for (const date of sortedDates) {
+  for (const { date, dayValue } of sorted) {
     const assignment = await tx.query.employeeWorkSchedules.findFirst({
       where: and(
         eq(employeeWorkSchedules.employeeId, employeeId),
@@ -1351,6 +1359,7 @@ async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, dates: s
         lte(employeeWorkSchedules.effectiveFrom, date),
         or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, date)),
       ),
+      with: { workSchedule: true },
       orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom)],
     });
     if (!assignment) throw new Error(`Employee work schedule is required for annual leave date ${date}`);
@@ -1361,12 +1370,27 @@ async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, dates: s
         eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
         eq(workScheduleDays.isActive, true),
       ));
-      workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => day.dayOfWeek));
+      workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => String(day.dayOfWeek).toUpperCase()));
       if (workDays.size === 0) throw new Error('Employee work schedule has no working days configured');
       workDaysBySchedule.set(assignment.workScheduleId, workDays);
     }
-    if (!workDays.has(dayOfWeek(new Date(`${date}T00:00:00Z`)))) {
-      throw new Error(`Annual leave date ${date} is not a scheduled working day`);
+    // Same rest-day rules as attendance: a roster rest day, or a weekday the
+    // weekly schedule does not list as a working day.
+    const schedule = (assignment as any).workSchedule;
+    const isWorkingDay = schedule?.scheduleType === 'ROSTER'
+      ? rosterCycleIndex(date, formatDateValue(assignment.effectiveFrom), Number(schedule.rosterOnDays ?? 1), Number(schedule.rosterOffDays ?? 0)) < Number(schedule.rosterOnDays ?? 1)
+      : workDays.has(dayOfWeek(new Date(`${date}T00:00:00Z`)));
+    if (!isWorkingDay) throw new Error(`Annual leave date ${date} is a scheduled off day`);
+
+    const holiday = overlappingHolidays.find((item: any) => (
+      formatDateValue(item.startDate) <= date && formatDateValue(item.endDate) >= date
+    ));
+    if (!holiday) continue;
+    if (numeric(holiday.durationDays) >= 1) {
+      throw new Error(`Annual leave date ${date} is a holiday (${holiday.nameEn})`);
+    }
+    if (dayValue > 1 - numeric(holiday.durationDays)) {
+      throw new Error(`Annual leave date ${date} is a half-day holiday (${holiday.nameEn}); only a half day of leave can be taken`);
     }
   }
 }

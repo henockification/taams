@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { Check, ClipboardPlus, FileText, Plus, X } from 'lucide-react';
+import { Check, ClipboardPlus, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CalendarDateTimeField } from '@/components/calendar/calendar-date-field';
 import {
@@ -52,10 +51,6 @@ const initialRequestForm = {
   requestedPunchTime: '',
   requestedPunchType: 'UNKNOWN' as PunchType,
   reason: '',
-  supportingDocumentName: '',
-  supportingDocumentUrl: '',
-  supportingDocumentMimeType: '',
-  supportingDocumentSize: 0,
 };
 
 export function ManualPunchRequestsPage({
@@ -79,6 +74,9 @@ export function ManualPunchRequestsPage({
     requestedPunchType: initialCorrection?.punchType ?? initialRequestForm.requestedPunchType,
   });
 
+  const [rejectTarget, setRejectTarget] = useState<ManualPunchRequest | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+
   const manualRequests = useManualPunchRequests({ mine: !isSupervisor });
   const createManualRequest = useCreateManualPunchRequest();
   const changeManualRequestStatus = useChangeManualPunchRequestStatus();
@@ -97,31 +95,6 @@ export function ManualPunchRequestsPage({
     setDialogOpen(true);
   };
 
-  const handleDocumentChange = (file: File | null) => {
-    if (!file) {
-      setForm((current) => ({
-        ...current,
-        supportingDocumentName: '',
-        supportingDocumentUrl: '',
-        supportingDocumentMimeType: '',
-        supportingDocumentSize: 0,
-      }));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setForm((current) => ({
-        ...current,
-        supportingDocumentName: file.name,
-        supportingDocumentUrl: String(reader.result ?? ''),
-        supportingDocumentMimeType: file.type,
-        supportingDocumentSize: file.size,
-      }));
-    };
-    reader.readAsDataURL(file);
-  };
-
   const saveManualRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -130,10 +103,6 @@ export function ManualPunchRequestsPage({
         requestedPunchTime: toIso(form.requestedPunchTime),
         requestedPunchType: form.requestedPunchType,
         reason: form.reason.trim(),
-        supportingDocumentName: form.supportingDocumentName || null,
-        supportingDocumentUrl: form.supportingDocumentUrl || null,
-        supportingDocumentMimeType: form.supportingDocumentMimeType || null,
-        supportingDocumentSize: form.supportingDocumentSize || null,
       });
 
       setDialogOpen(false);
@@ -154,13 +123,16 @@ export function ManualPunchRequestsPage({
   const changeRequestStatus = async (
     request: ManualPunchRequest,
     status: 'SUPERVISOR_APPROVED' | 'SUPERVISOR_REJECTED',
+    reason?: string,
   ) => {
     try {
       await changeManualRequestStatus.mutateAsync({
         manualPunchRequestId: request.id,
         status,
         rejectedAt: status === 'SUPERVISOR_REJECTED' ? new Date().toISOString() : undefined,
+        rejectionReason: status === 'SUPERVISOR_REJECTED' ? reason : undefined,
       });
+      if (status === 'SUPERVISOR_REJECTED') setRejectTarget(null);
 
       notifications.show({
         title: common('success'),
@@ -207,7 +179,6 @@ export function ManualPunchRequestsPage({
                     {isSupervisor ? <TableHead>{t('employee')}</TableHead> : null}
                     <TableHead>{t('punchTime')}</TableHead>
                     <TableHead>{t('punchType')}</TableHead>
-                    <TableHead>{t('supportingDocument')}</TableHead>
                     <TableHead>{t('reason')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
                     {isSupervisor ? <TableHead className="text-right">{t('actions')}</TableHead> : null}
@@ -235,20 +206,15 @@ export function ManualPunchRequestsPage({
                         ) : null}
                         <TableCell className="whitespace-nowrap">{formatDateTime(request.requestedPunchTime)}</TableCell>
                         <TableCell><Badge variant="secondary">{request.requestedPunchType}</Badge></TableCell>
-                        <TableCell>
-                          {request.supportingDocumentUrl ? (
-                            <a href={request.supportingDocumentUrl} download={request.supportingDocumentName ?? undefined} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                              <FileText className="size-3.5" />
-                              {request.supportingDocumentName ?? t('supportingDocument')}
-                            </a>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
                         <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge variant={requestStatusVariant(request.status) as any}>{request.status}</Badge>
+                            <Badge variant={requestStatusVariant(request.status) as any}>{requestStatusLabel(request.status, t)}</Badge>
+                            {isRejectedStatus(request.status) && request.rejectionReason ? (
+                              <p className="max-w-xs whitespace-normal text-xs text-muted-foreground">
+                                {t('rejectionReason')}: {request.rejectionReason}
+                              </p>
+                            ) : null}
                             <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
                           </div>
                         </TableCell>
@@ -260,7 +226,10 @@ export function ManualPunchRequestsPage({
                                   <Check className="size-4" />
                                   {delegatedActionLabel(t('approve'), session.data?.user)}
                                 </Button>
-                                <Button type="button" size="sm" variant="outline" onClick={() => changeRequestStatus(request, 'SUPERVISOR_REJECTED')} disabled={changeManualRequestStatus.isPending}>
+                                <Button type="button" size="sm" variant="outline" onClick={() => {
+                                  setRejectionReason('');
+                                  setRejectTarget(request);
+                                }} disabled={changeManualRequestStatus.isPending}>
                                   <X className="size-4" />
                                   {delegatedActionLabel(t('reject'), session.data?.user)}
                                 </Button>
@@ -284,31 +253,23 @@ export function ManualPunchRequestsPage({
 
       {!isSupervisor ? (
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="sm:max-w-xl">
             <DialogHeader>
               <DialogTitle>{t('requestAttendanceCorrection')}</DialogTitle>
               <DialogDescription>{t('manualPunchRequestFormDescription')}</DialogDescription>
             </DialogHeader>
             <form className="space-y-4" onSubmit={saveManualRequest}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label={t('punchTime')} id="request-time">
-                  <CalendarDateTimeField id="request-time" value={form.requestedPunchTime} onChange={(requestedPunchTime) => setForm((current) => ({ ...current, requestedPunchTime }))} required />
-                </Field>
-                <Field label={t('punchType')} id="request-type">
-                  <Select value={form.requestedPunchType} onValueChange={(value) => setForm((current) => ({ ...current, requestedPunchType: value as PunchType }))}>
-                    <SelectTrigger id="request-type"><SelectValue placeholder={t('selectPunchType')} /></SelectTrigger>
-                    <SelectContent>{punchTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
-              </div>
+              <Field label={t('punchTime')} id="request-time">
+                <CalendarDateTimeField id="request-time" value={form.requestedPunchTime} onChange={(requestedPunchTime) => setForm((current) => ({ ...current, requestedPunchTime }))} required />
+              </Field>
+              <Field label={t('punchType')} id="request-type">
+                <Select value={form.requestedPunchType} onValueChange={(value) => setForm((current) => ({ ...current, requestedPunchType: value as PunchType }))}>
+                  <SelectTrigger id="request-type" className="w-full"><SelectValue placeholder={t('selectPunchType')} /></SelectTrigger>
+                  <SelectContent>{punchTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
               <Field label={t('reason')} id="request-reason">
                 <Textarea id="request-reason" value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} required />
-              </Field>
-              <Field label={t('supportingDocument')} id="request-document">
-                <Input id="request-document" type="file" onChange={(event) => handleDocumentChange(event.target.files?.[0] ?? null)} />
-                {form.supportingDocumentName ? (
-                  <p className="text-xs text-muted-foreground">{form.supportingDocumentName}</p>
-                ) : null}
               </Field>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
@@ -320,8 +281,38 @@ export function ManualPunchRequestsPage({
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => { if (!open) setRejectTarget(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('rejectAttendanceCorrection')}</DialogTitle>
+            <DialogDescription>{t('rejectAttendanceCorrectionDescription')}</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (rejectTarget) void changeRequestStatus(rejectTarget, 'SUPERVISOR_REJECTED', rejectionReason.trim());
+            }}
+          >
+            <Field label={t('rejectionReason')} id="correction-rejection-reason">
+              <Textarea id="correction-rejection-reason" value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} required />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRejectTarget(null)}>{common('cancel')}</Button>
+              <Button type="submit" variant="destructive" disabled={changeManualRequestStatus.isPending || !rejectionReason.trim()}>
+                {delegatedActionLabel(t('reject'), session.data?.user)}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function isRejectedStatus(status: ManualPunchRequest['status']) {
+  return status === 'SUPERVISOR_REJECTED' || status === 'HR_REJECTED' || status === 'REJECTED';
 }
 
 function Field({ label, id, children }: { label: string; id: string; children: ReactNode }) {
@@ -354,5 +345,11 @@ function requestStatusVariant(status: ManualPunchRequest['status']) {
 }
 
 function canSupervisorDecide(status: ManualPunchRequest['status']) {
-  return status === 'PENDING_HR_REVIEW' || status === 'HR_REVIEWED' || status === 'PENDING';
+  return status === 'PENDING_REVIEW' || status === 'PENDING_HR_REVIEW' || status === 'HR_REVIEWED' || status === 'PENDING';
+}
+
+function requestStatusLabel(status: ManualPunchRequest['status'], t: (key: string) => string) {
+  if (status === 'SUPERVISOR_APPROVED' || status === 'APPROVED') return t('approved');
+  if (status === 'SUPERVISOR_REJECTED' || status === 'HR_REJECTED' || status === 'REJECTED') return t('rejected');
+  return t('pendingReview');
 }

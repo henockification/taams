@@ -187,11 +187,14 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
               <Link href={`/annual-leave-requests/${request.id}/edit` as any}><Pencil className="size-4" />{common('edit')}</Link>
             </Button>
           ) : null}
-          {canReviewRequest && !isAnnualLeaveRequest ? (
+          {canReviewRequest ? (
             <>
-              <Button type="button" onClick={() => approveRequest(request)} disabled={changeStatus.isPending}>
-                <Check className="size-4" />{delegatedActionLabel(t('approve'), session.data?.user)}
-              </Button>
+              {/* Annual leave is approved through the date editor below; rejection applies to both. */}
+              {!isAnnualLeaveRequest ? (
+                <Button type="button" onClick={() => approveRequest(request)} disabled={changeStatus.isPending}>
+                  <Check className="size-4" />{delegatedActionLabel(t('approve'), session.data?.user)}
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"

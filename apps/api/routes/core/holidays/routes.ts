@@ -13,7 +13,7 @@ import {
   getHolidaysHandler,
   updateHolidayHandler,
 } from './handlers/holidays';
-import { requirePermission } from '../../../middleware/rbac';
+import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const holidaysApp = new Hono();
 
@@ -53,7 +53,7 @@ export const updateHolidayRoute = createRoute({
   },
 });
 
-holidaysApp.get('/holidays', requirePermission('holidays:read'), getHolidaysHandler);
+holidaysApp.get('/holidays', requirePermissionOrDelegation('holidays:read', 'annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve'), getHolidaysHandler);
 holidaysApp.post('/holidays', requirePermission('holidays:create'), createHolidayHandler);
 holidaysApp.put('/holidays/:id', requirePermission('holidays:update'), updateHolidayHandler);
 

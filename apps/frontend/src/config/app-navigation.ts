@@ -558,6 +558,7 @@ export function userHasPermission(user: AuthzUser, permission: string) {
 export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url.startsWith('/leave-management/') && isPermanentHumanResourceEmployee(user)) return false;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return hasContractEmployee(user);
+  if (item.url === '/biometric-exemptions') return hasHumanResourceRole(user) || isSuperAdmin(user);
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
@@ -717,6 +718,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
     return hasLeaveBalanceManagementAccess(user);
   if (pathname === '/leave-management/balances' || pathname.startsWith('/leave-management/balances/')) return hasLeaveBalanceManagementAccess(user);
   if (pathname === '/leave-management/carry-forward' || pathname.startsWith('/leave-management/carry-forward/')) return false;
+  if (pathname === '/biometric-exemptions' || pathname.startsWith('/biometric-exemptions/')) return hasHumanResourceRole(user) || isSuperAdmin(user);
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return hasContractEmployee(user);
   if (pathname === '/other-leave-requests' || pathname.startsWith('/other-leave-requests/')) return hasContractEmployee(user);
   if (pathname === '/overtime-requests') return Boolean(user);

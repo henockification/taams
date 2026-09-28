@@ -748,9 +748,10 @@ export const UpdateEmployeeWorkScheduleRequestSchema = CreateEmployeeWorkSchedul
 
 export const CreateEmployeeRequestSchema = z.object({
   userId: z.string().nullable().optional(),
-  employeeCode: z.string().min(1).max(50),
-  payrollId: z.string().max(50).nullable().optional(),
-  biometricId: z.string().max(50).nullable().optional(),
+  // Identifiers are often typed or pasted with stray leading/trailing spaces.
+  employeeCode: z.string().trim().min(1).max(50),
+  payrollId: z.string().trim().max(50).nullable().optional(),
+  biometricId: z.string().trim().max(50).nullable().optional(),
   firstNameEn: z.string().min(1).max(100),
   middleNameEn: z.string().max(100).nullable().optional(),
   lastNameEn: z.string().min(1).max(100),
@@ -767,8 +768,8 @@ export const CreateEmployeeRequestSchema = z.object({
   employmentType: EmploymentTypeSchema.optional(),
   hireDate: OptionalDateSchema,
   terminationDate: OptionalDateSchema,
-  sourceIdNo: z.string().max(50).nullable().optional(),
-  sourceEmployeeCode: z.string().max(50).nullable().optional(),
+  sourceIdNo: z.string().trim().max(50).nullable().optional(),
+  sourceEmployeeCode: z.string().trim().max(50).nullable().optional(),
   sourceEmploymentStatus: z.string().max(100).nullable().optional(),
   sourceDepartmentName: z.string().max(200).nullable().optional(),
   sourcePositionName: z.string().max(200).nullable().optional(),
@@ -931,7 +932,7 @@ export const CreateAttendancePunchRequestSchema = z.object({
 
 export const UpdateAttendancePunchRequestSchema = CreateAttendancePunchRequestSchema.partial();
 
-export const ManualPunchRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'PENDING_HR_REVIEW', 'HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED']);
+export const ManualPunchRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED', 'PENDING_REVIEW', 'PENDING_HR_REVIEW', 'HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED']);
 
 export const ManualPunchRequestSchema = z.object({
   id: UuidSchema.openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
