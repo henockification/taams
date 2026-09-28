@@ -121,7 +121,10 @@ export const getDepartmentHeadDashboardSummaryRoute = createRoute({
   },
 });
 
-dashboardApp.get('/dashboard/summary', requirePermission('dashboard:read'), getDashboardSummaryHandler);
+// The employee dashboard is the authenticated-user fallback. Unlike the
+// privileged dashboards below, it must not depend on an explicitly assigned
+// role permission; the handler still requires a valid session.
+dashboardApp.get('/dashboard/summary', getDashboardSummaryHandler);
 dashboardApp.get('/executive-dashboard/summary', requirePermission('executive-dashboard:read'), getExecutiveDashboardSummaryHandler);
 dashboardApp.get('/hr-dashboard/summary', requirePermission('hr-dashboard:read'), getHrDashboardSummaryHandler);
 dashboardApp.get('/department-head-dashboard/summary', requirePermission('department-head-dashboard:read'), getDepartmentHeadDashboardSummaryHandler);

@@ -456,13 +456,15 @@ export const AttendanceSessionEvaluationSchema = z.object({
   sortOrder: z.number().int(),
   scheduledStartAt: z.string(),
   scheduledEndAt: z.string(),
+  completionAt: z.string(),
   checkInAt: z.string().nullable(),
   checkOutAt: z.string().nullable(),
   checkInStatus: z.enum(['ON_TIME', 'LATE', 'MISSING', 'PENDING']),
-  checkOutStatus: z.enum(['ON_TIME', 'EARLY', 'MISSING', 'PENDING']),
+  checkOutStatus: z.enum(['ON_TIME', 'EARLY', 'LATE', 'MISSING', 'PENDING']),
   attendanceStatus: z.enum(['PRESENT', 'ABSENT', 'PENDING']),
   lateMinutes: z.number().int().nonnegative(),
   earlyCheckoutMinutes: z.number().int().nonnegative(),
+  lateCheckoutMinutes: z.number().int().nonnegative(),
 });
 
 export const AttendanceDailyRecordSchema = z.object({
@@ -1023,25 +1025,6 @@ export const UpdateAttendanceDailyRecordPayrollRequestSchema = z.object({
   payableDays: z.union([z.string(), z.number()]).optional(),
   payrollNote: z.string().nullable().optional(),
 });
-
-export const AttendanceOvertimeExceptionSchema = z.object({
-  id: UuidSchema,
-  employeeId: UuidSchema,
-  attendanceDailyRecordId: UuidSchema.nullable(),
-  overtimeDate: z.string(),
-  observedStartAt: z.string().nullable(),
-  observedEndAt: z.string().nullable(),
-  detectedMinutes: z.number(),
-  status: z.enum(['REVIEW_REQUIRED', 'DISMISSED', 'CONVERTED']),
-  reviewedBy: z.string().nullable(),
-  reviewedAt: z.string().nullable(),
-  reviewNote: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  employee: EmployeeSchema.nullable().optional(),
-});
-export const AttendanceOvertimeExceptionsResponseSchema = z.object({ success: z.boolean(), exceptions: z.array(AttendanceOvertimeExceptionSchema) });
-export const ReviewAttendanceOvertimeExceptionRequestSchema = z.object({ note: z.string().nullable().optional() });
 
 export const LeaveRequestStatusSchema = z.enum(['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED']);
 export const LeaveBalanceTransactionTypeSchema = z.enum(['INITIAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'DEDUCTION', 'RESERVATION', 'CONSUMPTION', 'REVERSAL', 'ADJUSTMENT']);

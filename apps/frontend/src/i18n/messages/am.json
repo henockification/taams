@@ -1285,6 +1285,7 @@
     "missingCheckOut": "የመውጫ ምልክት የለም",
     "lateCheckIn": "ዘግይቶ ገብቷል",
     "earlyCheckOut": "ቀድሞ ወጥቷል",
+    "lateCheckOut": "ዘግይቶ ወጥቷል",
     "totalPunches": "ምልክቶች",
     "attendanceDays": "የመገኘት ቀናት",
     "leaveDays": "የፈቃድ ቀናት",

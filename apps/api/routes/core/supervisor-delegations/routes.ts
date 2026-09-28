@@ -3,12 +3,14 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { ErrorResponseSchema } from '../../../schemas/shared';
 import {
   CreateSupervisorDelegationRequestSchema,
+  EmployeesResponseSchema,
   SupervisorDelegationResponseSchema,
   SupervisorDelegationsResponseSchema,
 } from '../../../schemas/core.schema';
 import { openApiApp } from '../../../lib/openapi';
 import {
   createSupervisorDelegationHandler,
+  getEligibleSupervisorDelegatesHandler,
   getSupervisorDelegationsHandler,
   revokeSupervisorDelegationHandler,
 } from './handlers/supervisorDelegations';
@@ -63,6 +65,19 @@ export const createSupervisorDelegationRoute = createRoute({
   },
 });
 
+export const getEligibleSupervisorDelegatesRoute = createRoute({
+  method: 'get',
+  path: '/supervisor-delegations/eligible-employees',
+  tags: ['Core', 'Supervisor Delegations'],
+  summary: 'Get employees eligible for supervisor delegation',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeesResponseSchema } },
+      description: 'Active employees in the supervisor department with user accounts',
+    },
+  },
+});
+
 export const revokeSupervisorDelegationRoute = createRoute({
   method: 'post',
   path: '/supervisor-delegations/{id}/revoke',
@@ -84,11 +99,13 @@ export const revokeSupervisorDelegationRoute = createRoute({
 });
 
 supervisorDelegationsApp.get('/supervisor-delegations', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), getSupervisorDelegationsHandler);
+supervisorDelegationsApp.get('/supervisor-delegations/eligible-employees', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), getEligibleSupervisorDelegatesHandler);
 supervisorDelegationsApp.post('/supervisor-delegations', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), createSupervisorDelegationHandler);
 supervisorDelegationsApp.post('/supervisor-delegations/:id/revoke', requirePermissionOrDelegation('attendance-approvals:approve', 'leave-request-approvals:approve'), revokeSupervisorDelegationHandler);
 
 openApiApp
   .openapi(getSupervisorDelegationsRoute, getSupervisorDelegationsHandler as any)
+  .openapi(getEligibleSupervisorDelegatesRoute, getEligibleSupervisorDelegatesHandler as any)
   .openapi(createSupervisorDelegationRoute, createSupervisorDelegationHandler as any)
   .openapi(revokeSupervisorDelegationRoute, revokeSupervisorDelegationHandler as any);
 

@@ -606,9 +606,8 @@ export function hasHrAttendanceApprovalAccess(user: AuthzUser) {
 }
 
 export function hasEmployeeDashboardRole(user: AuthzUser) {
+  if (!user) return false;
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
-  if (roles.length === 0) return Boolean(user);
-  if (!roles.includes('employee')) return false;
   return !roles.some(
     (role) =>
       role === 'super_admin' ||

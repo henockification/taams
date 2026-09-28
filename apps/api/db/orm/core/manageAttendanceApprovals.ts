@@ -13,7 +13,6 @@ import {
   temporaryDepartmentAssignments,
   employeeWorkSchedules,
   overtimeRequests,
-  attendanceOvertimeExceptions,
   ismisLeaveDays,
   attendanceLeaveVerifications,
 } from '../../schema';
@@ -211,6 +210,7 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
         ...session,
         scheduledStartAt: session.scheduledStartAt.toISOString(),
         scheduledEndAt: session.scheduledEndAt.toISOString(),
+        completionAt: session.completionAt.toISOString(),
         checkInAt: session.checkInAt?.toISOString() ?? null,
         checkOutAt: session.checkOutAt?.toISOString() ?? null,
       })),
@@ -274,28 +274,6 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
   await syncApprovedOvertimeForDate(attendanceDate);
 
   const generated = await getAttendanceDailyRecordsByIds(records.map((record) => record.id));
-
-  const detectedExceptions = generated.filter((record: any) => Number(record.unapprovedOvertimeMinutes ?? 0) > 0);
-  if (detectedExceptions.length > 0) {
-    await db.insert(attendanceOvertimeExceptions).values(detectedExceptions.map((record: any) => ({
-      employeeId: record.employeeId,
-      attendanceDailyRecordId: record.id,
-      overtimeDate: attendanceDate,
-      observedStartAt: record.scheduledEndAt ?? null,
-      observedEndAt: punchesByEmployee.get(record.employeeId)?.at(-1)?.punchTime ?? record.checkOutAt ?? null,
-      detectedMinutes: Number(record.unapprovedOvertimeMinutes),
-      status: 'REVIEW_REQUIRED',
-    })) as any).onConflictDoUpdate({
-      target: [attendanceOvertimeExceptions.employeeId, attendanceOvertimeExceptions.overtimeDate],
-      set: {
-        attendanceDailyRecordId: sql.raw('excluded."attendance_daily_record_id"'),
-        observedStartAt: sql.raw('excluded."observed_start_at"'),
-        observedEndAt: sql.raw('excluded."observed_end_at"'),
-        detectedMinutes: sql.raw('excluded."detected_minutes"'),
-        updatedAt: sql`CURRENT_TIMESTAMP`,
-      } as any,
-    });
-  }
 
   if (options?.recordAudit) {
     await writeAuditEvent(db, {
@@ -367,85 +345,6 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
     'SUPERVISOR_APPROVED',
   ]);
   return records.filter((record) => visibilityByDate.get(record.attendanceDate)?.has(record.employeeId));
-}
-
-export async function getAttendanceOvertimeExceptions(input: {
-  userId: string;
-  roles?: string[] | null;
-  scope?: EmployeeVisibilityScope;
-  dateFrom?: string | null;
-  dateTo?: string | null;
-  status?: string | null;
-}) {
-  const rows = await db.query.attendanceOvertimeExceptions.findMany({
-    where: and(
-      input.dateFrom ? gte(attendanceOvertimeExceptions.overtimeDate, input.dateFrom) : undefined,
-      input.dateTo ? lte(attendanceOvertimeExceptions.overtimeDate, input.dateTo) : undefined,
-      input.status ? eq(attendanceOvertimeExceptions.status, input.status) : undefined,
-    ),
-    with: { employee: { with: { department: true, position: true } } },
-    orderBy: (table, { desc }) => [desc(table.overtimeDate), desc(table.createdAt)],
-  });
-  if (!input.scope || input.scope.type === 'unrestricted' || input.scope.type === 'hr') return rows;
-  const visibleIds = await getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles, db);
-  return rows.filter((row) => visibleIds.includes(row.employeeId));
-}
-
-export async function dismissAttendanceOvertimeException(id: string, reviewerUserId: string, note?: string | null) {
-  const [updated] = await db.update(attendanceOvertimeExceptions).set({
-    status: 'DISMISSED',
-    reviewedBy: reviewerUserId,
-    reviewedAt: new Date(),
-    reviewNote: note?.trim() || null,
-    updatedAt: new Date(),
-  }).where(and(eq(attendanceOvertimeExceptions.id, id), eq(attendanceOvertimeExceptions.status, 'REVIEW_REQUIRED'))).returning();
-  if (!updated) throw new Error('Overtime exception not found or already reviewed');
-  return updated;
-}
-
-export async function convertAttendanceOvertimeException(id: string, reviewerUserId: string, roles?: string[] | null) {
-  return db.transaction(async (tx) => {
-    const exception = await tx.query.attendanceOvertimeExceptions.findFirst({ where: eq(attendanceOvertimeExceptions.id, id), with: { employee: true } });
-    if (!exception || exception.status !== 'REVIEW_REQUIRED') throw new Error('Overtime exception not found or already reviewed');
-    if (!exception.observedStartAt || !exception.observedEndAt) throw new Error('The exception has no usable punch interval');
-    const observedStart = new Date(exception.observedStartAt);
-    const observedEnd = new Date(exception.observedEndAt);
-    if (observedEnd.getTime() <= observedStart.getTime()) throw new Error('The exception punch interval is invalid');
-    if (exception.attendanceDailyRecordId) {
-      const dailyRecord = await tx.query.attendanceDailyRecords.findFirst({ where: eq(attendanceDailyRecords.id, exception.attendanceDailyRecordId), columns: { status: true } });
-      if (dailyRecord?.status === 'HR_APPROVED') throw new Error('Cannot convert overtime after the attendance day is approved for payroll');
-    }
-    const approvedOverlap = await tx.query.overtimeRequests.findFirst({
-      where: and(eq(overtimeRequests.employeeId, exception.employeeId), eq(overtimeRequests.overtimeDate, exception.overtimeDate), eq(overtimeRequests.status, 'APPROVED'), lte(overtimeRequests.startAt, exception.observedEndAt), gte(overtimeRequests.endAt, exception.observedStartAt)),
-      columns: { id: true },
-    });
-    if (approvedOverlap) throw new Error('This punch interval is already covered by approved overtime');
-    const actionContext = await resolveSupervisorActionContext({ actorUserId: reviewerUserId, roles, targetEmployeeId: exception.employeeId, tx });
-    const requestedMinutes = Math.floor((observedEnd.getTime() - observedStart.getTime()) / 60_000);
-    if (requestedMinutes <= 0 || requestedMinutes < Number(exception.detectedMinutes)) throw new Error('The overtime evidence is incomplete or shorter than the detected exception');
-    const [request] = await tx.insert(overtimeRequests).values({
-      employeeId: exception.employeeId,
-      attendanceDailyRecordId: exception.attendanceDailyRecordId,
-      overtimeDate: exception.overtimeDate,
-      startAt: exception.observedStartAt,
-      endAt: exception.observedEndAt,
-      requestedMinutes,
-      approvedMinutes: 0,
-      overtimeDays: '0.00',
-      reason: `Detected after-hours work (${exception.detectedMinutes} minutes); requires authorization`,
-      status: 'ASSIGNED',
-      requestedBy: reviewerUserId,
-      requestedSupervisorDelegationId: actionContext.supervisorDelegationId,
-    } as any).returning();
-    await tx.update(attendanceOvertimeExceptions).set({
-      status: 'CONVERTED',
-      reviewedBy: reviewerUserId,
-      reviewedAt: new Date(),
-      reviewNote: `Converted to overtime request ${request.id}`,
-      updatedAt: new Date(),
-    }).where(eq(attendanceOvertimeExceptions.id, id));
-    return request;
-  });
 }
 
 export async function refreshAttendanceForAuthorizedLeave(request: any) {
@@ -520,7 +419,8 @@ export async function supervisorApproveAttendanceDailyRecords(
         throw new Error('Only pending or returned attendance records can be supervisor approved');
       }
       if ((record.sessionEvaluations ?? []).some((session: any) => (
-        session.attendanceStatus === 'PENDING' && new Date(session.scheduledEndAt).getTime() > Date.now()
+        session.attendanceStatus === 'PENDING'
+        && new Date(session.completionAt ?? session.scheduledEndAt).getTime() > Date.now()
       ))) {
         throw new Error('Attendance cannot be approved while a scheduled session is still in progress');
       }

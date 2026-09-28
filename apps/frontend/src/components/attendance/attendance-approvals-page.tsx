@@ -46,9 +46,6 @@ import {
   useSupervisorApproveAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
-  useAttendanceOvertimeExceptions,
-  useConvertAttendanceOvertimeException,
-  useDismissAttendanceOvertimeException,
   useCompleteIsmisLeave,
   useIsmisLeaveImport,
   useLatestIsmisLeaveImport,
@@ -170,9 +167,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
   const hrApprove = useHrApproveAttendanceDailyRecord();
   const hrBatchApprove = useHrApproveAttendanceDailyRecords();
   const returnRecord = useReturnAttendanceDailyRecord();
-  const overtimeExceptions = useAttendanceOvertimeExceptions(dateRange);
-  const dismissOvertimeException = useDismissAttendanceOvertimeException();
-  const convertOvertimeException = useConvertAttendanceOvertimeException();
   const isHrMode = mode === 'hr';
   const leaveImport = useIsmisLeaveImport();
   const completeLeave = useCompleteIsmisLeave();
@@ -309,24 +303,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
       notifications.show({ title: common('success'), message: t('attendanceReturned'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  }
-
-  async function handleDismissException(id: string) {
-    try {
-      await dismissOvertimeException.mutateAsync({ id, note: 'Reviewed and dismissed from attendance approvals' });
-      notifications.show({ title: common('success'), message: 'Overtime exception dismissed', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : common('saveFailed'), color: 'red' });
-    }
-  }
-
-  async function handleConvertException(id: string) {
-    try {
-      await convertOvertimeException.mutateAsync(id);
-      notifications.show({ title: common('success'), message: 'Overtime assignment created for approval', color: 'green' });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : common('saveFailed'), color: 'red' });
     }
   }
 
@@ -494,26 +470,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
         <Summary label={t('absentSessions')} value={exceptionSummary.absentSessions} />
       </div>
 
-      {(overtimeExceptions.data?.exceptions?.length ?? 0) > 0 ? (
-        <Card className="rounded-lg border-amber-200 bg-amber-50/40">
-          <CardContent className="space-y-3 pt-6">
-            <div><h3 className="font-semibold">Detected unapproved overtime</h3><p className="text-sm text-muted-foreground">These punches are excluded from payroll overtime until explicitly authorized.</p></div>
-            <div className="overflow-x-auto rounded-md border border-border bg-background">
-              <Table>
-                <TableHeader><TableRow><TableHead>{t('employee')}</TableHead><TableHead>{t('attendanceDate')}</TableHead><TableHead>Detected minutes</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
-                <TableBody>{overtimeExceptions.data?.exceptions.map((exception) => <TableRow key={exception.id}>
-                  <TableCell>{employeeName(exception.employee) || exception.employeeId}</TableCell>
-                  <TableCell>{formatDate(exception.overtimeDate)}</TableCell>
-                  <TableCell>{exception.detectedMinutes} min</TableCell>
-                  <TableCell><Badge variant="outline">{exception.status}</Badge></TableCell>
-                  <TableCell className="text-right"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={dismissOvertimeException.isPending || convertOvertimeException.isPending} onClick={() => handleDismissException(exception.id)}>Dismiss</Button><Button size="sm" disabled={dismissOvertimeException.isPending || convertOvertimeException.isPending} onClick={() => handleConvertException(exception.id)}>Create overtime assignment</Button></div></TableCell>
-                </TableRow>)}</TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
       <Card className="rounded-lg">
         <CardContent>
           {query.isLoading ? (
@@ -556,7 +512,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                     <TableHead>{t('absenceDays')}</TableHead>
                     <TableHead>{t('approvalStatus')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
-                    <TableHead>{t('unapprovedOvertime')}</TableHead>
                     <TableHead>{t('overtimeMinutes')}</TableHead>
                     <TableHead>{t('overtimeHours')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
@@ -641,9 +596,6 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                           ) : null}
                           <DelegationAuditBadge delegationId={record.supervisorDelegationId} />
                         </div>
-                      </TableCell>
-                      <TableCell className={record.unapprovedOvertimeMinutes ? 'font-medium text-amber-600' : undefined}>
-                        {record.unapprovedOvertimeMinutes ?? 0} min
                       </TableCell>
                       <TableCell>{record.overtimeMinutes ?? 0}</TableCell>
                       <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
@@ -848,11 +800,16 @@ function AttendanceSessions({
 }
 
 function materializeSession(session: AttendanceSessionEvaluation): AttendanceSessionEvaluation {
-  if (new Date(session.scheduledEndAt).getTime() > Date.now()) return session;
+  if (new Date(session.completionAt ?? session.scheduledEndAt).getTime() > Date.now()) return session;
   return {
     ...session,
     checkInStatus: session.checkInAt ? session.checkInStatus === 'PENDING' ? 'ON_TIME' : session.checkInStatus : 'MISSING',
-    checkOutStatus: session.checkOutAt ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME' : 'MISSING',
+    checkOutStatus: session.checkOutAt
+      ? session.checkOutStatus === 'PENDING'
+        ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME'
+        : session.checkOutStatus
+      : 'MISSING',
+    lateCheckoutMinutes: session.lateCheckoutMinutes ?? 0,
     attendanceStatus: session.checkInAt && session.checkOutAt ? 'PRESENT' : 'ABSENT',
   };
 }
@@ -869,6 +826,7 @@ function sessionPunchLabel(
   const time = formatDateTime(value, { year: undefined, month: undefined, day: undefined, hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Addis_Ababa' });
   if (direction === 'IN' && status === 'LATE') return `${time} ${t('lateCheckIn')} (${session.lateMinutes} min)`;
   if (direction === 'OUT' && status === 'EARLY') return `${time} ${t('earlyCheckOut')} (${session.earlyCheckoutMinutes} min)`;
+  if (direction === 'OUT' && status === 'LATE') return `${time} ${t('lateCheckOut')} (${session.lateCheckoutMinutes} min)`;
   if (status === 'PENDING') return `${time} ${t('sessionPending')}`;
   return `${time} ${t(direction === 'IN' ? 'checkIn' : 'checkOut')}`;
 }

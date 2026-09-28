@@ -6,6 +6,7 @@ import {
 import {
   changeOvertimeRequestStatus,
   createOvertimeRequests,
+  getOvertimeAssignableEmployees,
   getOvertimeRequests,
 } from '../../../../db/orm/core/manageOvertimeRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
@@ -14,7 +15,7 @@ import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEm
 import { hasActiveSupervisorDelegation } from '../../../../db/orm/core/manageSupervisorDelegations';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
-import { formatOvertimeRequest } from '../../helpers/formatters';
+import { formatEmployee, formatOvertimeRequest } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function createOvertimeRequestHandler(c: Context) {
@@ -91,6 +92,24 @@ export async function getOvertimeRequestsHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch overtime assignments');
+  }
+}
+
+export async function getOvertimeAssignableEmployeesHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
+    const employees = await getOvertimeAssignableEmployees({
+      userId: session.user.id,
+      roles,
+    });
+
+    return c.json({
+      success: true,
+      employees: employees.map((employee) => formatEmployee(employee)),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch employees eligible for overtime');
   }
 }
 

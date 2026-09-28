@@ -451,15 +451,21 @@ export function formatAttendancePunch(punch: any) {
 
 export function formatAttendanceDailyRecord(record: any) {
   const attendanceSessions = (record.sessionEvaluations ?? []).map((session: any) => {
-    const completed = new Date(session.scheduledEndAt).getTime() <= Date.now();
+    const completed = new Date(session.completionAt ?? session.scheduledEndAt).getTime() <= Date.now();
     return {
       ...session,
       scheduledStartAt: formatTimestamp(session.scheduledStartAt),
       scheduledEndAt: formatTimestamp(session.scheduledEndAt),
+      completionAt: formatTimestamp(session.completionAt ?? session.scheduledEndAt),
       checkInAt: formatTimestamp(session.checkInAt),
       checkOutAt: formatTimestamp(session.checkOutAt),
       checkInStatus: session.checkInAt ? session.checkInStatus === 'PENDING' ? 'ON_TIME' : session.checkInStatus : completed ? 'MISSING' : 'PENDING',
-      checkOutStatus: session.checkOutAt ? completed ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME' : 'PENDING' : completed ? 'MISSING' : 'PENDING',
+      checkOutStatus: session.checkOutAt
+        ? session.checkOutStatus === 'PENDING'
+          ? session.earlyCheckoutMinutes > 0 ? 'EARLY' : 'ON_TIME'
+          : session.checkOutStatus
+        : completed ? 'MISSING' : 'PENDING',
+      lateCheckoutMinutes: session.lateCheckoutMinutes ?? 0,
       attendanceStatus: session.checkInAt && session.checkOutAt ? 'PRESENT' : completed ? 'ABSENT' : 'PENDING',
     };
   });
@@ -519,25 +525,6 @@ export function formatAttendanceDailyRecord(record: any) {
     firstPunch: record.firstPunch ? formatAttendancePunch(record.firstPunch) : null,
     lastPunch: record.lastPunch ? formatAttendancePunch(record.lastPunch) : null,
     holiday: record.holiday ? formatHoliday(record.holiday) : null,
-  };
-}
-
-export function formatAttendanceOvertimeException(exception: any) {
-  return {
-    id: exception.id,
-    employeeId: exception.employeeId,
-    attendanceDailyRecordId: exception.attendanceDailyRecordId ?? null,
-    overtimeDate: formatDate(exception.overtimeDate),
-    observedStartAt: formatTimestamp(exception.observedStartAt),
-    observedEndAt: formatTimestamp(exception.observedEndAt),
-    detectedMinutes: exception.detectedMinutes,
-    status: exception.status,
-    reviewedBy: exception.reviewedBy ?? null,
-    reviewedAt: formatTimestamp(exception.reviewedAt),
-    reviewNote: exception.reviewNote ?? null,
-    createdAt: formatTimestamp(exception.createdAt),
-    updatedAt: formatTimestamp(exception.updatedAt),
-    employee: exception.employee ? formatEmployee(exception.employee) : null,
   };
 }
 

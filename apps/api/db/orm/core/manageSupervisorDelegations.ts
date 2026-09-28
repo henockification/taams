@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, gt, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { employeeSupervisors, employees, supervisorDelegations, user } from '../../schema';
 import { getUserRoleNames } from '../rbac/manageRbac';
 import { effectivePrimaryEmployeeIds } from './leaveVisibility';
 import { formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 
 type DbClient = typeof db | any;
 
@@ -22,6 +23,24 @@ export async function getSupervisorDelegationsForUser(userId: string, tx: DbClie
     with: delegationRelations,
     orderBy: (table: any, { desc }: any) => [desc(table.createdAt)],
   });
+}
+
+export async function getEligibleSupervisorDelegates(userId: string, tx: DbClient = db) {
+  const supervisor = await getEmployeeByUserId(userId, tx);
+  if (!supervisor?.departmentId) return [];
+
+  const candidates = await tx.query.employees.findMany({
+    where: and(
+      eq(employees.departmentId, supervisor.departmentId),
+      ne(employees.id, supervisor.id),
+      isNotNull(employees.userId),
+      eq(employees.isActive, true),
+    ),
+    with: { department: true, position: true },
+    orderBy: (table: any, { asc }: any) => [asc(table.employeeCode)],
+  });
+
+  return candidates.filter(isWorkingEmployee);
 }
 
 export async function getActiveDelegatedSupervisorCapabilities(userId: string, tx: DbClient = db) {
@@ -63,9 +82,12 @@ export async function createSupervisorDelegation(input: {
     with: { user: true },
   });
   if (!delegate?.userId || !delegate.user) throw new Error('Delegate must be an employee linked to a user');
-  if (!delegate.isActive) throw new Error('Delegate employee must be active');
+  if (!isWorkingEmployee(delegate)) throw new Error('Delegate employee must be active');
   if (delegate.userId === input.supervisorUserId || delegate.id === supervisor.id) {
     throw new Error('A supervisor cannot delegate to themselves');
+  }
+  if (delegate.departmentId !== supervisor.departmentId) {
+    throw new Error('A supervisor can only delegate to an employee in the same department');
   }
 
   return tx.transaction(async (innerTx: DbClient) => {
@@ -178,6 +200,23 @@ export async function getVisibleEmployeeIdsForSupervisorActor(
   }
 
   return [...visibleIds];
+}
+
+export async function getSupervisorDepartmentIdsForActor(
+  actorUserId: string,
+  tx: DbClient = db,
+) {
+  const departmentIds = new Set<string>();
+  const actorEmployee = await getEmployeeByUserId(actorUserId, tx);
+  if (actorEmployee?.departmentId) departmentIds.add(actorEmployee.departmentId);
+
+  const delegations = await getActiveDelegatedSupervisorCapabilities(actorUserId, tx);
+  for (const delegation of delegations) {
+    const departmentId = delegation.supervisorEmployee?.departmentId;
+    if (departmentId) departmentIds.add(departmentId);
+  }
+
+  return [...departmentIds];
 }
 
 export async function getVisibleEmployeeIdsByDateForSupervisorActor(

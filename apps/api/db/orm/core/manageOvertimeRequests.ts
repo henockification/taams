@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte, ne, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendanceDailyRecords,
@@ -16,8 +16,10 @@ import type {
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import {
   getVisibleEmployeeIdsForSupervisorActor,
+  getSupervisorDepartmentIdsForActor,
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   employeeAuditFields,
   formatEmployeeLabel,
@@ -49,11 +51,12 @@ export async function createOvertimeRequests(
   for (const employeeId of employeeIds) {
     await assertEmployeeExists(employeeId);
     if (actorEmployee?.id === employeeId) throw new Error('Cannot assign overtime to yourself');
-    await resolveSupervisorActionContext({
+    const actionContext = await resolveSupervisorActionContext({
       actorUserId: context.requestedBy,
       roles: context.roles,
       targetEmployeeId: employeeId,
     });
+    await assertSameSupervisorDepartment(employeeId, actionContext.effectiveSupervisorEmployeeId);
   }
 
   const inserted = await db.transaction(async (tx) => {
@@ -65,6 +68,7 @@ export async function createOvertimeRequests(
         targetEmployeeId: employeeId,
         tx,
       });
+      await assertSameSupervisorDepartment(employeeId, actionContext.effectiveSupervisorEmployeeId, tx);
       const attendanceDailyRecord = await findAttendanceDailyRecord(employeeId, overtimeDate, tx);
       const [request] = await tx
         .insert(overtimeRequests)
@@ -104,6 +108,49 @@ export async function createOvertimeRequests(
   });
 
   return attachAttendanceEvidence(created);
+}
+
+export async function getOvertimeAssignableEmployees(input: {
+  userId: string;
+  roles?: string[] | null;
+}) {
+  const [actorEmployee, visibleEmployeeIds, departmentIds] = await Promise.all([
+    db.query.employees.findFirst({
+      where: eq(employees.userId, input.userId),
+      columns: { id: true },
+    }),
+    getVisibleEmployeeIdsForSupervisorActor(input.userId, input.roles),
+    getSupervisorDepartmentIdsForActor(input.userId),
+  ]);
+
+  if (visibleEmployeeIds.length === 0 || departmentIds.length === 0) return [];
+
+  const result = await db.query.employees.findMany({
+    where: and(
+      inArray(employees.id, visibleEmployeeIds),
+      inArray(employees.departmentId, departmentIds),
+      actorEmployee?.id ? ne(employees.id, actorEmployee.id) : undefined,
+      eq(employees.isActive, true),
+    ),
+    with: {
+      department: true,
+      position: true,
+    },
+    orderBy: (table, { asc }) => [asc(table.employeeCode)],
+  });
+
+  const eligible = await Promise.all(result.filter(isWorkingEmployee).map(async (employee) => {
+    const actionContext = await resolveSupervisorActionContext({
+      actorUserId: input.userId,
+      roles: input.roles,
+      targetEmployeeId: employee.id,
+    });
+    return await isSameSupervisorDepartment(employee.id, actionContext.effectiveSupervisorEmployeeId)
+      ? employee
+      : null;
+  }));
+
+  return eligible.filter((employee): employee is NonNullable<typeof employee> => Boolean(employee));
 }
 
 export async function getOvertimeRequests(input: {
@@ -424,6 +471,41 @@ async function assertEmployeeExists(id: string, tx: DbClient = db) {
     columns: { id: true },
   });
   if (!found) throw new Error('Employee not found');
+}
+
+async function assertSameSupervisorDepartment(
+  employeeId: string,
+  supervisorEmployeeId: string | null,
+  tx: DbClient = db,
+) {
+  if (!supervisorEmployeeId) {
+    throw new Error('Supervisor is not linked to an employee record');
+  }
+
+  if (!await isSameSupervisorDepartment(employeeId, supervisorEmployeeId, tx)) {
+    throw new Error('Overtime can only be assigned to employees in the supervisor department');
+  }
+}
+
+async function isSameSupervisorDepartment(
+  employeeId: string,
+  supervisorEmployeeId: string | null,
+  tx: DbClient = db,
+) {
+  if (!supervisorEmployeeId) return false;
+
+  const [employee, supervisor] = await Promise.all([
+    tx.query.employees.findFirst({
+      where: eq(employees.id, employeeId),
+      columns: { departmentId: true },
+    }),
+    tx.query.employees.findFirst({
+      where: eq(employees.id, supervisorEmployeeId),
+      columns: { departmentId: true },
+    }),
+  ]);
+
+  return Boolean(employee && supervisor && employee.departmentId === supervisor.departmentId);
 }
 
 async function assertUserExists(id: string, tx: DbClient = db) {

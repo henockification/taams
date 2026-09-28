@@ -3,7 +3,6 @@ import { coreApi } from '../api/core.api';
 import type {
   AttendanceDailyRecord,
   AttendanceDailyRecordsResponse,
-  AttendanceOvertimeExceptionsResponse,
   CreateAttendancePunchInput,
   BulkUpsertLeaveBalancesInput,
   ChangeLeaveRequestStatusInput,
@@ -95,12 +94,14 @@ export const coreQueryKeys = {
   notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
   auditEvents: (params: Record<string, string>) => [...coreQueryKeys.all, 'audit-events', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
+  overtimeAssignableEmployees: () => [...coreQueryKeys.all, 'overtime-requests', 'assignable-employees'] as const,
   supervisorCandidates: () => [...coreQueryKeys.employees(), 'supervisor-candidates'] as const,
   employeesPaginated: (params: EmployeesPaginatedParams) => [...coreQueryKeys.all, 'employees', 'paginated', params] as const,
   employee: (id: string) => [...coreQueryKeys.employees(), id] as const,
   employeeSupervisors: (id: string) => [...coreQueryKeys.employee(id), 'supervisors'] as const,
   allEmployeeSupervisors: () => [...coreQueryKeys.all, 'employee-supervisors'] as const,
   supervisorDelegations: () => [...coreQueryKeys.all, 'supervisor-delegations'] as const,
+  eligibleSupervisorDelegates: () => [...coreQueryKeys.supervisorDelegations(), 'eligible-employees'] as const,
   temporaryDepartmentAssignments: () => [...coreQueryKeys.all, 'temporary-department-assignments'] as const,
   temporaryAssignmentEligibleEmployees: () => [...coreQueryKeys.temporaryDepartmentAssignments(), 'eligible-employees'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
@@ -128,7 +129,6 @@ export const coreQueryKeys = {
   ),
   manualPunchRequests: (params?: { mine?: boolean }) => [...coreQueryKeys.all, 'manual-punch-requests', params ?? {}] as const,
   overtimeRequests: (params?: { dateFrom?: string; dateTo?: string; status?: string; mine?: boolean }) => [...coreQueryKeys.all, 'overtime-requests', params ?? {}] as const,
-  overtimeExceptions: (params?: { dateFrom?: string; dateTo?: string; status?: string }) => [...coreQueryKeys.all, 'overtime-exceptions', params ?? {}] as const,
   leaveFiscalYears: () => [...coreQueryKeys.all, 'leave', 'fiscal-years'] as const,
   leaveTypes: () => [...coreQueryKeys.all, 'leave', 'types'] as const,
   leaveBalancesRoot: () => [...coreQueryKeys.all, 'leave', 'balances'] as const,
@@ -557,6 +557,15 @@ export function useWorkingEmployees(enabled = true) {
   return useEmployees(enabled, true);
 }
 
+export function useOvertimeAssignableEmployees(enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.overtimeAssignableEmployees(),
+    queryFn: () => coreApi.getOvertimeAssignableEmployees(),
+    staleTime: 60 * 1000,
+    enabled,
+  });
+}
+
 export function useSupervisorCandidates(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.supervisorCandidates(),
@@ -726,6 +735,15 @@ export function useSupervisorDelegations() {
     queryKey: coreQueryKeys.supervisorDelegations(),
     queryFn: () => coreApi.getSupervisorDelegations(),
     staleTime: 30 * 1000,
+  });
+}
+
+export function useEligibleSupervisorDelegates(enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.eligibleSupervisorDelegates(),
+    queryFn: () => coreApi.getEligibleSupervisorDelegates(),
+    staleTime: 60 * 1000,
+    enabled,
   });
 }
 
@@ -1513,20 +1531,6 @@ export function useOvertimeRequests(
     queryFn: () => coreApi.getOvertimeRequests(params),
     staleTime: 60 * 1000,
   });
-}
-
-export function useAttendanceOvertimeExceptions(params: { dateFrom?: string; dateTo?: string; status?: string } = {}) {
-  return useQuery<AttendanceOvertimeExceptionsResponse>({ queryKey: coreQueryKeys.overtimeExceptions(params), queryFn: () => coreApi.getAttendanceOvertimeExceptions(params), staleTime: 30_000 });
-}
-
-export function useDismissAttendanceOvertimeException() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: ({ id, note }: { id: string; note?: string | null }) => coreApi.dismissAttendanceOvertimeException(id, note), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.overtimeExceptions() }) });
-}
-
-export function useConvertAttendanceOvertimeException() {
-  const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (id: string) => coreApi.convertAttendanceOvertimeException(id), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.all }) });
 }
 
 export function useCreateOvertimeRequest() {

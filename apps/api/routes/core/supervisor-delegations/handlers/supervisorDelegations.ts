@@ -1,7 +1,9 @@
 import { Context } from 'hono';
 import { CreateSupervisorDelegationRequestSchema } from '../../../../schemas/core.schema';
+import type { Employee } from '../../../../types/core.types';
 import {
   createSupervisorDelegation,
+  getEligibleSupervisorDelegates,
   getManagedEmployeeIdsForSupervisorUser,
   getSupervisorDelegationsForUser,
   revokeSupervisorDelegation,
@@ -10,7 +12,7 @@ import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
-import { formatSupervisorDelegation } from '../../helpers/formatters';
+import { formatEmployee, formatSupervisorDelegation } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 
 export async function getSupervisorDelegationsHandler(c: Context) {
@@ -24,6 +26,21 @@ export async function getSupervisorDelegationsHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch supervisor delegations');
+  }
+}
+
+export async function getEligibleSupervisorDelegatesHandler(c: Context) {
+  try {
+    const session = await getRequiredSession(c);
+    await assertCanManageDelegations(session.user.id, session.user.role ?? []);
+    const employees = await getEligibleSupervisorDelegates(session.user.id);
+
+    return c.json({
+      success: true,
+      employees: employees.map((employee: Employee) => formatEmployee(employee)),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch eligible supervisor delegates');
   }
 }
 

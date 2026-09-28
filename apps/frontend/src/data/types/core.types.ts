@@ -604,13 +604,15 @@ export type AttendanceSessionEvaluation = {
   sortOrder: number;
   scheduledStartAt: string;
   scheduledEndAt: string;
+  completionAt: string;
   checkInAt: string | null;
   checkOutAt: string | null;
   checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING';
-  checkOutStatus: 'ON_TIME' | 'EARLY' | 'MISSING' | 'PENDING';
+  checkOutStatus: 'ON_TIME' | 'EARLY' | 'LATE' | 'MISSING' | 'PENDING';
   attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING';
   lateMinutes: number;
   earlyCheckoutMinutes: number;
+  lateCheckoutMinutes: number;
 };
 
 export type AttendanceDailyRecord = {
@@ -1281,26 +1283,6 @@ export type AttendancePunchResponse = {
 export type AttendanceDailyRecordsResponse = {
   success: boolean;
   attendanceDailyRecords: AttendanceDailyRecord[];
-};
-export type AttendanceOvertimeException = {
-  id: string;
-  employeeId: string;
-  attendanceDailyRecordId: string | null;
-  overtimeDate: string;
-  observedStartAt: string | null;
-  observedEndAt: string | null;
-  detectedMinutes: number;
-  status: 'REVIEW_REQUIRED' | 'DISMISSED' | 'CONVERTED';
-  reviewedBy: string | null;
-  reviewedAt: string | null;
-  reviewNote: string | null;
-  createdAt: string;
-  updatedAt: string;
-  employee?: Employee | null;
-};
-export type AttendanceOvertimeExceptionsResponse = {
-  success: boolean;
-  exceptions: AttendanceOvertimeException[];
 };
 export type AttendanceDailyRecordResponse = {
   success: boolean;

@@ -1285,6 +1285,7 @@
     "missingCheckOut": "Missing checkout",
     "lateCheckIn": "Late check-in",
     "earlyCheckOut": "Early checkout",
+    "lateCheckOut": "Late checkout",
     "totalPunches": "Punches",
     "attendanceDays": "Attendance days",
     "leaveDays": "Leave days",

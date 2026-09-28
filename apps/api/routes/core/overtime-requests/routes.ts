@@ -6,12 +6,14 @@ import {
   CreateOvertimeRequestRequestSchema,
   OvertimeRequestResponseSchema,
   OvertimeRequestsResponseSchema,
+  EmployeesResponseSchema,
 } from '../../../schemas/core.schema';
 import { openApiApp } from '../../../lib/openapi';
 import {
   changeOvertimeRequestStatusHandler,
   createOvertimeRequestHandler,
   getOvertimeRequestsHandler,
+  getOvertimeAssignableEmployeesHandler,
 } from './handlers/overtimeRequests';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
@@ -60,6 +62,19 @@ export const getOvertimeRequestsRoute = createRoute({
   },
 });
 
+export const getOvertimeAssignableEmployeesRoute = createRoute({
+  method: 'get',
+  path: '/overtime-requests/assignable-employees',
+  tags: ['Core', 'Overtime Requests'],
+  summary: 'Get Employees Eligible for Overtime Assignment',
+  responses: {
+    200: {
+      content: { 'application/json': { schema: EmployeesResponseSchema } },
+      description: 'Active employees in the supervisor department scope',
+    },
+  },
+});
+
 export const changeOvertimeRequestStatusRoute = createRoute({
   method: 'post',
   path: '/overtime-requests/{id}/status',
@@ -88,11 +103,13 @@ export const changeOvertimeRequestStatusRoute = createRoute({
 });
 
 overtimeRequestsApp.post('/overtime-requests', requirePermissionOrDelegation('overtime-requests:approve'), createOvertimeRequestHandler);
+overtimeRequestsApp.get('/overtime-requests/assignable-employees', requirePermissionOrDelegation('overtime-requests:approve'), getOvertimeAssignableEmployeesHandler);
 overtimeRequestsApp.get('/overtime-requests', requirePermission('overtime-requests:read'), getOvertimeRequestsHandler);
 overtimeRequestsApp.post('/overtime-requests/:id/status', requirePermissionOrDelegation('overtime-requests:approve'), changeOvertimeRequestStatusHandler);
 
 openApiApp
   .openapi(createOvertimeRequestRoute, createOvertimeRequestHandler as any)
+  .openapi(getOvertimeAssignableEmployeesRoute, getOvertimeAssignableEmployeesHandler as any)
   .openapi(getOvertimeRequestsRoute, getOvertimeRequestsHandler as any)
   .openapi(changeOvertimeRequestStatusRoute, changeOvertimeRequestStatusHandler as any);
 

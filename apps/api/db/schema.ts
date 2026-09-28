@@ -572,6 +572,7 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
     sortOrder: number;
     scheduledStartAt: string;
     scheduledEndAt: string;
+    completionAt: string;
     checkInAt: string | null;
     checkOutAt: string | null;
     checkInStatus: string;
@@ -579,6 +580,7 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
     attendanceStatus: string;
     lateMinutes: number;
     earlyCheckoutMinutes: number;
+    lateCheckoutMinutes: number;
   }>>().notNull().default(sql`'[]'::jsonb`),
   totalPunches: integer('total_punches').notNull().default(0),
   attendanceDays: numeric('attendance_days', { precision: 4, scale: 2 }).notNull().default('0'),

@@ -23,13 +23,15 @@ export type AttendanceSessionEvaluation = {
   sortOrder: number;
   scheduledStartAt: Date;
   scheduledEndAt: Date;
+  completionAt: Date;
   checkInAt: Date | null;
   checkOutAt: Date | null;
   checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING';
-  checkOutStatus: 'ON_TIME' | 'EARLY' | 'MISSING' | 'PENDING';
+  checkOutStatus: 'ON_TIME' | 'EARLY' | 'LATE' | 'MISSING' | 'PENDING';
   attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING';
   lateMinutes: number;
   earlyCheckoutMinutes: number;
+  lateCheckoutMinutes: number;
 };
 
 export type AttendanceScheduleEvaluation = {
@@ -46,8 +48,6 @@ export type AttendanceScheduleEvaluation = {
   sessions: AttendanceSessionEvaluation[];
   toleranceStatus: 'NONE' | 'WITHIN_TOLERANCE' | 'LATE' | 'EARLY_BREAK' | 'EARLY_DEPARTURE';
 };
-
-type Slot = { at: Date; direction: 'IN' | 'OUT' };
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -97,58 +97,21 @@ function deduplicatePunches(punches: AttendancePunchLike[]) {
   });
 }
 
-/** Align punches to schedule slots while preserving chronological order. */
-function matchPunchesToSlots(punches: AttendancePunchLike[], slots: Slot[]) {
-  const missingSlotCost = 6 * 60;
-  const unusedPunchCost = 6 * 60;
-  const rows = punches.length + 1;
-  const columns = slots.length + 1;
-  const costs = Array.from({ length: rows }, () => Array<number>(columns).fill(Number.POSITIVE_INFINITY));
-  const actions = Array.from({ length: rows }, () => Array<'MATCH' | 'SKIP_PUNCH' | 'SKIP_SLOT' | null>(columns).fill(null));
-  costs[0][0] = 0;
-
-  for (let punchIndex = 0; punchIndex < rows; punchIndex += 1) {
-    for (let slotIndex = 0; slotIndex < columns; slotIndex += 1) {
-      const current = costs[punchIndex][slotIndex];
-      if (!Number.isFinite(current)) continue;
-      if (punchIndex < punches.length && current + unusedPunchCost < costs[punchIndex + 1][slotIndex]) {
-        costs[punchIndex + 1][slotIndex] = current + unusedPunchCost;
-        actions[punchIndex + 1][slotIndex] = 'SKIP_PUNCH';
-      }
-      if (slotIndex < slots.length && current + missingSlotCost < costs[punchIndex][slotIndex + 1]) {
-        costs[punchIndex][slotIndex + 1] = current + missingSlotCost;
-        actions[punchIndex][slotIndex + 1] = 'SKIP_SLOT';
-      }
-      if (punchIndex < punches.length && slotIndex < slots.length) {
-        const direction = punchDirection(punches[punchIndex].punchType);
-        if (direction && direction !== slots[slotIndex].direction) continue;
-        const distance = Math.abs(asDate(punches[punchIndex].punchTime).getTime() - slots[slotIndex].at.getTime()) / MINUTE;
-        if (current + distance <= costs[punchIndex + 1][slotIndex + 1]) {
-          costs[punchIndex + 1][slotIndex + 1] = current + distance;
-          actions[punchIndex + 1][slotIndex + 1] = 'MATCH';
-        }
-      }
-    }
-  }
-
-  const matches = new Map<number, AttendancePunchLike>();
-  let punchIndex = punches.length;
-  let slotIndex = slots.length;
-  while (punchIndex > 0 || slotIndex > 0) {
-    const action = actions[punchIndex][slotIndex];
-    if (action === 'MATCH') {
-      matches.set(slotIndex - 1, punches[punchIndex - 1]);
-      punchIndex -= 1;
-      slotIndex -= 1;
-    } else if (action === 'SKIP_PUNCH') {
-      punchIndex -= 1;
-    } else if (action === 'SKIP_SLOT') {
-      slotIndex -= 1;
-    } else {
-      break;
-    }
-  }
-  return matches;
+function punchInWindow(
+  punches: AttendancePunchLike[],
+  direction: 'IN' | 'OUT',
+  windowStart: Date,
+  windowEnd: Date,
+  preference: 'FIRST' | 'LAST',
+) {
+  const candidates = punches.filter((punch) => {
+    const at = asDate(punch.punchTime).getTime();
+    const declaredDirection = punchDirection(punch.punchType);
+    return at >= windowStart.getTime()
+      && at < windowEnd.getTime()
+      && (!declaredDirection || declaredDirection === direction);
+  });
+  return preference === 'FIRST' ? candidates[0] ?? null : candidates.at(-1) ?? null;
 }
 
 /** Evaluate every configured schedule segment as an independent attendance session. */
@@ -187,27 +150,41 @@ export function evaluateAttendancePunches(
     while (end.getTime() <= start.getTime()) end = new Date(end.getTime() + DAY);
     scheduled.push({ segment, start, end });
   }
-  const slots = scheduled.flatMap((item): Slot[] => [
-    { at: item.start, direction: 'IN' },
-    { at: item.end, direction: 'OUT' },
-  ]);
-  const matches = matchPunchesToSlots(ordered, slots);
   const grace = Math.max(0, Number(shift.gracePeriodMinutes ?? 0));
   const lateAfter = Math.max(0, Number(shift.lateAfterMinutes ?? 0));
   const departureTolerance = Math.max(0, Number(shift.earlyOutBeforeMinutes ?? 0));
   const asOf = options.asOf ?? new Date();
 
   const sessions: AttendanceSessionEvaluation[] = scheduled.map(({ segment, start, end }, index) => {
-    const checkInAt = matches.get(index * 2) ? asDate(matches.get(index * 2)!.punchTime) : null;
-    const checkOutAt = matches.get(index * 2 + 1) ? asDate(matches.get(index * 2 + 1)!.punchTime) : null;
-    const completed = asOf.getTime() >= end.getTime();
-    const lateThreshold = start.getTime() + (grace + lateAfter) * MINUTE;
-    const earlyThreshold = end.getTime() - departureTolerance * MINUTE;
+    const next = scheduled[index + 1];
+    // Session windows are intentionally non-overlapping. UNKNOWN punches in
+    // the check-in window remain check-ins (the earliest wins), so a repeated
+    // 09:24 punch cannot become a 12:30 checkout. The configured tolerances
+    // define the approved early-arrival and checkout boundary windows.
+    const checkInWindowStart = new Date(start.getTime() - (index === 0 ? grace : departureTolerance) * MINUTE);
+    const checkOutWindowStart = new Date(end.getTime() - departureTolerance * MINUTE);
+    const checkInWindowEnd = checkOutWindowStart.getTime() > checkInWindowStart.getTime()
+      ? checkOutWindowStart
+      : new Date(start.getTime() + Math.max(MINUTE, (end.getTime() - start.getTime()) / 2));
+    const checkOutWindowEnd = next
+      ? new Date(next.start.getTime() - departureTolerance * MINUTE)
+      : new Date(end.getTime() + DAY);
+    const completionAt = next ? checkOutWindowEnd : new Date(end.getTime() + departureTolerance * MINUTE);
+    const checkInPunch = punchInWindow(ordered, 'IN', checkInWindowStart, checkInWindowEnd, 'FIRST');
+    const checkOutPunch = punchInWindow(ordered, 'OUT', checkOutWindowStart, checkOutWindowEnd, 'LAST');
+    const checkInAt = checkInPunch ? asDate(checkInPunch.punchTime) : null;
+    const checkOutAt = checkOutPunch ? asDate(checkOutPunch.punchTime) : null;
+    const completed = asOf.getTime() >= completionAt.getTime();
+    const lateThreshold = start.getTime() + lateAfter * MINUTE;
+    const approvedCheckoutEnd = end.getTime() + departureTolerance * MINUTE;
     const lateMinutes = checkInAt && checkInAt.getTime() > lateThreshold
       ? Math.max(0, Math.floor((checkInAt.getTime() - start.getTime()) / MINUTE))
       : 0;
-    const earlyCheckoutMinutes = checkOutAt && checkOutAt.getTime() < earlyThreshold
+    const earlyCheckoutMinutes = checkOutAt && checkOutAt.getTime() < end.getTime()
       ? Math.max(0, Math.floor((end.getTime() - checkOutAt.getTime()) / MINUTE))
+      : 0;
+    const lateCheckoutMinutes = checkOutAt && checkOutAt.getTime() > approvedCheckoutEnd
+      ? Math.max(0, Math.floor((checkOutAt.getTime() - approvedCheckoutEnd) / MINUTE))
       : 0;
 
     return {
@@ -216,13 +193,21 @@ export function evaluateAttendancePunches(
       sortOrder: segment.sortOrder ?? index + 1,
       scheduledStartAt: start,
       scheduledEndAt: end,
+      completionAt,
       checkInAt,
       checkOutAt,
       checkInStatus: checkInAt ? (lateMinutes > 0 ? 'LATE' : 'ON_TIME') : completed ? 'MISSING' : 'PENDING',
-      checkOutStatus: checkOutAt ? (earlyCheckoutMinutes > 0 ? 'EARLY' : completed ? 'ON_TIME' : 'PENDING') : completed ? 'MISSING' : 'PENDING',
+      checkOutStatus: checkOutAt
+        ? earlyCheckoutMinutes > 0
+          ? 'EARLY'
+          : lateCheckoutMinutes > 0
+            ? 'LATE'
+            : 'ON_TIME'
+        : completed ? 'MISSING' : 'PENDING',
       attendanceStatus: checkInAt && checkOutAt ? 'PRESENT' : completed ? 'ABSENT' : 'PENDING',
       lateMinutes,
       earlyCheckoutMinutes,
+      lateCheckoutMinutes,
     };
   });
 
@@ -235,22 +220,18 @@ export function evaluateAttendancePunches(
   const earlyBreakMinutes = sessions.slice(0, -1).reduce((total, session) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes : 0), 0);
   const finalSession = sessions.at(-1);
   const earlyDepartureMinutes = finalSession?.checkOutStatus === 'EARLY' ? finalSession.earlyCheckoutMinutes : 0;
-  const latestPunch = ordered.at(-1) ? asDate(ordered.at(-1)!.punchTime) : null;
-  const unapprovedOvertimeMinutes = latestPunch && latestPunch.getTime() > scheduledEndAt.getTime() + departureTolerance * MINUTE
-    ? Math.floor((latestPunch.getTime() - scheduledEndAt.getTime()) / MINUTE)
-    : 0;
   const attendanceDays = sessions.filter((session) => session.attendanceStatus === 'PRESENT').length / sessions.length;
 
   return {
     checkInAt: firstCheckIn,
-    checkOutAt: !lastCheckOut ? null : lastCheckOut.getTime() <= scheduledEndAt.getTime() + departureTolerance * MINUTE ? lastCheckOut : scheduledEndAt,
+    checkOutAt: lastCheckOut,
     scheduledStartAt,
     scheduledEndAt,
     lateMinutes,
     lateReturnMinutes,
     earlyBreakMinutes,
     earlyDepartureMinutes,
-    unapprovedOvertimeMinutes,
+    unapprovedOvertimeMinutes: 0,
     attendanceDays,
     sessions,
     toleranceStatus: lateMinutes > 0 || lateReturnMinutes > 0

@@ -21,7 +21,7 @@ import { DelegationAuditBadge, DelegationBanner, delegatedActionLabel } from '@/
 import {
   useChangeOvertimeRequestStatus,
   useCreateOvertimeRequest,
-  useEmployees,
+  useOvertimeAssignableEmployees,
   useOvertimeRequests,
 } from '@/data/hooks/core.hooks';
 import type {
@@ -62,7 +62,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
   const overtimeRequests = useOvertimeRequests({ dateFrom, dateTo, status, mine: !isSupervisor });
   const createOvertimeRequest = useCreateOvertimeRequest();
   const changeOvertimeRequestStatus = useChangeOvertimeRequestStatus();
-  const employeesQuery = useEmployees(isSupervisor);
+  const employeesQuery = useOvertimeAssignableEmployees(isSupervisor && assignOpen);
   const session = useSession();
 
   const employees = employeesQuery.data?.employees ?? [];
@@ -248,7 +248,13 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                     onValueChange={(employeeIds) => setForm((current) => ({ ...current, employeeIds }))}
                     placeholder={t('selectEmployees')}
                     modalPopover
+                    disabled={employeesQuery.isLoading || Boolean(employeesQuery.error)}
                   />
+                  {employeesQuery.isLoading ? <p className="text-sm text-muted-foreground">{common('loading')}</p> : null}
+                  {employeesQuery.error ? <p className="text-sm text-destructive">{employeesQuery.error.message}</p> : null}
+                  {!employeesQuery.isLoading && !employeesQuery.error && assignableEmployees.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t('noMatchingEmployees')}</p>
+                  ) : null}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label={t('date')} type="date" value={form.overtimeDate} onChange={(value) => setForm((current) => ({ ...current, overtimeDate: value }))} />

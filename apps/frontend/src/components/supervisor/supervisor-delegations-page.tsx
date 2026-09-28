@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/table';
 import {
   useCreateSupervisorDelegation,
-  useEmployees,
+  useEligibleSupervisorDelegates,
   useRevokeSupervisorDelegation,
   useSupervisorDelegations,
 } from '@/data/hooks/core.hooks';
@@ -68,20 +68,19 @@ export function SupervisorDelegationsPage() {
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
   const session = useSession();
-  const employees = useEmployees();
   const delegations = useSupervisorDelegations();
   const createDelegation = useCreateSupervisorDelegation();
   const revokeDelegation = useRevokeSupervisorDelegation();
   const [form, setForm] = useState<DelegationFormState>(() => initialForm());
   const [createOpen, setCreateOpen] = useState(false);
+  const eligibleDelegates = useEligibleSupervisorDelegates(createOpen);
 
   const supervisorDelegations = delegations.data?.supervisorDelegations ?? [];
   const currentUserId = session.data?.user?.id as string | undefined;
   const delegateOptions = useMemo(() => {
-    return (employees.data?.employees ?? [])
-      .filter((employee) => employee.isActive && employee.userId && employee.userId !== currentUserId)
+    return (eligibleDelegates.data?.employees ?? [])
       .sort((a, b) => employeeName(a).localeCompare(employeeName(b)));
-  }, [employees.data?.employees, currentUserId]);
+  }, [eligibleDelegates.data?.employees]);
   const activeDelegation = supervisorDelegations.find(isCurrentOrFutureDelegation);
   const now = Date.now();
 
@@ -254,7 +253,13 @@ export function SupervisorDelegationsPage() {
                 placeholder="Select an active employee with a user account"
                 searchPlaceholder="Search employees..."
                 emptyMessage="No matching employee found."
+                disabled={eligibleDelegates.isLoading || Boolean(eligibleDelegates.error)}
               />
+              {eligibleDelegates.isLoading ? <p className="text-sm text-muted-foreground">{common('loading')}</p> : null}
+              {eligibleDelegates.error ? <p className="text-sm text-destructive">{eligibleDelegates.error.message}</p> : null}
+              {!eligibleDelegates.isLoading && !eligibleDelegates.error && delegateOptions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No eligible employees in your department.</p>
+              ) : null}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -319,6 +324,7 @@ function SearchableEmployeeSelect({
   placeholder,
   searchPlaceholder,
   emptyMessage,
+  disabled = false,
 }: {
   id: string;
   value: string;
@@ -327,6 +333,7 @@ function SearchableEmployeeSelect({
   placeholder: string;
   searchPlaceholder: string;
   emptyMessage: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const selectedEmployee = employees.find((employee) => employee.id === value);
@@ -340,6 +347,7 @@ function SearchableEmployeeSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className="h-10 w-full justify-between font-normal"
         >
           <span className="truncate">

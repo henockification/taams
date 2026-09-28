@@ -408,24 +408,6 @@ export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
 export type AttendanceDailyRecordStatus = 'PENDING_SUPERVISOR' | 'RETURNED' | 'SUPERVISOR_APPROVED' | 'HR_APPROVED';
-export type AttendanceOvertimeExceptionStatus = 'REVIEW_REQUIRED' | 'DISMISSED' | 'CONVERTED';
-export type AttendanceOvertimeException = {
-  id: string;
-  employeeId: string;
-  attendanceDailyRecordId: string | null;
-  overtimeDate: string;
-  observedStartAt: string | null;
-  observedEndAt: string | null;
-  detectedMinutes: number;
-  status: AttendanceOvertimeExceptionStatus;
-  reviewedBy: string | null;
-  reviewedAt: string | null;
-  reviewNote: string | null;
-  createdAt: string;
-  updatedAt: string;
-  employee?: Employee | null;
-};
-
 export type BiometricDevice = {
   id: string;
   deviceName: string;
@@ -556,13 +538,15 @@ export type AttendanceSessionEvaluation = {
   sortOrder: number;
   scheduledStartAt: string;
   scheduledEndAt: string;
+  completionAt: string;
   checkInAt: string | null;
   checkOutAt: string | null;
   checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING';
-  checkOutStatus: 'ON_TIME' | 'EARLY' | 'MISSING' | 'PENDING';
+  checkOutStatus: 'ON_TIME' | 'EARLY' | 'LATE' | 'MISSING' | 'PENDING';
   attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING';
   lateMinutes: number;
   earlyCheckoutMinutes: number;
+  lateCheckoutMinutes: number;
 };
 
 export type AttendanceDailyRecord = {
