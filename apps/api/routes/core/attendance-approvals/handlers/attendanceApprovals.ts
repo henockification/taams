@@ -3,6 +3,7 @@ import {
   generateAttendanceDailyRecords,
   generateAttendanceDailyRecordsInRange,
   getHrAttendanceDailyRecords,
+  getMyAttendanceDailyRecords,
   getSupervisorAttendanceDailyRecords,
   hrApproveAttendanceDailyRecords,
   returnAttendanceDailyRecord,
@@ -20,6 +21,25 @@ import {
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatAttendanceDailyRecord } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
+
+export async function getMyAttendanceDailyRecordsHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const records = await getMyAttendanceDailyRecords({
+      userId: session.user.id,
+      date: c.req.query('date'),
+      dateFrom: c.req.query('dateFrom'),
+      dateTo: c.req.query('dateTo'),
+    });
+
+    return c.json({
+      success: true,
+      attendanceDailyRecords: records.map(formatAttendanceDailyRecord),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch your attendance');
+  }
+}
 
 export async function generateAttendanceDailyRecordsHandler(c: Context) {
   try {

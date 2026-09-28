@@ -1,6 +1,12 @@
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { employeeSupervisors, employees, supervisorDelegations, user } from '../../schema';
+import {
+  employeeSupervisors,
+  employees,
+  supervisorDelegations,
+  temporaryDepartmentAssignments,
+  user,
+} from '../../schema';
 import { getUserRoleNames } from '../rbac/manageRbac';
 import { effectivePrimaryEmployeeIds } from './leaveVisibility';
 import { formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
@@ -29,9 +35,21 @@ export async function getEligibleSupervisorDelegates(userId: string, tx: DbClien
   const supervisor = await getEmployeeByUserId(userId, tx);
   if (!supervisor?.departmentId) return [];
 
+  const referenceDate = today();
+  const temporaryDepartments = await getActiveTemporaryDepartmentMap(referenceDate, tx);
+  const supervisorDepartmentId = temporaryDepartments.get(supervisor.id) ?? supervisor.departmentId;
+  const employeesTemporarilyInDepartment = [...temporaryDepartments.entries()]
+    .filter(([, targetDepartmentId]) => targetDepartmentId === supervisorDepartmentId)
+    .map(([employeeId]) => employeeId);
+
   const candidates = await tx.query.employees.findMany({
     where: and(
-      eq(employees.departmentId, supervisor.departmentId),
+      employeesTemporarilyInDepartment.length > 0
+        ? or(
+          eq(employees.departmentId, supervisorDepartmentId),
+          inArray(employees.id, employeesTemporarilyInDepartment),
+        )
+        : eq(employees.departmentId, supervisorDepartmentId),
       ne(employees.id, supervisor.id),
       isNotNull(employees.userId),
       eq(employees.isActive, true),
@@ -40,7 +58,10 @@ export async function getEligibleSupervisorDelegates(userId: string, tx: DbClien
     orderBy: (table: any, { asc }: any) => [asc(table.employeeCode)],
   });
 
-  return candidates.filter(isWorkingEmployee);
+  return candidates.filter((candidate: any) => (
+    isWorkingEmployee(candidate)
+    && (temporaryDepartments.get(candidate.id) ?? candidate.departmentId) === supervisorDepartmentId
+  ));
 }
 
 export async function getActiveDelegatedSupervisorCapabilities(userId: string, tx: DbClient = db) {
@@ -86,8 +107,11 @@ export async function createSupervisorDelegation(input: {
   if (delegate.userId === input.supervisorUserId || delegate.id === supervisor.id) {
     throw new Error('A supervisor cannot delegate to themselves');
   }
-  if (delegate.departmentId !== supervisor.departmentId) {
-    throw new Error('A supervisor can only delegate to an employee in the same department');
+  const temporaryDepartments = await getActiveTemporaryDepartmentMap(today(), tx, [supervisor.id, delegate.id]);
+  const supervisorDepartmentId = temporaryDepartments.get(supervisor.id) ?? supervisor.departmentId;
+  const delegateDepartmentId = temporaryDepartments.get(delegate.id) ?? delegate.departmentId;
+  if (delegateDepartmentId !== supervisorDepartmentId) {
+    throw new Error('A supervisor can only delegate to an employee in the same effective department');
   }
 
   return tx.transaction(async (innerTx: DbClient) => {
@@ -407,6 +431,33 @@ async function getEmployeeByUserId(userId: string, tx: DbClient = db) {
     where: eq(employees.userId, userId),
     columns: { id: true, departmentId: true, userId: true, isActive: true },
   });
+}
+
+async function getActiveTemporaryDepartmentMap(
+  referenceDate: string,
+  tx: DbClient = db,
+  employeeIds?: string[],
+) {
+  if (employeeIds?.length === 0) return new Map<string, string>();
+
+  const assignments = await tx.query.temporaryDepartmentAssignments.findMany({
+    where: and(
+      eq(temporaryDepartmentAssignments.isActive, true),
+      lte(temporaryDepartmentAssignments.effectiveFrom, referenceDate),
+      gte(temporaryDepartmentAssignments.effectiveTo, referenceDate),
+      employeeIds ? inArray(temporaryDepartmentAssignments.employeeId, employeeIds) : undefined,
+    ),
+    columns: { employeeId: true, targetDepartmentId: true },
+    orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom), desc(table.createdAt)],
+  });
+
+  const effectiveDepartments = new Map<string, string>();
+  for (const assignment of assignments) {
+    if (!effectiveDepartments.has(assignment.employeeId)) {
+      effectiveDepartments.set(assignment.employeeId, assignment.targetDepartmentId);
+    }
+  }
+  return effectiveDepartments;
 }
 
 async function resolveUserRoles(userId: string, tx: DbClient = db) {

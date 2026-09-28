@@ -58,13 +58,24 @@ const initialRequestForm = {
   supportingDocumentSize: 0,
 };
 
-export function ManualPunchRequestsPage({ mode }: { mode: 'employee' | 'supervisor' }) {
+export function ManualPunchRequestsPage({
+  mode,
+  initialCorrection,
+}: {
+  mode: 'employee' | 'supervisor';
+  initialCorrection?: { date?: string; requestedPunchTime?: string; punchType?: PunchType; open?: boolean };
+}) {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
+  const [dialogOpen, setDialogOpen] = useState(Boolean(!isSupervisor && initialCorrection?.open));
+  const [form, setForm] = useState({
+    ...initialRequestForm,
+    requestedPunchTime: initialCorrection?.requestedPunchTime
+      ?? (initialCorrection?.date ? `${initialCorrection.date}T08:00` : toDateTimeLocal()),
+    requestedPunchType: initialCorrection?.punchType ?? initialRequestForm.requestedPunchType,
+  });
 
   const manualRequests = useManualPunchRequests({ mine: !isSupervisor });
   const createManualRequest = useCreateManualPunchRequest();

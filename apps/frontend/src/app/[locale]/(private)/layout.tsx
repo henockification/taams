@@ -134,6 +134,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('overtimeAssignmentsDescription');
       case 'overtimeRequests':
         return coreT('myOvertimeAssignmentsDescription');
+      case 'myAttendance':
+        return coreT('myAttendanceDescription');
       case 'annualLeaveRequests':
         return coreT('annualLeaveRequestsDescription');
       case 'otherLeaveRequests':

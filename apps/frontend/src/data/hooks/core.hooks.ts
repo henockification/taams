@@ -117,6 +117,9 @@ export const coreQueryKeys = {
   attendancePunchesPaginated: (params: { page: number; pageSize: number; employeeId: string; deviceId: string; status: string; dateFrom: string; dateTo: string; timeFrom: string; timeTo: string }) => [...coreQueryKeys.attendancePunches(), 'paginated', params] as const,
   employeeAttendancePunches: (id: string) => [...coreQueryKeys.attendancePunches(), 'employee', id] as const,
   unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
+  myAttendanceDailyRecords: (range: { dateFrom: string; dateTo: string }) => (
+    [...coreQueryKeys.all, 'attendance', 'my', range.dateFrom, range.dateTo] as const
+  ),
   supervisorAttendanceDailyRecords: (range?: { dateFrom: string; dateTo: string }) => (
     range
       ? [...coreQueryKeys.all, 'attendance-approvals', 'supervisor', range.dateFrom, range.dateTo] as const
@@ -1275,6 +1278,17 @@ export function useSupervisorAttendanceDailyRecords(range: { dateFrom: string; d
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
     refetchInterval: range.dateFrom === today && range.dateTo === today ? 60 * 1000 : false,
+  });
+}
+
+export function useMyAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  return useQuery({
+    queryKey: coreQueryKeys.myAttendanceDailyRecords(range),
+    queryFn: () => coreApi.getMyAttendanceDailyRecords(range),
+    enabled: enabled && Boolean(range.dateFrom && range.dateTo),
+    staleTime: 60 * 1000,
+    refetchInterval: range.dateFrom <= today && range.dateTo >= today ? 60 * 1000 : false,
   });
 }
 

@@ -14,6 +14,7 @@ import { openApiApp } from '../../../lib/openapi';
 import {
   generateAttendanceDailyRecordsHandler,
   getHrAttendanceDailyRecordsHandler,
+  getMyAttendanceDailyRecordsHandler,
   getSupervisorAttendanceDailyRecordsHandler,
   hrApproveAttendanceDailyRecordsHandler,
   hrApproveAttendanceDailyRecordHandler,
@@ -63,6 +64,20 @@ export const getSupervisorAttendanceDailyRecordsRoute = createRoute({
     200: {
       content: { 'application/json': { schema: AttendanceDailyRecordsResponseSchema } },
       description: 'Supervisor attendance approvals',
+    },
+  },
+});
+
+export const getMyAttendanceDailyRecordsRoute = createRoute({
+  method: 'get',
+  path: '/attendance/my',
+  tags: ['Core', 'Attendance'],
+  summary: 'Get My Attendance',
+  request: { query: dateRangeQuery },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: AttendanceDailyRecordsResponseSchema } },
+      description: 'Attendance records for the authenticated employee',
     },
   },
 });
@@ -182,6 +197,7 @@ export const returnAttendanceDailyRecordRoute = createRoute({
 });
 
 attendanceApprovalsApp.post('/attendance-approvals/generate', requirePermissionOrDelegation('attendance-approvals:approve', 'hr-attendance-approvals:approve'), generateAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.get('/attendance/my', getMyAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/ismis-leave', requirePermission('hr-attendance-approvals:approve'), async (c) => c.json({ success: true, batch: await getLatestIsmisLeaveImport() }));
 attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/import', requirePermission('hr-attendance-approvals:approve'), async (c) => {
   try {
@@ -212,6 +228,7 @@ attendanceApprovalsApp.post('/attendance-approvals/:id/return', requirePermissio
 
 openApiApp
   .openapi(generateAttendanceDailyRecordsRoute, generateAttendanceDailyRecordsHandler as any)
+  .openapi(getMyAttendanceDailyRecordsRoute, getMyAttendanceDailyRecordsHandler as any)
   .openapi(getSupervisorAttendanceDailyRecordsRoute, getSupervisorAttendanceDailyRecordsHandler as any)
   .openapi(getHrAttendanceDailyRecordsRoute, getHrAttendanceDailyRecordsHandler as any)
   .openapi(supervisorApproveAttendanceDailyRecordsRoute, supervisorApproveAttendanceDailyRecordsHandler as any)

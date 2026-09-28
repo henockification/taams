@@ -347,6 +347,31 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
   return records.filter((record) => visibilityByDate.get(record.attendanceDate)?.has(record.employeeId));
 }
 
+export async function getMyAttendanceDailyRecords(input: {
+  userId: string;
+  date?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}) {
+  const employee = await db.query.employees.findFirst({
+    where: eq(employees.userId, input.userId),
+    columns: { id: true },
+  });
+  if (!employee) throw new Error('No employee profile is linked to this user');
+
+  const range = resolveAttendanceDateRange(input);
+  const records = await db.query.attendanceDailyRecords.findMany({
+    where: and(
+      eq(attendanceDailyRecords.employeeId, employee.id),
+      attendanceDateFilter(range.dateFrom, range.dateTo),
+    ),
+    with: recordRelations,
+    orderBy: (table, { desc }) => [desc(table.attendanceDate), desc(table.checkInAt)],
+  });
+
+  return attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
+}
+
 export async function refreshAttendanceForAuthorizedLeave(request: any) {
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(

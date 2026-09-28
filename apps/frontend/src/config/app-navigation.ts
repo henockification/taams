@@ -63,6 +63,7 @@ export type AppNavItem = {
     | 'hrAttendanceApproval'
     | 'manualPunchRequests'
     | 'attendanceCorrectionApprovals'
+    | 'myAttendance'
     | 'overtimeRequests'
     | 'overtimeAssignments'
     | 'annualLeaveRequests'
@@ -298,6 +299,13 @@ export const appNavGroups: AppNavGroup[] = [
     labelKey: 'employeeServices',
     icon: Users,
     items: [
+      {
+        titleKey: 'myAttendance',
+        url: '/my-attendance',
+        permissionResource: 'attendance',
+        requiredPermission: 'attendance:read',
+        icon: Clock3,
+      },
       {
         titleKey: 'annualLeaveRequests',
         url: '/annual-leave-requests',
@@ -573,6 +581,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
       (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'manual-punch-requests:approve'))
     );
   if (
+    item.url === '/my-attendance' ||
     item.url === '/overtime-requests' ||
     item.url === '/attendance-corrections'
   )
@@ -711,6 +720,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/annual-leave-requests' || pathname.startsWith('/annual-leave-requests/')) return hasContractEmployee(user);
   if (pathname === '/other-leave-requests' || pathname.startsWith('/other-leave-requests/')) return hasContractEmployee(user);
   if (pathname === '/overtime-requests') return Boolean(user);
+  if (pathname === '/my-attendance' || pathname.startsWith('/my-attendance/')) return Boolean(user);
   if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
   if (pathname === '/manual-punch-requests' || pathname.startsWith('/manual-punch-requests/')) return Boolean(user);
   if (pathname === '/profile') return Boolean(user);

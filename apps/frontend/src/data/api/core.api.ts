@@ -530,6 +530,15 @@ export const coreApi = {
   },
   getEmployeeAttendancePunches: (employeeId: string) => coreFetch<AttendancePunchesResponse>(`/attendance-punches/employee/${employeeId}`),
   getUnprocessedAttendancePunches: () => coreFetch<AttendancePunchesResponse>('/attendance-punches/unprocessed'),
+  getMyAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
+    const query = new URLSearchParams();
+    if (params.date) query.set('date', params.date);
+    if (params.dateFrom) query.set('dateFrom', params.dateFrom);
+    if (params.dateTo) query.set('dateTo', params.dateTo);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+
+    return coreFetch<AttendanceDailyRecordsResponse>(`/attendance/my${suffix}`);
+  },
   getSupervisorAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
