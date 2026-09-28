@@ -589,6 +589,7 @@ export const attendanceDailyRecords = pgTable('attendance_daily_records', {
   holidayDays: numeric('holiday_days', { precision: 4, scale: 2 }).notNull().default('0'),
   isHoliday: boolean('is_holiday').notNull().default(false),
   isOffDay: boolean('is_off_day').notNull().default(false),
+  calculationVersion: integer('calculation_version').notNull().default(0),
   payableDays: numeric('payable_days', { precision: 4, scale: 2 }).notNull().default('0'),
   absenceDays: numeric('absence_days', { precision: 4, scale: 2 }).notNull().default('1'),
   overtimeMinutes: integer('overtime_minutes').notNull().default(0),

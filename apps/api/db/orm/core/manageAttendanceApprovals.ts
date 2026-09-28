@@ -22,7 +22,7 @@ import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
-import { addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
+import { ATTENDANCE_CALCULATION_VERSION, addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import {
   getVisibleEmployeeIdsByDateForSupervisorActor,
   getVisibleEmployeeIdsForSupervisorActor,
@@ -234,6 +234,7 @@ export async function generateAttendanceDailyRecords(
       holidayDays: formatDayValue(isOffDay ? 1 : holidayDays),
       isHoliday: Boolean(activeHoliday),
       isOffDay,
+      calculationVersion: ATTENDANCE_CALCULATION_VERSION,
       payableDays: formatDayValue(payroll.payableDays),
       absenceDays: formatDayValue(payroll.absenceDays),
       isBiometricExempt,
@@ -274,6 +275,7 @@ export async function generateAttendanceDailyRecords(
           holidayDays: sql.raw('excluded."holiday_days"'),
           isHoliday: sql.raw('excluded."is_holiday"'),
           isOffDay: sql.raw('excluded."is_off_day"'),
+          calculationVersion: sql.raw('excluded."calculation_version"'),
           payableDays: sql.raw('excluded."payable_days"'),
           absenceDays: sql.raw('excluded."absence_days"'),
           isBiometricExempt: sql.raw('excluded."is_biometric_exempt"'),
@@ -322,10 +324,30 @@ export async function generateAttendanceDailyRecordsInRange(dateFrom?: string | 
   return generated;
 }
 
+/**
+ * Recalculate open records in the range that were produced by older attendance
+ * rules. Only dates that still hold such records are regenerated, so after the
+ * first load following a rules change, listing stays a plain read.
+ */
+async function recalculateOutdatedAttendance(range: { dateFrom: string; dateTo: string }, employeeId?: string) {
+  const outdated = await db
+    .selectDistinct({ attendanceDate: attendanceDailyRecords.attendanceDate })
+    .from(attendanceDailyRecords)
+    .where(and(
+      attendanceDateFilter(range.dateFrom, clipDateToToday(range.dateTo)),
+      inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
+      sql`${attendanceDailyRecords.calculationVersion} < ${ATTENDANCE_CALCULATION_VERSION}`,
+      employeeId ? eq(attendanceDailyRecords.employeeId, employeeId) : undefined,
+    ));
+  for (const { attendanceDate } of outdated) {
+    await generateAttendanceDailyRecords(String(attendanceDate));
+  }
+}
+
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
   const range = resolveAttendanceDateRange(input);
-  // Listing approvals must remain read-only. Record generation is intentionally
-  // handled by the explicit refresh endpoint and scheduled ingestion workflows.
+  // Listing does not regenerate records, except those calculated by older rules.
+  await recalculateOutdatedAttendance(range);
 
   const referenceDate = clipDateToToday(range.dateTo);
   const dateFilter = attendanceDateFilter(range.dateFrom, range.dateTo);
@@ -384,6 +406,7 @@ export async function getMyAttendanceDailyRecords(input: {
   if (!employee) throw new Error('No employee profile is linked to this user');
 
   const range = resolveAttendanceDateRange(input);
+  await recalculateOutdatedAttendance(range, employee.id);
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       eq(attendanceDailyRecords.employeeId, employee.id),

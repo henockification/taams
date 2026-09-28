@@ -49,6 +49,14 @@ export type AttendanceScheduleEvaluation = {
   toleranceStatus: 'NONE' | 'WITHIN_TOLERANCE' | 'LATE' | 'EARLY_BREAK' | 'EARLY_DEPARTURE';
 };
 
+/**
+ * Version of the attendance rules used to calculate stored daily records.
+ * Bump it whenever the evaluation rules change: records calculated by an older
+ * version are recalculated the next time they are listed, so no page keeps
+ * showing results from rules that no longer apply.
+ */
+export const ATTENDANCE_CALCULATION_VERSION = 2;
+
 const MINUTE = 60_000;
 // An undeclared punch this long after the check-in means the employee left
 // (early checkout); anything sooner is treated as an accidental duplicate.

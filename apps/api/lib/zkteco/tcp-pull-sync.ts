@@ -14,7 +14,7 @@ import {
 } from "../../db/orm/core/manageBiometricDevices";
 import type { DeviceIntegrationMode, PunchType, SyncStatus } from "../../types/core.types";
 
-export const ATTENDANCE_SYNC_VERSION = "device-biometric-time-deduplication-v1";
+export const ATTENDANCE_SYNC_VERSION = "changed-punch-days-only-v2";
 
 type PullBiometricDevice = {
   id: string;
@@ -98,11 +98,14 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
             where: or(eq(employees.biometricId, parsed.biometricId), eq(employees.employeeCode, parsed.biometricId)),
             columns: { id: true },
           });
-          if (employee) {
+          // Devices return their whole log on every pull, so only days where a
+          // punch was actually imported or changed are regenerated below.
+          const markAffected = () => {
+            if (!employee) return;
             affectedAttendanceDates.add(new Intl.DateTimeFormat('en-CA', {
               timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit',
             }).format(parsed.punchTime));
-          }
+          };
 
           let alreadyImported = await findExistingDeviceAttendancePunch(
             device.id, parsed.biometricId, parsed.punchTime, parsed.externalUid, parsed.devicePunchId,
@@ -125,6 +128,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
 
             if (created) {
               successfulRecords += 1;
+              markAffected();
               continue;
             }
             // Another importer may have saved this punch after our initial lookup.
@@ -137,6 +141,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
           if (alreadyImported.devicePunchId && parsed.devicePunchId && alreadyImported.devicePunchId === parsed.devicePunchId
             && new Date(alreadyImported.punchTime).getTime() !== parsed.punchTime.getTime()) {
             await db.update(attendancePunches).set({ punchTime: parsed.punchTime, externalUid: parsed.externalUid } as any).where(eq(attendancePunches.id, alreadyImported.id));
+            markAffected();
           }
 
           if (!alreadyImported.employeeId && employee) {
@@ -144,6 +149,7 @@ export async function pullZktecoAttendanceForDevice(device: PullBiometricDevice)
               .update(attendancePunches)
               .set({ employeeId: employee.id } as any)
               .where(and(eq(attendancePunches.id, alreadyImported.id), isNull(attendancePunches.employeeId)));
+            markAffected();
           }
         } catch (error) {
           failedRecords += 1;
