@@ -56,6 +56,7 @@ import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import {
   AttendanceSessions,
+  ExceptionMinutes,
   materializeAttendanceSession,
   summarizeAttendanceExceptions,
   totalLateMinutes,
@@ -120,20 +121,27 @@ function employeeName(employee?: Employee | null) {
   return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
-export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode }) {
+export function AttendanceApprovalsPage({
+  mode,
+  initialFilters,
+}: {
+  mode: AttendanceApprovalMode;
+  initialFilters?: { date?: string; approval?: ApprovalFilter; search?: string };
+}) {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const { formatDate, formatDateTime } = useCalendarPreference();
-  const [dateFilter, setDateFilter] = useState<DateFilter>('TODAY');
-  const [customDateFilters, setCustomDateFilters] = useState({ fromDate: today(), toDate: today() });
+  const initialDate = initialFilters?.date && initialFilters.date !== today() ? initialFilters.date : null;
+  const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : 'TODAY');
+  const [customDateFilters, setCustomDateFilters] = useState({ fromDate: initialDate ?? today(), toDate: initialDate ?? today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [historyRecord, setHistoryRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
-  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState(initialFilters?.search ?? '');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [typeFilter, setTypeFilter] = useState<EmploymentType | typeof allEmploymentTypesValue>(allEmploymentTypesValue);
   const hasEmploymentType = typeFilter !== allEmploymentTypesValue;
-  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>('all');
+  const [approvalFilter, setApprovalFilter] = useState<ApprovalFilter>(initialFilters?.approval ?? 'all');
   const [selectedRecordIds, setSelectedRecordIds] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(defaultPageSize);
@@ -549,11 +557,11 @@ export function AttendanceApprovalsPage({ mode }: { mode: AttendanceApprovalMode
                       <TableCell className="min-w-[28rem]">
                         <AttendanceSessions record={record} formatDateTime={formatDateTime} t={t} />
                       </TableCell>
-                      <TableCell className={totalLateMinutes(record) > 0 ? 'font-medium text-amber-600' : undefined}>
-                        {totalLateMinutes(record)} min
+                      <TableCell>
+                        <ExceptionMinutes record={record} minutes={totalLateMinutes(record)} />
                       </TableCell>
-                      <TableCell className={(record.earlyDepartureMinutes ?? 0) > 0 ? 'font-medium text-amber-600' : undefined}>
-                        {record.earlyDepartureMinutes ?? 0} min
+                      <TableCell>
+                        <ExceptionMinutes record={record} minutes={record.earlyDepartureMinutes ?? 0} />
                       </TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
                       {isHrMode ? <TableCell>{record.leaveDays}</TableCell> : null}

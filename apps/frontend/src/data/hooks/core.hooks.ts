@@ -1288,7 +1288,9 @@ export function useMyAttendanceDailyRecords(range: { dateFrom: string; dateTo: s
     queryFn: () => coreApi.getMyAttendanceDailyRecords(range),
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
+    // Pending sessions fill in as device punches sync, so keep today's view fresh.
     refetchInterval: range.dateFrom <= today && range.dateTo >= today ? 60 * 1000 : false,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -1507,6 +1509,9 @@ export function useChangeManualPunchRequestStatus() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({
         queryKey: [...coreQueryKeys.all, 'manual-punch-requests'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [...coreQueryKeys.all, 'attendance'],
       });
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.attendancePunches(),

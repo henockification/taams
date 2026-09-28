@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, type ReactNode, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { Check, ClipboardPlus, FileText, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -61,9 +61,11 @@ const initialRequestForm = {
 export function ManualPunchRequestsPage({
   mode,
   initialCorrection,
+  focusRequestId,
 }: {
   mode: 'employee' | 'supervisor';
   initialCorrection?: { date?: string; requestedPunchTime?: string; punchType?: PunchType; open?: boolean };
+  focusRequestId?: string;
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
@@ -83,6 +85,12 @@ export function ManualPunchRequestsPage({
   const session = useSession();
 
   const requests = manualRequests.data?.manualPunchRequests ?? [];
+  const focusedRowRef = useRef<HTMLTableRowElement>(null);
+  const hasFocusedRequest = Boolean(focusRequestId && requests.some((request) => request.id === focusRequestId));
+
+  useEffect(() => {
+    if (hasFocusedRequest) focusedRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [hasFocusedRequest]);
 
   const openManualRequestDialog = () => {
     setForm({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
@@ -212,7 +220,11 @@ export function ManualPunchRequestsPage({
                       && request.employee?.userId !== session.data?.user?.id;
 
                     return (
-                      <TableRow key={request.id}>
+                      <TableRow
+                        key={request.id}
+                        ref={request.id === focusRequestId ? focusedRowRef : undefined}
+                        className={request.id === focusRequestId ? 'bg-primary/5 ring-1 ring-inset ring-primary/40' : undefined}
+                      >
                         {isSupervisor ? (
                           <TableCell>
                             <div className="min-w-0">

@@ -9,6 +9,17 @@ type DateTimeFormatter = (
   options?: Intl.DateTimeFormatOptions,
 ) => string;
 
+/** Scheduled rest days and full-day holidays carry no shift, so no late/early/absent rules apply. */
+export function isNoDutyDay(record: AttendanceDailyRecord) {
+  return record.isOffDay || (record.isHoliday && !record.attendanceSessions?.length);
+}
+
+/** Minutes for an exception column; a dash on days without duty instead of a misleading 0. */
+export function ExceptionMinutes({ record, minutes }: { record: AttendanceDailyRecord; minutes: number }) {
+  if (isNoDutyDay(record)) return <span className="text-muted-foreground">-</span>;
+  return <span className={minutes > 0 ? 'font-medium text-amber-600' : undefined}>{minutes} min</span>;
+}
+
 export function totalLateMinutes(record: AttendanceDailyRecord) {
   return (record.lateMinutes ?? 0) + (record.lateReturnMinutes ?? 0);
 }
@@ -61,6 +72,10 @@ export function AttendanceSessions({
   formatDateTime: DateTimeFormatter;
   t: AttendanceTranslator;
 }) {
+  if (isNoDutyDay(record)) {
+    return <NoDutyDay record={record} formatDateTime={formatDateTime} t={t} />;
+  }
+
   if (!record.attendanceSessions?.length) {
     return <span className="text-sm text-muted-foreground">{legacyAttendanceRule(record)}</span>;
   }
@@ -76,6 +91,37 @@ export function AttendanceSessions({
       </Badge>
     </div>
   ))}</div>;
+}
+
+function NoDutyDay({
+  record,
+  formatDateTime,
+  t,
+}: {
+  record: AttendanceDailyRecord;
+  formatDateTime: DateTimeFormatter;
+  t: AttendanceTranslator;
+}) {
+  const time = (value: string | null | undefined) => formatDateTime(value, {
+    year: undefined,
+    month: undefined,
+    day: undefined,
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Africa/Addis_Ababa',
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 text-sm">
+      <Badge variant="secondary">{record.isHoliday ? record.holiday?.nameEn ?? t('holidayOffDay') : t('offDay')}</Badge>
+      {record.checkInAt ? (
+        <span className="text-muted-foreground">
+          {t('checkIn')} {time(record.checkInAt)}
+          {record.checkOutAt ? ` / ${t('checkOut')} ${time(record.checkOutAt)}` : null}
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export function materializeAttendanceSession(session: AttendanceSessionEvaluation): AttendanceSessionEvaluation {

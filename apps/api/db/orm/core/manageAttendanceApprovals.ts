@@ -54,7 +54,16 @@ type ApprovalScope = {
   scope?: EmployeeVisibilityScope;
 };
 
-export async function generateAttendanceDailyRecords(date?: string | null, options?: { recordAudit?: boolean }) {
+export async function generateAttendanceDailyRecords(
+  date?: string | null,
+  options?: {
+    recordAudit?: boolean;
+    // Also recalculate these employees' records when they are already approved
+    // (e.g. after an approved attendance correction). HR-approved records move
+    // back to SUPERVISOR_APPROVED so HR confirms the corrected numbers.
+    recalculateEmployeeIds?: string[];
+  },
+) {
   const attendanceDate = normalizeDateParam(date);
   if (attendanceDate < addisToday()) {
     await reconcileAnnualLeaveConsumption(attendanceDate);
@@ -163,17 +172,22 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       .filter((item) => String(item.effectiveFrom) <= attendanceDate && (!item.effectiveTo || String(item.effectiveTo) >= attendanceDate))
       .sort((a, b) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0];
     const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${attendanceDate}T12:00:00`).getDay()];
-    const shift = assignment?.workSchedule?.days?.find((day) => day.isActive
-      && !day.isOffDay
-      && (assignment.workSchedule.scheduleType === 'ROSTER' || day.dayOfWeek.toUpperCase() === dayName || day.dayOfWeek.toUpperCase() === 'ROSTER'))?.shift ?? null;
+    const scheduleDay = assignment?.workSchedule?.days?.find((day) => day.isActive
+      && (assignment.workSchedule.scheduleType === 'ROSTER' || day.dayOfWeek.toUpperCase() === dayName || day.dayOfWeek.toUpperCase() === 'ROSTER'));
+    const shift = scheduleDay && !scheduleDay.isOffDay ? scheduleDay.shift ?? null : null;
     const scheduleIsRosterRestDay = assignment?.workSchedule?.scheduleType === 'ROSTER'
       && rosterCycleIndex(attendanceDate, String(assignment.effectiveFrom), Number(assignment.workSchedule.rosterOnDays ?? 1), Number(assignment.workSchedule.rosterOffDays ?? 0)) >= Number(assignment.workSchedule.rosterOnDays ?? 1);
-    const employeePunches = (shift?.isOvernight && !scheduleIsRosterRestDay)
+    // A weekly schedule works only the days it lists as working days, so an
+    // unlisted day (e.g. Saturday/Sunday) or one marked off is a rest day.
+    const isOffDay = Boolean(assignment) && (scheduleIsRosterRestDay || !scheduleDay || scheduleDay.isOffDay);
+    const holidayDays = activeHoliday ? parseHolidayDays(activeHoliday.durationDays) : 0;
+    // No shift rules apply on rest days or full-day holidays: punches are kept,
+    // but they never produce late, early or absent sessions.
+    const isNoDutyDay = isOffDay || holidayDays >= 1;
+    const employeePunches = (shift?.isOvernight && !isNoDutyDay)
       ? employeePunchesForCalendarDay
       : employeePunchesForCalendarDay.filter((punch) => punch.punchTime >= dayRange.start && punch.punchTime <= dayRange.end);
-    const evaluation = scheduleIsRosterRestDay
-      ? evaluateAttendancePunches(attendanceDate, employeePunches, null)
-      : evaluateAttendancePunches(attendanceDate, employeePunches, shift);
+    const evaluation = evaluateAttendancePunches(attendanceDate, employeePunches, isNoDutyDay ? null : shift);
     const firstPunch = employeePunches[0] ?? null;
     const lastPunch = employeePunches[employeePunches.length - 1] ?? null;
     const checkOutAt = evaluation.checkOutAt;
@@ -181,13 +195,12 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
     const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions);
-    const holidayDays = activeHoliday ? parseHolidayDays(activeHoliday.durationDays) : 0;
     const payroll = resolvePayrollDays({
       attendanceDays,
       leaveDays,
       unpaidLeaveDays,
-      holidayDays,
-      holidayName: activeHoliday?.nameEn ?? null,
+      holidayDays: isOffDay ? 1 : holidayDays,
+      holidayName: activeHoliday?.nameEn ?? (isOffDay ? 'Scheduled off day' : null),
       isBiometricExempt,
     });
 
@@ -218,8 +231,9 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
       attendanceDays: formatDayValue(attendanceDays),
       leaveDays: formatDayValue(leaveDays),
       holidayId: activeHoliday?.id ?? null,
-      holidayDays: formatDayValue(holidayDays),
+      holidayDays: formatDayValue(isOffDay ? 1 : holidayDays),
       isHoliday: Boolean(activeHoliday),
+      isOffDay,
       payableDays: formatDayValue(payroll.payableDays),
       absenceDays: formatDayValue(payroll.absenceDays),
       isBiometricExempt,
@@ -259,13 +273,23 @@ export async function generateAttendanceDailyRecords(date?: string | null, optio
           holidayId: sql.raw('excluded."holiday_id"'),
           holidayDays: sql.raw('excluded."holiday_days"'),
           isHoliday: sql.raw('excluded."is_holiday"'),
+          isOffDay: sql.raw('excluded."is_off_day"'),
           payableDays: sql.raw('excluded."payable_days"'),
           absenceDays: sql.raw('excluded."absence_days"'),
           isBiometricExempt: sql.raw('excluded."is_biometric_exempt"'),
           payrollNote: sql.raw('excluded."payroll_note"'),
+          status: sql.raw(`CASE WHEN "attendance_daily_records"."status" = 'HR_APPROVED' THEN 'SUPERVISOR_APPROVED' ELSE "attendance_daily_records"."status" END`),
+          hrApprovedBy: sql.raw(`CASE WHEN "attendance_daily_records"."status" = 'HR_APPROVED' THEN NULL ELSE "attendance_daily_records"."hr_approved_by" END`),
+          hrApprovedAt: sql.raw(`CASE WHEN "attendance_daily_records"."status" = 'HR_APPROVED' THEN NULL ELSE "attendance_daily_records"."hr_approved_at" END`),
+          payrollReadyAt: sql.raw(`CASE WHEN "attendance_daily_records"."status" = 'HR_APPROVED' THEN NULL ELSE "attendance_daily_records"."payroll_ready_at" END`),
           updatedAt: sql`CURRENT_TIMESTAMP`,
         } as any,
-        setWhere: inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
+        setWhere: options?.recalculateEmployeeIds?.length
+          ? or(
+            inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
+            inArray(attendanceDailyRecords.employeeId, options.recalculateEmployeeIds),
+          )
+          : inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
       })
       .returning({ id: attendanceDailyRecords.id });
     records.push(...upserted);

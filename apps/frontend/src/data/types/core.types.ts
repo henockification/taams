@@ -638,6 +638,7 @@ export type AttendanceDailyRecord = {
   holidayId: string | null;
   holidayDays: string;
   isHoliday: boolean;
+  isOffDay: boolean;
   payableDays: string;
   absenceDays: string;
   overtimeMinutes: number;

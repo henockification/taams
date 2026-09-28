@@ -50,6 +50,9 @@ export type AttendanceScheduleEvaluation = {
 };
 
 const MINUTE = 60_000;
+// An undeclared punch this long after the check-in means the employee left
+// (early checkout); anything sooner is treated as an accidental duplicate.
+const EARLY_CHECKOUT_GAP = 60 * MINUTE;
 const DAY = 86_400_000;
 const ADDIS_OFFSET_HOURS = 3;
 
@@ -97,21 +100,34 @@ function deduplicatePunches(punches: AttendancePunchLike[]) {
   });
 }
 
-function punchInWindow(
+function sessionPunches(
   punches: AttendancePunchLike[],
-  direction: 'IN' | 'OUT',
-  windowStart: Date,
-  windowEnd: Date,
-  preference: 'FIRST' | 'LAST',
+  spanStart: Date,
+  spanEnd: Date,
+  midpoint: Date,
 ) {
-  const candidates = punches.filter((punch) => {
+  const inSpan = punches.filter((punch) => {
     const at = asDate(punch.punchTime).getTime();
-    const declaredDirection = punchDirection(punch.punchType);
-    return at >= windowStart.getTime()
-      && at < windowEnd.getTime()
-      && (!declaredDirection || declaredDirection === direction);
+    return at >= spanStart.getTime() && at < spanEnd.getTime();
   });
-  return preference === 'FIRST' ? candidates[0] ?? null : candidates.at(-1) ?? null;
+  // The earliest check-in wins. Undeclared punches in the first half of the
+  // session are check-ins, so a duplicate 08:40 after an 08:24 check-in is ignored.
+  const checkIn = inSpan.find((punch) => {
+    const declaredDirection = punchDirection(punch.punchType);
+    return declaredDirection ? declaredDirection === 'IN' : asDate(punch.punchTime).getTime() < midpoint.getTime();
+  }) ?? null;
+  const checkInTime = checkIn ? asDate(checkIn.punchTime).getTime() : null;
+  // The latest checkout wins, so repeated punches (12:02 then 12:14) collapse to
+  // the last one. An undeclared punch in the second half is a checkout, as is
+  // one at least EARLY_CHECKOUT_GAP after the check-in (the employee left early).
+  const checkOut = inSpan.filter((punch) => {
+    if (punch === checkIn) return false;
+    const declaredDirection = punchDirection(punch.punchType);
+    if (declaredDirection) return declaredDirection === 'OUT';
+    const at = asDate(punch.punchTime).getTime();
+    return at >= midpoint.getTime() || (checkInTime !== null && at - checkInTime >= EARLY_CHECKOUT_GAP);
+  }).at(-1) ?? null;
+  return { checkIn, checkOut };
 }
 
 /** Evaluate every configured schedule segment as an independent attendance session. */
@@ -150,33 +166,50 @@ export function evaluateAttendancePunches(
     while (end.getTime() <= start.getTime()) end = new Date(end.getTime() + DAY);
     scheduled.push({ segment, start, end });
   }
+  // Shift tolerances:
+  // - gracePeriodMinutes: approved early check-in before the first session (08:00-08:30).
+  // - lateAfterMinutes: minutes after a session start before a check-in counts as late.
+  // - earlyOutBeforeMinutes: approved checkout window after each session end
+  //   (12:30-12:45, 17:30-17:45) and approved early return before later sessions (13:15-13:30).
+  // A checkout before the session end is early; a check-in after start + lateAfter is late.
   const grace = Math.max(0, Number(shift.gracePeriodMinutes ?? 0));
   const lateAfter = Math.max(0, Number(shift.lateAfterMinutes ?? 0));
   const departureTolerance = Math.max(0, Number(shift.earlyOutBeforeMinutes ?? 0));
   const asOf = options.asOf ?? new Date();
+  const approvedCheckInOpen = (index: number) => new Date(
+    scheduled[index].start.getTime() - (index === 0 ? grace : departureTolerance) * MINUTE,
+  );
+  const approvedCheckOutClose = (index: number) => new Date(scheduled[index].end.getTime() + departureTolerance * MINUTE);
+  // Punches between two sessions belong to the earlier session's checkout or the
+  // later session's check-in, split halfway between the two approved windows.
+  const boundaries = scheduled.slice(0, -1).map((_, index) => {
+    const checkOutClose = approvedCheckOutClose(index).getTime();
+    const checkInOpen = approvedCheckInOpen(index + 1).getTime();
+    const [from, to] = checkOutClose <= checkInOpen
+      ? [checkOutClose, checkInOpen]
+      : [scheduled[index].end.getTime(), scheduled[index + 1].start.getTime()];
+    return new Date(from + (to - from) / 2);
+  });
+  const offDuty = DAY - (scheduled.at(-1)!.end.getTime() - scheduled[0].start.getTime());
+  const firstSpanStart = offDuty > 0
+    ? new Date(Math.min(approvedCheckInOpen(0).getTime(), scheduled[0].start.getTime() - offDuty / 2))
+    : approvedCheckInOpen(0);
+  const lastSpanEnd = offDuty > 0
+    ? new Date(Math.max(approvedCheckOutClose(scheduled.length - 1).getTime(), scheduled.at(-1)!.end.getTime() + offDuty / 2))
+    : new Date(scheduled.at(-1)!.end.getTime() + DAY);
 
   const sessions: AttendanceSessionEvaluation[] = scheduled.map(({ segment, start, end }, index) => {
     const next = scheduled[index + 1];
-    // Session windows are intentionally non-overlapping. UNKNOWN punches in
-    // the check-in window remain check-ins (the earliest wins), so a repeated
-    // 09:24 punch cannot become a 12:30 checkout. The configured tolerances
-    // define the approved early-arrival and checkout boundary windows.
-    const checkInWindowStart = new Date(start.getTime() - (index === 0 ? grace : departureTolerance) * MINUTE);
-    const checkOutWindowStart = new Date(end.getTime() - departureTolerance * MINUTE);
-    const checkInWindowEnd = checkOutWindowStart.getTime() > checkInWindowStart.getTime()
-      ? checkOutWindowStart
-      : new Date(start.getTime() + Math.max(MINUTE, (end.getTime() - start.getTime()) / 2));
-    const checkOutWindowEnd = next
-      ? new Date(next.start.getTime() - departureTolerance * MINUTE)
-      : new Date(end.getTime() + DAY);
-    const completionAt = next ? checkOutWindowEnd : new Date(end.getTime() + departureTolerance * MINUTE);
-    const checkInPunch = punchInWindow(ordered, 'IN', checkInWindowStart, checkInWindowEnd, 'FIRST');
-    const checkOutPunch = punchInWindow(ordered, 'OUT', checkOutWindowStart, checkOutWindowEnd, 'LAST');
+    const spanStart = index === 0 ? firstSpanStart : boundaries[index - 1];
+    const spanEnd = next ? boundaries[index] : lastSpanEnd;
+    const midpoint = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
+    const completionAt = next ? spanEnd : approvedCheckOutClose(index);
+    const { checkIn: checkInPunch, checkOut: checkOutPunch } = sessionPunches(ordered, spanStart, spanEnd, midpoint);
     const checkInAt = checkInPunch ? asDate(checkInPunch.punchTime) : null;
     const checkOutAt = checkOutPunch ? asDate(checkOutPunch.punchTime) : null;
     const completed = asOf.getTime() >= completionAt.getTime();
     const lateThreshold = start.getTime() + lateAfter * MINUTE;
-    const approvedCheckoutEnd = end.getTime() + departureTolerance * MINUTE;
+    const approvedCheckoutEnd = approvedCheckOutClose(index).getTime();
     const lateMinutes = checkInAt && checkInAt.getTime() > lateThreshold
       ? Math.max(0, Math.floor((checkInAt.getTime() - start.getTime()) / MINUTE))
       : 0;

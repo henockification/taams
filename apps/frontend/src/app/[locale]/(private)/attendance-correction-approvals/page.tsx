@@ -1,7 +1,11 @@
-'use client';
-
 import { ManualPunchRequestsPage } from '@/components/attendance/manual-punch-requests-page';
 
-export default function AttendanceCorrectionApprovalsPage() {
-  return <ManualPunchRequestsPage mode="supervisor" />;
+export default async function AttendanceCorrectionApprovalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ requestId?: string }>;
+}) {
+  const params = await searchParams;
+
+  return <ManualPunchRequestsPage mode="supervisor" focusRequestId={params.requestId || undefined} />;
 }

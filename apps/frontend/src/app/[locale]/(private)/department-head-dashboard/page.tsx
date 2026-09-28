@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   ClipboardList,
   Fingerprint,
@@ -23,6 +24,7 @@ import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
+import { Link, useRouter } from "@/i18n"
 import type {
   AttendancePunch,
   DepartmentHeadDashboardSummary,
@@ -57,6 +59,23 @@ const widgetMeta: Record<WidgetKey, { icon: React.ComponentType<{ className?: st
   pendingCorrections: { icon: RotateCcw, tone: "bg-orange-600 text-white", labelKey: "pendingCorrections" },
 }
 
+// Leave is only managed through this dashboard for CONTRACT supervisors.
+const leaveWidgetKeys: WidgetKey[] = ["leave", "pendingLeave"]
+
+// Pending tiles link to the supervisor pages where the items can be acted on.
+function pendingWidgetHref(key: WidgetKey, date: string) {
+  if (key === "pendingAttendance") return attendanceApprovalsHref({ date })
+  if (key === "pendingCorrections") return "/attendance-correction-approvals"
+  if (key === "pendingLeave") return "/leave-request-approvals"
+  return null
+}
+
+function attendanceApprovalsHref({ date, search }: { date: string; search?: string | null }) {
+  const params = new URLSearchParams({ date, approval: "unapproved" })
+  if (search) params.set("search", search)
+  return `/attendance-approvals/supervisor?${params.toString()}`
+}
+
 export default function DepartmentHeadDashboardPage() {
   const t = useTranslations("departmentHeadDashboard")
   const { formatDateTime } = useCalendarPreference()
@@ -78,6 +97,8 @@ export default function DepartmentHeadDashboardPage() {
       </Card>
     )
   }
+
+  const showLeave = dashboard.supervisor.employmentType === "CONTRACT"
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -106,53 +127,67 @@ export default function DepartmentHeadDashboardPage() {
         </div>
       </div>
 
-      <div className={cn("grid gap-5", dashboard.supervisor.employmentType === "CONTRACT" && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
-        <WidgetGrid widgets={dashboard.widgets} />
-        {dashboard.supervisor.employmentType === "CONTRACT"
+      <div className={cn("grid gap-5", showLeave && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
+        <WidgetGrid widgets={dashboard.widgets} showLeave={showLeave} date={dashboard.date} />
+        {showLeave
           ? <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} />
           : null}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <AttendanceSnapshot dashboard={dashboard} />
-        <PendingWork dashboard={dashboard} />
+        <PendingWork dashboard={dashboard} showLeave={showLeave} />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
-        <StaffStatus title={t("staffOnLeave")} employees={dashboard.details.employeesOnLeave.map((request) => request.employee).filter(Boolean) as Employee[]} />
+      <div className={cn("grid gap-5", showLeave && "xl:grid-cols-[1fr_1fr]")}>
+        {showLeave
+          ? <StaffStatus title={t("staffOnLeave")} employees={dashboard.details.employeesOnLeave.map((request) => request.employee).filter(Boolean) as Employee[]} />
+          : null}
         <StaffStatus title={t("lateEmployees")} employees={dashboard.details.lateEmployees} />
       </div>
     </div>
   )
 }
 
-function WidgetGrid({ widgets }: { widgets: DepartmentHeadDashboardSummary["widgets"] }) {
+function WidgetGrid({ widgets, showLeave, date }: { widgets: DepartmentHeadDashboardSummary["widgets"]; showLeave: boolean; date: string }) {
+  const entries = (Object.entries(widgets) as Array<[WidgetKey, DepartmentHeadDashboardWidget]>)
+    .filter(([key]) => showLeave || !leaveWidgetKeys.includes(key))
+
   return (
-    <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
-      {(Object.entries(widgets) as Array<[WidgetKey, DepartmentHeadDashboardWidget]>).map(([key, widget]) => (
-        <WidgetCard key={key} widgetKey={key} widget={widget} />
+    <div className={cn("grid grid-cols-2 gap-2 sm:gap-3", showLeave ? "xl:grid-cols-4" : "md:grid-cols-3")}>
+      {entries.map(([key, widget]) => (
+        <WidgetCard key={key} widgetKey={key} widget={widget} href={pendingWidgetHref(key, date)} />
       ))}
     </div>
   )
 }
 
-function WidgetCard({ widgetKey, widget }: { widgetKey: WidgetKey; widget: DepartmentHeadDashboardWidget }) {
+function WidgetCard({ widgetKey, widget, href }: { widgetKey: WidgetKey; widget: DepartmentHeadDashboardWidget; href: string | null }) {
   const t = useTranslations("departmentHeadDashboard")
   const meta = widgetMeta[widgetKey]
   const Icon = meta.icon
 
-  return (
-    <Card className="min-w-0 gap-3 py-3 sm:gap-6 sm:py-6">
+  const card = (
+    <Card className={cn("h-full min-w-0 gap-3 py-3 sm:gap-6 sm:py-6", href && "transition-colors group-hover:border-primary/50 group-hover:bg-muted/40")}>
       <CardContent className="flex min-w-0 items-center gap-2 px-3 sm:gap-4 sm:px-4">
         <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md sm:size-11", meta.tone)}>
           <Icon className="size-4 sm:size-5" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{t(meta.labelKey)}</p>
           <p className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{widget.count}</p>
         </div>
+        {href ? <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" /> : null}
       </CardContent>
     </Card>
+  )
+
+  if (!href) return card
+
+  return (
+    <Link href={href} className="group block min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {card}
+    </Link>
   )
 }
 
@@ -215,8 +250,9 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
   )
 }
 
-function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary }) {
+function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashboardSummary; showLeave: boolean }) {
   const t = useTranslations("departmentHeadDashboard")
+  const router = useRouter()
   const { formatDate, formatDateTime } = useCalendarPreference()
   const rows = [
     ...dashboard.details.pendingAttendance.map((punch) => ({
@@ -225,13 +261,15 @@ function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary 
       type: t("pendingAttendance"),
       date: punch.punchTime,
       note: punch.device?.deviceName ?? punch.biometricId,
+      href: attendanceApprovalsHref({ date: dashboard.date, search: punch.employee?.employeeCode }),
     })),
-    ...dashboard.details.pendingLeave.map((request) => ({
+    ...(showLeave ? dashboard.details.pendingLeave : []).map((request) => ({
       id: `leave-${request.id}`,
       employee: request.employee ?? null,
       type: t("pendingLeave"),
       date: request.createdAt,
       note: `${formatDate(request.startDate)} - ${formatDate(request.endDate)}`,
+      href: `/leave-request-approvals/${request.id}`,
     })),
     ...dashboard.details.pendingCorrections.map((request) => ({
       id: `correction-${request.id}`,
@@ -239,6 +277,7 @@ function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary 
       type: t("pendingCorrections"),
       date: request.createdAt,
       note: request.reason,
+      href: `/attendance-correction-approvals?requestId=${encodeURIComponent(request.id)}`,
     })),
   ].slice(0, 12)
 
@@ -248,13 +287,21 @@ function PendingWork({ dashboard }: { dashboard: DepartmentHeadDashboardSummary 
         <CardTitle>{t("pendingWork")}</CardTitle>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <SimpleTable headers={[t("employee"), t("status"), t("requestedAt"), t("reason")]} emptyLabel={t("noRows")}>
+        <SimpleTable headers={[t("employee"), t("status"), t("requestedAt"), t("reason"), ""]} emptyLabel={t("noRows")}>
           {rows.map((row) => (
-            <TableRow key={row.id}>
+            <TableRow key={row.id} className="cursor-pointer" onClick={() => router.push(row.href)}>
               <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
               <TableCell className="min-w-44"><StatusBadge status={row.type} /></TableCell>
               <TableCell className="min-w-36 text-muted-foreground">{formatDateTime(row.date)}</TableCell>
               <TableCell className="min-w-56 text-muted-foreground">{row.note}</TableCell>
+              <TableCell className="text-right">
+                <Button asChild variant="ghost" size="sm" onClick={(event) => event.stopPropagation()}>
+                  <Link href={row.href}>
+                    {t("review")}
+                    <ChevronRight className="size-4" />
+                  </Link>
+                </Button>
+              </TableCell>
             </TableRow>
           ))}
         </SimpleTable>

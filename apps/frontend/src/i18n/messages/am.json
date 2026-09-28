@@ -453,7 +453,8 @@
     "leaveDates": "የፈቃድ ቀናት",
     "reason": "ምክንያት",
     "noRows": "የሚታይ መዝገብ የለም።",
-    "noData": "ለተመረጠው ቀን መረጃ የለም።"
+    "noData": "ለተመረጠው ቀን መረጃ የለም።",
+    "review": "ይገምግሙ"
   },
   "users": {
     "title": "ተጠቃሚዎች",
@@ -1485,6 +1486,7 @@
       "ATTENDANCE_SUPERVISOR_APPROVED": "ተቆጣጣሪ መገኘትን ጸድቋል",
       "ATTENDANCE_HR_APPROVED": "ሰብሳቢ መገኘትን ጸድቋል",
       "ATTENDANCE_RETURNED": "መገኘት ተመልሷል",
+      "ATTENDANCE_REOPENED_AFTER_CORRECTION": "ከማስተካከያ በኋላ መገኘት እንደገና ተከፍቷል",
       "ATTENDANCE_PAYROLL_ADJUSTED": "የደመወዝ ቀናት ተስተካክለዋል",
       "OVERTIME_ASSIGNED": "ትርፍ ሰዓት ተመድቧል",
       "OVERTIME_APPROVED": "ትርፍ ሰዓት ጸድቋል",

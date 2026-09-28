@@ -281,6 +281,13 @@
       "when": 1790208000000,
       "tag": "0043_auto_approve_biometric_exemptions",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1790294400000,
+      "tag": "0044_attendance_off_days",
+      "breakpoints": true
     }
   ]
 }

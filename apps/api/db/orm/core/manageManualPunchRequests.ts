@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db';
-import { employees, manualPunchRequests, user } from '../../schema';
+import { attendanceDailyRecords, employees, manualPunchRequests, user } from '../../schema';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import type {
   ChangeManualPunchRequestStatusInput,
   CreateManualPunchRequestInput,
@@ -291,9 +292,27 @@ export async function changeManualPunchRequestStatus(
   });
 
   if (result.attendancePunch && result.manualPunchRequest?.requestedPunchTime) {
+    // Apply the approved correction to the day's attendance even when that day
+    // was already approved, otherwise payroll keeps the uncorrected record.
     const punchDate = toDateKey(new Date(result.manualPunchRequest.requestedPunchTime));
+    const employeeId = result.manualPunchRequest.employeeId;
+    const previous = await db.query.attendanceDailyRecords.findFirst({
+      where: and(eq(attendanceDailyRecords.employeeId, employeeId), eq(attendanceDailyRecords.attendanceDate, punchDate)),
+      columns: { id: true, status: true },
+    });
     const { generateAttendanceDailyRecords } = await import('./manageAttendanceApprovals');
-    await generateAttendanceDailyRecords(punchDate);
+    await generateAttendanceDailyRecords(punchDate, { recalculateEmployeeIds: [employeeId] });
+    if (previous?.status === 'HR_APPROVED') {
+      await writeAuditEvent(db, {
+        action: 'ATTENDANCE_REOPENED_AFTER_CORRECTION',
+        resourceType: 'attendance_daily_record',
+        resourceId: previous.id,
+        resourceLabel: `${formatEmployeeLabel(result.manualPunchRequest.employee)} attendance ${punchDate}`,
+        ...employeeAuditFields(result.manualPunchRequest.employee),
+        changes: { status: { from: 'HR_APPROVED', to: 'SUPERVISOR_APPROVED' } },
+        metadata: { manualPunchRequestId: result.manualPunchRequest.id },
+      });
+    }
   }
 
   return result;
@@ -339,9 +358,7 @@ function canSupervisorDecide(status: string) {
   return status === 'PENDING_HR_REVIEW' || status === 'HR_REVIEWED' || status === 'PENDING';
 }
 
+// Attendance dates are Addis Ababa calendar days, independent of the server time zone.
 function toDateKey(value: Date) {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, '0');
-  const day = String(value.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return addisToday(value);
 }

@@ -453,7 +453,8 @@
     "leaveDates": "Leave dates",
     "reason": "Reason",
     "noRows": "No records to show.",
-    "noData": "No data available for the selected date."
+    "noData": "No data available for the selected date.",
+    "review": "Review"
   },
   "users": {
     "title": "Users",
@@ -1485,6 +1486,7 @@
       "ATTENDANCE_SUPERVISOR_APPROVED": "Supervisor-approved attendance",
       "ATTENDANCE_HR_APPROVED": "HR-approved attendance",
       "ATTENDANCE_RETURNED": "Returned attendance",
+      "ATTENDANCE_REOPENED_AFTER_CORRECTION": "Attendance reopened after correction",
       "ATTENDANCE_PAYROLL_ADJUSTED": "Adjusted attendance payroll days",
       "OVERTIME_ASSIGNED": "Assigned overtime",
       "OVERTIME_APPROVED": "Approved overtime",

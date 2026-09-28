@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 
 import {
   AttendanceSessions,
+  ExceptionMinutes,
   materializeAttendanceSession,
   summarizeAttendanceExceptions,
   totalLateMinutes,
@@ -147,14 +148,14 @@ export function MyAttendancePage() {
                       <TableCell className="min-w-[28rem]">
                         <AttendanceSessions record={record} formatDateTime={formatDateTime} t={t} />
                       </TableCell>
-                      <TableCell className={totalLateMinutes(record) > 0 ? 'font-medium text-amber-600' : undefined}>
-                        {totalLateMinutes(record)} min
+                      <TableCell>
+                        <ExceptionMinutes record={record} minutes={totalLateMinutes(record)} />
                       </TableCell>
-                      <TableCell className={(record.earlyBreakMinutes ?? 0) > 0 ? 'font-medium text-amber-600' : undefined}>
-                        {record.earlyBreakMinutes ?? 0} min
+                      <TableCell>
+                        <ExceptionMinutes record={record} minutes={record.earlyBreakMinutes ?? 0} />
                       </TableCell>
-                      <TableCell className={(record.earlyDepartureMinutes ?? 0) > 0 ? 'font-medium text-amber-600' : undefined}>
-                        {record.earlyDepartureMinutes ?? 0} min
+                      <TableCell>
+                        <ExceptionMinutes record={record} minutes={record.earlyDepartureMinutes ?? 0} />
                       </TableCell>
                       <TableCell>{record.attendanceDays}</TableCell>
                       <TableCell>{record.absenceDays}</TableCell>

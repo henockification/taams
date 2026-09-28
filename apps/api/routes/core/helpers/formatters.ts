@@ -500,6 +500,7 @@ export function formatAttendanceDailyRecord(record: any) {
     holidayId: record.holidayId ?? null,
     holidayDays: record.holidayDays ?? '0.00',
     isHoliday: record.isHoliday ?? false,
+    isOffDay: record.isOffDay ?? false,
     payableDays: record.payableDays,
     absenceDays: record.absenceDays,
     overtimeMinutes: record.overtimeMinutes ?? 0,
