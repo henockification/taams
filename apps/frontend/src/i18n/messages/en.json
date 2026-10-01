@@ -475,7 +475,14 @@
     "unlockSuccessTitle": "Account unlocked",
     "unlockSuccessMessage": "This user can sign in again.",
     "unlockFailed": "Failed to unlock this user.",
-    "lockedUntil": "Locked until"
+    "lockedUntil": "Locked until",
+    "contactHint": "Changes also update the linked employee record.",
+    "saveContact": "Save contact details",
+    "savingContact": "Saving...",
+    "contactUpdatedTitle": "Contact details updated",
+    "contactUpdatedMessage": "The user account and linked employee record were updated.",
+    "contactUpdateFailed": "Failed to update contact details.",
+    "contactRequired": "Enter an email address or phone number."
   },
   "core": {
     "selectEmploymentTypeFirst": "Select employment type first",

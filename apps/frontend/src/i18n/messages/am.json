@@ -475,7 +475,14 @@
     "unlockSuccessTitle": "መለያ ተከፍቷል",
     "unlockSuccessMessage": "ይህ ተጠቃሚ እንደገና መግባት ይችላል።",
     "unlockFailed": "ይህን ተጠቃሚ መክፈት አልተሳካም።",
-    "lockedUntil": "እስከሚከፈት"
+    "lockedUntil": "እስከሚከፈት",
+    "contactHint": "ለውጦቹ የተገናኘውን የሰራተኛ መዝገብም ያዘምናሉ።",
+    "saveContact": "የመገናኛ መረጃ አስቀምጥ",
+    "savingContact": "በማስቀመጥ ላይ...",
+    "contactUpdatedTitle": "የመገናኛ መረጃ ተዘምኗል",
+    "contactUpdatedMessage": "የተጠቃሚ መለያው እና የተገናኘው የሰራተኛ መዝገብ ተዘምነዋል።",
+    "contactUpdateFailed": "የመገናኛ መረጃን ማዘመን አልተሳካም።",
+    "contactRequired": "የኢሜይል አድራሻ ወይም ስልክ ቁጥር ያስገቡ።"
   },
   "core": {
     "selectEmploymentTypeFirst": "መጀመሪያ የቅጥር አይነት ይምረጡ",

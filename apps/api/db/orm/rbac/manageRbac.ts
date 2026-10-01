@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../../db';
-import { permissions, rolePermissions, roles, user, userRoles } from '../../schema';
+import { employees, permissions, rolePermissions, roles, user, userRoles } from '../../schema';
 import { getAuditContext, diffChanges, writeAuditEvent } from '../../../lib/audit';
 import { hasSuperAdminRole, includesPrivilegedRole } from '../../../lib/privileged-roles';
 import { assertUserHasLoginIdentifier, normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
@@ -346,6 +346,17 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
           updatedAt: new Date(),
         })
         .where(eq(user.id, userId));
+
+      // Keep the linked employee's contact details in step with the login identifiers.
+      const employeeContact: Record<string, unknown> = {};
+      if (updateData.email !== undefined) employeeContact.email = updateData.email;
+      if (updateData.phone !== undefined) employeeContact.phoneNumber = updateData.phone;
+      if (Object.keys(employeeContact).length > 0) {
+        await tx
+          .update(employees)
+          .set({ ...employeeContact, updatedAt: new Date() })
+          .where(eq(employees.userId, userId));
+      }
     }
 
     const updatedUser = await getUserWithRoles(userId, tx);

@@ -51,6 +51,12 @@ export interface CreateUserInput {
   roleIds?: string[];
 }
 
+export interface UpdateUserInput {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+}
+
 export interface CreateUserResponse {
   success: boolean;
   user: User;

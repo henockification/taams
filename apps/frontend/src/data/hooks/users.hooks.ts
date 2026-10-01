@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../api/users.api';
-import type { CreateUserInput, UserFilters, SignUpInput } from '../types/api';
+import type { CreateUserInput, UserFilters, SignUpInput, UpdateUserInput } from '../types/api';
 import type { PaginationParams } from '../shared/types';
 import { userQueryKeys } from '../types/api';
 import { UpdateProfileImageRequest, UserProfileUpdate } from '../types/users.types';
@@ -52,6 +52,18 @@ export const useCreateUser = () => {
     mutationFn: (input: CreateUserInput) => usersApi.createUser(input),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+    },
+  });
+};
+
+export const useUpdateUser = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateUserInput) => usersApi.updateUser(input),
+    onSuccess: (_data, input) => {
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.detail(input.id) });
     },
   });
 };

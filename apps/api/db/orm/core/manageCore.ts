@@ -320,6 +320,15 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
     if (updated?.userId && (contactChanges.email !== undefined || contactChanges.phoneNumber !== undefined)) {
       await syncLinkedUserContact(updated.userId, contactChanges, tx);
     }
+    if (updated && !updated.userId && (normalizeLoginEmail(updated.email) || normalizeLoginPhone(updated.phoneNumber))) {
+      const userId = await linkOrCreateEmployeeUser(updated as CreateEmployeeInput, tx);
+      await tx
+        .update(employees)
+        .set({ userId, updatedAt: new Date() })
+        .where(eq(employees.id, id));
+      await ensureSupervisorRole(id, tx);
+      return getEmployeeById(id, tx);
+    }
     return updated;
   });
 
@@ -626,6 +635,7 @@ async function assignEmployeeSupervisor(employeeId: string, input: CreateEmploye
           && assignment.effectiveFrom === effectiveFrom
           && (assignment.effectiveTo ?? null) === effectiveTo
         ) {
+          await ensureSupervisorRole(input.supervisorId, tx);
           return { assignment, updated, created: false };
         }
 
@@ -650,6 +660,8 @@ async function assignEmployeeSupervisor(employeeId: string, input: CreateEmploye
         effectiveTo,
       } as any)
       .returning();
+
+    await ensureSupervisorRole(input.supervisorId, tx);
 
     return { assignment, updated, created: true };
   });
@@ -746,6 +758,15 @@ async function ensureImportUserAccounts(
   const existingUserByEmail = new Map(existingUsers.filter((row) => row.email).map((row) => [row.email!, row]));
   const existingUserByPhone = new Map(existingUsers.filter((row) => row.phone).map((row) => [row.phone!, row]));
 
+  const linkedEmployees = existingUsers.length
+    ? await db.query.employees.findMany({
+      where: inArray(employees.userId, existingUsers.map((row) => row.id)),
+      columns: { userId: true },
+    })
+    : [];
+  // Each user account can belong to only one employee; duplicate emails/phones must not share it.
+  const claimedUserIds = new Set(linkedEmployees.map((row) => row.userId).filter((value): value is string => Boolean(value)));
+
   const usersToCreate: { id: string; name: string; email: string | null; phone: string | null; emailVerified: boolean; role: string[] }[] = [];
 
   for (const account of accounts) {
@@ -753,7 +774,9 @@ async function ensureImportUserAccounts(
       || (account.phone && existingUserByPhone.get(account.phone))
       || null;
     if (foundUser) {
+      if (claimedUserIds.has(foundUser.id)) continue;
       userIdByEmployeeCode.set(account.employeeCode, foundUser.id);
+      claimedUserIds.add(foundUser.id);
       continue;
     }
 
@@ -767,6 +790,7 @@ async function ensureImportUserAccounts(
     };
     usersToCreate.push(created);
     userIdByEmployeeCode.set(account.employeeCode, created.id);
+    claimedUserIds.add(created.id);
     if (account.email) existingUserByEmail.set(account.email, { id: created.id, email: account.email, phone: account.phone });
     if (account.phone) existingUserByPhone.set(account.phone, { id: created.id, email: account.email, phone: account.phone });
   }
@@ -840,10 +864,24 @@ async function ensureEmployeeUserAccount(input: CreateEmployeeInput, tx: DbClien
   if (!email) throw new Error('Email is required');
   if (!phone) throw new Error('Phone number is required');
 
-  const existingUser = await tx.query.user.findFirst({
-    where: or(eq(user.email, email), eq(user.phone, phone)),
-    columns: { id: true, email: true, phone: true },
-  });
+  return linkOrCreateEmployeeUser(input, tx);
+}
+
+// Links the employee to an unclaimed user with the same email/phone, or creates one.
+async function linkOrCreateEmployeeUser(input: CreateEmployeeInput, tx: DbClient = db) {
+  const email = normalizeLoginEmail(input.email);
+  const phone = normalizeLoginPhone(input.phoneNumber);
+  const contactConditions = [
+    ...(email ? [eq(user.email, email)] : []),
+    ...(phone ? [eq(user.phone, phone)] : []),
+  ];
+
+  const existingUser = contactConditions.length
+    ? await tx.query.user.findFirst({
+      where: or(...contactConditions),
+      columns: { id: true, email: true, phone: true },
+    })
+    : null;
 
   if (existingUser) {
     const linkedEmployee = await tx.query.employees.findFirst({
@@ -886,6 +924,36 @@ async function ensureEmployeeRole(userId: string, tx: DbClient = db) {
     .onConflictDoNothing({
       target: [userRoles.userId, userRoles.roleId],
     });
+}
+
+async function ensureSupervisorRole(supervisorEmployeeId: string, tx: DbClient = db) {
+  const supervisor = await tx.query.employees.findFirst({
+    where: eq(employees.id, supervisorEmployeeId),
+    columns: { userId: true },
+  });
+  if (!supervisor?.userId) return;
+
+  const supervisorRole = await tx.query.roles.findFirst({
+    where: eq(roles.name, 'supervisor'),
+    columns: { id: true },
+  });
+  if (!supervisorRole) return;
+
+  await tx
+    .insert(userRoles)
+    .values({ userId: supervisor.userId, roleId: supervisorRole.id })
+    .onConflictDoNothing({
+      target: [userRoles.userId, userRoles.roleId],
+    });
+
+  // Session roles are read from user.role, so keep it in sync with user_roles.
+  await tx
+    .update(user)
+    .set({
+      role: sql`array_append(array_remove(coalesce(${user.role}, '{}'::text[]), 'user'), 'supervisor')`,
+      updatedAt: new Date(),
+    } as any)
+    .where(and(eq(user.id, supervisor.userId), sql`NOT ('supervisor' = ANY(coalesce(${user.role}, '{}'::text[])))`));
 }
 
 async function assertEmployeeReferences(input: Partial<CreateEmployeeInput>) {

@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,7 +16,7 @@ import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
 import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
-import { useUnlockUser } from '@/data/hooks/users.hooks';
+import { useUnlockUser, useUpdateUser } from '@/data/hooks/users.hooks';
 import { useTranslations } from 'next-intl';
 
 interface User {
@@ -49,9 +50,12 @@ export default function UserDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const { data: rolesResponse, isLoading: rolesLoading } = useRoles();
   const assignUserRoles = useAssignUserRoles();
   const unlockUser = useUnlockUser();
+  const updateUser = useUpdateUser();
   const roles = rolesResponse?.roles ?? [];
 
   const fetchUser = useCallback(async () => {
@@ -103,6 +107,11 @@ export default function UserDetailPage() {
   }, [userId, fetchUser]);
 
   useEffect(() => {
+    setEmail(user?.email ?? '');
+    setPhone(user?.phone ?? '');
+  }, [user]);
+
+  useEffect(() => {
     if (!user || roles.length === 0) return;
 
     setSelectedRoleIds(
@@ -144,6 +153,37 @@ export default function UserDetailPage() {
       notifications.show({
         title: 'Error',
         message: err instanceof Error ? err.message : t('unlockFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const contactChanged = Boolean(user)
+    && (email.trim() !== (user?.email ?? '') || phone.trim() !== (user?.phone ?? ''));
+
+  const handleSaveContact = async () => {
+    if (!user) return;
+    if (!email.trim() && !phone.trim()) {
+      notifications.show({ title: 'Error', message: t('contactRequired'), color: 'red' });
+      return;
+    }
+
+    try {
+      await updateUser.mutateAsync({
+        id: user.id,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+      });
+      notifications.show({
+        title: t('contactUpdatedTitle'),
+        message: t('contactUpdatedMessage'),
+        color: 'green',
+      });
+      await fetchUser();
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : t('contactUpdateFailed'),
         color: 'red',
       });
     }
@@ -272,19 +312,33 @@ export default function UserDetailPage() {
               <CardTitle>Account Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">User ID</p>
-                <p className="font-medium">{user.id}</p>
+              <div className="space-y-2">
+                <Label htmlFor="user-email" className="text-sm font-normal text-muted-foreground">Email Address</Label>
+                <Input
+                  id="user-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
               </div>
-              <Separator />
-              <div>
-                <p className="text-sm text-muted-foreground">Email Address</p>
-                <p className="font-medium">{user.email || '—'}</p>
+              <div className="space-y-2">
+                <Label htmlFor="user-phone" className="text-sm font-normal text-muted-foreground">Phone</Label>
+                <Input
+                  id="user-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
               </div>
-              <Separator />
-              <div>
-                <p className="text-sm text-muted-foreground">Phone</p>
-                <p className="font-medium">{user.phone || '—'}</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">{t('contactHint')}</p>
+                <Button
+                  size="sm"
+                  onClick={handleSaveContact}
+                  disabled={!contactChanged || updateUser.isPending}
+                >
+                  {updateUser.isPending ? t('savingContact') : t('saveContact')}
+                </Button>
               </div>
               <Separator />
               <div>
