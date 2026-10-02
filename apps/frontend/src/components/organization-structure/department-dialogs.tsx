@@ -1,10 +1,12 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { Check, Loader2, UserRound } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import { Button } from '@/components/ui/button';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +18,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { useCreateDepartment, useUpdateDepartment } from '@/data/hooks/core.hooks';
+import {
+  useCreateDepartment,
+  useDepartmentHeadCandidates,
+  useSetDepartmentHead,
+  useUpdateDepartment,
+} from '@/data/hooks/core.hooks';
 import type { Department } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 
@@ -68,6 +75,7 @@ type DepartmentFormState = {
   code: string;
   parentDepartmentId: string | null;
   isActive: boolean;
+  isContract: boolean;
 };
 
 export function DepartmentFormDialog({
@@ -98,7 +106,12 @@ export function DepartmentFormDialog({
     code: '',
     parentDepartmentId: null,
     isActive: true,
+    isContract: false,
   });
+  // Changing the type would split a branch across the permanent and contract trees, so it is locked while sub-departments exist.
+  const hasSubDepartments = Boolean(
+    department && departments.some((candidate) => candidate.parentDepartmentId === department.id),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -108,8 +121,9 @@ export function DepartmentFormDialog({
       code: department?.code ?? '',
       parentDepartmentId: department ? department.parentDepartmentId : defaultParentDepartmentId,
       isActive: department?.isActive ?? true,
+      isContract: department?.isContract ?? isContract,
     });
-  }, [defaultParentDepartmentId, department, open]);
+  }, [defaultParentDepartmentId, department, isContract, open]);
 
   const isSaving = createDepartment.isPending || updateDepartment.isPending;
 
@@ -118,7 +132,7 @@ export function DepartmentFormDialog({
 
     try {
       const payload = {
-        isContract: department?.isContract ?? isContract,
+        isContract: form.isContract,
         nameEn: form.nameEn.trim(),
         nameAm: form.nameAm.trim() || null,
         code: form.code.trim() || null,
@@ -187,7 +201,7 @@ export function DepartmentFormDialog({
             <ParentDepartmentPicker
               id="department-parent"
               departments={departments}
-              isContract={department?.isContract ?? isContract}
+              isContract={form.isContract}
               departmentId={department?.id ?? null}
               value={form.parentDepartmentId}
               onChange={(parentDepartmentId) => setForm((current) => ({ ...current, parentDepartmentId }))}
@@ -195,6 +209,26 @@ export function DepartmentFormDialog({
             {!form.parentDepartmentId ? (
               <p className="text-xs text-muted-foreground">{t('topLevelHint')}</p>
             ) : null}
+          </div>
+          <div className="space-y-1 rounded-md border border-border p-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="department-is-contract">{t('contractDepartment')}</Label>
+              <Switch
+                id="department-is-contract"
+                checked={form.isContract}
+                disabled={hasSubDepartments}
+                onCheckedChange={(checked) =>
+                  // A parent always has the same type, so switching type detaches the department from its parent.
+                  setForm((current) => ({ ...current, isContract: checked, parentDepartmentId: null }))}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {hasSubDepartments
+                ? t('departmentTypeLockedHint')
+                : form.isContract
+                  ? t('contractDepartmentHint')
+                  : t('permanentDepartmentHint')}
+            </p>
           </div>
           <div className="flex items-center justify-between rounded-md border border-border p-3">
             <Label htmlFor="department-is-active">{t('active')}</Label>
@@ -281,6 +315,107 @@ export function MoveDepartmentDialog({
             </DialogFooter>
           </form>
         ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function DepartmentHeadDialog({
+  department,
+  onOpenChange,
+}: {
+  department: Department | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const t = useTranslations('core');
+  const common = useTranslations('common');
+  const setDepartmentHead = useSetDepartmentHead();
+  const [search, setSearch] = useState('');
+  const deferredSearch = useDeferredValue(search.trim());
+  const candidatesQuery = useDepartmentHeadCandidates(deferredSearch, Boolean(department));
+  const candidates = candidatesQuery.data?.employees ?? [];
+  const currentHead = department?.headEmployee ?? null;
+
+  useEffect(() => {
+    setSearch('');
+  }, [department]);
+
+  const save = async (headEmployeeId: string | null) => {
+    if (!department) return;
+    try {
+      await setDepartmentHead.mutateAsync({ departmentId: department.id, headEmployeeId });
+      notifications.show({ title: common('success'), message: t('departmentHeadUpdated'), color: 'green' });
+      onOpenChange(false);
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  return (
+    <Dialog open={Boolean(department)} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('setDepartmentHeadTitle', { name: department?.nameEn ?? '' })}</DialogTitle>
+          <DialogDescription>{t('setDepartmentHeadDescription')}</DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-3 rounded-md border border-border p-3 text-sm">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <UserRound className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs text-muted-foreground">{t('departmentHead')}</span>
+            <span className="block truncate font-medium">
+              {currentHead ? `${currentHead.fullName} · ${currentHead.employeeCode}` : t('noHead')}
+            </span>
+          </span>
+          {currentHead ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={setDepartmentHead.isPending}
+              onClick={() => save(null)}
+            >
+              {t('removeHead')}
+            </Button>
+          ) : null}
+        </div>
+        <Command shouldFilter={false} className="rounded-md border border-border">
+          <CommandInput placeholder={t('searchEmployees')} value={search} onValueChange={setSearch} />
+          <CommandList className="max-h-72">
+            {candidatesQuery.isFetching && candidates.length === 0 ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <CommandEmpty>{t('noEmployeesFound')}</CommandEmpty>
+            )}
+            {candidates.length > 0 ? (
+              <CommandGroup>
+                {candidates.map((employee) => (
+                  <CommandItem
+                    key={employee.id}
+                    value={employee.id}
+                    disabled={setDepartmentHead.isPending}
+                    onSelect={() => save(employee.id)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{employee.fullName}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {[employee.employeeCode, employee.departmentName].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                    {employee.id === currentHead?.id ? <Check className="size-4" /> : null}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
+          </CommandList>
+        </Command>
       </DialogContent>
     </Dialog>
   );

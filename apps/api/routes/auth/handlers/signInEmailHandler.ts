@@ -10,7 +10,7 @@ import {
 } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
 import { parseLoginIdentifier } from '../../../lib/login-identifier';
-import { isOtpTestingMode, sendOtp } from '../../../lib/otp';
+import { isOtpTestingMode, sendOtp, usesSuperAdminFixedOtp } from '../../../lib/otp';
 import { getRequestClientIp } from '../../../middleware/auth';
 import { formatAuthUser, setSessionCookie } from './helpers';
 
@@ -57,10 +57,12 @@ export async function signInEmailHandler(c: Context) {
     }
 
     const identifier = authResult.identifier;
+    const fixedOtp = usesSuperAdminFixedOtp(authResult.user.role);
 
     if (!otp) {
-      const { code } = await createOtpVerification(identifier, 'sign-in');
-      await sendOtp(identifier, 'sign-in', code);
+      const { code } = await createOtpVerification(identifier, 'sign-in', { fixedCode: fixedOtp });
+      // Super admins already know the fixed code, so nothing is sent and the dialog shows no hint.
+      if (!fixedOtp) await sendOtp(identifier, 'sign-in', code);
       return c.json({
         otpRequired: true,
         email: parsed.email ?? null,
@@ -106,6 +108,7 @@ export async function signInEmailHandler(c: Context) {
       ipAddress: session.ipAddress,
       userAgent: session.userAgent,
       requestId: c.get('requestId') ?? null,
+      ...(fixedOtp ? { metadata: { otp: 'super-admin-fixed-code' } } : {}),
     });
 
     setSessionCookie(c, session.token, session.expiresAt);

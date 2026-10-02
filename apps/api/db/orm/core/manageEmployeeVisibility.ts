@@ -116,6 +116,36 @@ export async function getActiveHrDepartmentScopeIds(userId: string, tx: DbClient
   return expandDepartmentDescendants(rootIds, allDepartments);
 }
 
+export type HeadedDepartmentScope = {
+  employeeId: string | null;
+  /** Departments the user is explicitly set as head of. */
+  headedDepartmentIds: string[];
+  /** Headed departments plus every department below them in the organization structure. */
+  departmentIds: string[];
+};
+
+export async function getHeadedDepartmentScope(userId: string, tx: DbClient = db): Promise<HeadedDepartmentScope> {
+  const employee = await tx.query.employees.findFirst({
+    where: eq(employees.userId, userId),
+    columns: { id: true },
+  });
+  if (!employee) return { employeeId: null, headedDepartmentIds: [], departmentIds: [] };
+
+  const allDepartments: Array<{ id: string; parentDepartmentId: string | null; headEmployeeId: string | null }> =
+    await tx.query.departments.findMany({
+      columns: { id: true, parentDepartmentId: true, headEmployeeId: true },
+    });
+  const headedDepartmentIds = allDepartments
+    .filter((department) => department.headEmployeeId === employee.id)
+    .map((department) => department.id);
+
+  return {
+    employeeId: employee.id,
+    headedDepartmentIds,
+    departmentIds: headedDepartmentIds.length > 0 ? expandDepartmentDescendants(headedDepartmentIds, allDepartments) : [],
+  };
+}
+
 function andActiveHrDepartmentAssignment(userId: string) {
   return sql`${hrDepartmentAssignments.userId} = ${userId} AND ${hrDepartmentAssignments.isActive} = true`;
 }

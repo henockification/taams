@@ -5,13 +5,18 @@ import type { Department } from '@/data/types/core.types';
 
 import type { DepartmentNode } from './department-tree';
 
+type ChartLabels = {
+  inactiveLabel: string;
+  headLabel: (name: string) => string;
+};
+
 function OrganizationChartNode({
   node,
   inactiveLabel,
+  headLabel,
   onSelect,
-}: {
+}: ChartLabels & {
   node: DepartmentNode;
-  inactiveLabel: string;
   onSelect?: (department: Department) => void;
 }) {
   const hasChildren = node.children.length > 0;
@@ -26,6 +31,9 @@ function OrganizationChartNode({
       >
         <span className="line-clamp-2 text-sm font-semibold">{node.nameEn}</span>
         <span className="mt-1 truncate text-xs text-muted-foreground">{node.code || '-'}</span>
+        {node.headEmployee ? (
+          <span className="mt-1 truncate text-xs font-medium text-primary">{headLabel(node.headEmployee.fullName)}</span>
+        ) : null}
         {!node.isActive ? (
           <Badge variant="secondary" className="mx-auto mt-2 w-fit">
             {inactiveLabel}
@@ -36,7 +44,13 @@ function OrganizationChartNode({
         <div className="relative mt-6 pt-6 before:absolute before:left-1/2 before:top-0 before:h-6 before:w-px before:bg-border">
           <ul className="relative flex items-start justify-center">
             {node.children.map((child) => (
-              <OrganizationChartNode key={child.id} node={child} inactiveLabel={inactiveLabel} onSelect={onSelect} />
+              <OrganizationChartNode
+                key={child.id}
+                node={child}
+                inactiveLabel={inactiveLabel}
+                headLabel={headLabel}
+                onSelect={onSelect}
+              />
             ))}
           </ul>
         </div>
@@ -48,10 +62,10 @@ function OrganizationChartNode({
 export function OrganizationChart({
   tree,
   inactiveLabel,
+  headLabel,
   onSelect,
-}: {
+}: ChartLabels & {
   tree: DepartmentNode[];
-  inactiveLabel: string;
   onSelect?: (department: Department) => void;
 }) {
   return (
@@ -59,7 +73,13 @@ export function OrganizationChart({
       <div className="inline-flex min-w-full justify-center pb-2">
         <ul className="flex items-start justify-center">
           {tree.map((node) => (
-            <OrganizationChartNode key={node.id} node={node} inactiveLabel={inactiveLabel} onSelect={onSelect} />
+            <OrganizationChartNode
+              key={node.id}
+              node={node}
+              inactiveLabel={inactiveLabel}
+              headLabel={headLabel}
+              onSelect={onSelect}
+            />
           ))}
         </ul>
       </div>

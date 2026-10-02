@@ -105,7 +105,10 @@ import type {
   TemporaryDepartmentAssignmentResponse,
   TemporaryDepartmentAssignmentsResponse,
   TimeOperationsSummaryResponse,
+  DepartmentHeadCandidatesResponse,
   MoveDepartmentInput,
+  SetDepartmentHeadInput,
+  SupervisorReportDepartmentsResponse,
   UpdateDepartmentInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
@@ -248,6 +251,15 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify(input),
     }),
+  getDepartmentHeadCandidates: (search: string) =>
+    coreFetch<DepartmentHeadCandidatesResponse>(`/departments/head-candidates?search=${encodeURIComponent(search)}`),
+  setDepartmentHead: ({ departmentId, headEmployeeId }: SetDepartmentHeadInput) =>
+    coreFetch<DepartmentResponse>(`/departments/${departmentId}/head`, {
+      method: 'PUT',
+      body: JSON.stringify({ headEmployeeId }),
+    }),
+  getSupervisorReportDepartments: () =>
+    coreFetch<SupervisorReportDepartmentsResponse>('/reports/supervisor/departments'),
   moveDepartment: ({ departmentId, parentDepartmentId }: MoveDepartmentInput) =>
     coreFetch<DepartmentResponse>(`/departments/${departmentId}/parent`, {
       method: 'PATCH',

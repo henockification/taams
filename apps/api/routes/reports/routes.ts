@@ -21,10 +21,15 @@ import { summarizeChanges, type AuditChanges } from '../../lib/audit';
 import { getSessionByToken } from '../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../db/orm/rbac/manageRbac';
 import {
+  getHeadedDepartmentScope,
   resolveEmployeeVisibilityScope,
   scopedEmployeeWhere,
   type EmployeeVisibilityScope,
 } from '../../db/orm/core/manageEmployeeVisibility';
+import {
+  getSupervisorAttendanceRecords,
+  type SupervisorReportScope,
+} from '../../db/orm/core/manageSupervisorReport';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 
 type ReportKey =
@@ -36,7 +41,9 @@ type ReportKey =
   | 'leave-requests'
   | 'employees'
   | 'device-sync'
-  | 'audit';
+  | 'audit'
+  | 'supervisor-attendance'
+  | 'supervisor-attendance-summary';
 
 type ReportColumn = {
   key: string;
@@ -45,7 +52,9 @@ type ReportColumn = {
 
 type ReportDefinition = {
   title: string;
-  permission: string;
+  /** Permission-gated reports; supervisor reports are gated by role instead. */
+  permission: string | null;
+  access?: 'supervisor';
   columns: ReportColumn[];
   buildRows: (input: ReportInput) => Promise<Record<string, unknown>[]>;
 };
@@ -53,7 +62,10 @@ type ReportDefinition = {
 type ReportInput = {
   query: URLSearchParams;
   scope: EmployeeVisibilityScope;
+  supervisorScope: SupervisorReportScope | null;
 };
+
+const SUPERVISOR_REPORT_ADMIN_ROLES = ['super_admin', 'superadmin', 'admin'];
 
 const reportsApp = new Hono();
 const DEFAULT_SHIFT_START = '08:30:00';
@@ -233,7 +245,70 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
     ],
     buildRows: buildAuditRows,
   },
+  'supervisor-attendance': {
+    title: 'Supervisor Attendance Report',
+    permission: null,
+    access: 'supervisor',
+    columns: [
+      { key: 'attendanceDate', label: 'Date' },
+      { key: 'employeeCode', label: 'Employee ID' },
+      { key: 'employeeName', label: 'Employee name' },
+      { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
+      { key: 'directSupervisor', label: 'Direct supervisor' },
+      { key: 'checkInAt', label: 'Check in' },
+      { key: 'checkOutAt', label: 'Check out' },
+      { key: 'lateMinutes', label: 'Late minutes' },
+      { key: 'earlyDepartureMinutes', label: 'Early departure minutes' },
+      { key: 'attendanceDays', label: 'Attendance days' },
+      { key: 'leaveDays', label: 'Leave days' },
+      { key: 'absenceDays', label: 'Absence days' },
+      { key: 'status', label: 'Approval status' },
+    ],
+    buildRows: buildSupervisorAttendanceRows,
+  },
+  'supervisor-attendance-summary': {
+    title: 'Supervisor Attendance Summary',
+    permission: null,
+    access: 'supervisor',
+    columns: [
+      { key: 'employeeCode', label: 'Employee ID' },
+      { key: 'employeeName', label: 'Employee name' },
+      { key: 'department', label: 'Department' },
+      { key: 'directSupervisor', label: 'Direct supervisor' },
+      { key: 'daysRecorded', label: 'Days recorded' },
+      { key: 'temporaryAssignmentDays', label: 'Days on temporary assignment' },
+      { key: 'attendanceDays', label: 'Attendance days' },
+      { key: 'absenceDays', label: 'Absence days' },
+      { key: 'leaveDays', label: 'Leave days' },
+      { key: 'lateDays', label: 'Late days' },
+      { key: 'totalLateMinutes', label: 'Total late minutes' },
+      { key: 'pendingApproval', label: 'Pending approval' },
+    ],
+    buildRows: buildSupervisorAttendanceSummaryRows,
+  },
 };
+
+// Departments the signed-in supervisor can report on, for the report's department filter.
+reportsApp.get('/reports/supervisor/departments', async (c) => {
+  try {
+    const { supervisorScope } = await getReportContext(c, reportDefinitions['supervisor-attendance']);
+    const allDepartments = await db.query.departments.findMany({
+      columns: { id: true, nameEn: true, parentDepartmentId: true, isContract: true },
+      orderBy: [asc(departments.nameEn)],
+    });
+    const visibleIds = supervisorScope?.type === 'departments' ? new Set(supervisorScope.departmentIds) : null;
+
+    return c.json({
+      success: true,
+      unrestricted: supervisorScope?.type === 'all',
+      headedDepartmentIds: supervisorScope?.type === 'departments' ? supervisorScope.headedDepartmentIds : [],
+      departments: allDepartments.filter((department) => !visibleIds || visibleIds.has(department.id)),
+    });
+  } catch (error) {
+    return reportError(c, error);
+  }
+});
 
 reportsApp.get('/reports/:key', async (c) => {
   try {
@@ -241,8 +316,12 @@ reportsApp.get('/reports/:key', async (c) => {
     const definition = reportDefinitions[key];
     if (!definition) return c.json({ success: false, error: 'Report not found' }, 404);
 
-    const context = await getReportContext(c, definition.permission);
-    const rows = await definition.buildRows({ query: new URL(c.req.url).searchParams, scope: context.scope });
+    const context = await getReportContext(c, definition);
+    const rows = await definition.buildRows({
+      query: new URL(c.req.url).searchParams,
+      scope: context.scope,
+      supervisorScope: context.supervisorScope,
+    });
 
     return c.json({
       success: true,
@@ -266,8 +345,12 @@ reportsApp.get('/reports/:key/excel', async (c) => {
     const definition = reportDefinitions[key];
     if (!definition) return c.json({ success: false, error: 'Report not found' }, 404);
 
-    const context = await getReportContext(c, definition.permission);
-    const rows = await definition.buildRows({ query: new URL(c.req.url).searchParams, scope: context.scope });
+    const context = await getReportContext(c, definition);
+    const rows = await definition.buildRows({
+      query: new URL(c.req.url).searchParams,
+      scope: context.scope,
+      supervisorScope: context.supervisorScope,
+    });
     const worksheetRows = rows.map((row) => Object.fromEntries(
       definition.columns.map((column) => [column.label, row[column.key] ?? '']),
     ));
@@ -287,7 +370,7 @@ reportsApp.get('/reports/:key/excel', async (c) => {
   }
 });
 
-async function getReportContext(c: any, permission: string) {
+async function getReportContext(c: any, definition: ReportDefinition) {
   const token = getSessionCookie(c);
   if (!token) throw new Error('Authentication required');
 
@@ -298,9 +381,20 @@ async function getReportContext(c: any, permission: string) {
   }
 
   const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
-  const unrestricted = roles.some((role) => ['super_admin', 'superadmin', 'admin', 'executive'].includes(role));
-  if (!unrestricted && !(await userHasPermission(session.user.id, permission))) {
-    throw new Error('You do not have permission to view this report');
+  let supervisorScope: SupervisorReportScope | null = null;
+  if (definition.access === 'supervisor') {
+    if (roles.some((role) => SUPERVISOR_REPORT_ADMIN_ROLES.includes(role))) {
+      supervisorScope = { type: 'all' };
+    } else if (roles.includes('supervisor')) {
+      supervisorScope = { type: 'departments', ...(await getHeadedDepartmentScope(session.user.id)) };
+    } else {
+      throw new Error('You do not have permission to view this report');
+    }
+  } else {
+    const unrestricted = roles.some((role) => ['super_admin', 'superadmin', 'admin', 'executive'].includes(role));
+    if (!unrestricted && !(definition.permission && await userHasPermission(session.user.id, definition.permission))) {
+      throw new Error('You do not have permission to view this report');
+    }
   }
 
   const permissions = await getUserPermissionNames(session.user.id);
@@ -310,7 +404,7 @@ async function getReportContext(c: any, permission: string) {
     permissions,
   });
 
-  return { session, scope };
+  return { session, scope, supervisorScope };
 }
 
 async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
@@ -703,6 +797,98 @@ function shiftEndFallback(startTime: string) {
 
 function minutesBetween(start: Date, end: Date) {
   return Math.floor((end.getTime() - start.getTime()) / 60_000);
+}
+
+async function loadSupervisorAttendanceRecords({ query, supervisorScope }: ReportInput) {
+  if (!supervisorScope) throw new Error('You do not have permission to view this report');
+  return getSupervisorAttendanceRecords({
+    scope: supervisorScope,
+    departmentId: query.get('departmentId'),
+    search: query.get('search'),
+    dateFrom: dateFrom(query),
+    dateTo: dateTo(query),
+    status: query.get('status'),
+  });
+}
+
+function directSupervisorName(employee: any) {
+  return employeeName(employee?.supervisorAssignments?.[0]?.supervisor);
+}
+
+async function buildSupervisorAttendanceRows(input: ReportInput) {
+  const rows = await loadSupervisorAttendanceRecords(input);
+
+  return rows.map(({ record, effectiveDepartmentName, homeDepartmentName, isTemporary }) => ({
+    attendanceDate: record.attendanceDate,
+    employeeCode: record.employee?.employeeCode ?? '',
+    employeeName: employeeName(record.employee),
+    department: effectiveDepartmentName,
+    temporaryFrom: isTemporary ? homeDepartmentName : '',
+    directSupervisor: directSupervisorName(record.employee),
+    checkInAt: formatDateTime(record.checkInAt),
+    checkOutAt: formatDateTime(record.checkOutAt),
+    lateMinutes: record.lateMinutes ?? 0,
+    earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+    attendanceDays: record.attendanceDays,
+    leaveDays: record.leaveDays,
+    absenceDays: record.absenceDays,
+    status: record.status,
+  }));
+}
+
+async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
+  const rows = await loadSupervisorAttendanceRecords(input);
+  const summaries = new Map<string, {
+    employeeCode: string;
+    employeeName: string;
+    department: string;
+    directSupervisor: string;
+    daysRecorded: number;
+    temporaryAssignmentDays: number;
+    attendanceDays: number;
+    absenceDays: number;
+    leaveDays: number;
+    lateDays: number;
+    totalLateMinutes: number;
+    pendingApproval: number;
+  }>();
+
+  // Rows arrive newest first, so each employee's department is the one on their latest day in range.
+  for (const { record, effectiveDepartmentName, isTemporary } of rows) {
+    const summary = summaries.get(record.employeeId) ?? {
+      employeeCode: record.employee?.employeeCode ?? '',
+      employeeName: employeeName(record.employee),
+      department: effectiveDepartmentName,
+      directSupervisor: directSupervisorName(record.employee),
+      daysRecorded: 0,
+      temporaryAssignmentDays: 0,
+      attendanceDays: 0,
+      absenceDays: 0,
+      leaveDays: 0,
+      lateDays: 0,
+      totalLateMinutes: 0,
+      pendingApproval: 0,
+    };
+    summary.daysRecorded += 1;
+    if (isTemporary) summary.temporaryAssignmentDays += 1;
+    summary.attendanceDays += Number(record.attendanceDays ?? 0);
+    summary.absenceDays += Number(record.absenceDays ?? 0);
+    summary.leaveDays += Number(record.leaveDays ?? 0);
+    if ((record.lateMinutes ?? 0) > 0) summary.lateDays += 1;
+    summary.totalLateMinutes += record.lateMinutes ?? 0;
+    if (record.status === 'PENDING_SUPERVISOR') summary.pendingApproval += 1;
+    summaries.set(record.employeeId, summary);
+  }
+
+  const roundDays = (value: number) => Math.round(value * 100) / 100;
+  return [...summaries.values()]
+    .sort((a, b) => a.department.localeCompare(b.department) || a.employeeName.localeCompare(b.employeeName))
+    .map((summary) => ({
+      ...summary,
+      attendanceDays: roundDays(summary.attendanceDays),
+      absenceDays: roundDays(summary.absenceDays),
+      leaveDays: roundDays(summary.leaveDays),
+    }));
 }
 
 function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: EmployeeVisibilityScope) {

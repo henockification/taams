@@ -26,6 +26,12 @@ export const DepartmentSchema = z.object({
   nameAm: z.string().nullable().openapi({ example: 'የሰው ሀብት' }),
   code: z.string().nullable().openapi({ example: 'HR' }),
   parentDepartmentId: z.string().nullable().openapi({ example: null }),
+  headEmployeeId: z.string().nullable().openapi({ example: null }),
+  headEmployee: z.object({
+    id: z.string(),
+    employeeCode: z.string(),
+    fullName: z.string(),
+  }).nullable().optional(),
   isActive: z.boolean().openapi({ example: true }),
   createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
@@ -636,6 +642,10 @@ export const UpdateDepartmentRequestSchema = CreateDepartmentRequestSchema.parti
 
 export const MoveDepartmentRequestSchema = z.object({
   parentDepartmentId: UuidSchema.nullable(),
+});
+
+export const SetDepartmentHeadRequestSchema = z.object({
+  headEmployeeId: UuidSchema.nullable(),
 });
 
 export const CreatePositionRequestSchema = z.object({

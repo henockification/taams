@@ -61,9 +61,13 @@ type ReportConfig = {
 
 type ReportPageProps = {
   reportKey: ReportKey;
+  /** Replaces the department filter options, e.g. with only the departments a supervisor heads. */
+  departmentOptions?: { value: string; label: string }[];
+  /** Shown above the filters, e.g. the departments the report covers. */
+  headerNote?: ReactNode;
 };
 
-const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterKeys: string[] }> = {
+const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterKeys: string[]; defaultDateFrom?: 'monthStart' }> = {
   'attendance-daily': {
     key: 'attendance-daily',
     title: 'Attendance Daily Summary',
@@ -118,24 +122,42 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
     description: 'Who did what, when, and with what change across TAAMS.',
     filterKeys: ['dateFrom', 'dateTo', 'actorSearch', 'action', 'resourceType', 'employeeId', 'departmentId', 'outcome', 'delegatedOnly'],
   },
+  'supervisor-attendance': {
+    key: 'supervisor-attendance',
+    title: 'Supervisor Attendance Report',
+    description: 'Daily attendance for every employee in the departments you head and their sub-departments.',
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'search', 'attendanceStatus'],
+  },
+  'supervisor-attendance-summary': {
+    key: 'supervisor-attendance-summary',
+    title: 'Supervisor Attendance Summary',
+    description: 'Attendance totals per employee in the departments you head and their sub-departments.',
+    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'search', 'attendanceStatus'],
+    defaultDateFrom: 'monthStart',
+  },
 };
 
-export function ReportPage({ reportKey }: ReportPageProps) {
+export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportPageProps) {
   const common = useTranslations('common');
   const { formatDate, formatDateTime } = useCalendarPreference();
   const configBase = reportConfigs[reportKey];
-  const [filters, setFilters] = useState<Record<string, string>>(() => defaultFilters(configBase.filterKeys));
-  const departmentsQuery = useDepartments();
-  const employeesQuery = useEmployees();
-  const devicesQuery = useBiometricDevices();
-  const fiscalYearsQuery = useLeaveFiscalYears();
-  const leaveTypesQuery = useLeaveTypes();
+  const [filters, setFilters] = useState<Record<string, string>>(
+    () => defaultFilters(configBase.filterKeys, configBase.defaultDateFrom),
+  );
+  // Only load the option lists a report actually filters by; users without access to them would otherwise hit 403s.
+  const usesFilter = (key: string) => configBase.filterKeys.includes(key);
+  const departmentsQuery = useDepartments(usesFilter('departmentId') && !departmentOptions);
+  const employeesQuery = useEmployees(usesFilter('employeeId'));
+  const devicesQuery = useBiometricDevices(usesFilter('deviceId'));
+  const fiscalYearsQuery = useLeaveFiscalYears(usesFilter('fiscalYearId'));
+  const leaveTypesQuery = useLeaveTypes(usesFilter('leaveTypeId'));
   const reportQuery = useReport(reportKey, filters);
   const [isExporting, setIsExporting] = useState(false);
 
   const reportFilters = useMemo(() => buildFilters({
     keys: configBase.filterKeys,
     departments: departmentsQuery.data?.departments ?? [],
+    departmentOptions,
     employees: employeesQuery.data?.employees ?? [],
     devices: devicesQuery.data?.biometricDevices ?? [],
     fiscalYears: fiscalYearsQuery.data?.leaveFiscalYears ?? [],
@@ -143,6 +165,7 @@ export function ReportPage({ reportKey }: ReportPageProps) {
   }), [
     configBase.filterKeys,
     departmentsQuery.data,
+    departmentOptions,
     employeesQuery.data,
     devicesQuery.data,
     fiscalYearsQuery.data,
@@ -180,6 +203,7 @@ export function ReportPage({ reportKey }: ReportPageProps) {
 
   return (
     <div className="report-page flex w-full flex-col gap-5">
+      {headerNote}
       <style jsx global>{`
         @media print {
           body * {
@@ -448,13 +472,15 @@ function filterWidthClass(filter: FilterConfig) {
 function buildFilters(input: {
   keys: string[];
   departments: any[];
+  departmentOptions?: { value: string; label: string }[];
   employees: any[];
   devices: any[];
   fiscalYears: any[];
   leaveTypes: any[];
 }) {
   const options = {
-    departmentId: input.departments.map((department) => ({ value: department.id, label: department.nameEn })),
+    departmentId: input.departmentOptions
+      ?? input.departments.map((department) => ({ value: department.id, label: department.nameEn })),
     employeeId: input.employees.map((employee) => ({ value: employee.id, label: `${employee.employeeCode} - ${employee.firstNameEn} ${employee.lastNameEn}` })),
     deviceId: input.devices.map((device) => ({ value: device.id, label: device.deviceName })),
     fiscalYearId: input.fiscalYears.map((fiscalYear) => ({ value: fiscalYear.id, label: fiscalYear.name })),
@@ -490,9 +516,13 @@ function buildFilters(input: {
   return input.keys.map((key) => definitions[key]);
 }
 
-function defaultFilters(keys: string[]) {
+function defaultFilters(keys: string[], defaultDateFrom?: 'monthStart') {
   const today = new Date().toISOString().slice(0, 10);
-  return Object.fromEntries(keys.map((key) => [key, key === 'dateFrom' || key === 'dateTo' ? today : '']));
+  const dateFromDefault = defaultDateFrom === 'monthStart' ? `${today.slice(0, 8)}01` : today;
+  return Object.fromEntries(keys.map((key) => [
+    key,
+    key === 'dateFrom' ? dateFromDefault : key === 'dateTo' ? today : '',
+  ]));
 }
 
 function formatReportValue(
@@ -591,6 +621,7 @@ const auditActions = [
   'DEPARTMENT_CREATED',
   'DEPARTMENT_UPDATED',
   'DEPARTMENT_MOVED',
+  'DEPARTMENT_HEAD_CHANGED',
   'POSITION_CREATED',
   'POSITION_UPDATED',
   'BIOMETRIC_DEVICE_CREATED',

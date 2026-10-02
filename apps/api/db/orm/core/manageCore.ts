@@ -16,6 +16,7 @@ import type {
   CreatePositionInput,
   EmploymentType,
   MoveDepartmentInput,
+  SetDepartmentHeadInput,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdatePositionInput,
@@ -42,17 +43,7 @@ export async function createDepartment(input: CreateDepartmentInput) {
   const nameEn = input.nameEn.trim().replace(/\s+/g, ' ');
   if (!nameEn) throw new Error('Department name is required');
   const isContract = input.isContract ?? false;
-  const [existing] = await db
-    .select({ id: departments.id })
-    .from(departments)
-    .where(and(
-      sql`lower(regexp_replace(trim(${departments.nameEn}), '\\s+', ' ', 'g')) = ${nameEn.toLowerCase()}`,
-      eq(departments.isContract, isContract),
-    ))
-    .limit(1);
-  if (existing) {
-    throw new Error(`Duplicate department: ${nameEn} already exists`);
-  }
+  await assertUniqueDepartmentName(nameEn, isContract);
 
   const [department] = await db
     .insert(departments)
@@ -70,14 +61,103 @@ export async function createDepartment(input: CreateDepartmentInput) {
 }
 
 export async function getDepartments() {
-  return db.select().from(departments).orderBy(asc(departments.nameEn));
+  return db.query.departments.findMany({
+    with: {
+      headEmployee: {
+        columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true },
+      },
+    },
+    orderBy: [asc(departments.nameEn)],
+  });
+}
+
+export async function searchDepartmentHeadCandidates(search: string) {
+  const term = search.trim();
+  return db.query.employees.findMany({
+    where: and(
+      eq(employees.employmentStatus, 'ACTIVE'),
+      term
+        ? or(
+          ilike(employees.employeeCode, `%${term}%`),
+          ilike(employees.firstNameEn, `%${term}%`),
+          ilike(employees.middleNameEn, `%${term}%`),
+          ilike(employees.lastNameEn, `%${term}%`),
+        )
+        : undefined,
+    ),
+    columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true },
+    with: { department: { columns: { nameEn: true } } },
+    orderBy: [asc(employees.firstNameEn), asc(employees.lastNameEn)],
+    limit: 20,
+  });
+}
+
+export async function setDepartmentHead(id: string, input: SetDepartmentHeadInput) {
+  const current = await getDepartmentById(id);
+  if (!current) throw new Error('Department not found');
+
+  const headEmployeeId = input.headEmployeeId;
+  if (headEmployeeId) {
+    const head = await db.query.employees.findFirst({
+      where: eq(employees.id, headEmployeeId),
+      columns: { id: true },
+    });
+    if (!head) throw new Error('Employee not found');
+  }
+
+  if ((current.headEmployeeId ?? null) === headEmployeeId) {
+    return current;
+  }
+
+  // Heading a department only widens what the supervisor report shows; it grants no role.
+  const [department] = await db
+    .update(departments)
+    .set({ headEmployeeId, updatedAt: new Date() })
+    .where(eq(departments.id, id))
+    .returning();
+
+  await writeAuditEvent(db, {
+    action: 'DEPARTMENT_HEAD_CHANGED',
+    resourceType: 'department',
+    resourceId: department.id,
+    resourceLabel: department.nameEn,
+    departmentId: department.id,
+    changes: diffChanges(
+      { headEmployeeId: current.headEmployeeId ?? null },
+      { headEmployeeId },
+    ),
+  });
+  return department;
 }
 
 export async function updateDepartment(id: string, input: UpdateDepartmentInput) {
-  await assertDepartmentExists(id);
+  const current = await getDepartmentById(id);
+  if (!current) throw new Error('Department not found');
 
-  if (input.parentDepartmentId) {
-    await assertValidDepartmentParent(id, input.parentDepartmentId, input.isContract);
+  const isContract = input.isContract ?? current.isContract;
+  const typeChanged = isContract !== current.isContract;
+  const parentDepartmentId = input.parentDepartmentId !== undefined
+    ? input.parentDepartmentId
+    : current.parentDepartmentId;
+
+  if (parentDepartmentId && (typeChanged || parentDepartmentId !== current.parentDepartmentId)) {
+    await assertValidDepartmentParent(id, parentDepartmentId, isContract);
+  }
+
+  if (typeChanged) {
+    const [child] = await db
+      .select({ id: departments.id })
+      .from(departments)
+      .where(eq(departments.parentDepartmentId, id))
+      .limit(1);
+    if (child) {
+      throw new Error('Department cannot change employment type while it has sub-departments');
+    }
+  }
+
+  const nameEn = input.nameEn?.trim().replace(/\s+/g, ' ') ?? current.nameEn;
+  if (typeChanged || nameEn.toLowerCase() !== current.nameEn.trim().replace(/\s+/g, ' ').toLowerCase()) {
+    await assertUniqueDepartmentName(nameEn, isContract, id);
   }
 
   const updateData = normalizeDepartmentInput(input);
@@ -134,6 +214,21 @@ export async function moveDepartment(id: string, input: MoveDepartmentInput) {
     ),
   });
   return department;
+}
+
+async function assertUniqueDepartmentName(nameEn: string, isContract: boolean, excludeId?: string) {
+  const [existing] = await db
+    .select({ id: departments.id })
+    .from(departments)
+    .where(and(
+      sql`lower(regexp_replace(trim(${departments.nameEn}), '\\s+', ' ', 'g')) = ${nameEn.toLowerCase()}`,
+      eq(departments.isContract, isContract),
+      excludeId ? ne(departments.id, excludeId) : undefined,
+    ))
+    .limit(1);
+  if (existing) {
+    throw new Error(`Duplicate department: ${nameEn} already exists`);
+  }
 }
 
 // Keeps the hierarchy a tree: no self-parenting, no cycles, and no mixing of permanent and contract departments.

@@ -116,6 +116,7 @@ export const departments = pgTable('departments', {
   nameAm: varchar('name_am', { length: 150 }),
   code: varchar('code', { length: 50 }).unique(),
   parentDepartmentId: uuid('parent_department_id').references((): AnyPgColumn => departments.id),
+  headEmployeeId: uuid('head_employee_id').references((): AnyPgColumn => employees.id, { onDelete: 'set null' }),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
@@ -1108,6 +1109,11 @@ export const departmentsRelations = relations(departments, ({ one, many }) => ({
   childDepartments: many(departments, {
     relationName: 'departmentHierarchy',
   }),
+  headEmployee: one(employees, {
+    fields: [departments.headEmployeeId],
+    references: [employees.id],
+    relationName: 'departmentHead',
+  }),
   employees: many(employees),
   temporarySourceAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentSource' }),
   temporaryTargetAssignments: many(temporaryDepartmentAssignments, { relationName: 'temporaryDepartmentAssignmentTarget' }),
@@ -1228,6 +1234,7 @@ export const employeesRelations = relations(employees, ({ one, many }) => ({
   }),
   temporaryDepartmentAssignments: many(temporaryDepartmentAssignments),
   workSchedules: many(employeeWorkSchedules),
+  headedDepartments: many(departments, { relationName: 'departmentHead' }),
   auditEvents: many(auditEvents, { relationName: 'auditEventEmployee' }),
 }));
 

@@ -1,13 +1,24 @@
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { safeSendDirectNotification, workflowNotificationsAreEnabled } from './notifications';
-import { allowMasterOtp, requireAuthSecret } from './runtime-env';
+import { hasSuperAdminRole } from './privileged-roles';
+import { allowMasterOtp, isTruthyEnv, requireAuthSecret } from './runtime-env';
 
 export const MASTER_OTP_CODE = '424242';
 export const OTP_TTL_MINUTES = 10;
 
 export type OtpPurpose = 'sign-in' | 'password-reset' | 'email-verification';
 
-export function generateOtpCode() {
+/**
+ * Super admins sign in with the fixed code instead of an emailed one when SUPER_ADMIN_FIXED_OTP is on.
+ * Sign-in only: the password is still required, whereas a fixed password-reset code would let anyone
+ * who knows the super admin's email take over the account.
+ */
+export function usesSuperAdminFixedOtp(roles?: string[] | null) {
+  return isTruthyEnv('SUPER_ADMIN_FIXED_OTP') && hasSuperAdminRole(roles);
+}
+
+export function generateOtpCode(options: { fixed?: boolean } = {}) {
+  if (options.fixed) return MASTER_OTP_CODE;
   const notificationsEnabled = workflowNotificationsAreEnabled();
   if (!notificationsEnabled) {
     if (!allowMasterOtp()) {

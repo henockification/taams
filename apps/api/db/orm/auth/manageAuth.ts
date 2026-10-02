@@ -63,9 +63,13 @@ export function canonicalAuthIdentifier(foundUser: { email?: string | null; phon
   return foundUser.phone ?? parsed.phone ?? parsed.identifier;
 }
 
-export async function createOtpVerification(identifier: string, purpose: OtpPurpose) {
+export async function createOtpVerification(
+  identifier: string,
+  purpose: OtpPurpose,
+  options: { fixedCode?: boolean } = {},
+) {
   const normalizedIdentifier = identifier.toLowerCase();
-  const code = generateOtpCode();
+  const code = generateOtpCode({ fixed: options.fixedCode });
   const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000);
 
   const verification = await db.transaction(async (tx) => {

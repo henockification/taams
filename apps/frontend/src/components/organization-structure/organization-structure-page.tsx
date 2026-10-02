@@ -26,6 +26,7 @@ import {
   Pencil,
   Plus,
   Search,
+  UserRound,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -49,7 +50,7 @@ import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
-import { DepartmentFormDialog, MoveDepartmentDialog } from './department-dialogs';
+import { DepartmentFormDialog, DepartmentHeadDialog, MoveDepartmentDialog } from './department-dialogs';
 import {
   buildDepartmentTree,
   collectSelfAndDescendantIds,
@@ -76,6 +77,7 @@ type StructureContextValue = {
   onEdit: (department: Department) => void;
   onMoveTo: (department: Department) => void;
   onMakeTopLevel: (department: Department) => void;
+  onSetHead: (department: Department) => void;
 };
 
 const StructureContext = createContext<StructureContextValue | null>(null);
@@ -98,7 +100,7 @@ function isDropDisabled(context: StructureContextValue, parentDepartmentId: stri
 function DepartmentActionsMenu({ department }: { department: Department }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
-  const { onAddChild, onEdit, onMoveTo, onMakeTopLevel } = useStructure();
+  const { onAddChild, onEdit, onMoveTo, onMakeTopLevel, onSetHead } = useStructure();
 
   return (
     <DropdownMenu>
@@ -116,6 +118,10 @@ function DepartmentActionsMenu({ department }: { department: Department }) {
         <DropdownMenuItem onSelect={() => onEdit(department)}>
           <Pencil className="size-4" />
           {common('edit')}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onSetHead(department)}>
+          <UserRound className="size-4" />
+          {t('setDepartmentHead')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => onMoveTo(department)}>
@@ -191,9 +197,17 @@ function StructureNode({ node }: { node: DepartmentNode }) {
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
           <Building2 className="size-4" />
         </span>
-        <span className="min-w-0 flex-1 truncate px-1 font-medium">
-          {node.nameEn}
-          {node.code ? <span className="ml-2 text-xs font-normal text-muted-foreground">{node.code}</span> : null}
+        <span className="min-w-0 flex-1 px-1">
+          <span className="block truncate font-medium">
+            {node.nameEn}
+            {node.code ? <span className="ml-2 text-xs font-normal text-muted-foreground">{node.code}</span> : null}
+          </span>
+          {node.headEmployee ? (
+            <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+              <UserRound className="size-3 shrink-0" />
+              {t('headLabel', { name: node.headEmployee.fullName })}
+            </span>
+          ) : null}
         </span>
         {hasChildren ? (
           <Badge variant="outline" className="shrink-0">
@@ -317,11 +331,13 @@ export function OrganizationStructurePage() {
   const [editingDepartment, setEditingDepartment] = useState<Department | null>(null);
   const [defaultParentDepartmentId, setDefaultParentDepartmentId] = useState<string | null>(null);
   const [movingDepartment, setMovingDepartment] = useState<Department | null>(null);
+  const [headDepartment, setHeadDepartment] = useState<Department | null>(null);
 
   const isContract = structureType === 'contract';
+  const allDepartments = useMemo(() => departmentsResponse?.departments ?? [], [departmentsResponse]);
   const departments = useMemo(
-    () => (departmentsResponse?.departments ?? []).filter((department) => department.isContract === isContract),
-    [departmentsResponse, isContract],
+    () => allDepartments.filter((department) => department.isContract === isContract),
+    [allDepartments, isContract],
   );
   const departmentById = useMemo(
     () => new Map(departments.map((department) => [department.id, department])),
@@ -428,6 +444,7 @@ export function OrganizationStructurePage() {
     onEdit: openEdit,
     onMoveTo: setMovingDepartment,
     onMakeTopLevel: (department) => void moveDepartment(department, null),
+    onSetHead: setHeadDepartment,
   };
 
   const emptyState = (
@@ -492,7 +509,12 @@ export function OrganizationStructurePage() {
               ) : tree.length === 0 ? (
                 emptyState
               ) : (
-                <OrganizationChart tree={tree} inactiveLabel={t('inactive')} onSelect={canEdit ? openEdit : undefined} />
+                <OrganizationChart
+                  tree={tree}
+                  inactiveLabel={t('inactive')}
+                  headLabel={(name) => t('headLabel', { name })}
+                  onSelect={canEdit ? openEdit : undefined}
+                />
               )}
             </CardContent>
           </Card>
@@ -599,10 +621,22 @@ export function OrganizationStructurePage() {
         <DepartmentFormDialog
           open={formOpen}
           onOpenChange={setFormOpen}
-          departments={departments}
+          departments={allDepartments}
           isContract={isContract}
           department={editingDepartment}
           defaultParentDepartmentId={defaultParentDepartmentId}
+          onSaved={(department) => {
+            // Follow the department to the other tab when its type was changed.
+            if (department.isContract !== isContract) {
+              setStructureType(department.isContract ? 'contract' : 'permanent');
+            }
+          }}
+        />
+        <DepartmentHeadDialog
+          department={headDepartment}
+          onOpenChange={(open) => {
+            if (!open) setHeadDepartment(null);
+          }}
         />
         <MoveDepartmentDialog
           department={movingDepartment}

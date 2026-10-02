@@ -5,9 +5,39 @@ export type Department = {
   nameAm: string | null;
   code: string | null;
   parentDepartmentId: string | null;
+  headEmployeeId: string | null;
+  /** Present on the department list; omitted on single-department mutation responses. */
+  headEmployee?: DepartmentHead | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type DepartmentHead = {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+};
+
+export type DepartmentHeadCandidate = DepartmentHead & {
+  departmentName: string | null;
+};
+
+export type DepartmentHeadCandidatesResponse = {
+  success: boolean;
+  employees: DepartmentHeadCandidate[];
+};
+
+export type SetDepartmentHeadInput = {
+  departmentId: string;
+  headEmployeeId: string | null;
+};
+
+export type SupervisorReportDepartmentsResponse = {
+  success: boolean;
+  unrestricted: boolean;
+  headedDepartmentIds: string[];
+  departments: Array<Pick<Department, 'id' | 'nameEn' | 'parentDepartmentId' | 'isContract'>>;
 };
 
 export type HrDepartmentAssignment = {
@@ -1505,7 +1535,7 @@ export type DepartmentHeadDashboardSummaryResponse = {
   departmentHeadDashboard: DepartmentHeadDashboardSummary;
 };
 
-export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit';
+export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit' | 'supervisor-attendance' | 'supervisor-attendance-summary';
 
 export type ReportColumn = {
   key: string;

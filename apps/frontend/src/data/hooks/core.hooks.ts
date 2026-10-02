@@ -50,6 +50,7 @@ import type {
   UpdateBiometricExemptionInput,
   DepartmentsResponse,
   MoveDepartmentInput,
+  SetDepartmentHeadInput,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
@@ -303,6 +304,36 @@ export function useUpdateDepartment() {
         queryKey: coreQueryKeys.dashboardSummary(),
       });
     },
+  });
+}
+
+export function useDepartmentHeadCandidates(search: string, enabled = true) {
+  return useQuery({
+    queryKey: [...coreQueryKeys.departments(), 'head-candidates', search] as const,
+    queryFn: () => coreApi.getDepartmentHeadCandidates(search),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useSetDepartmentHead() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: SetDepartmentHeadInput) => coreApi.setDepartmentHead(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.departments() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'reports'] });
+    },
+  });
+}
+
+export function useSupervisorReportDepartments() {
+  return useQuery({
+    queryKey: [...coreQueryKeys.all, 'reports', 'supervisor-departments'] as const,
+    queryFn: () => coreApi.getSupervisorReportDepartments(),
+    staleTime: 60 * 1000,
   });
 }
 
@@ -963,10 +994,11 @@ export function useDeleteEmployeeWorkSchedule() {
   });
 }
 
-export function useBiometricDevices() {
+export function useBiometricDevices(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.biometricDevices(),
     queryFn: () => coreApi.getBiometricDevices(),
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -1606,10 +1638,11 @@ export function useChangeOvertimeRequestStatus() {
   });
 }
 
-export function useLeaveFiscalYears() {
+export function useLeaveFiscalYears(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.leaveFiscalYears(),
     queryFn: () => coreApi.getLeaveFiscalYears(),
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -1665,10 +1698,11 @@ export function useSetActiveLeaveFiscalYear() {
   });
 }
 
-export function useLeaveTypes() {
+export function useLeaveTypes(enabled = true) {
   return useQuery({
     queryKey: coreQueryKeys.leaveTypes(),
     queryFn: () => coreApi.getLeaveTypes(),
+    enabled,
     staleTime: 5 * 60 * 1000,
   });
 }

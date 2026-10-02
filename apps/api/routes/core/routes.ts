@@ -4,6 +4,7 @@ import { ErrorResponseSchema } from '../../schemas/shared';
 import {
   CreateDepartmentRequestSchema,
   MoveDepartmentRequestSchema,
+  SetDepartmentHeadRequestSchema,
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   BulkCreateEmployeeSupervisorRequestSchema,
@@ -50,7 +51,7 @@ import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
 import ifmisAttendanceApp from './ifmis-attendance/routes';
 import auditEventsApp from './audit-events/routes';
-import { createDepartmentHandler, getDepartmentsHandler, moveDepartmentHandler, updateDepartmentHandler } from './handlers/departments';
+import { createDepartmentHandler, getDepartmentHeadCandidatesHandler, getDepartmentsHandler, moveDepartmentHandler, setDepartmentHeadHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 import { requirePermission, requirePermissionOrDelegation } from '../../middleware/rbac';
@@ -154,6 +155,33 @@ export const moveDepartmentRoute = createRoute({
     404: {
       content: { 'application/json': { schema: ErrorResponseSchema } },
       description: 'Department not found',
+    },
+  },
+});
+
+export const setDepartmentHeadRoute = createRoute({
+  method: 'put',
+  path: '/departments/{id}/head',
+  tags: ['Core', 'Departments'],
+  summary: 'Set Department Head',
+  request: {
+    params: uuidParam,
+    body: {
+      content: {
+        'application/json': {
+          schema: SetDepartmentHeadRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: DepartmentResponseSchema } },
+      description: 'Updated department head',
+    },
+    404: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Department or employee not found',
     },
   },
 });
@@ -650,6 +678,8 @@ coreApp.post('/departments', requirePermission('employees:update', 'employees:cr
 coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read', 'organization-structure:read', 'organization-structure:edit'), getDepartmentsHandler);
 coreApp.put('/departments/:id', requirePermission('employees:update', 'organization-structure:edit'), updateDepartmentHandler);
 coreApp.patch('/departments/:id/parent', requirePermission('organization-structure:edit'), moveDepartmentHandler);
+coreApp.get('/departments/head-candidates', requirePermission('organization-structure:edit'), getDepartmentHeadCandidatesHandler);
+coreApp.put('/departments/:id/head', requirePermission('organization-structure:edit'), setDepartmentHeadHandler);
 coreApp.post('/positions', requirePermission('employees:update'), createPositionHandler);
 coreApp.get('/positions', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getPositionsHandler);
 coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
@@ -696,6 +726,7 @@ openApiApp
   .openapi(getDepartmentsRoute, getDepartmentsHandler as any)
   .openapi(updateDepartmentRoute, updateDepartmentHandler as any)
   .openapi(moveDepartmentRoute, moveDepartmentHandler as any)
+  .openapi(setDepartmentHeadRoute, setDepartmentHeadHandler as any)
   .openapi(createPositionRoute, createPositionHandler as any)
   .openapi(getPositionsRoute, getPositionsHandler as any)
   .openapi(updatePositionRoute, updatePositionHandler as any)

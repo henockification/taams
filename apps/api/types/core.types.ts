@@ -13,6 +13,10 @@ export type MoveDepartmentInput = {
   parentDepartmentId: string | null;
 };
 
+export type SetDepartmentHeadInput = {
+  headEmployeeId: string | null;
+};
+
 export type CreatePositionInput = {
   nameEn: string;
   nameAm?: string | null;

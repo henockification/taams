@@ -18,6 +18,19 @@ export function formatDepartment(department: any) {
     nameAm: department.nameAm ?? null,
     code: department.code ?? null,
     parentDepartmentId: department.parentDepartmentId ?? null,
+    headEmployeeId: department.headEmployeeId ?? null,
+    // Only present when the head relation was loaded (the department list).
+    headEmployee: department.headEmployee === undefined
+      ? undefined
+      : department.headEmployee
+        ? {
+          id: department.headEmployee.id,
+          employeeCode: department.headEmployee.employeeCode,
+          fullName: [department.headEmployee.firstNameEn, department.headEmployee.middleNameEn, department.headEmployee.lastNameEn]
+            .filter(Boolean)
+            .join(' '),
+        }
+        : null,
     isActive: department.isActive,
     createdAt: formatTimestamp(department.createdAt),
     updatedAt: formatTimestamp(department.updatedAt),

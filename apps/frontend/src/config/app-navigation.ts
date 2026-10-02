@@ -79,6 +79,7 @@ export type AppNavItem = {
     | 'employeeRosterReport'
     | 'deviceSyncReport'
     | 'auditReport'
+    | 'supervisorReport'
     | 'auditTimeline';
   url: string;
   permissionResource: string;
@@ -428,6 +429,14 @@ export const appNavGroups: AppNavGroup[] = [
     icon: ClipboardList,
     items: [
       {
+        titleKey: 'supervisorReport',
+        url: '/reports/supervisor',
+        // Role-gated (supervisors, admins) rather than permission-gated; see userCanAccessNavItem.
+        permissionResource: 'reports-supervisor',
+        requiredPermission: 'reports-supervisor:read',
+        icon: Network,
+      },
+      {
         titleKey: 'attendanceDailyReport',
         url: '/reports/attendance-daily',
         permissionResource: 'reports-attendance-daily',
@@ -528,7 +537,12 @@ export const appNavGroups: AppNavGroup[] = [
   },
 ] as const;
 
-export const permissionResourceOptions: AppNavItem[] = appNavGroups.flatMap((group) => group.items);
+// Role-gated items have no permission an admin could meaningfully grant.
+const ROLE_GATED_URLS = new Set(['/reports/supervisor']);
+
+export const permissionResourceOptions: AppNavItem[] = appNavGroups
+  .flatMap((group) => group.items)
+  .filter((item) => !ROLE_GATED_URLS.has(item.url));
 
 export const permissionActions = ['read', 'add', 'edit', 'approve', 'reject', 'push'] as const;
 
@@ -564,6 +578,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/executive-dashboard' && hasExecutiveRole(user)) return true;
   if (item.url === '/hr-dashboard' && hasHrDashboardAccess(user)) return true;
   if (item.url === '/department-head-dashboard' && hasSupervisorRole(user)) return true;
+  if (item.url === '/reports/supervisor') return hasSupervisorRole(user);
   if (item.url === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (item.url === '/attendance-approvals/hr' && hasHrAttendanceApprovalAccess(user)) return true;
   if (item.url === '/leave-management/authorizations') return userHasPermission(user, 'leave-authorizations:approve');
@@ -703,6 +718,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/'))
     return userHasPermission(user, 'organization-structure:read') || userHasPermission(user, 'organization-structure:edit');
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
+  if (pathname === '/reports/supervisor' || pathname.startsWith('/reports/supervisor/')) return hasSupervisorRole(user);
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/'))
     return hasLeaveRequestApprovalAccess(user);
   if (pathname === '/overtime-assignments' || pathname.startsWith('/overtime-assignments/'))

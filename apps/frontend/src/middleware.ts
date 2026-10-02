@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { routing } from './i18n';
 
 const intlMiddleware = createMiddleware(routing);
-const hiddenCoreRoutes = ['/organization-structure', '/positions'];
+const hiddenCoreRoutes = ['/positions'];
 
 export default function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
