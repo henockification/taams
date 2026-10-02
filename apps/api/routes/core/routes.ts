@@ -3,6 +3,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { ErrorResponseSchema } from '../../schemas/shared';
 import {
   CreateDepartmentRequestSchema,
+  MoveDepartmentRequestSchema,
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   BulkCreateEmployeeSupervisorRequestSchema,
@@ -49,7 +50,7 @@ import shiftsApp from './shifts/routes';
 import workSchedulesApp from './work-schedules/routes';
 import ifmisAttendanceApp from './ifmis-attendance/routes';
 import auditEventsApp from './audit-events/routes';
-import { createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler } from './handlers/departments';
+import { createDepartmentHandler, getDepartmentsHandler, moveDepartmentHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 import { requirePermission, requirePermissionOrDelegation } from '../../middleware/rbac';
@@ -118,6 +119,37 @@ export const updateDepartmentRoute = createRoute({
     200: {
       content: { 'application/json': { schema: DepartmentResponseSchema } },
       description: 'Updated department',
+    },
+    404: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Department not found',
+    },
+  },
+});
+
+export const moveDepartmentRoute = createRoute({
+  method: 'patch',
+  path: '/departments/{id}/parent',
+  tags: ['Core', 'Departments'],
+  summary: 'Move Department in Organization Structure',
+  request: {
+    params: uuidParam,
+    body: {
+      content: {
+        'application/json': {
+          schema: MoveDepartmentRequestSchema,
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: DepartmentResponseSchema } },
+      description: 'Moved department',
+    },
+    400: {
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+      description: 'Invalid parent (self, descendant, or different employment type)',
     },
     404: {
       content: { 'application/json': { schema: ErrorResponseSchema } },
@@ -614,9 +646,10 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
 });
 
 // Anyone who can add employees can create a missing department while doing so.
-coreApp.post('/departments', requirePermission('employees:update', 'employees:create'), createDepartmentHandler);
-coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read'), getDepartmentsHandler);
-coreApp.put('/departments/:id', requirePermission('employees:update'), updateDepartmentHandler);
+coreApp.post('/departments', requirePermission('employees:update', 'employees:create', 'organization-structure:edit'), createDepartmentHandler);
+coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read', 'organization-structure:read', 'organization-structure:edit'), getDepartmentsHandler);
+coreApp.put('/departments/:id', requirePermission('employees:update', 'organization-structure:edit'), updateDepartmentHandler);
+coreApp.patch('/departments/:id/parent', requirePermission('organization-structure:edit'), moveDepartmentHandler);
 coreApp.post('/positions', requirePermission('employees:update'), createPositionHandler);
 coreApp.get('/positions', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getPositionsHandler);
 coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
@@ -662,6 +695,7 @@ openApiApp
   .openapi(createDepartmentRoute, createDepartmentHandler as any)
   .openapi(getDepartmentsRoute, getDepartmentsHandler as any)
   .openapi(updateDepartmentRoute, updateDepartmentHandler as any)
+  .openapi(moveDepartmentRoute, moveDepartmentHandler as any)
   .openapi(createPositionRoute, createPositionHandler as any)
   .openapi(getPositionsRoute, getPositionsHandler as any)
   .openapi(updatePositionRoute, updatePositionHandler as any)

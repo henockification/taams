@@ -48,6 +48,8 @@ import type {
   ReviewLeaveInterruptionInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
+  DepartmentsResponse,
+  MoveDepartmentInput,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdateEmployeeWorkScheduleInput,
@@ -300,6 +302,36 @@ export function useUpdateDepartment() {
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.dashboardSummary(),
       });
+    },
+  });
+}
+
+export function useMoveDepartment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: MoveDepartmentInput) => coreApi.moveDepartment(input),
+    // Re-parent immediately so the dropped department lands without waiting for the round trip.
+    onMutate: async ({ departmentId, parentDepartmentId }) => {
+      await queryClient.cancelQueries({ queryKey: coreQueryKeys.departments() });
+      const previous = queryClient.getQueryData<DepartmentsResponse>(coreQueryKeys.departments());
+      if (previous) {
+        queryClient.setQueryData<DepartmentsResponse>(coreQueryKeys.departments(), {
+          ...previous,
+          departments: previous.departments.map((department) =>
+            department.id === departmentId ? { ...department, parentDepartmentId } : department,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(coreQueryKeys.departments(), context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.departments() });
     },
   });
 }

@@ -1,11 +1,13 @@
 import { Context } from 'hono';
 import {
   CreateDepartmentRequestSchema,
+  MoveDepartmentRequestSchema,
   UpdateDepartmentRequestSchema,
 } from '../../../schemas/core.schema';
 import {
   createDepartment,
   getDepartments,
+  moveDepartment,
   updateDepartment,
 } from '../../../db/orm/core/manageCore';
 import { coreErrorResponse, validationErrorResponse } from '../helpers/errors';
@@ -62,5 +64,26 @@ export async function updateDepartmentHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update department');
+  }
+}
+
+export async function moveDepartmentHandler(c: Context) {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json();
+    const parsed = MoveDepartmentRequestSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return validationErrorResponse(c, parsed.error.message);
+    }
+
+    const department = await moveDepartment(id, parsed.data);
+
+    return c.json({
+      success: true,
+      department: formatDepartment(department),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to move department');
   }
 }

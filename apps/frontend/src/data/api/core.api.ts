@@ -105,6 +105,7 @@ import type {
   TemporaryDepartmentAssignmentResponse,
   TemporaryDepartmentAssignmentsResponse,
   TimeOperationsSummaryResponse,
+  MoveDepartmentInput,
   UpdateDepartmentInput,
   UpdateBiometricDeviceInput,
   UpdateBiometricExemptionInput,
@@ -246,6 +247,11 @@ export const coreApi = {
     coreFetch<DepartmentResponse>(`/departments/${departmentId}`, {
       method: 'PUT',
       body: JSON.stringify(input),
+    }),
+  moveDepartment: ({ departmentId, parentDepartmentId }: MoveDepartmentInput) =>
+    coreFetch<DepartmentResponse>(`/departments/${departmentId}/parent`, {
+      method: 'PATCH',
+      body: JSON.stringify({ parentDepartmentId }),
     }),
   getPositions: () => coreFetch<PositionsResponse>('/positions'),
   createPosition: (input: CreatePositionInput) =>

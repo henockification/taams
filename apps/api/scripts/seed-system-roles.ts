@@ -61,6 +61,18 @@ const PERMISSIONS = [
     description: 'Update employees',
   },
   {
+    name: 'organization-structure:read',
+    resource: 'organization-structure',
+    action: 'read',
+    description: 'View the department organization structure',
+  },
+  {
+    name: 'organization-structure:edit',
+    resource: 'organization-structure',
+    action: 'edit',
+    description: 'Arrange departments in the organization structure',
+  },
+  {
     name: 'temporary-assignment:read',
     resource: 'temporary-assignment',
     action: 'read',
@@ -444,6 +456,8 @@ const SYSTEM_ROLES = [
       'employees:create',
       'employees:update',
       'permanent-employees:read',
+      'organization-structure:read',
+      'organization-structure:edit',
       'temporary-assignment:read',
       'temporary-assignment:add',
       'temporary-assignment:edit',

@@ -15,6 +15,7 @@ import type {
   CreateEmployeeSupervisorInput,
   CreatePositionInput,
   EmploymentType,
+  MoveDepartmentInput,
   UpdateDepartmentInput,
   UpdateEmployeeInput,
   UpdatePositionInput,
@@ -76,10 +77,7 @@ export async function updateDepartment(id: string, input: UpdateDepartmentInput)
   await assertDepartmentExists(id);
 
   if (input.parentDepartmentId) {
-    if (input.parentDepartmentId === id) {
-      throw new Error('Department cannot be its own parent');
-    }
-    await assertDepartmentExists(input.parentDepartmentId);
+    await assertValidDepartmentParent(id, input.parentDepartmentId, input.isContract);
   }
 
   const updateData = normalizeDepartmentInput(input);
@@ -103,6 +101,73 @@ export async function updateDepartment(id: string, input: UpdateDepartmentInput)
     changes: diffChanges({}, updateData as Record<string, unknown>),
   });
   return department;
+}
+
+export async function moveDepartment(id: string, input: MoveDepartmentInput) {
+  const current = await getDepartmentById(id);
+  if (!current) throw new Error('Department not found');
+
+  const parentDepartmentId = input.parentDepartmentId;
+  if (parentDepartmentId) {
+    await assertValidDepartmentParent(id, parentDepartmentId);
+  }
+
+  if ((current.parentDepartmentId ?? null) === parentDepartmentId) {
+    return current;
+  }
+
+  const [department] = await db
+    .update(departments)
+    .set({ parentDepartmentId, updatedAt: new Date() })
+    .where(eq(departments.id, id))
+    .returning();
+
+  await writeAuditEvent(db, {
+    action: 'DEPARTMENT_MOVED',
+    resourceType: 'department',
+    resourceId: department.id,
+    resourceLabel: department.nameEn,
+    departmentId: department.id,
+    changes: diffChanges(
+      { parentDepartmentId: current.parentDepartmentId ?? null },
+      { parentDepartmentId },
+    ),
+  });
+  return department;
+}
+
+// Keeps the hierarchy a tree: no self-parenting, no cycles, and no mixing of permanent and contract departments.
+async function assertValidDepartmentParent(id: string, parentDepartmentId: string, isContract?: boolean) {
+  if (parentDepartmentId === id) {
+    throw new Error('Department cannot be its own parent');
+  }
+
+  const rows = await db
+    .select({
+      id: departments.id,
+      parentDepartmentId: departments.parentDepartmentId,
+      isContract: departments.isContract,
+    })
+    .from(departments);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+
+  const parent = byId.get(parentDepartmentId);
+  if (!parent) throw new Error('Parent department not found');
+
+  const childIsContract = isContract ?? byId.get(id)?.isContract;
+  if (childIsContract !== undefined && parent.isContract !== childIsContract) {
+    throw new Error('Department cannot be placed under a department of a different employment type');
+  }
+
+  const visited = new Set<string>();
+  let cursor: string | null = parentDepartmentId;
+  while (cursor && !visited.has(cursor)) {
+    if (cursor === id) {
+      throw new Error('Department cannot be moved under one of its own sub-departments');
+    }
+    visited.add(cursor);
+    cursor = byId.get(cursor)?.parentDepartmentId ?? null;
+  }
 }
 
 export async function createPosition(input: CreatePositionInput) {

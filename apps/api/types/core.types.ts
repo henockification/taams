@@ -9,6 +9,10 @@ export type CreateDepartmentInput = {
 
 export type UpdateDepartmentInput = Partial<CreateDepartmentInput>;
 
+export type MoveDepartmentInput = {
+  parentDepartmentId: string | null;
+};
+
 export type CreatePositionInput = {
   nameEn: string;
   nameAm?: string | null;

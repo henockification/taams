@@ -16,6 +16,7 @@ import {
   Landmark,
   LayoutDashboard,
   ListChecks,
+  Network,
   MonitorCog,
   PanelsTopLeft,
   PlaneTakeoff,
@@ -154,14 +155,14 @@ export const appNavGroups: AppNavGroup[] = [
     labelKey: 'core',
     icon: Building2,
     items: [
-      // Temporarily hidden: organization structure should not appear in navigation or be directly accessible.
-      // {
-      //   titleKey: 'organizationStructure',
-      //   url: '/organization-structure',
-      //   permissionResource: 'organization-structure',
-      //   requiredPermission: 'organization-structure:read',
-      //   icon: Building2,
-      // },
+      {
+        titleKey: 'organizationStructure',
+        url: '/organization-structure',
+        permissionResource: 'organization-structure',
+        requiredPermission: 'organization-structure:read',
+        legacyPermissions: ['organization-structure:edit'],
+        icon: Network,
+      },
       // Temporarily hidden: positions should not appear in navigation or be directly accessible.
       // {
       //   titleKey: 'positions',
@@ -699,7 +700,8 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
       || pathname.startsWith('/leave-management/')
     )
   ) return false;
-  if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/')) return false;
+  if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/'))
+    return userHasPermission(user, 'organization-structure:read') || userHasPermission(user, 'organization-structure:edit');
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
   if (pathname === '/leave-request-approvals' || pathname.startsWith('/leave-request-approvals/'))
     return hasLeaveRequestApprovalAccess(user);

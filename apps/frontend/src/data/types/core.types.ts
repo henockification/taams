@@ -1561,6 +1561,11 @@ export type CreateDepartmentInput = {
   isActive?: boolean;
 };
 
+export type MoveDepartmentInput = {
+  departmentId: string;
+  parentDepartmentId: string | null;
+};
+
 export type UpdateDepartmentInput = Partial<CreateDepartmentInput> & {
   departmentId: string;
 };

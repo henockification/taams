@@ -634,6 +634,10 @@ export const CreateDepartmentRequestSchema = z.object({
 
 export const UpdateDepartmentRequestSchema = CreateDepartmentRequestSchema.partial();
 
+export const MoveDepartmentRequestSchema = z.object({
+  parentDepartmentId: UuidSchema.nullable(),
+});
+
 export const CreatePositionRequestSchema = z.object({
   nameEn: z.string().min(1).max(150),
   nameAm: z.string().max(150).nullable().optional(),

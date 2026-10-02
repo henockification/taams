@@ -16,6 +16,8 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('employees:read', 'employees', 'read', 'View employees'),
   ('employees:create', 'employees', 'create', 'Create employees'),
   ('employees:update', 'employees', 'update', 'Update employees'),
+  ('organization-structure:read', 'organization-structure', 'read', 'View the department organization structure'),
+  ('organization-structure:edit', 'organization-structure', 'edit', 'Arrange departments in the organization structure'),
   ('temporary-assignment:read', 'temporary-assignment', 'read', 'View temporary department assignments'),
   ('temporary-assignment:add', 'temporary-assignment', 'add', 'Create temporary department assignments'),
   ('temporary-assignment:edit', 'temporary-assignment', 'edit', 'Update temporary department assignments'),
@@ -100,6 +102,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
   ]),
   ('human_resource', 'Human resources user with employee, leave, attendance, schedule, and report access', ARRAY[
     'hr-dashboard:read', 'employees:read', 'employees:create', 'employees:update', 'permanent-employees:read',
+    'organization-structure:read', 'organization-structure:edit',
     'temporary-assignment:read', 'temporary-assignment:add', 'temporary-assignment:edit',
     'leave-fiscal-years:read', 'leave-types:read', 'leave-balances:read',
     'leave-request-approvals:approve', 'leave-authorizations:approve', 'annual-leave-requests:read', 'other-leave-requests:read',
