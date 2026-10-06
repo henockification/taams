@@ -135,6 +135,11 @@ import type {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3012';
 
+/** Errors carry the HTTP status so React Query can skip retries for 4xx responses. */
+function httpError(status: number, message: string) {
+  return Object.assign(new Error(message), { status });
+}
+
 async function coreFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
   const response = await fetch(`${API_BASE_URL}/api${path}`, {
@@ -151,7 +156,7 @@ async function coreFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => null);
 
   if (!response.ok || data?.success === false) {
-    throw new Error(data?.error || data?.message || data?.details || `HTTP error! status: ${response.status}`);
+    throw httpError(response.status, data?.error || data?.message || data?.details || `HTTP error! status: ${response.status}`);
   }
 
   return data as T;
@@ -164,7 +169,7 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.error || data?.message || data?.details || `HTTP error! status: ${response.status}`);
+    throw httpError(response.status, data?.error || data?.message || data?.details || `HTTP error! status: ${response.status}`);
   }
 
   return response.blob();
@@ -173,7 +178,7 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 export const coreApi = {
   getIsmisLeaveImport: () => coreFetch<{ success: true; batch: any | null }>('/attendance-approvals/ismis-leave'),
   importIsmisLeave: (file: File) => { const form = new FormData(); form.append('file', file); return coreFetch<{ success: true; id: string; unmatchedEmployeeIds?: string[] }>('/attendance-approvals/ismis-leave/import', { method: 'POST', body: form }); },
-  completeIsmisLeave: (params: { batchId: string; dateFrom: string; dateTo: string }) => coreFetch<{ success: true; verification: any }>('/attendance-approvals/ismis-leave/complete', { method: 'POST', body: JSON.stringify(params) }),
+  completeIsmisLeave: (params: { batchId: string; dateFrom: string; dateTo: string }) => coreFetch<{ success: true; verification: any; recalculatedDates: number; recalculatedRecords: number }>('/attendance-approvals/ismis-leave/complete', { method: 'POST', body: JSON.stringify(params) }),
   rejectIsmisLeave: (batchId: string) => coreFetch<{ success: true; batch: any }>(`/attendance-approvals/ismis-leave/${batchId}/reject`, { method: 'POST' }),
   getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
     const query = new URLSearchParams({

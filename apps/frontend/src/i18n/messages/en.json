@@ -1334,6 +1334,7 @@
     "adjustmentSourceTruthNotice": "Device punches remain unchanged. This adjustment is saved separately for audit and comparison reports.",
     "attendanceReturned": "Attendance returned",
     "hrAttendanceApproved": "Attendance ready for payroll",
+    "ismisLeaveCheckCompleted": "Leave check confirmed. {count} attendance record(s) were corrected for ISMIS leave.",
     "returnAttendance": "Return attendance",
     "returnReason": "Return reason",
     "returnReasonPlaceholder": "Describe what needs correction",

@@ -302,6 +302,17 @@ export async function getPrimaryLeaveApprovalEmployeeIds(
   return [...visibleIds];
 }
 
+/** True when the user currently approves leave (directly or by delegation) for at least one contract employee. */
+export async function hasContractLeaveApprovalEmployees(actorUserId: string, tx: DbClient = db): Promise<boolean> {
+  const employeeIds = await getPrimaryLeaveApprovalEmployeeIds(actorUserId, tx);
+  if (employeeIds.length === 0) return false;
+  const contractEmployee = await tx.query.employees.findFirst({
+    where: and(inArray(employees.id, employeeIds), eq(employees.employmentType, 'CONTRACT')),
+    columns: { id: true },
+  });
+  return Boolean(contractEmployee);
+}
+
 export async function resolveLeaveApprovalActionContext(input: {
   actorUserId: string;
   targetEmployeeId: string;

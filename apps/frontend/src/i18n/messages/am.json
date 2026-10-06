@@ -1334,6 +1334,7 @@
     "adjustmentSourceTruthNotice": "የመሳሪያ ምልክቶች አይቀየሩም። ይህ ማስተካከያ ለኦዲት እና ለንጽጽር ሪፖርቶች በተለየ ይቀመጣል።",
     "attendanceReturned": "መገኘት ተመልሷል",
     "hrAttendanceApproved": "መገኘት ለደመወዝ ዝግጁ ሆኗል",
+    "ismisLeaveCheckCompleted": "የፈቃድ ማረጋገጫ ተጠናቋል። {count} የመገኘት መዝገብ(ቦች) በISMIS ፈቃድ መሠረት ተስተካክለዋል።",
     "returnAttendance": "መገኘት መልስ",
     "returnReason": "የመመለሻ ምክንያት",
     "returnReasonPlaceholder": "ምን መስተካከል እንዳለበት ይጻፉ",

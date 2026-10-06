@@ -25,6 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
 import { Link, useRouter } from "@/i18n"
+import { useSession } from "@/lib/auth-client"
 import type {
   AttendancePunch,
   DepartmentHeadDashboardSummary,
@@ -59,7 +60,7 @@ const widgetMeta: Record<WidgetKey, { icon: React.ComponentType<{ className?: st
   pendingCorrections: { icon: RotateCcw, tone: "bg-orange-600 text-white", labelKey: "pendingCorrections" },
 }
 
-// Leave is only managed through this dashboard for CONTRACT supervisors.
+// Team leave is shown to supervisors who approve leave for at least one contract employee.
 const leaveWidgetKeys: WidgetKey[] = ["leave", "pendingLeave"]
 
 // Pending tiles link to the supervisor pages where the items can be acted on.
@@ -81,6 +82,7 @@ export default function DepartmentHeadDashboardPage() {
   const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const { data, isLoading, isFetching, isError, error, refetch } = useDepartmentHeadDashboardSummary({ date })
+  const session = useSession()
   const dashboard = data?.departmentHeadDashboard
 
   if (isLoading) return <DepartmentHeadDashboardSkeleton />
@@ -98,7 +100,9 @@ export default function DepartmentHeadDashboardPage() {
     )
   }
 
-  const showLeave = dashboard.supervisor.employmentType === "CONTRACT"
+  const showLeave = Boolean(session.data?.user?.supervisesContractEmployees)
+  // Only contract employees have their own annual leave balance.
+  const showPersonalBalance = dashboard.supervisor.employmentType === "CONTRACT"
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -127,9 +131,9 @@ export default function DepartmentHeadDashboardPage() {
         </div>
       </div>
 
-      <div className={cn("grid gap-5", showLeave && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
+      <div className={cn("grid gap-5", showPersonalBalance && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid widgets={dashboard.widgets} showLeave={showLeave} date={dashboard.date} />
-        {showLeave
+        {showPersonalBalance
           ? <PersonalLeaveBalance balance={dashboard.currentAnnualLeaveBalance} />
           : null}
       </div>

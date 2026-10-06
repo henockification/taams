@@ -310,7 +310,10 @@ export function AttendanceApprovalsPage({
             <div className="min-w-52 flex-1"><div className="text-xs font-medium">Permanent employee leave verification</div><div className="text-[11px] text-muted-foreground">Import ISMIS leave and confirm before payroll.</div></div>
             <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="h-8 max-w-xs text-xs" />
             <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo })}>I checked leave</Button> : null}
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo }, {
+              onSuccess: (result) => notifications.show({ title: common('success'), message: t('ismisLeaveCheckCompleted', { count: result.recalculatedRecords }), color: 'green' }),
+              onError: (error) => notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' }),
+            })}>I checked leave</Button> : null}
             {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="ghost" disabled={rejectLeave.isPending} onClick={() => rejectLeave.mutate(latestLeave.data!.batch!.id)}>Discard import</Button> : null}
             {latestLeave.data?.batch ? <span className="text-xs text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
           </CardContent>

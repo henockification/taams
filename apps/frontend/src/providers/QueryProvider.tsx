@@ -34,17 +34,9 @@ export function QueryProvider({ children }: QueryProviderProps) {
             refetchOnReconnect: true,
           },
           mutations: {
-            retry: (failureCount, error) => {
-              // Don't retry mutations on 4xx errors
-              if (error instanceof Error && 'status' in error) {
-                const status = (error as any).status;
-                if (status >= 400 && status < 500) {
-                  return false;
-                }
-              }
-              // Retry up to 2 times for other errors
-              return failureCount < 2;
-            },
+            // Never resend a write automatically: a failed approval or save would be
+            // submitted again (and the user waits on "Saving..." for each retry).
+            retry: false,
           },
         },
       })

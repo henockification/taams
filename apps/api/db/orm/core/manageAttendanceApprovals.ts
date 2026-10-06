@@ -477,16 +477,6 @@ export async function supervisorApproveAttendanceDailyRecords(
   return db.transaction(async (tx) => {
     const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
     if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
-    const permanentDates = records.filter((record: any) => record.employee?.employmentType === 'PERMANENT').map((record: any) => String(record.attendanceDate));
-    if (permanentDates.length > 0) {
-      const dateFrom = permanentDates.sort()[0];
-      const dateTo = permanentDates.sort().at(-1)!;
-      const verified = await tx.query.attendanceLeaveVerifications.findFirst({
-        where: and(lte(attendanceLeaveVerifications.dateFrom, dateFrom), gte(attendanceLeaveVerifications.dateTo, dateTo)),
-        columns: { id: true },
-      });
-      if (!verified) throw new Error('HR must complete the ISMIS leave verification for permanent employees covering these dates before their attendance can be approved');
-    }
     const approvalContexts = [];
     for (const record of records) {
       if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
@@ -641,6 +631,56 @@ export async function updateSupervisorAttendanceDailyRecordPayroll(
   });
 }
 
+/**
+ * Permanent employees' leave lives in ISMIS, so HR must import and confirm the ISMIS
+ * leave sheet for the dates before approving their attendance. Supervisors approve
+ * regardless; the confirmation recalculates their records (see recalculateAttendanceForIsmisLeave).
+ */
+async function assertPermanentLeaveVerified(records: any[], tx: any) {
+  const permanentDates = records
+    .filter((record) => record.employee?.employmentType === 'PERMANENT')
+    .map((record) => String(record.attendanceDate))
+    .sort();
+  if (permanentDates.length === 0) return;
+  const verified = await tx.query.attendanceLeaveVerifications.findFirst({
+    where: and(lte(attendanceLeaveVerifications.dateFrom, permanentDates[0]), gte(attendanceLeaveVerifications.dateTo, permanentDates.at(-1)!)),
+    columns: { id: true },
+  });
+  if (!verified) {
+    throw new Error('An ISMIS leave check is required for permanent employees covering these dates. Import the ISMIS leave sheet and confirm it before HR approval');
+  }
+}
+
+/**
+ * Applies a confirmed ISMIS leave import to attendance already generated in the
+ * checked range, including records the supervisor has approved (HR-approved ones
+ * return to SUPERVISOR_APPROVED for HR to confirm the corrected numbers).
+ */
+export async function recalculateAttendanceForIsmisLeave(batchId: string, dateFrom: string, dateTo: string) {
+  const lastDate = dateTo < addisToday() ? dateTo : addisToday();
+  const leaveDays = await db.select({ employeeId: ismisLeaveDays.employeeId, attendanceDate: ismisLeaveDays.attendanceDate })
+    .from(ismisLeaveDays)
+    .where(and(
+      eq(ismisLeaveDays.batchId, batchId),
+      sql`${ismisLeaveDays.employeeId} IS NOT NULL`,
+      gte(ismisLeaveDays.attendanceDate, dateFrom),
+      lte(ismisLeaveDays.attendanceDate, lastDate),
+    ));
+
+  const employeeIdsByDate = new Map<string, Set<string>>();
+  for (const day of leaveDays) {
+    const date = String(day.attendanceDate);
+    employeeIdsByDate.set(date, (employeeIdsByDate.get(date) ?? new Set()).add(day.employeeId!));
+  }
+
+  let recalculatedRecords = 0;
+  for (const [date, employeeIds] of [...employeeIdsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const generated = await generateAttendanceDailyRecords(date, { recalculateEmployeeIds: [...employeeIds] });
+    recalculatedRecords += generated.filter((record: any) => employeeIds.has(record.employeeId)).length;
+  }
+  return { recalculatedDates: employeeIdsByDate.size, recalculatedRecords };
+}
+
 export async function hrApproveAttendanceDailyRecord(id: string, input: { userId: string; scope?: EmployeeVisibilityScope }) {
   const result = await hrApproveAttendanceDailyRecords([id], input);
   return result.attendanceDailyRecords[0];
@@ -666,6 +706,7 @@ export async function hrApproveAttendanceDailyRecords(
         throw new Error('Only supervisor-approved attendance records can be HR approved');
       }
     }
+    await assertPermanentLeaveVerified(records, tx);
 
     const approvedAt = new Date();
     const updated = await tx.update(attendanceDailyRecords).set({

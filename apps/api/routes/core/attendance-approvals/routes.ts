@@ -25,6 +25,7 @@ import {
 } from './handlers/attendanceApprovals';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 import { completeIsmisLeaveVerification, getLatestIsmisLeaveImport, importIsmisLeaveWorkbook, rejectIsmisLeaveImport } from '../../../db/orm/core/manageIsmisLeave';
+import { recalculateAttendanceForIsmisLeave } from '../../../db/orm/core/manageAttendanceApprovals';
 
 const attendanceApprovalsApp = new Hono();
 
@@ -214,7 +215,8 @@ attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/complete', requir
     const body = await c.req.json();
     const user = c.get('user');
     const result = await completeIsmisLeaveVerification(String(body.batchId), String(body.dateFrom), String(body.dateTo), user.id);
-    return c.json({ success: true, verification: result });
+    const recalculation = await recalculateAttendanceForIsmisLeave(String(body.batchId), String(body.dateFrom), String(body.dateTo));
+    return c.json({ success: true, verification: result, ...recalculation });
   } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'ISMIS leave verification failed' }, 400); }
 });
 attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/:id/reject', requirePermission('hr-attendance-approvals:approve'), async (c) => {

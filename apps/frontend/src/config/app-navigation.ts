@@ -551,6 +551,8 @@ type AuthzUser =
       role?: string[];
       permissions?: string[];
       employeeEmploymentType?: string | null;
+      /** Set by the API when the user approves leave for at least one contract employee. */
+      supervisesContractEmployees?: boolean;
       delegatedSupervisorCapabilities?: Array<{
         id: string;
         endsAt?: string | null;
@@ -832,7 +834,7 @@ export function getFirstAccessiblePath(user: AuthzUser) {
   if (hasExecutiveRole(user)) return '/executive-dashboard';
   if (hasHrDashboardAccess(user)) return '/hr-dashboard';
   if (hasSupervisorRole(user)) return '/department-head-dashboard';
-  if (hasDelegatedSupervisorAccess(user) && hasContractEmployee(user)) return '/leave-request-approvals';
+  if (hasDelegatedSupervisorAccess(user) && hasLeaveRequestApprovalAccess(user)) return '/leave-request-approvals';
   return getAccessibleNavGroups(user)[0]?.items[0]?.url ?? null;
 }
 
@@ -845,8 +847,10 @@ function hasContractEmployee(user: AuthzUser) {
   return user?.employeeEmploymentType === 'CONTRACT';
 }
 
+// Leave management only covers contract employees, so approvers see the menu when they
+// supervise at least one contract employee, regardless of their own employment type.
 function hasLeaveRequestApprovalAccess(user: AuthzUser) {
-  return hasContractEmployee(user) && (
+  return Boolean(user?.supervisesContractEmployees) && (
     hasDelegatedSupervisorAccess(user) ||
     (hasExactSupervisorRole(user) && hasSupervisorApprovalAccess(user, 'leave-request-approvals:approve'))
   );
