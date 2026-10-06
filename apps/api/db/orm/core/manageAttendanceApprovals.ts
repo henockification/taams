@@ -195,7 +195,7 @@ export async function generateAttendanceDailyRecords(
     const attendanceDays = evaluation.attendanceDays;
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
-    const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions);
+    const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions, attendanceDate);
     const payroll = resolvePayrollDays({
       attendanceDays,
       leaveDays,
@@ -441,11 +441,12 @@ export async function getHrAttendanceDailyRecords(
   const range = resolveAttendanceDateRange({ date, ...rangeInput });
   // Do not regenerate every employee/day while serving a grid read request.
 
+  // HR sees every status so returned, payroll-ready, and still-pending records stay
+  // visible; HR actions remain limited to supervisor-approved records.
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       attendanceDateFilter(range.dateFrom, range.dateTo),
       workingAttendanceEmployeeFilter(),
-      eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
     ),
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],

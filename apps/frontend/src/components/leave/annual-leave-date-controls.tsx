@@ -73,7 +73,7 @@ export function AnnualLeaveDateControls({
             <DualCalendarDateField id={specificId} value={specificDate} onChange={onSpecificDateChange} />
           </Field>
           <div className="flex flex-wrap items-end gap-2">
-            <Button type="button" className="w-full lg:w-auto" variant="outline" onClick={onAddDate}>
+            <Button type="button" className="w-full lg:w-auto" variant="outline" onClick={onAddDate} disabled={addWorkingDaysDisabled}>
               <Plus className="size-4" />
               {t('addDate')}
             </Button>

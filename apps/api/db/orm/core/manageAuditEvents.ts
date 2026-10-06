@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, isNotNull, lte, or } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNotNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { auditEvents } from '../../schema';
 import { AUDIT_ACTION_LABELS, type AuditAction } from '../../../lib/audit';
@@ -13,6 +13,8 @@ export type ListAuditEventsInput = {
   resourceId?: string | null;
   employeeId?: string | null;
   departmentId?: string | null;
+  /** Restrict to events recorded against these departments (department-restricted HR). */
+  departmentIds?: string[] | null;
   outcome?: string | null;
   delegatedOnly?: boolean;
   limit?: number;
@@ -39,6 +41,9 @@ export async function listAuditEvents(input: ListAuditEventsInput = {}) {
       input.resourceId ? eq(auditEvents.resourceId, input.resourceId) : undefined,
       input.employeeId ? eq(auditEvents.employeeId, input.employeeId) : undefined,
       input.departmentId ? eq(auditEvents.departmentId, input.departmentId) : undefined,
+      input.departmentIds
+        ? (input.departmentIds.length > 0 ? inArray(auditEvents.departmentId, input.departmentIds) : sql`false`)
+        : undefined,
       input.outcome ? eq(auditEvents.outcome, input.outcome) : undefined,
       input.delegatedOnly ? isNotNull(auditEvents.supervisorDelegationId) : undefined,
     ),

@@ -47,6 +47,7 @@ import {
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
   useCompleteIsmisLeave,
+  useRejectIsmisLeave,
   useIsmisLeaveImport,
   useLatestIsmisLeaveImport,
 } from '@/data/hooks/core.hooks';
@@ -164,6 +165,7 @@ export function AttendanceApprovalsPage({
   const isHrMode = mode === 'hr';
   const leaveImport = useIsmisLeaveImport();
   const completeLeave = useCompleteIsmisLeave();
+  const rejectLeave = useRejectIsmisLeave();
   const latestLeave = useLatestIsmisLeaveImport(isHrMode);
   const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const session = useSession();
@@ -309,6 +311,7 @@ export function AttendanceApprovalsPage({
             <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="h-8 max-w-xs text-xs" />
             <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
             {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo })}>I checked leave</Button> : null}
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="ghost" disabled={rejectLeave.isPending} onClick={() => rejectLeave.mutate(latestLeave.data!.batch!.id)}>Discard import</Button> : null}
             {latestLeave.data?.batch ? <span className="text-xs text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
           </CardContent>
         </Card>

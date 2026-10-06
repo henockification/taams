@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, ilike, inArray, isNotNull, isNull, lte, notInArray, or } from 'drizzle-orm';
 import { db } from '../../db';
-import { attendanceDailyRecords, employeeSupervisors, employees, temporaryDepartmentAssignments } from '../../schema';
+import { attendanceDailyRecords, departments, employeeSupervisors, employees, temporaryDepartmentAssignments } from '../../schema';
 
 type DbClient = typeof db | any;
 
@@ -22,10 +22,14 @@ export type SupervisorAttendanceParams = {
 };
 
 /**
- * Attendance rows the supervisor may see. On each date an employee belongs to their temporary
- * department when an active temporary assignment covers that date, otherwise to their home
- * department — the same rule attendance approvals use. So people temporarily moved into the
- * supervisor's tree appear for those days, and people temporarily moved out drop off.
+ * Attendance rows the supervisor may see, following the organization structure: the head of a
+ * department sees everyone placed in that department or any department below it.
+ *
+ * Where someone is placed:
+ * - A department head sits at the department(s) they head, whatever department their own employee
+ *   record is filed under. So a head is visible to the heads above them and never to those below.
+ * - Everyone else sits in their temporary department on days an active temporary assignment covers,
+ *   otherwise in their home department (the same rule attendance approvals use).
  */
 export async function getSupervisorAttendanceRecords(params: SupervisorAttendanceParams, tx: DbClient = db) {
   const { scope: supervisorScope } = params;
@@ -49,9 +53,35 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
   );
 
   const search = params.search?.trim();
-  const selfEmployeeId = supervisorScope.type === 'departments' ? supervisorScope.employeeId : null;
-  // Candidates: home department in scope, or temporarily assigned into scope during the range.
-  // Exact per-day membership is decided below once the records are loaded.
+  const viewerEmployeeId = supervisorScope.type === 'departments' ? supervisorScope.employeeId : null;
+
+  // Heads are placed by the departments they head. A head is in scope only when every department
+  // they head is in scope; a head of anything outside it (a parent or another branch) is above or
+  // beside the viewer and stays hidden.
+  const headedDepartments: Array<{ id: string; nameEn: string; headEmployeeId: string }> = await tx
+    .select({ id: departments.id, nameEn: departments.nameEn, headEmployeeId: departments.headEmployeeId })
+    .from(departments)
+    .where(isNotNull(departments.headEmployeeId));
+  const headedByEmployee = new Map<string, Array<{ id: string; nameEn: string }>>();
+  for (const department of headedDepartments) {
+    const current = headedByEmployee.get(department.headEmployeeId) ?? [];
+    current.push({ id: department.id, nameEn: department.nameEn });
+    headedByEmployee.set(department.headEmployeeId, current);
+  }
+  const inScope = (departmentId: string | null | undefined) =>
+    !departmentIds || (Boolean(departmentId) && departmentIds.includes(departmentId!));
+  const headsInScope = new Set<string>();
+  const headsOutOfScope = new Set<string>();
+  for (const [employeeId, headed] of headedByEmployee) {
+    (headed.every((department) => inScope(department.id)) ? headsInScope : headsOutOfScope).add(employeeId);
+  }
+  if (viewerEmployeeId) {
+    headsInScope.delete(viewerEmployeeId);
+    headsOutOfScope.add(viewerEmployeeId);
+  }
+
+  // Candidates: heads placed in scope, plus anyone filed (or temporarily assigned) in scope during
+  // the range. Exact per-day placement is decided below once the records are loaded.
   const candidateEmployeeIds = tx
     .select({ id: employees.id })
     .from(employees)
@@ -66,9 +96,10 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
               .from(temporaryDepartmentAssignments)
               .where(and(temporaryAssignmentInRange, inArray(temporaryDepartmentAssignments.targetDepartmentId, departmentIds))),
           ),
+          headsInScope.size > 0 ? inArray(employees.id, [...headsInScope]) : undefined,
         )
         : undefined,
-      selfEmployeeId ? ne(employees.id, selfEmployeeId) : undefined,
+      headsOutOfScope.size > 0 ? notInArray(employees.id, [...headsOutOfScope]) : undefined,
       search
         ? or(
           ilike(employees.employeeCode, `%${search}%`),
@@ -89,6 +120,7 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
         params.status ? eq(attendanceDailyRecords.status, params.status) : undefined,
       ),
       with: {
+        holiday: { columns: { nameEn: true } },
         employee: {
           with: {
             department: true,
@@ -125,14 +157,25 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
 
   return (records as any[])
     .map((record) => {
+      const headed = headedByEmployee.get(record.employeeId);
+      if (headed) {
+        return {
+          record,
+          inScope: headsInScope.has(record.employeeId),
+          effectiveDepartmentName: headed.map((department) => department.nameEn).join(', '),
+          homeDepartmentName: record.employee?.department?.nameEn ?? '',
+          isTemporary: false,
+        };
+      }
       const assignment = assignmentOn(record.employeeId, record.attendanceDate);
+      const effectiveDepartmentId = assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null;
       return {
         record,
-        effectiveDepartmentId: assignment?.targetDepartmentId ?? record.employee?.departmentId ?? null,
+        inScope: inScope(effectiveDepartmentId) && record.employeeId !== viewerEmployeeId,
         effectiveDepartmentName: assignment?.targetDepartment?.nameEn ?? record.employee?.department?.nameEn ?? '',
         homeDepartmentName: record.employee?.department?.nameEn ?? '',
         isTemporary: Boolean(assignment),
       };
     })
-    .filter((row) => !departmentIds || (row.effectiveDepartmentId !== null && departmentIds.includes(row.effectiveDepartmentId)));
+    .filter((row) => row.inScope);
 }

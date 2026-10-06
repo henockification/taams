@@ -26,6 +26,7 @@ import {
   getLeaveFiscalYears,
   getLeaveRequests,
   getLeaveTypes,
+  getLeaveWorkingCalendar,
   reviewLeaveInterruptionScoped,
   setActiveLeaveFiscalYear,
   updateLeaveFiscalYear,
@@ -36,6 +37,7 @@ import {
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
 import { assertCanAccessEmployee, resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
+import { getPrimaryLeaveApprovalEmployeeIds } from '../../../../db/orm/core/manageSupervisorDelegations';
 import { getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import {
@@ -96,6 +98,22 @@ export async function getLeaveTypesHandler(c: Context) {
     return c.json({ success: true, leaveTypes: leaveTypes.map(formatLeaveType) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch leave types');
+  }
+}
+
+export async function getLeaveWorkingCalendarHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const employeeId = c.req.query('employeeId') ?? '';
+    const startDate = c.req.query('startDate') ?? '';
+    const endDate = c.req.query('endDate') ?? '';
+    if (!employeeId) return validationErrorResponse(c, 'employeeId is required');
+    if (!isIsoDate(startDate) || !isIsoDate(endDate)) return validationErrorResponse(c, 'startDate and endDate must be YYYY-MM-DD dates');
+    await assertCanViewLeaveCalendar(session, employeeId);
+    const days = await getLeaveWorkingCalendar(employeeId, startDate, endDate);
+    return c.json({ success: true, days });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch leave working calendar');
   }
 }
 
@@ -415,6 +433,24 @@ async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByT
   if (!session?.user?.id) throw new Error('Authentication required');
   const assignedRoles = await getUserRoleNames(session.user.id);
   return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
+}
+
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(`${value}T00:00:00Z`).getTime());
+}
+
+/** Requesters, their leave approvers (incl. delegates), and scoped HR/authorizers may view an employee's leave calendar. */
+async function assertCanViewLeaveCalendar(session: Awaited<ReturnType<typeof getSessionByToken>>, employeeId: string) {
+  if (!session?.user?.id) throw new Error('Authentication required');
+  const scope = await resolveScope(session);
+  try {
+    await assertCanAccessEmployee(employeeId, scope);
+    return;
+  } catch {
+    const approvalEmployeeIds = await getPrimaryLeaveApprovalEmployeeIds(session.user.id);
+    if (approvalEmployeeIds.includes(employeeId)) return;
+  }
+  throw new Error('Employee not found');
 }
 
 async function assertLeaveAuthorizationPermission(userId: string) {

@@ -17,27 +17,20 @@ import { Link, useRouter } from '@/i18n';
 import {
   useCreateLeaveRequest,
   useDashboardSummary,
-  useEmployeeWorkSchedules,
-  useHolidays,
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
   useLeaveTypes,
   useUpdateLeaveRequest,
-  useWorkScheduleDays,
 } from '@/data/hooks/core.hooks';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
-import { annualLeaveDatesInRange } from '@/components/leave/leave-working-days';
+import { mergeAnnualDates, type AnnualDateSelection } from '@/components/leave/leave-working-days';
+import { useAnnualLeaveDateAdder } from '@/components/leave/use-annual-leave-date-adder';
 
 const noneValue = '__none';
 const dayValueOptions = ['1.00', '0.50'] as const;
-
-type AnnualDateSelection = {
-  date: string;
-  dayValue: string;
-};
 
 type AnnualLeaveRequestFormPageProps = {
   mode: 'create' | 'edit';
@@ -66,10 +59,6 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
     ? requests.find((request) => request.id === requestId) ?? null
     : null;
   const currentEmployee = dashboardQuery.data?.dashboard.employee ?? editingRequest?.employee ?? null;
-  const employeeSchedulesQuery = useEmployeeWorkSchedules(currentEmployee?.id ?? '');
-  const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
-  const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
-  const holidaysQuery = useHolidays();
   const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(currentEmployee?.id) });
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
@@ -77,9 +66,6 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
   const annualType = leaveTypes.find((type) => type.code.toUpperCase() === 'ANNUAL');
   const activeFiscalYear = fiscalYears.find((fiscalYear) => fiscalYear.isActive);
   const annualBalances = leaveBalancesQuery.data?.leaveBalances ?? [];
-  const scheduledWorkingDays = useMemo(() => new Set(
-    (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
-  ), [workScheduleDaysQuery.data?.days]);
 
   const initialDates = useMemo(() => {
     if (!editingRequest?.annualLeaveDates?.length) return [];
@@ -136,19 +122,9 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
     || (editingRequest.requestedBy === session.data?.user?.id
       && editingRequest.employee?.userId === session.data?.user?.id);
 
-  const addAnnualDate = (date: string, dayValue = '1.00') => {
-    if (!date) return;
-    setAnnualDates((current) => {
-      if (current.some((item) => item.date === date)) return current;
-      return [...current, { date, dayValue }].sort((a, b) => a.date.localeCompare(b.date));
-    });
-  };
-
-  const addAnnualRange = () => {
-    for (const { date, dayValue } of annualLeaveDatesInRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
-      addAnnualDate(date, dayValue);
-    }
-  };
+  const dateAdder = useAnnualLeaveDateAdder(currentEmployee?.id, annualDates, (dates) => (
+    setAnnualDates((current) => mergeAnnualDates(current, dates))
+  ));
 
   const saveRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -266,9 +242,9 @@ export function AnnualLeaveRequestFormPage({ mode, requestId }: AnnualLeaveReque
             onRangeChange={setAnnualRange}
             specificDate={annualDateInput}
             onSpecificDateChange={setAnnualDateInput}
-            onAddWorkingDays={addAnnualRange}
-            onAddDate={() => addAnnualDate(annualDateInput)}
-            addWorkingDaysDisabled={workScheduleDaysQuery.isLoading || holidaysQuery.isLoading}
+            onAddWorkingDays={() => dateAdder.addRange(annualRange.startDate, annualRange.endDate)}
+            onAddDate={() => dateAdder.addDate(annualDateInput)}
+            addWorkingDaysDisabled={dateAdder.isChecking}
           />
 
           <div className="rounded-md border border-border">

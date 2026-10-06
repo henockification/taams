@@ -43,13 +43,11 @@ import {
   useCreateLeaveRequest,
   useCreateLeaveInterruption,
   useDashboardSummary,
-  useEmployeeWorkSchedules,
   useLeaveBalances,
   useLeaveFiscalYears,
   useLeaveRequests,
-  useHolidays,
   useLeaveTypes,
-  useWorkScheduleDays,
+  useLeaveWorkingCalendar,
 } from '@/data/hooks/core.hooks';
 import type { Employee, LeaveBalance, LeaveRequest } from '@/data/types/core.types';
 import { Link } from '@/i18n';
@@ -57,13 +55,17 @@ import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
 import {
+  addIsoDays,
   clampLeaveEndDate,
-  holidayIsoDates,
+  isoDateRange,
   leaveWorkingDates,
   maxEndDateForAllowedDays,
+  mergeAnnualDates,
   parseAllowedDays,
-  annualLeaveDatesInRange,
+  toLeaveCalendar,
+  type AnnualDateSelection,
 } from '@/components/leave/leave-working-days';
+import { useAnnualLeaveDateAdder } from '@/components/leave/use-annual-leave-date-adder';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const noneValue = '__none';
@@ -87,11 +89,6 @@ function statusVariant(status: LeaveRequest['status']) {
   if (status === 'REJECTED' || status === 'AUTHORIZATION_REJECTED') return 'destructive';
   return 'secondary';
 }
-
-type AnnualDateSelection = {
-  date: string;
-  dayValue: string;
-};
 
 export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const t = useTranslations('core');
@@ -123,13 +120,14 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
   const leaveTypes = leaveTypesQuery.data?.leaveTypes ?? [];
   const currentEmployee = dashboardQuery.data?.dashboard.employee ?? null;
-  const employeeSchedulesQuery = useEmployeeWorkSchedules(currentEmployee?.id ?? '');
-  const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
-  const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
-  const scheduledWorkingDays = useMemo(() => new Set(
-    (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
-  ), [workScheduleDaysQuery.data?.days]);
-  const holidaysQuery = useHolidays();
+  // Other leave needs a look-ahead window so the end date can be capped at the allowed working days.
+  const otherCalendarEnd = form.endDate > addIsoDays(form.startDate, 400)
+    ? (form.endDate < addIsoDays(form.startDate, 799) ? form.endDate : addIsoDays(form.startDate, 799))
+    : addIsoDays(form.startDate, 400);
+  const otherCalendarQuery = useLeaveWorkingCalendar(currentEmployee?.id ?? '', form.startDate, otherCalendarEnd, {
+    enabled: kind === 'other' && dialogOpen,
+  });
+  const otherLeaveCalendar = useMemo(() => toLeaveCalendar(otherCalendarQuery.data?.days), [otherCalendarQuery.data?.days]);
   const leaveBalancesQuery = useLeaveBalances(undefined, { enabled: Boolean(kind === 'annual' && currentEmployee?.id) });
   const requests = requestsQuery.data?.leaveRequests ?? [];
   const filteredRequests = useMemo(() => {
@@ -160,25 +158,20 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const requiresFiscalYearBalance = selectedLeaveType?.code.trim().toUpperCase() === 'ANNUAL';
   const annualRequestedTotal = useMemo(() => sumAnnualDates(annualDates), [annualDates]);
   const annualBalanceAvailable = Number(selectedYearBalance?.available ?? 0);
-  const holidayDates = useMemo(
-    () => holidayIsoDates(holidaysQuery.data?.holidays ?? []),
-    [holidaysQuery.data?.holidays],
-  );
   const allowedDays = kind === 'other' ? parseAllowedDays(selectedLeaveType?.allowedDays) : null;
   const selectedWorkingDates = useMemo(
-    () => (kind === 'other' ? leaveWorkingDates(form.startDate, form.endDate, scheduledWorkingDays, holidayDates) : []),
-    [form.endDate, form.startDate, holidayDates, kind, scheduledWorkingDays],
+    () => (kind === 'other' ? leaveWorkingDates(form.startDate, form.endDate, otherLeaveCalendar) : []),
+    [form.endDate, form.startDate, kind, otherLeaveCalendar],
   );
   const maxEndDate = kind === 'other' && allowedDays
-    ? maxEndDateForAllowedDays(form.startDate, allowedDays, scheduledWorkingDays, holidayDates)
+    ? maxEndDateForAllowedDays(form.startDate, allowedDays, otherLeaveCalendar)
     : null;
   const selectedWorkingDayCount = selectedWorkingDates.length;
-  const otherLeaveScheduleReady = Boolean(currentEmployee?.id && scheduledWorkingDays.size > 0);
-  const otherLeaveDatesLoading = kind === 'other' && (
-    holidaysQuery.isLoading
-    || employeeSchedulesQuery.isLoading
-    || workScheduleDaysQuery.isLoading
-  );
+  const otherLeaveScheduleReady = Boolean(currentEmployee?.id)
+    && isoDateRange(form.startDate, form.endDate).every((date) => (
+      otherLeaveCalendar.has(date) && otherLeaveCalendar.get(date)?.status !== 'NO_SCHEDULE'
+    ));
+  const otherLeaveDatesLoading = kind === 'other' && otherCalendarQuery.isFetching;
   const otherLeaveDatesInvalid = kind === 'other' && (
     otherLeaveDatesLoading
     || !form.startDate
@@ -196,15 +189,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       leaveTypeId: kind === 'annual' ? annualType?.id ?? '' : selectableTypes[0]?.id ?? '',
       fiscalYearId: defaultFiscalYearId,
       startDate: today(),
-      endDate: kind === 'other'
-        ? clampLeaveEndDate(
-          today(),
-          today(),
-          parseAllowedDays(selectableTypes[0]?.allowedDays),
-          scheduledWorkingDays,
-          holidayDates,
-        )
-        : today(),
+      endDate: today(),
       reason: '',
     });
     setAnnualDates([]);
@@ -263,19 +248,9 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     }
   };
 
-  const addAnnualDate = (date: string, dayValue = '1.00') => {
-    if (!date) return;
-    setAnnualDates((current) => {
-      if (current.some((item) => item.date === date)) return current;
-      return [...current, { date, dayValue }].sort((a, b) => a.date.localeCompare(b.date));
-    });
-  };
-
-  const addAnnualRange = () => {
-    for (const { date, dayValue } of annualLeaveDatesInRange(annualRange.startDate, annualRange.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
-      addAnnualDate(date, dayValue);
-    }
-  };
+  const dateAdder = useAnnualLeaveDateAdder(currentEmployee?.id, annualDates, (dates) => (
+    setAnnualDates((current) => mergeAnnualDates(current, dates))
+  ));
 
   const updateAnnualDateValue = (date: string, dayValue: string) => {
     setAnnualDates((current) => current.map((item) => item.date === date ? { ...item, dayValue } : item));
@@ -506,8 +481,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                           current.startDate,
                           current.endDate,
                           nextAllowedDays,
-                          scheduledWorkingDays,
-                          holidayDates,
+                          otherLeaveCalendar,
                         ),
                       }));
                     }}
@@ -538,8 +512,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                           startDate,
                           current.endDate,
                           allowedDays,
-                          scheduledWorkingDays,
-                          holidayDates,
+                          otherLeaveCalendar,
                         ),
                       }))}
                       required
@@ -557,8 +530,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                           current.startDate,
                           endDate,
                           allowedDays,
-                          scheduledWorkingDays,
-                          holidayDates,
+                          otherLeaveCalendar,
                         ),
                       }))}
                       required
@@ -623,7 +595,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   <Field label={t('endDate')} id="annual-range-end">
                     <DualCalendarDateField id="annual-range-end" value={annualRange.endDate} onChange={(endDate) => setAnnualRange((current) => ({ ...current, endDate }))} />
                   </Field>
-                  <Button type="button" className="self-end" variant="outline" onClick={addAnnualRange}>
+                  <Button type="button" className="self-end" variant="outline" onClick={() => dateAdder.addRange(annualRange.startDate, annualRange.endDate)} disabled={dateAdder.isChecking}>
                     <Plus className="size-4" />
                     {t('addWorkingDays')}
                   </Button>
@@ -632,7 +604,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   <Field label={t('date')} id="annual-date">
                     <DualCalendarDateField id="annual-date" value={annualDateInput} onChange={setAnnualDateInput} />
                   </Field>
-                  <Button type="button" className="self-end" variant="outline" onClick={() => addAnnualDate(annualDateInput)}>
+                  <Button type="button" className="self-end" variant="outline" onClick={() => dateAdder.addDate(annualDateInput)} disabled={dateAdder.isChecking}>
                     <Plus className="size-4" />
                     {t('addDate')}
                   </Button>

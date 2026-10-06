@@ -170,11 +170,13 @@ function WidgetCard({ widgetKey, widget }: { widgetKey: WidgetKey; widget: HrDas
           <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{t(meta.labelKey)}</p>
           <p className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{widget.count}</p>
         </div>
-        <Button className="size-7 shrink-0 sm:size-9" variant="ghost" size="icon" asChild>
-          <Link href={widget.href as any} aria-label={t(meta.labelKey)}>
-            <RefreshCw className="size-4" />
-          </Link>
-        </Button>
+        {widget.href ? (
+          <Button className="size-7 shrink-0 sm:size-9" variant="ghost" size="icon" asChild>
+            <Link href={widget.href as any} aria-label={t(meta.labelKey)}>
+              <RefreshCw className="size-4" />
+            </Link>
+          </Button>
+        ) : null}
       </CardContent>
     </Card>
   )

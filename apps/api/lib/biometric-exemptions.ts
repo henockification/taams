@@ -6,15 +6,19 @@ type ExemptionMatch = Pick<BiometricExemption, 'employeeId' | 'positionId' | 'is
   reviewDueAt?: string | Date | null;
 };
 
+/**
+ * `asOfDate` (YYYY-MM-DD) is the day being evaluated, e.g. the attendance date, so
+ * recalculating a past day uses the exemptions that applied on that day.
+ */
 export function resolveEmployeeBiometricExemptions(
   employee: Pick<Employee, 'id' | 'positionId'>,
   exemptions: ExemptionMatch[],
+  asOfDate: string = new Date().toISOString().slice(0, 10),
 ) {
-  const today = new Date().toISOString().slice(0, 10);
   const activeExemptions = exemptions.filter((exemption) => exemption.isActive
-    && (!exemption.effectiveFrom || String(exemption.effectiveFrom).slice(0, 10) <= today)
-    && (!exemption.effectiveTo || String(exemption.effectiveTo).slice(0, 10) >= today)
-    && (!exemption.reviewDueAt || String(exemption.reviewDueAt).slice(0, 10) >= today));
+    && (!exemption.effectiveFrom || String(exemption.effectiveFrom).slice(0, 10) <= asOfDate)
+    && (!exemption.effectiveTo || String(exemption.effectiveTo).slice(0, 10) >= asOfDate)
+    && (!exemption.reviewDueAt || String(exemption.reviewDueAt).slice(0, 10) >= asOfDate));
   const matches = activeExemptions.filter((exemption) => (
     (exemption.employeeId !== null && exemption.employeeId === employee.id)
     || (exemption.positionId !== null && employee.positionId !== null && exemption.positionId === employee.positionId)
@@ -29,6 +33,7 @@ export function resolveEmployeeBiometricExemptions(
 export function isEmployeeBiometricExempt(
   employee: Pick<Employee, 'id' | 'positionId'>,
   exemptions: ExemptionMatch[],
+  asOfDate?: string,
 ) {
-  return resolveEmployeeBiometricExemptions(employee, exemptions).isExempt;
+  return resolveEmployeeBiometricExemptions(employee, exemptions, asOfDate).isExempt;
 }

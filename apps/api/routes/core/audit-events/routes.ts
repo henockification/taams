@@ -2,12 +2,22 @@ import { Hono } from 'hono';
 import { auditActionLabel, listAuditEvents } from '../../../db/orm/core/manageAuditEvents';
 import { summarizeChanges, type AuditChanges } from '../../../lib/audit';
 import { requirePermission } from '../../../middleware/rbac';
+import { resolveEmployeeVisibilityScope } from '../../../db/orm/core/manageEmployeeVisibility';
+import { getUserPermissionNames } from '../../../db/orm/rbac/manageRbac';
 
 const auditEventsApp = new Hono();
 
 auditEventsApp.get('/audit-events', requirePermission('reports-audit:read'), async (c) => {
   const query = c.req.query();
+  const session = c.get('session') as { user: { id: string; role?: string[] | null } };
+  // Department-restricted HR users only see events recorded against their departments.
+  const scope = await resolveEmployeeVisibilityScope({
+    userId: session.user.id,
+    roles: session.user.role ?? [],
+    permissions: await getUserPermissionNames(session.user.id),
+  });
   const events = await listAuditEvents({
+    departmentIds: scope.type === 'hr-departments' ? scope.departmentIds : null,
     dateFrom: query.dateFrom || null,
     dateTo: query.dateTo || null,
     actorUserId: query.actorUserId || null,

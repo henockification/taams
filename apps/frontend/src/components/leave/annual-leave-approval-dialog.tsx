@@ -30,11 +30,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useEmployeeWorkSchedules, useHolidays, useWorkScheduleDays } from '@/data/hooks/core.hooks';
 import type { LeaveRequest } from '@/data/types/core.types';
 import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
-import { annualLeaveDatesInRange } from '@/components/leave/leave-working-days';
+import { mergeAnnualDates } from '@/components/leave/leave-working-days';
+import { useAnnualLeaveDateAdder } from '@/components/leave/use-annual-leave-date-adder';
 
 type AnnualLeaveApprovalDialogProps = {
   request: LeaveRequest | null;
@@ -70,13 +70,9 @@ export function AnnualLeaveApprovalDialog({
   const [range, setRange] = useState({ startDate: today(), endDate: today() });
 
   const annualDates = request?.annualLeaveDates ?? [];
-  const employeeSchedulesQuery = useEmployeeWorkSchedules(request?.employeeId ?? '');
-  const activeScheduleAssignment = employeeSchedulesQuery.data?.employeeWorkSchedules.find((assignment) => assignment.isActive) ?? null;
-  const workScheduleDaysQuery = useWorkScheduleDays(activeScheduleAssignment?.workScheduleId ?? '');
-  const holidaysQuery = useHolidays();
-  const scheduledWorkingDays = useMemo(() => new Set(
-    (workScheduleDaysQuery.data?.days ?? []).filter((day) => day.isActive && !day.isOffDay).map((day) => day.dayOfWeek),
-  ), [workScheduleDaysQuery.data?.days]);
+  const dateAdder = useAnnualLeaveDateAdder(request?.employeeId, approvalDates, (dates) => (
+    setApprovalDates((current) => mergeAnnualDates(current, dates))
+  ));
   const requestedByDate = useMemo(() => new Map(
     annualDates.map((date) => [date.date, normalizeDayValue(date.requestedDayValue)]),
   ), [annualDates]);
@@ -104,20 +100,6 @@ export function AnnualLeaveApprovalDialog({
       date: date.date,
       dayValue: normalizeDayValue(date.requestedDayValue),
     })));
-  };
-
-  const addApprovalDate = (date: string, dayValue = '1.00') => {
-    if (!date) return;
-    setApprovalDates((current) => {
-      if (current.some((item) => item.date === date)) return current;
-      return [...current, { date, dayValue }].sort((a, b) => a.date.localeCompare(b.date));
-    });
-  };
-
-  const addApprovalRange = () => {
-    for (const { date, dayValue } of annualLeaveDatesInRange(range.startDate, range.endDate, scheduledWorkingDays, holidaysQuery.data?.holidays ?? [])) {
-      addApprovalDate(date, dayValue);
-    }
   };
 
   const submitApproval = async (event: FormEvent<HTMLFormElement>) => {
@@ -151,7 +133,7 @@ export function AnnualLeaveApprovalDialog({
             <Field label={t('endDate')} id="approval-range-end">
               <DualCalendarDateField id="approval-range-end" value={range.endDate} onChange={(endDate) => setRange((current) => ({ ...current, endDate }))} />
             </Field>
-            <Button type="button" className="self-end" variant="outline" onClick={addApprovalRange} disabled={workScheduleDaysQuery.isLoading}>
+            <Button type="button" className="self-end" variant="outline" onClick={() => dateAdder.addRange(range.startDate, range.endDate)} disabled={dateAdder.isChecking}>
               <Plus className="size-4" />
               {t('addWorkingDays')}
             </Button>
@@ -160,7 +142,7 @@ export function AnnualLeaveApprovalDialog({
             <Field label={t('specificDate')} id="approval-specific-date">
               <DualCalendarDateField id="approval-specific-date" value={specificDate} onChange={setSpecificDate} />
             </Field>
-            <Button type="button" className="self-end" variant="outline" onClick={() => addApprovalDate(specificDate)}>
+            <Button type="button" className="self-end" variant="outline" onClick={() => dateAdder.addDate(specificDate)} disabled={dateAdder.isChecking}>
               <Plus className="size-4" />
               {t('addDate')}
             </Button>

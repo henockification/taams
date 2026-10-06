@@ -402,7 +402,7 @@ export function SupervisorAssignmentsPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{t('assignSupervisor')}</DialogTitle>
-            <DialogDescription>{t('selectedEmployeesPreview', { count: selectedEmployees.length })}</DialogDescription>
+            <DialogDescription>{t('selectedEmployeesSupervisorPreview', { count: selectedEmployees.length })}</DialogDescription>
           </DialogHeader>
           <form className="space-y-5" onSubmit={saveAssignment}>
             <div className="grid gap-4">

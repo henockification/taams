@@ -74,6 +74,16 @@ export async function completeIsmisLeaveVerification(batchId: string, dateFrom: 
   });
 }
 
+/** Discard a pending import (wrong file or unmatched IDs) so a corrected file can be imported. */
+export async function rejectIsmisLeaveImport(batchId: string, rejectedBy: string) {
+  const [batch] = await db.update(ismisLeaveImportBatches)
+    .set({ status: 'REJECTED', completedBy: rejectedBy, completedAt: new Date() })
+    .where(and(eq(ismisLeaveImportBatches.id, batchId), eq(ismisLeaveImportBatches.status, 'PENDING')))
+    .returning();
+  if (!batch) throw new Error('Only a pending ISMIS leave import can be discarded');
+  return batch;
+}
+
 export async function getLatestIsmisLeaveImport() {
   return db.query.ismisLeaveImportBatches.findFirst({ orderBy: (table, { desc }) => [desc(table.createdAt)] });
 }

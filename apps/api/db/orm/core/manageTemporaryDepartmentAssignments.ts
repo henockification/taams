@@ -5,7 +5,7 @@ import type {
   CreateTemporaryDepartmentAssignmentInput,
   UpdateTemporaryDepartmentAssignmentInput,
 } from '../../../types/core.types';
-import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
 import { employeeAuditFields, formatEmployeeLabel, writeAuditEvent } from '../../../lib/audit';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
@@ -26,12 +26,16 @@ export async function getTemporaryDepartmentAssignments(context: AssignmentConte
   const workingAssignments = assignments.filter((assignment) => isWorkingEmployee(assignment.employee));
 
   if (canManageAll(context.scope)) return workingAssignments;
+  if (context.scope?.type === 'hr-departments') {
+    const scope = context.scope;
+    return workingAssignments.filter((assignment) => isDepartmentVisibleInScope(assignment.employee?.departmentId, scope));
+  }
 
   const managedIds = await getVisibleEmployeeIdsForSupervisorActor(context.userId, context.roles);
   return workingAssignments.filter((assignment) => managedIds.includes(assignment.employeeId) || assignment.createdBy === context.userId);
 }
 
-export async function getTemporaryAssignmentEligibleEmployees() {
+export async function getTemporaryAssignmentEligibleEmployees(scope?: EmployeeVisibilityScope) {
   const candidates = await db.query.employees.findMany({
     where: and(
       eq(employees.isActive, true),
@@ -40,7 +44,9 @@ export async function getTemporaryAssignmentEligibleEmployees() {
     with: { department: true, position: true },
     orderBy: (table, { asc }) => [asc(table.employeeCode)],
   });
-  return candidates.filter(isWorkingEmployee);
+  return candidates
+    .filter(isWorkingEmployee)
+    .filter((employee) => scope?.type !== 'hr-departments' || isDepartmentVisibleInScope(employee.departmentId, scope));
 }
 
 export async function createTemporaryDepartmentAssignment(input: CreateTemporaryDepartmentAssignmentInput, context: AssignmentContext) {
@@ -209,6 +215,11 @@ async function assertCanManageEmployeeAssignment(
   createdBy?: string | null,
 ) {
   if (canManageAll(context.scope)) return;
+  if (context.scope?.type === 'hr-departments') {
+    const employee = await tx.query.employees.findFirst({ where: eq(employees.id, employeeId), columns: { departmentId: true } });
+    if (employee && isDepartmentVisibleInScope(employee.departmentId, context.scope)) return;
+    throw new Error('You do not have permission to manage temporary assignments for this employee');
+  }
   if (createdBy && createdBy === context.userId) return;
   const managedIds = await getVisibleEmployeeIdsForSupervisorActor(context.userId, context.roles, tx, referenceDate);
   if (managedIds.includes(employeeId)) return;

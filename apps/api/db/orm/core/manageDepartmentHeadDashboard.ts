@@ -155,7 +155,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
   );
   const exemptEmployeeIds = new Set(
     departmentEmployees
-      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
+      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions, selectedDate))
       .map((employee) => employee.id),
   );
   const scheduleByEmployee = getScheduleByEmployee(workScheduleAssignments, selectedDate);

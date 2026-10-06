@@ -22,6 +22,7 @@ import { getSessionByToken } from '../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../db/orm/rbac/manageRbac';
 import {
   getHeadedDepartmentScope,
+  isEmployeeVisibleInScope,
   resolveEmployeeVisibilityScope,
   scopedEmployeeWhere,
   type EmployeeVisibilityScope,
@@ -30,6 +31,7 @@ import {
   getSupervisorAttendanceRecords,
   type SupervisorReportScope,
 } from '../../db/orm/core/manageSupervisorReport';
+import { buildSessionSlotColumns, recordSessions, sessionSlotValues } from '../../lib/attendance/session-slots';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 
 type ReportKey =
@@ -56,7 +58,13 @@ type ReportDefinition = {
   permission: string | null;
   access?: 'supervisor';
   columns: ReportColumn[];
-  buildRows: (input: ReportInput) => Promise<Record<string, unknown>[]>;
+  /** Rows only, or rows with their own columns when the columns depend on the data. */
+  buildRows: (input: ReportInput) => Promise<Record<string, unknown>[] | ReportResult>;
+};
+
+type ReportResult = {
+  rows: Record<string, unknown>[];
+  columns: ReportColumn[];
 };
 
 type ReportInput = {
@@ -256,9 +264,9 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'department', label: 'Department' },
       { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'directSupervisor', label: 'Direct supervisor' },
-      { key: 'checkInAt', label: 'Check in' },
-      { key: 'checkOutAt', label: 'Check out' },
+      // Check-in/check-out/status columns per shift session are inserted here by the builder.
       { key: 'lateMinutes', label: 'Late minutes' },
+      { key: 'earlyBreakMinutes', label: 'Early break minutes' },
       { key: 'earlyDepartureMinutes', label: 'Early departure minutes' },
       { key: 'attendanceDays', label: 'Attendance days' },
       { key: 'leaveDays', label: 'Leave days' },
@@ -283,6 +291,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'leaveDays', label: 'Leave days' },
       { key: 'lateDays', label: 'Late days' },
       { key: 'totalLateMinutes', label: 'Total late minutes' },
+      { key: 'absentSessions', label: 'Absent sessions' },
       { key: 'pendingApproval', label: 'Pending approval' },
     ],
     buildRows: buildSupervisorAttendanceSummaryRows,
@@ -317,7 +326,7 @@ reportsApp.get('/reports/:key', async (c) => {
     if (!definition) return c.json({ success: false, error: 'Report not found' }, 404);
 
     const context = await getReportContext(c, definition);
-    const rows = await definition.buildRows({
+    const { rows, columns } = await runReport(definition, {
       query: new URL(c.req.url).searchParams,
       scope: context.scope,
       supervisorScope: context.supervisorScope,
@@ -329,7 +338,7 @@ reportsApp.get('/reports/:key', async (c) => {
         key,
         title: definition.title,
         generatedAt: new Date().toISOString(),
-        columns: definition.columns,
+        columns,
         rows,
         summary: { totalRows: rows.length },
       },
@@ -346,13 +355,13 @@ reportsApp.get('/reports/:key/excel', async (c) => {
     if (!definition) return c.json({ success: false, error: 'Report not found' }, 404);
 
     const context = await getReportContext(c, definition);
-    const rows = await definition.buildRows({
+    const { rows, columns } = await runReport(definition, {
       query: new URL(c.req.url).searchParams,
       scope: context.scope,
       supervisorScope: context.supervisorScope,
     });
     const worksheetRows = rows.map((row) => Object.fromEntries(
-      definition.columns.map((column) => [column.label, row[column.key] ?? '']),
+      columns.map((column) => [column.label, row[column.key] ?? '']),
     ));
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(worksheetRows);
@@ -369,6 +378,11 @@ reportsApp.get('/reports/:key/excel', async (c) => {
     return reportError(c, error);
   }
 });
+
+async function runReport(definition: ReportDefinition, input: ReportInput): Promise<ReportResult> {
+  const result = await definition.buildRows(input);
+  return Array.isArray(result) ? { rows: result, columns: definition.columns } : result;
+}
 
 async function getReportContext(c: any, definition: ReportDefinition) {
   const token = getSessionCookie(c);
@@ -815,25 +829,40 @@ function directSupervisorName(employee: any) {
   return employeeName(employee?.supervisorAssignments?.[0]?.supervisor);
 }
 
-async function buildSupervisorAttendanceRows(input: ReportInput) {
+async function buildSupervisorAttendanceRows(input: ReportInput): Promise<ReportResult> {
   const rows = await loadSupervisorAttendanceRecords(input);
+  const sessionsByRow = rows.map(({ record }) => recordSessions(record));
+  const { slotCount, columns: sessionColumns } = buildSessionSlotColumns(sessionsByRow);
+  const baseColumns = reportDefinitions['supervisor-attendance'].columns;
+  const insertAt = baseColumns.findIndex((column) => column.key === 'directSupervisor') + 1;
+  const columns = [...baseColumns.slice(0, insertAt), ...sessionColumns, ...baseColumns.slice(insertAt)];
 
-  return rows.map(({ record, effectiveDepartmentName, homeDepartmentName, isTemporary }) => ({
-    attendanceDate: record.attendanceDate,
-    employeeCode: record.employee?.employeeCode ?? '',
-    employeeName: employeeName(record.employee),
-    department: effectiveDepartmentName,
-    temporaryFrom: isTemporary ? homeDepartmentName : '',
-    directSupervisor: directSupervisorName(record.employee),
-    checkInAt: formatDateTime(record.checkInAt),
-    checkOutAt: formatDateTime(record.checkOutAt),
-    lateMinutes: record.lateMinutes ?? 0,
-    earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
-    attendanceDays: record.attendanceDays,
-    leaveDays: record.leaveDays,
-    absenceDays: record.absenceDays,
-    status: record.status,
-  }));
+  const reportRows = rows.map(({ record, effectiveDepartmentName, homeDepartmentName, isTemporary }, rowIndex) => {
+    const slots = sessionSlotValues(record, sessionsByRow[rowIndex], slotCount);
+    return {
+      attendanceDate: record.attendanceDate,
+      employeeCode: record.employee?.employeeCode ?? '',
+      employeeName: employeeName(record.employee),
+      department: effectiveDepartmentName,
+      temporaryFrom: isTemporary ? homeDepartmentName : '',
+      directSupervisor: directSupervisorName(record.employee),
+      ...slots,
+      lateMinutes: totalLateMinutes(record),
+      earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
+      earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+      attendanceDays: record.attendanceDays,
+      leaveDays: record.leaveDays,
+      absenceDays: record.absenceDays,
+      status: record.status,
+    };
+  });
+
+  return { rows: reportRows, columns };
+}
+
+/** Morning lateness plus late return from break, as the attendance approval screen totals it. */
+function totalLateMinutes(record: any) {
+  return (record.lateMinutes ?? 0) + (record.lateReturnMinutes ?? 0);
 }
 
 async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
@@ -850,6 +879,7 @@ async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
     leaveDays: number;
     lateDays: number;
     totalLateMinutes: number;
+    absentSessions: number;
     pendingApproval: number;
   }>();
 
@@ -867,6 +897,7 @@ async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
       leaveDays: 0,
       lateDays: 0,
       totalLateMinutes: 0,
+      absentSessions: 0,
       pendingApproval: 0,
     };
     summary.daysRecorded += 1;
@@ -874,8 +905,10 @@ async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
     summary.attendanceDays += Number(record.attendanceDays ?? 0);
     summary.absenceDays += Number(record.absenceDays ?? 0);
     summary.leaveDays += Number(record.leaveDays ?? 0);
-    if ((record.lateMinutes ?? 0) > 0) summary.lateDays += 1;
-    summary.totalLateMinutes += record.lateMinutes ?? 0;
+    const lateMinutes = totalLateMinutes(record);
+    if (lateMinutes > 0) summary.lateDays += 1;
+    summary.totalLateMinutes += lateMinutes;
+    summary.absentSessions += recordSessions(record).filter((session) => session.attendanceStatus === 'ABSENT').length;
     if (record.status === 'PENDING_SUPERVISOR') summary.pendingApproval += 1;
     summaries.set(record.employeeId, summary);
   }
@@ -893,14 +926,15 @@ async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
 
 function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: EmployeeVisibilityScope) {
   if (!employee) return false;
-  if (scope.type === 'self' && employee.userId !== scope.userId) return false;
+  if (!isEmployeeVisibleInScope(employee, scope)) return false;
   if (query.get('departmentId') && employee.departmentId !== query.get('departmentId')) return false;
   if (query.get('employeeId') && employee.id !== query.get('employeeId')) return false;
   return true;
 }
 
-async function buildAuditRows({ query }: ReportInput) {
+async function buildAuditRows({ query, scope }: ReportInput) {
   const events = await listAuditEvents({
+    departmentIds: scope.type === 'hr-departments' ? scope.departmentIds : null,
     dateFrom: dateFrom(query),
     dateTo: dateTo(query),
     actorUserId: query.get('actorUserId'),

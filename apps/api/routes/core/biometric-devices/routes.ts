@@ -22,7 +22,19 @@ import {
   testBiometricDeviceConnectionHandler,
   updateBiometricDeviceHandler,
 } from './handlers/biometricDevices';
+import { createMiddleware } from 'hono/factory';
 import { requirePermission } from '../../../middleware/rbac';
+import { includesPrivilegedRole } from '../../../lib/privileged-roles';
+
+// Registering and reconfiguring devices is a system administration task. HR keeps
+// device monitoring, connection tests, attendance sync, and employee provisioning.
+const requireDeviceAdministrator = createMiddleware(async (c, next) => {
+  const session = c.get('session') as { user?: { role?: string[] | null } } | undefined;
+  if (!includesPrivilegedRole(session?.user?.role)) {
+    return c.json({ success: false, error: 'Only system administrators can register or change biometric devices' }, 403);
+  }
+  await next();
+});
 
 const biometricDevicesApp = new Hono();
 
@@ -176,10 +188,10 @@ export const getBiometricDeviceSyncHistoryRoute = createRoute({
   },
 });
 
-biometricDevicesApp.post('/biometric-devices', requirePermission('biometric-devices:read'), createBiometricDeviceHandler);
+biometricDevicesApp.post('/biometric-devices', requirePermission('biometric-devices:read'), requireDeviceAdministrator, createBiometricDeviceHandler);
 biometricDevicesApp.get('/biometric-devices', requirePermission('biometric-devices:read'), getBiometricDevicesHandler);
 biometricDevicesApp.get('/biometric-devices/:id', requirePermission('biometric-devices:read'), getBiometricDeviceHandler);
-biometricDevicesApp.put('/biometric-devices/:id', requirePermission('biometric-devices:read'), updateBiometricDeviceHandler);
+biometricDevicesApp.put('/biometric-devices/:id', requirePermission('biometric-devices:read'), requireDeviceAdministrator, updateBiometricDeviceHandler);
 biometricDevicesApp.post('/biometric-devices/:id/sync', requirePermission('biometric-devices:read', 'biometric-provisioning:execute'), syncBiometricDeviceHandler);
 biometricDevicesApp.post('/biometric-devices/:id/test-connection', requirePermission('biometric-devices:read'), testBiometricDeviceConnectionHandler);
 biometricDevicesApp.get('/biometric-devices/:id/sync-history', requirePermission('biometric-devices:read', 'reports-device-sync:read'), getBiometricDeviceSyncHistoryHandler);

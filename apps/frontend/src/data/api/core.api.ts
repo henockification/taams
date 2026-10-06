@@ -69,6 +69,7 @@ import type {
   GenerateAttendanceDailyRecordsResponse,
   HolidayResponse,
   HolidaysResponse,
+  LeaveWorkingCalendarResponse,
   NotificationLogFilters,
   NotificationLogsResponse,
   PermanentEmployeeImportResponse,
@@ -173,6 +174,7 @@ export const coreApi = {
   getIsmisLeaveImport: () => coreFetch<{ success: true; batch: any | null }>('/attendance-approvals/ismis-leave'),
   importIsmisLeave: (file: File) => { const form = new FormData(); form.append('file', file); return coreFetch<{ success: true; id: string; unmatchedEmployeeIds?: string[] }>('/attendance-approvals/ismis-leave/import', { method: 'POST', body: form }); },
   completeIsmisLeave: (params: { batchId: string; dateFrom: string; dateTo: string }) => coreFetch<{ success: true; verification: any }>('/attendance-approvals/ismis-leave/complete', { method: 'POST', body: JSON.stringify(params) }),
+  rejectIsmisLeave: (batchId: string) => coreFetch<{ success: true; batch: any }>(`/attendance-approvals/ismis-leave/${batchId}/reject`, { method: 'POST' }),
   getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
     const query = new URLSearchParams({
       payMonth: String(params.payMonth),
@@ -678,6 +680,10 @@ export const coreApi = {
       method: 'POST',
     }),
   getLeaveTypes: () => coreFetch<LeaveTypesResponse>('/leave/types'),
+  getLeaveWorkingCalendar: (employeeId: string, startDate: string, endDate: string) => {
+    const query = new URLSearchParams({ employeeId, startDate, endDate });
+    return coreFetch<LeaveWorkingCalendarResponse>(`/leave/working-calendar?${query.toString()}`);
+  },
   createLeaveType: (input: CreateLeaveTypeInput) =>
     coreFetch<LeaveTypeResponse>('/leave/types', {
       method: 'POST',

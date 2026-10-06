@@ -183,7 +183,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const scopedUnprocessedPunches = unprocessedPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
   const exemptEmployeeIds = new Set(
     activeEmployees
-      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
+      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions, selectedDate))
       .map((employee) => employee.id),
   );
   const punchesByEmployee = groupPunchesByEmployee(scopedDayPunches);
@@ -254,19 +254,20 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         'corrections-returned',
         'Corrections Returned',
         scopedReturnedCorrections.length,
-        '/attendance-corrections',
+        // Corrections are decided by supervisors; HR has no review page to open.
+        '',
       ),
       manualAttendanceRequests: createWidget(
         'manual-attendance-requests',
         'Manual Attendance Requests',
         scopedPendingManualRequests.length,
-        '/attendance-corrections',
+        '',
       ),
       employeesOnLeave: createWidget(
         'employees-on-leave',
         'Employees on Leave',
         scopedApprovedLeavesToday.length,
-        '/reports/leave-requests?status=AUTHORIZED',
+        `/reports/leave-requests?status=AUTHORIZED&dateFrom=&dateTo=${selectedDate}`,
       ),
       employeesWithoutPunch: createWidget(
         'employees-without-punch',
@@ -296,7 +297,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
         'upcoming-leave',
         'Upcoming Leave',
         scopedUpcomingLeaveRequests.length,
-        '/reports/leave-requests?status=AUTHORIZED',
+        `/reports/leave-requests?status=AUTHORIZED&dateFrom=${selectedDate}&dateTo=${addDaysIso(selectedDate, 14)}`,
       ),
       employeesNearLeaveExpiry: createWidget(
         'employees-near-leave-expiry',
@@ -513,6 +514,12 @@ function buildSyncStatus(batches: any[]) {
     counts,
     openIssues: counts.started + counts.failed + counts.partial,
   };
+}
+
+function addDaysIso(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
 }
 
 function createWidget(id: string, label: string, count: number, href: string) {

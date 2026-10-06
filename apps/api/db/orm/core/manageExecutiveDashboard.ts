@@ -132,7 +132,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   const activeEmployeeIds = new Set(activeEmployees.map((employee) => employee.id));
   const exemptEmployeeIds = new Set(
     activeEmployees
-      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions))
+      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions, selectedDate))
       .map((employee) => employee.id),
   );
   const punchesByEmployee = groupPunchesByEmployee(periodPunches);

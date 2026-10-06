@@ -1343,56 +1343,98 @@ function resolveAnnualApprovalSelections(
 async function assertAnnualLeaveDatesAreWorkingDays(employeeId: string, selections: AnnualLeaveDateSelection[], tx: DbClient = db) {
   if (selections.length === 0) throw new Error('Annual leave dates are required');
   const sorted = [...selections].sort((a, b) => a.date.localeCompare(b.date));
-  const overlappingHolidays = await tx.query.holidays.findMany({
-    where: and(
-      eq(holidays.isActive, true),
-      lte(holidays.startDate, sorted[sorted.length - 1].date),
-      gte(holidays.endDate, sorted[0].date),
-    ),
-  });
-  const workDaysBySchedule = new Map<string, Set<string>>();
+  const calendar = new Map((await getLeaveWorkingCalendar(employeeId, sorted[0].date, sorted[sorted.length - 1].date, tx))
+    .map((day) => [day.date, day]));
   for (const { date, dayValue } of sorted) {
-    const assignment = await tx.query.employeeWorkSchedules.findFirst({
+    const day = calendar.get(date);
+    if (!day || day.status === 'NO_SCHEDULE') throw new Error(`Employee work schedule is required for annual leave date ${date}`);
+    if (day.status === 'OFF_DAY') throw new Error(`Annual leave date ${date} is a scheduled off day`);
+    if (day.status === 'HOLIDAY') throw new Error(`Annual leave date ${date} is a holiday (${day.holidayName})`);
+    if (day.status === 'HALF_DAY_HOLIDAY' && dayValue > day.maxDayValue) {
+      throw new Error(`Annual leave date ${date} is a half-day holiday (${day.holidayName}); only a half day of leave can be taken`);
+    }
+  }
+}
+
+export type LeaveCalendarDayStatus = 'WORKING' | 'HALF_DAY_HOLIDAY' | 'HOLIDAY' | 'OFF_DAY' | 'NO_SCHEDULE';
+
+export type LeaveCalendarDay = {
+  date: string;
+  status: LeaveCalendarDayStatus;
+  maxDayValue: number;
+  holidayName: string | null;
+};
+
+const MAX_LEAVE_CALENDAR_DAYS = 800;
+
+/**
+ * Classifies each date for leave purposes using the employee's schedule
+ * assignment on that date (same rest-day rules as attendance) and active
+ * holidays. This is the single source of truth for leave date validation and
+ * for the "add working days" pickers.
+ */
+export async function getLeaveWorkingCalendar(employeeId: string, startDate: string, endDate: string, tx: DbClient = db): Promise<LeaveCalendarDay[]> {
+  assertDateRange(startDate, endDate);
+  const dates = dateRange(startDate, endDate).map((date) => date.toISOString().slice(0, 10));
+  if (dates.length > MAX_LEAVE_CALENDAR_DAYS) throw new Error(`Leave calendar range cannot exceed ${MAX_LEAVE_CALENDAR_DAYS} days`);
+
+  const [assignments, overlappingHolidays] = await Promise.all([
+    tx.query.employeeWorkSchedules.findMany({
       where: and(
         eq(employeeWorkSchedules.employeeId, employeeId),
         eq(employeeWorkSchedules.isActive, true),
-        lte(employeeWorkSchedules.effectiveFrom, date),
-        or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, date)),
+        lte(employeeWorkSchedules.effectiveFrom, endDate),
+        or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, startDate)),
       ),
       with: { workSchedule: true },
       orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom)],
-    });
-    if (!assignment) throw new Error(`Employee work schedule is required for annual leave date ${date}`);
+    }),
+    tx.query.holidays.findMany({
+      where: and(
+        eq(holidays.isActive, true),
+        lte(holidays.startDate, endDate),
+        gte(holidays.endDate, startDate),
+      ),
+    }),
+  ]);
 
-    let workDays = workDaysBySchedule.get(assignment.workScheduleId);
-    if (!workDays) {
-      const days = await tx.select().from(workScheduleDays).where(and(
-        eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
-        eq(workScheduleDays.isActive, true),
-      ));
-      workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => String(day.dayOfWeek).toUpperCase()));
-      if (workDays.size === 0) throw new Error('Employee work schedule has no working days configured');
-      workDaysBySchedule.set(assignment.workScheduleId, workDays);
-    }
-    // Same rest-day rules as attendance: a roster rest day, or a weekday the
-    // weekly schedule does not list as a working day.
-    const schedule = (assignment as any).workSchedule;
+  const scheduleIds = [...new Set(assignments.map((assignment: any) => assignment.workScheduleId))] as string[];
+  const scheduleDays = scheduleIds.length > 0
+    ? await tx.select().from(workScheduleDays).where(and(
+      inArray(workScheduleDays.workScheduleId, scheduleIds),
+      eq(workScheduleDays.isActive, true),
+    ))
+    : [];
+  const workDaysBySchedule = new Map<string, Set<string>>();
+  for (const day of scheduleDays as any[]) {
+    if (day.isOffDay) continue;
+    const workDays = workDaysBySchedule.get(day.workScheduleId) ?? new Set<string>();
+    workDays.add(String(day.dayOfWeek).toUpperCase());
+    workDaysBySchedule.set(day.workScheduleId, workDays);
+  }
+
+  return dates.map((date) => {
+    // Assignments are ordered newest first, matching the per-date lookup used by attendance.
+    const assignment: any = assignments.find((item: any) => (
+      formatDateValue(item.effectiveFrom) <= date
+      && (!item.effectiveTo || formatDateValue(item.effectiveTo) >= date)
+    ));
+    if (!assignment) return { date, status: 'NO_SCHEDULE', maxDayValue: 0, holidayName: null };
+
+    const schedule = assignment.workSchedule;
     const isWorkingDay = schedule?.scheduleType === 'ROSTER'
       ? rosterCycleIndex(date, formatDateValue(assignment.effectiveFrom), Number(schedule.rosterOnDays ?? 1), Number(schedule.rosterOffDays ?? 0)) < Number(schedule.rosterOnDays ?? 1)
-      : workDays.has(dayOfWeek(new Date(`${date}T00:00:00Z`)));
-    if (!isWorkingDay) throw new Error(`Annual leave date ${date} is a scheduled off day`);
+      : Boolean(workDaysBySchedule.get(assignment.workScheduleId)?.has(dayOfWeek(new Date(`${date}T00:00:00Z`))));
+    if (!isWorkingDay) return { date, status: 'OFF_DAY', maxDayValue: 0, holidayName: null };
 
-    const holiday = overlappingHolidays.find((item: any) => (
-      formatDateValue(item.startDate) <= date && formatDateValue(item.endDate) >= date
-    ));
-    if (!holiday) continue;
-    if (numeric(holiday.durationDays) >= 1) {
-      throw new Error(`Annual leave date ${date} is a holiday (${holiday.nameEn})`);
-    }
-    if (dayValue > 1 - numeric(holiday.durationDays)) {
-      throw new Error(`Annual leave date ${date} is a half-day holiday (${holiday.nameEn}); only a half day of leave can be taken`);
-    }
-  }
+    const holiday = overlappingHolidays
+      .filter((item: any) => formatDateValue(item.startDate) <= date && formatDateValue(item.endDate) >= date)
+      .sort((a: any, b: any) => numeric(b.durationDays) - numeric(a.durationDays))[0];
+    if (!holiday) return { date, status: 'WORKING', maxDayValue: 1, holidayName: null };
+    const holidayDays = numeric(holiday.durationDays);
+    if (holidayDays >= 1) return { date, status: 'HOLIDAY', maxDayValue: 0, holidayName: holiday.nameEn };
+    return { date, status: 'HALF_DAY_HOLIDAY', maxDayValue: Math.max(0, 1 - holidayDays), holidayName: holiday.nameEn };
+  });
 }
 
 async function ensureKnownLeaveTypes() {
@@ -1511,50 +1553,10 @@ async function assertUserExists(id: string, tx: DbClient = db) {
 }
 
 async function calculateWorkingDays(employeeId: string, startDate: string, endDate: string, tx: DbClient = db) {
-  assertDateRange(startDate, endDate);
-  const assignment = await tx.query.employeeWorkSchedules.findFirst({
-    where: and(
-      eq(employeeWorkSchedules.employeeId, employeeId),
-      eq(employeeWorkSchedules.isActive, true),
-      lte(employeeWorkSchedules.effectiveFrom, startDate),
-      or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, endDate)),
-    ),
-    orderBy: (table: any, { desc }: any) => [desc(table.effectiveFrom)],
-  });
-  if (!assignment) throw new Error('Employee work schedule is required to calculate leave days');
-
-  const [days, overlappingHolidays] = await Promise.all([
-    tx.select().from(workScheduleDays).where(
-      and(
-        eq(workScheduleDays.workScheduleId, assignment.workScheduleId),
-        eq(workScheduleDays.isActive, true),
-      ),
-    ),
-    tx.query.holidays.findMany({
-      where: and(
-        eq(holidays.isActive, true),
-        lte(holidays.startDate, endDate),
-        gte(holidays.endDate, startDate),
-      ),
-    }),
-  ]);
-  const workDays = new Set(days.filter((day: any) => !day.isOffDay).map((day: any) => day.dayOfWeek));
-  if (workDays.size === 0) throw new Error('Employee work schedule has no working days configured');
-
-  const holidayDates = new Set<string>();
-  for (const holiday of overlappingHolidays) {
-    for (const date of dateRange(formatDateValue(holiday.startDate), formatDateValue(holiday.endDate))) {
-      holidayDates.add(date.toISOString().slice(0, 10));
-    }
-  }
-
-  let count = 0;
-  for (const date of dateRange(startDate, endDate)) {
-    const iso = date.toISOString().slice(0, 10);
-    if (!workDays.has(dayOfWeek(date))) continue;
-    if (holidayDates.has(iso)) continue;
-    count += 1;
-  }
+  const calendar = await getLeaveWorkingCalendar(employeeId, startDate, endDate, tx);
+  if (calendar.some((day) => day.status === 'NO_SCHEDULE')) throw new Error('Employee work schedule is required to calculate leave days');
+  // Other leave is counted in whole days, so any holiday (including half-day) is excluded.
+  const count = calendar.filter((day) => day.status === 'WORKING').length;
   if (count <= 0) throw new Error('Leave request does not include any scheduled working days');
   return count;
 }

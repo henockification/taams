@@ -94,6 +94,7 @@ export const coreQueryKeys = {
   workSchedule: (id: string) => [...coreQueryKeys.workSchedules(), id] as const,
   workScheduleDays: (id: string) => [...coreQueryKeys.workSchedule(id), 'days'] as const,
   holidays: () => [...coreQueryKeys.all, 'holidays'] as const,
+  leaveWorkingCalendar: (employeeId: string, startDate: string, endDate: string) => [...coreQueryKeys.all, 'leave', 'working-calendar', employeeId, startDate, endDate] as const,
   notificationLogs: (params: NotificationLogFilters) => [...coreQueryKeys.all, 'notification-logs', params] as const,
   auditEvents: (params: Record<string, string>) => [...coreQueryKeys.all, 'audit-events', params] as const,
   employees: () => [...coreQueryKeys.all, 'employees'] as const,
@@ -171,6 +172,11 @@ export function useIsmisLeaveImport() {
 
 export function useLatestIsmisLeaveImport(enabled = true) {
   return useQuery({ queryKey: [...coreQueryKeys.all, 'ismis-leave-import'], queryFn: coreApi.getIsmisLeaveImport, enabled });
+}
+
+export function useRejectIsmisLeave() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (batchId: string) => coreApi.rejectIsmisLeave(batchId), onSuccess: () => queryClient.invalidateQueries({ queryKey: coreQueryKeys.all }) });
 }
 
 export function useCompleteIsmisLeave() {
@@ -585,6 +591,26 @@ export function useHolidays(options?: { enabled?: boolean }) {
     queryFn: () => coreApi.getHolidays(),
     staleTime: 60 * 1000,
     enabled: options?.enabled ?? true,
+  });
+}
+
+export function useLeaveWorkingCalendar(employeeId: string, startDate: string, endDate: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: coreQueryKeys.leaveWorkingCalendar(employeeId, startDate, endDate),
+    queryFn: () => coreApi.getLeaveWorkingCalendar(employeeId, startDate, endDate),
+    enabled: Boolean(employeeId && startDate && endDate && startDate <= endDate) && (options?.enabled ?? true),
+    staleTime: 60 * 1000,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Imperative calendar lookup for button-driven date pickers (shares the query cache). */
+export function useFetchLeaveWorkingCalendar() {
+  const queryClient = useQueryClient();
+  return (employeeId: string, startDate: string, endDate: string) => queryClient.fetchQuery({
+    queryKey: coreQueryKeys.leaveWorkingCalendar(employeeId, startDate, endDate),
+    queryFn: () => coreApi.getLeaveWorkingCalendar(employeeId, startDate, endDate),
+    staleTime: 60 * 1000,
   });
 }
 

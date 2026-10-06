@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import { Check, ChevronsUpDown, Download, FileText, Printer, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
@@ -171,6 +171,19 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
     fiscalYearsQuery.data,
     leaveTypesQuery.data,
   ]);
+
+  // Links (e.g. from dashboards) can preset filters through the URL query string.
+  const appliedUrlFilters = useRef(false);
+  useEffect(() => {
+    if (appliedUrlFilters.current) return;
+    appliedUrlFilters.current = true;
+    const allowed = new Set(reportFilters.map((filter) => filter.key));
+    const fromUrl: Record<string, string> = {};
+    new URLSearchParams(window.location.search).forEach((value, key) => {
+      if (allowed.has(key)) fromUrl[key] = value;
+    });
+    if (Object.keys(fromUrl).length > 0) setFilters((current) => ({ ...current, ...fromUrl }));
+  }, [reportFilters]);
 
   const report = reportQuery.data?.report;
   const activeFilterText = reportFilters

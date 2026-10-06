@@ -1280,6 +1280,14 @@ export type BiometricExemptionResponse = {
   biometricExemption: BiometricExemption;
 };
 export type HolidaysResponse = { success: boolean; holidays: Holiday[] };
+export type LeaveCalendarDayStatus = 'WORKING' | 'HALF_DAY_HOLIDAY' | 'HOLIDAY' | 'OFF_DAY' | 'NO_SCHEDULE';
+export type LeaveCalendarDay = {
+  date: string;
+  status: LeaveCalendarDayStatus;
+  maxDayValue: number;
+  holidayName: string | null;
+};
+export type LeaveWorkingCalendarResponse = { success: boolean; days: LeaveCalendarDay[] };
 export type HolidayResponse = { success: boolean; holiday: Holiday };
 export type NotificationLogsResponse = {
   success: boolean;

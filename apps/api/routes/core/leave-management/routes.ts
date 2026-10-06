@@ -37,6 +37,7 @@ import {
   getLeaveFiscalYearsHandler,
   getLeaveRequestsHandler,
   getLeaveTypesHandler,
+  getLeaveWorkingCalendarHandler,
   reviewLeaveInterruptionHandler,
   setActiveLeaveFiscalYearHandler,
   updateLeaveFiscalYearHandler,
@@ -50,6 +51,34 @@ const leaveManagementApp = new Hono();
 
 const uuidParam = z.object({
   id: z.string().uuid().openapi({ example: 'a52da4a6-4b69-4aa0-865c-1a03fddb731f' }),
+});
+
+const LeaveWorkingCalendarResponseSchema = z.object({
+  success: z.boolean(),
+  days: z.array(z.object({
+    date: z.string(),
+    status: z.enum(['WORKING', 'HALF_DAY_HOLIDAY', 'HOLIDAY', 'OFF_DAY', 'NO_SCHEDULE']),
+    maxDayValue: z.number(),
+    holidayName: z.string().nullable(),
+  })),
+});
+
+export const getLeaveWorkingCalendarRoute = createRoute({
+  method: 'get',
+  path: '/leave/working-calendar',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Classify dates as working days, off days, or holidays for an employee leave request',
+  request: {
+    query: z.object({
+      employeeId: z.string().uuid(),
+      startDate: z.string().openapi({ example: '2026-10-05' }),
+      endDate: z.string().openapi({ example: '2026-10-16' }),
+    }),
+  },
+  responses: {
+    200: { content: { 'application/json': { schema: LeaveWorkingCalendarResponseSchema } }, description: 'Leave working calendar' },
+    400: { content: { 'application/json': { schema: ErrorResponseSchema } }, description: 'Invalid range' },
+  },
 });
 
 export const getLeaveFiscalYearsRoute = createRoute({
@@ -231,6 +260,7 @@ leaveManagementApp.put('/leave/types/:id', requirePermission('leave-types:read')
 leaveManagementApp.get('/leave/balances', requirePermissionOrDelegation('leave-balances:read', 'annual-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveBalancesHandler);
 leaveManagementApp.post('/leave/balances', requirePermission('leave-balances:read'), upsertLeaveBalanceHandler);
 leaveManagementApp.post('/leave/balances/bulk', requirePermission('leave-balances:read'), bulkUpsertLeaveBalancesHandler);
+leaveManagementApp.get('/leave/working-calendar', requirePermissionOrDelegation('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveWorkingCalendarHandler);
 leaveManagementApp.get('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), createLeaveRequestHandler);
 leaveManagementApp.put('/leave/requests/:id', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), updateLeaveRequestHandler);
@@ -246,6 +276,7 @@ openApiApp
   .openapi(updateLeaveFiscalYearRoute, updateLeaveFiscalYearHandler as any)
   .openapi(setActiveLeaveFiscalYearRoute, setActiveLeaveFiscalYearHandler as any)
   .openapi(getLeaveTypesRoute, getLeaveTypesHandler as any)
+  .openapi(getLeaveWorkingCalendarRoute, getLeaveWorkingCalendarHandler as any)
   .openapi(createLeaveTypeRoute, createLeaveTypeHandler as any)
   .openapi(updateLeaveTypeRoute, updateLeaveTypeHandler as any)
   .openapi(getLeaveBalancesRoute, getLeaveBalancesHandler as any)

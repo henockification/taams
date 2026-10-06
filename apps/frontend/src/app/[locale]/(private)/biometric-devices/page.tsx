@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useBiometricDeviceSyncHistory, useBiometricDevices, useCreateBiometricDevice, useDepartments, useSyncBiometricDevice, useTestBiometricDeviceConnection, useUpdateBiometricDevice } from '@/data/hooks/core.hooks';
 import type { BiometricDevice, BiometricDeviceType, ConnectionType, DeviceHealthStatus, DeviceIntegrationMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
+import { useSession } from '@/lib/auth-client';
 import { EmployeeSyncPanel } from '@/components/biometric/employee-sync-panel';
 import { getReadableSyncError } from '@/components/biometric/sync-history-error';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -164,6 +165,9 @@ export default function BiometricDevicesPage() {
   const syncDevice = useSyncBiometricDevice();
   const testDeviceConnection = useTestBiometricDeviceConnection();
 
+  const session = useSession();
+  // Registering and reconfiguring devices is reserved for system administrators.
+  const canManageDevices = (session.data?.user?.role ?? []).some((role: string) => ['super_admin', 'superadmin', 'admin'].includes(role.toLowerCase()));
   const devices = devicesResponse?.biometricDevices ?? [];
   const departments = departmentsResponse?.departments ?? [];
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -346,10 +350,12 @@ export default function BiometricDevicesPage() {
               <p className="text-2xl font-semibold">{devices.length - activeCount}</p>
             </div>
           </div>
-          <Button onClick={openCreateDevice}>
-            <Plus className="size-4" />
-            {t('addBiometricDevice')}
-          </Button>
+          {canManageDevices ? (
+            <Button onClick={openCreateDevice}>
+              <Plus className="size-4" />
+              {t('addBiometricDevice')}
+            </Button>
+          ) : null}
         </div>
 
         <Card className="rounded-lg">
@@ -418,17 +424,19 @@ export default function BiometricDevicesPage() {
                         <RefreshCw className="size-4" />
                         {t('sync')}
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openEditDevice(device);
-                        }}
-                      >
-                        <Pencil className="size-4" />
-                      </Button>
+                      {canManageDevices ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openEditDevice(device);
+                          }}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 );

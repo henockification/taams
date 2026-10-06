@@ -24,7 +24,7 @@ import {
   updateSupervisorAttendanceDailyRecordPayrollHandler,
 } from './handlers/attendanceApprovals';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
-import { completeIsmisLeaveVerification, getLatestIsmisLeaveImport, importIsmisLeaveWorkbook } from '../../../db/orm/core/manageIsmisLeave';
+import { completeIsmisLeaveVerification, getLatestIsmisLeaveImport, importIsmisLeaveWorkbook, rejectIsmisLeaveImport } from '../../../db/orm/core/manageIsmisLeave';
 
 const attendanceApprovalsApp = new Hono();
 
@@ -216,6 +216,13 @@ attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/complete', requir
     const result = await completeIsmisLeaveVerification(String(body.batchId), String(body.dateFrom), String(body.dateTo), user.id);
     return c.json({ success: true, verification: result });
   } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'ISMIS leave verification failed' }, 400); }
+});
+attendanceApprovalsApp.post('/attendance-approvals/ismis-leave/:id/reject', requirePermission('hr-attendance-approvals:approve'), async (c) => {
+  try {
+    const user = c.get('user');
+    const batch = await rejectIsmisLeaveImport(c.req.param('id'), user.id);
+    return c.json({ success: true, batch });
+  } catch (error) { return c.json({ success: false, error: error instanceof Error ? error.message : 'Unable to discard the ISMIS leave import' }, 400); }
 });
 attendanceApprovalsApp.get('/attendance-approvals/supervisor', requirePermissionOrDelegation('attendance-approvals:approve'), getSupervisorAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.get('/attendance-approvals/hr', requirePermission('hr-attendance-approvals:approve'), getHrAttendanceDailyRecordsHandler);
