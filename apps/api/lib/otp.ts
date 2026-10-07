@@ -17,16 +17,17 @@ export function usesSuperAdminFixedOtp(roles?: string[] | null) {
   return isTruthyEnv('SUPER_ADMIN_FIXED_OTP') && hasSuperAdminRole(roles);
 }
 
+/**
+ * ALLOW_MASTER_OTP=true (never honoured when APP_ENV=production) makes every OTP the
+ * fixed code and skips email delivery, even when NOTIFICATIONS_ENABLED is on. With it
+ * off, codes are random and emailed.
+ */
 export function generateOtpCode(options: { fixed?: boolean } = {}) {
-  if (options.fixed) return MASTER_OTP_CODE;
-  const notificationsEnabled = workflowNotificationsAreEnabled();
-  if (!notificationsEnabled) {
-    if (!allowMasterOtp()) {
-      throw new Error(
-        'OTP delivery is not configured. Set ALLOW_MASTER_OTP=true, or enable NOTIFICATIONS_ENABLED with a working email/SMS provider.',
-      );
-    }
-    return MASTER_OTP_CODE;
+  if (options.fixed || allowMasterOtp()) return MASTER_OTP_CODE;
+  if (!workflowNotificationsAreEnabled()) {
+    throw new Error(
+      'OTP delivery is not configured. Set ALLOW_MASTER_OTP=true, or enable NOTIFICATIONS_ENABLED with a working email/SMS provider.',
+    );
   }
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
@@ -42,10 +43,12 @@ export function verifyOtp(code: string, expectedHash: string) {
 }
 
 export function isOtpTestingMode() {
-  return allowMasterOtp() && !workflowNotificationsAreEnabled();
+  return allowMasterOtp();
 }
 
 export async function sendOtp(identifier: string, purpose: OtpPurpose, code: string) {
+  // The fixed code is known to everyone in testing mode, so there is nothing to email.
+  if (allowMasterOtp()) return { success: true };
   const copy = otpCopy(purpose);
   await safeSendDirectNotification({
     eventType: copy.eventType,
