@@ -45,6 +45,7 @@
     "settings": "ቅንብሮች",
     "notifications": "ማሳወቂያዎች",
     "profile": "መገለጫ",
+    "userManual": "የተጠቃሚ መመሪያ",
     "user": "ተጠቃሚ",
     "logout": "ውጣ",
     "workspace": "የስራ ቦታ",
@@ -604,6 +605,7 @@
     "notificationLogs": "የማሳወቂያ መዝገቦች",
     "notificationLogsDescription": "የስራ ሂደት SMS እና ኢሜይል ማሳወቂያ ሙከራዎችን ይመልከቱ።",
     "myNotificationsDescription": "ወደ እርስዎ የተላኩ የኢሜይል እና SMS ማሳወቂያዎችን ይመልከቱ።",
+    "userManualDescription": "ለሚናዎ የ TAMS ተግባራት ደረጃ በደረጃ መመሪያ።",
     "profileDescription": "የሰራተኛ መገለጫ ስሞችዎን እና ስልክ ቁጥርዎን ያዘምኑ።",
     "notificationRecipientSearch": "ተቀባይ ወይም መዳረሻ ፈልግ...",
     "notificationEventType": "የክስተት አይነት",
@@ -1628,5 +1630,11 @@
       "WORK_SCHEDULE_UPDATED": "የሥራ መርሃ ግብር ተሻሽሏል",
       "ZKTECO_INGESTED": "የመሣሪያ ፓንቾች ገብተዋል"
     }
+  },
+  "help": {
+    "contents": "ማውጫ",
+    "figure": "ምስል",
+    "noManualTitle": "ለሚናዎ የተጠቃሚ መመሪያ ገና የለም",
+    "noManualDescription": "ለሚናዎ የተጠቃሚ መመሪያ ሲታተም እዚህ ይታያል።"
   }
 }

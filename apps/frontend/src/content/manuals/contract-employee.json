@@ -1,0 +1,919 @@
+{
+  "id": "contract-employee",
+  "title": "TAMS Contract Employee Training Manual",
+  "summary": "This manual explains the self service tasks available to contract employees: signing in, reviewing attendance, requesting attendance corrections, viewing assigned overtime, requesting annual and other leave, and following approval decisions.",
+  "audience": "Employees whose employment type is Contract",
+  "blocks": [
+    {
+      "type": "h1",
+      "text": "Before You Begin"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Your account is created by the system administrator and is linked to your employee record. You cannot register yourself.",
+        "You sign in with your **email address or phone number** and your password. Never share your password or verification code.",
+        "Make sure the email address or phone number held by HR is correct. Sign-in and password codes are sent there.",
+        "Confirm that the browser address is the Ministry approved TAMS address.",
+        "Do not use the browser Back button while a form is being saved. Use the system menu.",
+        "Log out when finished, especially on a shared workstation."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Sign In and Navigate"
+    },
+    {
+      "type": "h2",
+      "text": "Set your password for the first time"
+    },
+    {
+      "type": "p",
+      "text": "New accounts do not come with a password you can use. Set your own password before your first sign in."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the TAMS address and select **Forgot your password?**. The **Start password setup** page opens.",
+        "Choose **Email** or **Phone** and enter the email address or phone number registered for you. A 6-digit code is sent by email or SMS.",
+        "Continue, enter your new password, and then enter the 6-digit code."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Password rules",
+      "text": "At least 12 characters, no spaces, not a commonly used password, and it must not contain the first part of your email address."
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "Your password is saved and you can sign in. Any other open sessions are signed out.",
+      "tone": "success"
+    },
+    {
+      "type": "h2",
+      "text": "Sign in"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open a supported web browser and enter the Ministry approved TAMS address.",
+        "Select **Email** or **Phone**, then enter your email address or phone number.",
+        "Enter your password and select **Sign in**.",
+        "Enter the 6-digit verification code sent to your email or phone. The code is valid for 10 minutes and can be tried up to 5 times.",
+        "Confirm that your name appears in the user menu at the top of the page."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "Your dashboard opens and shows only the menus allowed for your role and employment type.",
+      "tone": "success"
+    },
+    {
+      "type": "figure",
+      "src": "01-signin.png",
+      "caption": "Sign in page with the Email and Phone options",
+      "number": 1,
+      "width": 2160,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Account lock",
+      "text": "After 5 wrong passwords in a row the account is locked for 15 minutes. Wait and try again, or ask the system administrator to unlock it. Use Forgot your password? if you do not remember the password."
+    },
+    {
+      "type": "note",
+      "label": "Session time-out",
+      "text": "You are signed out automatically after 30 minutes without activity, and at the latest after 7 days. Unsaved form entries are lost, so submit forms before leaving the workstation."
+    },
+    {
+      "type": "h2",
+      "text": "Navigate the application"
+    },
+    {
+      "type": "p",
+      "text": "The left menu shows the following items for employees:"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Menu group",
+        "Menu item",
+        "Use it to"
+      ],
+      "rows": [
+        [
+          "Workspace",
+          "Dashboard",
+          "Summary of today's attendance, recent punches, requests, and schedule"
+        ],
+        [
+          "Employee Services",
+          "My Attendance",
+          "Daily attendance records and their approval status"
+        ],
+        [
+          "Employee Services",
+          "Annual leave requests",
+          "Request annual leave and track decisions"
+        ],
+        [
+          "Employee Services",
+          "Other leave requests",
+          "Request sick, maternity, paternity, special, or unpaid leave"
+        ],
+        [
+          "Employee Services",
+          "My overtime",
+          "Overtime assigned to you by your supervisor (view only)"
+        ],
+        [
+          "Employee Services",
+          "Attendance corrections",
+          "Request a missing or incorrect punch to be corrected"
+        ]
+      ],
+      "widths": [
+        2100,
+        2500,
+        5278
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e02-navigation.png",
+      "caption": "Employee menu with Employee Services expanded",
+      "number": 2,
+      "width": 2160,
+      "height": 780,
+      "scale": 1
+    },
+    {
+      "type": "p",
+      "text": "The **user menu** in the top right corner contains the calendar switcher (Gregorian or Ethiopian), the language switcher (English or Amharic), **Profile**, **Notifications**, and **Logout**."
+    },
+    {
+      "type": "note",
+      "label": "Supervisors",
+      "text": "If you are also a supervisor or an acting delegate, you see the Supervisor Dashboard and a Supervisor menu instead of the employee Dashboard. Supervisor tasks are covered in the supervisor manual."
+    },
+    {
+      "type": "h2",
+      "text": "Update your profile"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the user menu and select **Profile**.",
+        "Review your English and Amharic first, middle, and last names and your phone number.",
+        "Correct them if needed and save."
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Department, position, supervisor, schedule, employment type, and email address are maintained by HR and cannot be changed from the profile. There is no change-password option on the profile; use Forgot your password? on the sign in page."
+    },
+    {
+      "type": "h2",
+      "text": "Log out"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the user menu.",
+        "Select **Logout**.",
+        "Close the browser if the workstation is shared."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The sign in page is displayed and your session is closed.",
+      "tone": "success"
+    },
+    {
+      "type": "h1",
+      "text": "Use the Employee Dashboard"
+    },
+    {
+      "type": "p",
+      "text": "The dashboard summarises your attendance so that errors can be corrected before your supervisor and HR approve the period."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Dashboard**.",
+        "Under **Today's attendance**, review your check-in time, check-out time, the device used, and working hours.",
+        "Under **Leave balance**, review the current fiscal year balance and the days already used and reserved.",
+        "Review your recent leave requests and their status.",
+        "Review **Attendance history** (recent punches) and your attendance correction requests.",
+        "Review the schedule preview to confirm your working days and shift.",
+        "Use the **Quick actions** to open the related page."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e03-dashboard.png",
+      "caption": "Employee dashboard with the leave balance",
+      "number": 3,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Schedule missing",
+      "text": "If the dashboard shows \"Schedule missing\" or \"Profile link needed\", contact HR. Attendance cannot be calculated correctly without an assigned schedule and a linked employee record."
+    },
+    {
+      "type": "h1",
+      "text": "View Your Attendance"
+    },
+    {
+      "type": "h2",
+      "text": "How attendance is recorded"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Punch on the biometric device at the start and end of every session of your shift (for example morning and afternoon). Each session is evaluated separately.",
+        "Punches are collected from the devices automatically. A punch may take a few minutes to appear.",
+        "A session is **Present** only when it has both a check-in and a check-out. A session with a missing punch becomes **Absent** once the session has ended.",
+        "Attendance days for the date equal the share of sessions you were present for (for example, one of two sessions = 0.5 day).",
+        "A check-in after the shift's allowed late margin is recorded as late. A check-out before the session end is recorded as early break (between sessions) or early out (last session).",
+        "Weekends, shift off days, and public holidays have no attendance requirement and are marked as holiday or off day."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Review your records"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **My Attendance**.",
+        "Choose a period: **Today**, **This week**, **This month** (default), **This year**, or **Custom range**.",
+        "Review the summary tiles: Records, Late attendance, Early break, Early out, and Absent sessions.",
+        "For each date, review Sessions, Late minutes, Early break, Early leave minutes, Attendance days, Absence days, and Status.",
+        "Note the holiday name or Holiday/off day badge on non-working days."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e04-my-attendance.png",
+      "caption": "My Attendance for this month",
+      "number": 4,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Pending supervisor",
+          "Calculated from your punches and waiting for your supervisor's review. Request corrections now if something is wrong."
+        ],
+        [
+          "Returned",
+          "Returned by the supervisor or HR for recalculation or review. No action is needed from you unless you are asked for a correction."
+        ],
+        [
+          "Supervisor approved",
+          "Approved by your supervisor and waiting for HR."
+        ],
+        [
+          "HR approved",
+          "Final. The record is ready for payroll. An approved attendance correction can still reopen it for review."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Calendar display",
+      "text": "Switch between the Gregorian and Ethiopian calendar from the user menu. Check the date carefully before submitting a correction."
+    },
+    {
+      "type": "h1",
+      "text": "Request an Attendance Correction"
+    },
+    {
+      "type": "p",
+      "text": "Use a correction when a punch is missing or wrong, for example you forgot to punch out or the device was unavailable. The request goes to your supervisor. Your attendance does not change until it is approved."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **My Attendance**, find the date, and select **Request attendance correction**. The date and the missing punch type are filled in for you. You can also open **Attendance corrections** and create a new request.",
+        "Check the **Punch time**: the date and the time you actually punched in or out.",
+        "Select the **Punch type**: In, Out, Break in, or Break out.",
+        "Enter a clear **Reason**. This field is required.",
+        "Attach a **Supporting document** if you have one. Keep the file small (under about 700 KB).",
+        "Submit the request."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e06-correction-form.png",
+      "caption": "Request attendance correction dialog",
+      "number": 5,
+      "width": 864,
+      "height": 627,
+      "scale": 0.6
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The request appears in Attendance corrections with the status Pending review. Your supervisor, or the person acting for your supervisor, then approves or rejects it.",
+      "tone": "success"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Pending review",
+          "Submitted and waiting for your supervisor."
+        ],
+        [
+          "Approved",
+          "The corrected punch is added and the day is recalculated."
+        ],
+        [
+          "Rejected",
+          "Not accepted. The rejection reason is shown under the status. Submit a corrected request if needed."
+        ]
+      ],
+      "widths": [
+        3200,
+        6678
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e05-corrections.png",
+      "caption": "Attendance corrections with a pending request and the Edit action",
+      "number": 6,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Important",
+      "text": "Submit one request per missing punch. While the request is still Pending review you can change it: select **Edit** in Attendance corrections, update the punch time, type, or reason, and save. Once your supervisor has decided it, it can no longer be edited; if it was rejected, submit a new request."
+    },
+    {
+      "type": "figure",
+      "src": "e07-correction-edit.png",
+      "caption": "Edit attendance correction dialog",
+      "number": 7,
+      "width": 864,
+      "height": 597,
+      "scale": 0.6
+    },
+    {
+      "type": "h1",
+      "text": "View Your Overtime"
+    },
+    {
+      "type": "p",
+      "text": "Overtime is assigned by your supervisor. Employees cannot request overtime in TAMS."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **My overtime**.",
+        "Review each assignment: date, start and end time, reason, and status.",
+        "After the overtime date, your supervisor compares the assignment with your punches and approves or rejects it."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e08-my-overtime.png",
+      "caption": "My overtime",
+      "number": 8,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Assigned",
+          "Your supervisor assigned the overtime. Work the assigned hours and punch in and out on the device."
+        ],
+        [
+          "Approved",
+          "Approved for the approved minutes, which may be fewer than assigned. 480 minutes count as one overtime day."
+        ],
+        [
+          "Rejected",
+          "Not approved. Read the reason."
+        ]
+      ],
+      "widths": [
+        2200,
+        7678
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "You receive an email or SMS when overtime is assigned to you. The page is view only.",
+      "tone": "success"
+    },
+    {
+      "type": "h1",
+      "text": "Review Your Leave Balance"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Dashboard** and find **Leave balance**, or open **Annual leave requests**.",
+        "Review the current fiscal year balance, and the days **Used** and **Reserved**."
+      ]
+    },
+    {
+      "type": "table",
+      "header": [
+        "Term",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Opening",
+          "Annual leave entitlement entered by HR for the active fiscal year."
+        ],
+        [
+          "Reserved",
+          "Days approved by your supervisor that are waiting for HR authorization."
+        ],
+        [
+          "Used",
+          "Days authorized by HR."
+        ],
+        [
+          "Available",
+          "Opening minus reserved and used days. You can only request up to this amount."
+        ]
+      ],
+      "widths": [
+        2200,
+        7678
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Balance rules",
+      "text": "Only the active fiscal year's balance can be used. Unused days are not carried forward automatically. If your opening balance is wrong, contact HR; do not submit test requests."
+    },
+    {
+      "type": "h1",
+      "text": "Submit an Annual Leave Request"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Annual leave requests** and select **Request leave**.",
+        "Confirm the fiscal year (the active year) and the **Available balance** shown.",
+        "Add the dates you need: use **Add working days** to add every working day in a date range, or **Add a specific date** for a single day. A message tells you how many days were added and how many weekend, off, or holiday dates were skipped.",
+        "For each date choose **Full day** (1.00) or **Half day** (0.50). Remove any date you do not need. A date on a half-day holiday is added as a half day.",
+        "Check the total requested days against the available balance.",
+        "Enter the **Reason** and submit."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e10-annual-leave-form.png",
+      "caption": "Annual leave request form",
+      "number": 9,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The request is saved with the status Pending requests and your supervisor is notified by email and SMS.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Each date must be a working day in your schedule. **Add a specific date** refuses a weekend, off day, or holiday and explains why; only a half day can be taken on a half-day holiday.",
+        "If a message says no work schedule is assigned for a date, contact HR to assign your work schedule.",
+        "A date cannot already be in another active annual leave request.",
+        "The total cannot be more than your available balance.",
+        "You can edit the request while it is still Pending. After your supervisor acts, it cannot be edited."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Submit Other Leave Requests"
+    },
+    {
+      "type": "p",
+      "text": "Use Other leave requests for leave that does not use your annual balance. Each type has a maximum number of working days per request."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Leave type",
+        "Maximum working days per request"
+      ],
+      "rows": [
+        [
+          "Sick Leave",
+          "240"
+        ],
+        [
+          "Maternity Leave",
+          "120"
+        ],
+        [
+          "Paternity Leave",
+          "10"
+        ],
+        [
+          "Special Leave with Full Pay",
+          "7"
+        ],
+        [
+          "Unpaid Leave",
+          "365 (counted as unpaid in attendance and payroll)"
+        ]
+      ],
+      "widths": [
+        4400,
+        5478
+      ]
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Other leave requests** and select **Request leave**.",
+        "Choose the **Leave type**.",
+        "Enter the **Start date** and **End date**. The end date cannot go beyond the maximum days allowed for the leave type.",
+        "Check the number of working days selected. Weekends, shift off days, and holidays (including half-day holidays) are not counted.",
+        "Enter the **Reason** and submit."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e12-other-leave-form.png",
+      "caption": "Request leave dialog for other leave",
+      "number": 10,
+      "width": 1008,
+      "height": 945,
+      "scale": 0.6
+    },
+    {
+      "type": "note",
+      "label": "Supporting documents",
+      "text": "Leave requests do not accept attachments. Submit medical certificates or other evidence to HR through the Ministry's normal process."
+    },
+    {
+      "type": "note",
+      "label": "Full days only",
+      "text": "Other leave is requested in full days. Half days are available only for annual leave."
+    },
+    {
+      "type": "h1",
+      "text": "Track Your Leave Requests"
+    },
+    {
+      "type": "p",
+      "text": "Open **Annual leave requests** or **Other leave requests** to see your requests and their status. Every leave request is approved in two steps: your supervisor (or acting delegate) first, then HR."
+    },
+    {
+      "type": "figure",
+      "src": "e09-annual-leave-list.png",
+      "caption": "Annual leave requests with an authorized request",
+      "number": 11,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "figure",
+      "src": "e11-other-leave-list.png",
+      "caption": "Other leave requests awaiting HR authorization",
+      "number": 12,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning and your action"
+      ],
+      "rows": [
+        [
+          "Pending requests",
+          "Waiting for your supervisor. You may still edit it."
+        ],
+        [
+          "Awaiting HR authorization",
+          "Approved by your supervisor. For annual leave the days are reserved from your balance. Your supervisor may have approved fewer dates or changed a full day to a half day; review the approved dates."
+        ],
+        [
+          "Authorized",
+          "Final approval by HR. Annual leave days move from reserved to used, and your attendance shows the leave."
+        ],
+        [
+          "Rejected",
+          "Rejected by your supervisor. Read the reason."
+        ],
+        [
+          "Rejected by HR",
+          "Rejected at HR authorization. Reserved days are returned to your balance. Read the reason."
+        ]
+      ],
+      "widths": [
+        2800,
+        7078
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Cancelling a request",
+      "text": "There is no cancel button. To withdraw a pending request, ask your supervisor to reject it."
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "You receive an email about your supervisor's decision, and an email and SMS when HR authorizes or rejects the request.",
+      "tone": "success"
+    },
+    {
+      "type": "h2",
+      "text": "Recall from annual leave or reschedule"
+    },
+    {
+      "type": "p",
+      "text": "If you are called back to work during authorized annual leave, record the recall so the interrupted days are moved to new dates instead of being lost."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Annual leave requests** and open the authorized request.",
+        "Select **Recall / reschedule**.",
+        "Enter the **Authority requesting return** and the **Reason for interruption**.",
+        "Select the leave dates you worked (the interrupted dates).",
+        "Enter the **Proposed continuation pattern**: the new dates on which you will take the same number of days.",
+        "Submit."
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "The continuation days must equal the interrupted days, fall on working days (not off days or holidays), come after the last interrupted date, and not be in the past.",
+        "The recall is approved by your supervisor (who may amend it) and then authorized by HR. Your balance does not change."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Notifications"
+    },
+    {
+      "type": "p",
+      "text": "TAMS sends email and SMS messages to the email address and phone number on your employee record."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Event",
+        "Channel"
+      ],
+      "rows": [
+        [
+          "Sign-in verification code and password reset code",
+          "Email and/or SMS"
+        ],
+        [
+          "Overtime assigned to you",
+          "Email and SMS"
+        ],
+        [
+          "Supervisor decision on your leave request",
+          "Email"
+        ],
+        [
+          "HR authorized or rejected your leave request",
+          "Email and SMS"
+        ],
+        [
+          "HR authorized or rejected your leave recall",
+          "Email and SMS"
+        ]
+      ],
+      "widths": [
+        6400,
+        3478
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "View your notification log"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the user menu and select **Notifications**.",
+        "Filter by event type, channel (Email or SMS), status (Pending, Sent, Failed, Skipped), or date range if needed.",
+        "Review each message: date, event type, channel, status, destination, number of attempts, and the message text."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "e14-notifications.png",
+      "caption": "Notifications log",
+      "number": 13,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "You see only the messages that TAMS sent to you.",
+      "tone": "success"
+    },
+    {
+      "type": "p",
+      "text": "Decisions on attendance corrections and the approval of your daily attendance are not sent as messages. Check Attendance corrections and My Attendance for their status."
+    },
+    {
+      "type": "h1",
+      "text": "Common Problems and Corrective Actions"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Problem",
+        "Action"
+      ],
+      "rows": [
+        [
+          "Cannot sign in",
+          "Check that you chose Email or Phone correctly and the password. After 5 wrong attempts wait 15 minutes. Use Forgot your password? or contact support."
+        ],
+        [
+          "Verification code not received",
+          "Check that HR holds your correct email and phone number, check spam, and wait a minute before requesting again. Codes expire after 10 minutes."
+        ],
+        [
+          "Signed out unexpectedly",
+          "Sessions end after 30 minutes without activity. Sign in again."
+        ],
+        [
+          "A menu is missing",
+          "Menus depend on your role and employment type. Ask HR to check your role and employment type."
+        ],
+        [
+          "Dashboard shows Profile link needed or Schedule missing",
+          "Contact HR to link your user account to your employee record or assign a schedule."
+        ],
+        [
+          "Punches are missing",
+          "Allow a few minutes for device synchronisation and refresh. If still missing, submit one attendance correction per missing punch."
+        ],
+        [
+          "A day shows as absent",
+          "Check whether one session is missing a check-in or check-out. Submit a correction for the missing punch."
+        ],
+        [
+          "Overtime is not listed",
+          "Overtime appears only after your supervisor assigns it. Confirm with your supervisor."
+        ],
+        [
+          "Leave balance looks incorrect",
+          "Contact HR with the affected fiscal year. Opening balances are entered by HR."
+        ],
+        [
+          "A leave date cannot be added",
+          "The date may be a weekend, shift off day, or holiday, may already be in another request, or your available balance may not be enough. For a half-day holiday choose Half day."
+        ],
+        [
+          "Leave request went to the wrong supervisor",
+          "Ask HR to check your primary supervisor assignment."
+        ]
+      ],
+      "widths": [
+        3200,
+        6678
+      ]
+    },
+    {
+      "type": "note",
+      "label": "When contacting support",
+      "text": "Provide your name, email or phone used to sign in, the date and time, the page, the action you attempted, and a screenshot of the message. Never send your password or verification code."
+    },
+    {
+      "type": "h1",
+      "text": "Quick Reference"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Task",
+        "Where",
+        "Key action"
+      ],
+      "rows": [
+        [
+          "Set or reset password",
+          "Sign in page > Forgot your password?",
+          "Enter email or phone, code, new password"
+        ],
+        [
+          "Check today's attendance",
+          "Dashboard",
+          "Review Today's attendance"
+        ],
+        [
+          "Review past attendance",
+          "My Attendance",
+          "Choose period and review status"
+        ],
+        [
+          "Report a missing punch",
+          "My Attendance or Attendance corrections",
+          "Request attendance correction"
+        ],
+        [
+          "Change a pending correction",
+          "Attendance corrections",
+          "Edit, update, save"
+        ],
+        [
+          "Review overtime",
+          "My overtime",
+          "Review assignment and status"
+        ],
+        [
+          "Check leave balance",
+          "Dashboard",
+          "Review Leave balance"
+        ],
+        [
+          "Request annual leave",
+          "Annual leave requests",
+          "Add dates, choose full or half day, reason, submit"
+        ],
+        [
+          "Request other leave",
+          "Other leave requests",
+          "Choose type, dates, reason, submit"
+        ],
+        [
+          "Recall from leave",
+          "Annual leave requests",
+          "Open authorized request > Recall / reschedule"
+        ],
+        [
+          "Check messages sent to you",
+          "User menu > Notifications",
+          "Review your notification log"
+        ],
+        [
+          "Change language or calendar",
+          "User menu",
+          "Language and calendar switchers"
+        ],
+        [
+          "Update name or phone",
+          "User menu > Profile",
+          "Edit and save"
+        ]
+      ],
+      "widths": [
+        2900,
+        3300,
+        3678
+      ]
+    }
+  ]
+}

@@ -1,0 +1,960 @@
+{
+  "id": "supervisor",
+  "title": "TAMS Supervisor Training Manual",
+  "summary": "This manual guides supervisors and acting delegates through reviewing their team on the Supervisor Dashboard, approving daily attendance, deciding attendance correction requests, assigning and approving overtime, approving leave for contract employees, and delegating approval authority.",
+  "audience": "Users with the Supervisor role and acting delegates",
+  "blocks": [
+    {
+      "type": "h1",
+      "text": "Before You Begin"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Your account is created by the system administrator. The Supervisor role and the employees you supervise are assigned by HR and the administrator.",
+        "You sign in with your **email address or phone number** and your password. Never share your password or verification code, and never let a delegate use your account.",
+        "Review exceptions before approving. An approval records your name, date, and time in the audit history.",
+        "Do not use the browser Back button while a form is being saved. Use the system menu.",
+        "Log out when finished, especially on a shared workstation."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Sign In and Navigate"
+    },
+    {
+      "type": "h2",
+      "text": "Set your password for the first time"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the TAMS address and select **Forgot your password?**. The **Start password setup** page opens.",
+        "Choose **Email** or **Phone** and enter the email address or phone number registered for you. A 6-digit code is sent by email or SMS.",
+        "Continue, enter your new password, and then enter the 6-digit code."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Password rules",
+      "text": "At least 12 characters, no spaces, not a commonly used password, and it must not contain the first part of your email address."
+    },
+    {
+      "type": "h2",
+      "text": "Sign in"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open a supported web browser and enter the Ministry approved TAMS address.",
+        "Select **Email** or **Phone**, then enter your email address or phone number.",
+        "Enter your password and select **Sign in**.",
+        "Enter the 6-digit verification code sent to your email or phone. The code is valid for 10 minutes and can be tried up to 5 times."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The **Supervisor Dashboard** opens.",
+      "tone": "success"
+    },
+    {
+      "type": "figure",
+      "src": "01-signin.png",
+      "caption": "Sign in page with the Email and Phone options",
+      "number": 1,
+      "width": 2160,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Account lock",
+      "text": "After 5 wrong passwords in a row the account is locked for 15 minutes. Wait, use Forgot your password?, or ask the system administrator to unlock it."
+    },
+    {
+      "type": "note",
+      "label": "Session time-out",
+      "text": "You are signed out after 30 minutes without activity, and at the latest after 7 days."
+    },
+    {
+      "type": "h2",
+      "text": "Navigate the application"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Menu group",
+        "Menu item",
+        "Use it to"
+      ],
+      "rows": [
+        [
+          "Workspace",
+          "Supervisor Dashboard",
+          "See today's team attendance and pending work"
+        ],
+        [
+          "Employee Services",
+          "My Attendance, My overtime, Attendance corrections",
+          "Your own self-service (see the employee manual)"
+        ],
+        [
+          "Employee Services",
+          "Annual leave requests, Other leave requests",
+          "Your own leave requests (contract employees only)"
+        ],
+        [
+          "Supervisor",
+          "Leave request approvals",
+          "Approve leave for the contract employees who report to you"
+        ],
+        [
+          "Supervisor",
+          "Assign overtime",
+          "Assign overtime and approve or reject it after it is worked"
+        ],
+        [
+          "Supervisor",
+          "Attendance correction requests",
+          "Approve or reject your team's missing-punch corrections"
+        ],
+        [
+          "Supervisor",
+          "Attendance approvals",
+          "Approve your team's daily attendance records"
+        ],
+        [
+          "Supervisor",
+          "Delegation",
+          "Let another employee act for you for a set period"
+        ],
+        [
+          "Reports",
+          "Supervisor report",
+          "Attendance for the departments you head (department heads only)"
+        ]
+      ],
+      "widths": [
+        2000,
+        3500,
+        4378
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s02-navigation.png",
+      "caption": "Supervisor menu with the Supervisor group expanded",
+      "number": 2,
+      "width": 2160,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "p",
+      "text": "The **user menu** in the top right corner contains the calendar switcher (Gregorian or Ethiopian), the language switcher (English or Amharic), **Profile**, **Notifications**, and **Logout**."
+    },
+    {
+      "type": "note",
+      "label": "Leave approvals",
+      "text": "In-system leave applies to contract employees only. The Leave request approvals menu appears when you are the primary supervisor of at least one contract employee. Permanent employees' leave is handled in ISMIS."
+    },
+    {
+      "type": "h2",
+      "text": "Log out"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the user menu.",
+        "Select **Logout**.",
+        "Close the browser if the workstation is shared."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Understand Your Team"
+    },
+    {
+      "type": "p",
+      "text": "Your team is the list of employees HR has assigned to you as their supervisor, for the dates the assignment is in effect. It is not based on department: an employee in your department who is not assigned to you does not appear in your queues."
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "An employee can have one **primary** supervisor and additional supervisors. All assigned supervisors can approve attendance, attendance corrections, and overtime.",
+        "**Leave requests** go only to the employee's **primary** supervisor (or that supervisor's delegate).",
+        "When HR moves an employee temporarily to another department, the employee still reports to you. The attendance screens show the move with a **Temporarily assigned** badge.",
+        "Overtime can only be assigned to your employees whose home department is the same as yours."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Scope control",
+      "text": "If an employee is missing from your queues or someone who does not report to you appears, stop and ask HR to check the supervisor assignment and its effective dates. Do not request broader access as a workaround."
+    },
+    {
+      "type": "h1",
+      "text": "Use the Supervisor Dashboard"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Supervisor Dashboard**. It shows today by default; use **Date** to view another day and **Refresh** to reload.",
+        "Review the tiles for your team: **Today's Staff**, **Present**, **Absent**, **Late**, and, if you approve leave for contract employees, **Leave**.",
+        "Review the work tiles: **Pending Attendance**, **Pending Corrections**, and, if you approve leave for contract employees, **Pending Leave**. Select a tile to open that queue.",
+        "Use **Attendance snapshot** to see who is present or absent, and **Late employees** to see late arrivals.",
+        "Use **Pending work** and select **Review** on a row to open that correction or leave request directly."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s03-dashboard.png",
+      "caption": "Supervisor Dashboard for the Training Unit",
+      "number": 3,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "**Present** counts anyone who has punched that day. **Absent** excludes employees on authorized leave.",
+        "**Pending Attendance** counts punches received from the devices that day that are still being processed; open it to reach your unapproved attendance records.",
+        "Supervisors of contract employees also see **Staff on leave**; contract supervisors also see **My leave balance**."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Approve Daily Attendance"
+    },
+    {
+      "type": "p",
+      "text": "Each employee has one attendance record per day, calculated from their device punches, schedule, holidays, and leave. You approve the record; HR then gives the final approval that makes it ready for payroll."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Pending supervisor",
+          "Waiting for your approval."
+        ],
+        [
+          "Returned",
+          "HR returned it to you. The reason is shown under the employee name as Returned by HR. Correct the record if needed and approve it again."
+        ],
+        [
+          "Supervisor approved",
+          "You approved it; waiting for HR."
+        ],
+        [
+          "HR approved",
+          "Final and payroll ready. You can no longer act on it."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Review and approve"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Attendance approvals**.",
+        "Choose the **Attendance date** period: Today, This week, This month, This year, Custom range, or **Returned by HR** (every record HR returned to you, whatever its date). Use **Employee search** and **Approval status** (Unapproved, or Worked during leave) to narrow the list.",
+        "Review the summary tiles and each row: Sessions, Late mins, Early leave mins, Attendance days, Absence days, overtime, and Status.",
+        "Where a punch is missing, either decide the employee's attendance correction request, or add the punch yourself with **Correct** (see below). Both recalculate the day.",
+        "Approve a single row with **Approve**, or tick several rows and select **Approve (N)**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s04-attendance-approvals.png",
+      "caption": "Attendance approvals with this month's records",
+      "number": 4,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The records change to Supervisor approved and HR is notified by email.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "You cannot type attendance values or return a record. Fix a wrong day by adding the missing punch with **Correct**, or through the employee's correction request.",
+        "A record cannot be approved while one of its shift sessions is still in progress. Approve the day after the last session ends.",
+        "**Worked during leave**: a red badge marks a record that has both attendance and leave on the same date. Check the leave or the punches before approving.",
+        "When HR returns records, an amber banner shows how many need your correction. Select **Show returned records** to list them.",
+        "Use **Refresh daily records** if punches were received late and the records look outdated."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Approving several records",
+      "text": "Filter to a controlled list, review every row you tick, and approve together only records without open issues. Handle exceptions one at a time."
+    },
+    {
+      "type": "h2",
+      "text": "Correct a record by adding a punch"
+    },
+    {
+      "type": "p",
+      "text": "Use **Correct** when an employee's day is wrong because a punch is missing, for example a forgotten check-out, or when HR returned the record. You add the punch; you never type attendance figures."
+    },
+    {
+      "type": "figure",
+      "src": "s05-returned.png",
+      "caption": "Returned by HR view with the reason under the employee name",
+      "number": 5,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "steps",
+      "items": [
+        "On a Pending supervisor or Returned record, select **Correct**.",
+        "Check the employee and date. If HR returned the record, the reason is shown at the top.",
+        "Enter the **Punch time** (the date is fixed to the record's date) and choose the **Punch type**: Check in, Check out, Break in, or Break out.",
+        "Enter the **Reason** (required) and select **Add punch**.",
+        "Review the recalculated record, then select **Approve**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s06-correct-dialog.png",
+      "caption": "Correct attendance dialog",
+      "number": 6,
+      "width": 768,
+      "height": 678,
+      "scale": 0.6
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The punch is saved as a manual punch approved by you and the day is recalculated. The record keeps its Pending supervisor or Returned status until you approve it again.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "You can correct only records of employees assigned to you (or to the supervisor you act for), and never your own attendance.",
+        "The punch must be on the record's date and not in the future, and a punch cannot be added twice at the same time.",
+        "Each correction is recorded with your name and the reason."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Review Attendance Correction Requests"
+    },
+    {
+      "type": "p",
+      "text": "Employees request a correction when a punch is missing or wrong. You are the only reviewer; your decision is final."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Attendance correction requests**, or select a correction in **Pending work** on the dashboard.",
+        "For each request review the Employee, Punch time, Punch type (In, Out, Break in, Break out), and Reason.",
+        "Check the employee's punches and schedule for that day in **Attendance approvals** (View history) if you need more evidence.",
+        "Select **Approve**, or select **Reject**, enter the **Rejection reason** (required), and confirm."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s07-corrections.png",
+      "caption": "Attendance correction requests with a pending and a rejected request",
+      "number": 7,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Pending review",
+          "Waiting for your decision."
+        ],
+        [
+          "Approved",
+          "The corrected punch was added and the employee's day was recalculated."
+        ],
+        [
+          "Rejected",
+          "The punch was not added. The employee sees your rejection reason on their request."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Approving adds a manual punch recorded under your name and recalculates that day, even if the day was already approved. If HR had already approved it, it goes back to Supervisor approved for HR to review again.",
+        "You cannot decide your own correction request; it goes to your own supervisor.",
+        "Write a rejection reason the employee can act on, for example the correct time to request or the evidence needed."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Decision quality",
+      "text": "Do not approve a request only because it was submitted. Confirm that the time is plausible against the employee's schedule and other punches."
+    },
+    {
+      "type": "h1",
+      "text": "Assign and Approve Overtime"
+    },
+    {
+      "type": "h2",
+      "text": "Assign overtime"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Assign overtime** and select **Assign overtime**.",
+        "In **Select employees**, choose one or more of your employees.",
+        "Enter the **Date**, **Start time**, and **End time**. An end time earlier than the start time means the overtime ends the next day.",
+        "Enter the **Reason** and select **Save**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s09-overtime-assign.png",
+      "caption": "Assign overtime dialog",
+      "number": 8,
+      "width": 768,
+      "height": 603,
+      "scale": 0.6
+    },
+    {
+      "type": "figure",
+      "src": "s08-overtime.png",
+      "caption": "Assigned and approved overtime",
+      "number": 9,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "An assignment with status Assigned is created for each employee, and each employee receives an email.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "You can assign overtime only to your own employees in your home department, and not to yourself.",
+        "Employees punch in and out on the device as usual when they work the overtime."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Approve or reject worked overtime"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "After the overtime date, filter the list by date or status **Assigned** and select **Review**.",
+        "Compare the assignment with **Punch coverage**: Covered, Partial, No punches, or Upcoming. The punches for the period are listed.",
+        "Enter **Approved minutes**. It defaults to the assigned minutes; select **Use overlap minutes** to approve only the time covered by punches. You cannot approve more than was assigned.",
+        "Select **Approve**, or enter a **Rejection reason** and select **Reject**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s10-overtime-review.png",
+      "caption": "Review overtime dialog",
+      "number": 10,
+      "width": 768,
+      "height": 951,
+      "scale": 0.6
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Approved minutes are converted to overtime days at 480 minutes per day and added to the employee's attendance record.",
+        "Overtime cannot be approved for a day that HR has already approved for payroll."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Approve Leave Requests (Contract Employees)"
+    },
+    {
+      "type": "p",
+      "text": "Leave in TAMS applies to contract employees. You review requests from contract employees for whom you are the primary supervisor, whatever your own employment type. After your approval, HR gives the final authorization."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "Pending requests",
+          "Waiting for your decision."
+        ],
+        [
+          "Awaiting HR authorization",
+          "You approved it. For annual leave, the approved days are reserved from the balance."
+        ],
+        [
+          "Authorized",
+          "HR authorized it. The leave appears on attendance."
+        ],
+        [
+          "Rejected",
+          "You rejected it."
+        ],
+        [
+          "Rejected by HR",
+          "HR rejected it after your approval; any reserved days were returned to the balance."
+        ]
+      ],
+      "widths": [
+        2800,
+        7078
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Find requests"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Leave request approvals**, or select a leave request on the dashboard.",
+        "Filter by **Employee search**, **Leave type**, **Request date**, and **Status** (Pending requests by default).",
+        "Review Start date, End date, Requested days, and, for annual leave, Available balance. Select **View details** to open a request."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s11-leave-approvals.png",
+      "caption": "Leave request approvals",
+      "number": 11,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "h2",
+      "text": "Other leave (sick, maternity, paternity, special, unpaid)"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the request and review the leave type, dates, requested working days, and reason.",
+        "Select **Approve**, or select **Reject**, enter the **Rejection reason** (required), and save."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Supporting documents",
+      "text": "Leave requests do not carry attachments. Confirm medical certificates or other evidence with the employee or HR according to Ministry policy before approving."
+    },
+    {
+      "type": "h2",
+      "text": "Annual leave"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the request. The **Approve annual leave** section lists the requested dates and their day values.",
+        "Approve as requested, or adjust the pattern: **Remove** dates you do not approve, change a date between Full day (1.00) and Half day (0.50), or add dates with **Add working days** (every working day in a range) or **Add a specific date**. Added dates are marked Supervisor added.",
+        "Use **Use requested dates** to undo your changes.",
+        "Approve and confirm in **Confirm annual leave approval**.",
+        "To decline the whole request instead, select **Reject**, enter the **Rejection reason** (required), and save. No balance is used."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s12-annual-approval.png",
+      "caption": "Annual leave request with the approval editor",
+      "number": 12,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Add working days skips weekends, shift off days, and holidays, and adds a half-day holiday as a half day. Add a specific date refuses an off day or holiday and adds a half-day holiday as 0.50; a message explains why.",
+        "The approved total cannot exceed the employee's available balance, and dates cannot overlap another active request.",
+        "At least one date must be approved."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Leave recall (interruption)"
+    },
+    {
+      "type": "p",
+      "text": "When an employee on authorized annual leave is called back to work, they submit a recall with the dates worked and new continuation dates."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the leave request and select **Review leave recall**.",
+        "Check the interrupted dates and the proposed continuation dates. Adjust them if needed; the number of interrupted and continuation days must match, and continuation dates must be future working days.",
+        "Select **Approve amendment** to approve, or close the dialog and select **Reject leave recall** and enter a reason."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "An approved recall goes to HR for authorization. The employee's balance does not change.",
+      "tone": "success"
+    },
+    {
+      "type": "h1",
+      "text": "Delegate Your Approvals"
+    },
+    {
+      "type": "p",
+      "text": "Delegation lets another employee act as supervisor for your team while you are away. The delegate uses their own account, and every action they take is recorded as done on your behalf."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Delegation** and select **Delegate**.",
+        "In **Delegate employee**, select an active employee who has a user account. Only employees in your department are listed.",
+        "Set **Starts at** and **Ends at**. The end must be in the future.",
+        "Select **Save delegation**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s13-delegation.png",
+      "caption": "Delegation page",
+      "number": 13,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The **Current delegation** panel shows the delegate and period as Active or Scheduled, and the delegate receives an email.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Only one delegation can be current or scheduled. Creating a new one automatically revokes the previous one.",
+        "Select **Revoke now** to end a delegation early; otherwise it expires at the end time. The **Delegation history** table lists past delegations.",
+        "The delegate can approve attendance, attendance corrections, and overtime for all your employees, and leave for your primary contract employees (only if the delegate is also a contract employee).",
+        "The delegate cannot create further delegations, does not see the Supervisor Dashboard, and cannot act on their own records."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Security rule",
+      "text": "Never share your password or verification code with a delegate. Delegation exists so that you never need to."
+    },
+    {
+      "type": "h2",
+      "text": "Acting as a delegate"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "While a delegation is active, you see the **Supervisor** menu and a banner: Delegated supervisor access, acting as delegate for the supervisor, with the end time.",
+        "Buttons read **Approve as delegate**, **Reject as delegate**, and **Assign overtime as delegate**. Records you complete show **Completed as delegate**.",
+        "Follow the same procedures in this manual. Your access ends automatically when the delegation expires or is revoked."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Use the Supervisor Report (Department Heads)"
+    },
+    {
+      "type": "p",
+      "text": "HR can set you as the head of one or more departments in the organization structure. As a department head you see attendance for those departments and every department below them in **Reports** > **Supervisor report**. Being a department head does not change approvals."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Reports** > **Supervisor report**. The note above the filters lists the departments you head.",
+        "Choose **Daily** for one row per employee per day, or **Summary** for totals per employee.",
+        "Set **Start date** and **End date**, and optionally **Department**, **Search** (employee code or name), and **Status**.",
+        "Select **Refresh**. Use **Excel** to download the report or **PDF** to print it."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "s14-supervisor-report.png",
+      "caption": "Supervisor report, Daily view",
+      "number": 14,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1
+    },
+    {
+      "type": "table",
+      "header": [
+        "Report",
+        "What it shows"
+      ],
+      "rows": [
+        [
+          "Daily",
+          "Date, employee, department (and the home department during a temporary assignment), direct supervisor, check-in, check-out, and status for each session (for example Morning check-in: 08:52 Late (22 min)), late, early break and early departure minutes, attendance, leave and absence days, and approval status."
+        ],
+        [
+          "Summary",
+          "Per employee: days recorded, days on temporary assignment, attendance, absence and leave days, late days, total late minutes, absent sessions, and days still pending approval."
+        ]
+      ],
+      "widths": [
+        2200,
+        7678
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Late minutes include returning late from the break.",
+        "You do not appear in your own report. Heads of departments below you appear in your report; you appear in the reports of heads above you.",
+        "If the page says you are not set as head of any department, ask HR to set you as department head in Organization Structure."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Notifications"
+    },
+    {
+      "type": "p",
+      "text": "TAMS sends email and SMS messages to the email address and phone number on your employee record. Open **Notifications** in the user menu to see every message sent to you."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Event",
+        "Who receives it",
+        "Channel"
+      ],
+      "rows": [
+        [
+          "A contract employee submitted a leave request",
+          "Primary supervisor",
+          "Email and SMS"
+        ],
+        [
+          "You were made a delegate, or your delegation was revoked",
+          "Delegate",
+          "Email"
+        ],
+        [
+          "You approved attendance",
+          "HR",
+          "Email"
+        ],
+        [
+          "You approved or rejected leave",
+          "Employee (and HR on approval)",
+          "Email"
+        ],
+        [
+          "You approved a leave recall",
+          "HR",
+          "Email and SMS"
+        ],
+        [
+          "You assigned overtime",
+          "Employee",
+          "Email"
+        ]
+      ],
+      "widths": [
+        4600,
+        3000,
+        2278
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Attendance correction requests, HR returns of attendance, and overtime decisions do not send messages. Check the dashboard and the approval screens regularly."
+    },
+    {
+      "type": "h1",
+      "text": "Common Problems and Corrective Actions"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Problem",
+        "Action"
+      ],
+      "rows": [
+        [
+          "Cannot sign in",
+          "Check Email/Phone selection and password. After 5 wrong attempts wait 15 minutes. Use Forgot your password? or contact support."
+        ],
+        [
+          "Supervisor menu is missing",
+          "Ask the administrator to confirm you have the Supervisor role. As a delegate, check that the delegation is active."
+        ],
+        [
+          "Leave request approvals menu is missing",
+          "The menu appears only when you are the primary supervisor of at least one contract employee. Ask HR to check the supervisor assignments."
+        ],
+        [
+          "Employee not in my queues",
+          "Ask HR to check the supervisor assignment and its effective dates for that employee."
+        ],
+        [
+          "Cannot approve attendance: session still in progress",
+          "Wait until the employee's last shift session has ended."
+        ],
+        [
+          "Correct is not available for a record",
+          "Correct is available only for Pending supervisor or Returned records of your own team. Check the record status."
+        ],
+        [
+          "Cannot see Approve for a record",
+          "It is already Supervisor approved or HR approved, or it is your own record."
+        ],
+        [
+          "Cannot assign overtime to an employee",
+          "The employee must report to you and belong to your home department."
+        ],
+        [
+          "Cannot approve overtime",
+          "Approved minutes must be more than 0 and not more than assigned, and the day must not already be HR approved."
+        ],
+        [
+          "Leave request cannot be reviewed",
+          "Only the employee's current primary supervisor or that supervisor's delegate can review it."
+        ],
+        [
+          "Annual leave date cannot be approved",
+          "The date is an off day or holiday, overlaps another request, or exceeds the available balance."
+        ],
+        [
+          "Delegate cannot be selected",
+          "The delegate must be an active employee with a user account in your department."
+        ]
+      ],
+      "widths": [
+        3400,
+        6478
+      ]
+    },
+    {
+      "type": "note",
+      "label": "When contacting support",
+      "text": "Provide your name, the email or phone used to sign in, the date and time, the page, the employee and record concerned, the action attempted, and a screenshot of the message. Never send your password or verification code."
+    },
+    {
+      "type": "h1",
+      "text": "Quick Reference"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Task",
+        "Where",
+        "Key action"
+      ],
+      "rows": [
+        [
+          "See today's team status",
+          "Supervisor Dashboard",
+          "Review tiles and Pending work"
+        ],
+        [
+          "Approve attendance",
+          "Attendance approvals",
+          "Filter Unapproved, review, Approve"
+        ],
+        [
+          "Add a missing punch",
+          "Attendance approvals",
+          "Correct, enter time, type and reason, Add punch, then Approve"
+        ],
+        [
+          "Fix records returned by HR",
+          "Attendance approvals",
+          "Attendance date: Returned by HR"
+        ],
+        [
+          "Decide a correction",
+          "Attendance correction requests",
+          "Approve or Reject"
+        ],
+        [
+          "Assign overtime",
+          "Assign overtime",
+          "Select employees, date, times, reason, Save"
+        ],
+        [
+          "Approve worked overtime",
+          "Assign overtime",
+          "Review, set approved minutes, Approve"
+        ],
+        [
+          "Approve other leave",
+          "Leave request approvals",
+          "View details, Approve or Reject with reason"
+        ],
+        [
+          "Approve annual leave",
+          "Leave request approvals",
+          "View details, adjust dates, Approve"
+        ],
+        [
+          "Review a leave recall",
+          "Leave request approvals",
+          "Review leave recall, Approve amendment"
+        ],
+        [
+          "Delegate while away",
+          "Delegation",
+          "Delegate, choose employee and period, Save delegation"
+        ],
+        [
+          "End a delegation early",
+          "Delegation",
+          "Revoke now"
+        ],
+        [
+          "Check messages sent to you",
+          "User menu > Notifications",
+          "Review your notification log"
+        ],
+        [
+          "See department attendance (heads)",
+          "Reports > Supervisor report",
+          "Daily or Summary, set dates, Refresh"
+        ]
+      ],
+      "widths": [
+        3000,
+        3200,
+        3678
+      ]
+    }
+  ]
+}

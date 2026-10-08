@@ -45,6 +45,7 @@
     "settings": "Settings",
     "notifications": "Notifications",
     "profile": "Profile",
+    "userManual": "User manual",
     "user": "User",
     "logout": "Logout",
     "workspace": "Workspace",
@@ -604,6 +605,7 @@
     "notificationLogs": "Notification logs",
     "notificationLogsDescription": "Review SMS and email delivery attempts for workflow notifications.",
     "myNotificationsDescription": "Review the email and SMS notifications sent to you.",
+    "userManualDescription": "Step-by-step guide to the TAMS tasks for your role.",
     "profileDescription": "Update your employee profile names and phone number.",
     "notificationRecipientSearch": "Search recipient or destination...",
     "notificationEventType": "Event type",
@@ -1628,5 +1630,11 @@
       "WORK_SCHEDULE_UPDATED": "Updated work schedule",
       "ZKTECO_INGESTED": "Ingested device punches"
     }
+  },
+  "help": {
+    "contents": "Contents",
+    "figure": "Figure",
+    "noManualTitle": "No user manual for your role yet",
+    "noManualDescription": "A user manual for your role will appear here when it is published."
   }
 }

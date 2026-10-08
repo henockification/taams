@@ -546,7 +546,7 @@ export const permissionResourceOptions: AppNavItem[] = appNavGroups
 
 export const permissionActions = ['read', 'add', 'edit', 'approve', 'reject', 'push'] as const;
 
-type AuthzUser =
+export type AuthzUser =
   | {
       role?: string[];
       permissions?: string[];
@@ -746,6 +746,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/attendance-corrections' || pathname.startsWith('/attendance-corrections/')) return Boolean(user);
   if (pathname === '/manual-punch-requests' || pathname.startsWith('/manual-punch-requests/')) return Boolean(user);
   if (pathname === '/profile') return Boolean(user);
+  if (pathname === '/help' || pathname.startsWith('/help/')) return Boolean(user);
   if (pathname === '/notification-logs' || pathname.startsWith('/notification-logs/')) return Boolean(user);
   if (pathname === '/temporary-assignments' || pathname.startsWith('/temporary-assignments/')) return hasTemporaryAssignmentAccess(user);
   if (pathname === '/department-assignments' || pathname.startsWith('/department-assignments/')) return hasHrDepartmentAssignmentManagementAccess(user);

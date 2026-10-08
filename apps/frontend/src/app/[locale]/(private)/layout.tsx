@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   BellRing,
+  BookOpen,
   ChevronDown,
   LogOut,
   User,
@@ -188,6 +189,7 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return rbacT('permissionsDescription');
       default:
         if (pathname === '/profile') return coreT('profileDescription');
+        if (pathname === '/help') return coreT('userManualDescription');
         return pathname === '/notification-logs' ? coreT('myNotificationsDescription') : '';
     }
   };
@@ -197,9 +199,11 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
     ? t('notifications')
     : pathname === '/profile'
       ? t('profile')
-      : currentNavItem
-        ? t(currentNavItem.titleKey)
-        : t('dashboard');
+      : pathname === '/help'
+        ? t('userManual')
+        : currentNavItem
+          ? t(currentNavItem.titleKey)
+          : t('dashboard');
   const currentDescription = getPageDescription();
 
   return (
@@ -274,6 +278,12 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
                   <Link href="/notification-logs" className="cursor-pointer">
                     <BellRing className="mr-2 size-4" />
                     <span>{t('notifications')}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/help" className="cursor-pointer">
+                    <BookOpen className="mr-2 size-4" />
+                    <span>{t('userManual')}</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

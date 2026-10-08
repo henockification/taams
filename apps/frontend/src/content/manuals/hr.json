@@ -1,0 +1,1330 @@
+{
+  "id": "hr",
+  "title": "TAMS Human Resources Training Manual",
+  "summary": "This manual supports HR officers who maintain the organization structure, employee records, supervisor assignments, schedules, and holidays; give the final approval of attendance for payroll; verify permanent employee leave from ISMIS; administer contract employee leave; manage biometric employee synchronization and exemptions; and produce reports.",
+  "audience": "Users with the Human Resource role",
+  "blocks": [
+    {
+      "type": "h1",
+      "text": "Before You Begin"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Your account and the Human Resource role are assigned by the system administrator.",
+        "You sign in with your **email address or phone number** and your password. Never share your password or verification code.",
+        "Make changes only from an approved source document or instruction, and keep that evidence. Every change is recorded with your name, date, and time.",
+        "Do not use the browser Back button while a form is being saved. Use the system menu.",
+        "Log out when finished, especially on a shared workstation."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Sign In and Navigate"
+    },
+    {
+      "type": "h2",
+      "text": "Set your password and sign in"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "For a new account, select **Forgot your password?** on the sign in page, choose **Email** or **Phone**, enter your registered address or number, then set a new password and enter the 6-digit code sent to you.",
+        "To sign in, select **Email** or **Phone**, enter your email address or phone number and password, and select **Sign in**.",
+        "Enter the 6-digit verification code sent to your email or phone (valid for 10 minutes, up to 5 attempts)."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The **HR dashboard** opens.",
+      "tone": "success"
+    },
+    {
+      "type": "figure",
+      "src": "01-signin.png",
+      "caption": "Sign in page with the Email and Phone options",
+      "number": 1,
+      "width": 2160,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Passwords must be at least 12 characters, contain no spaces, not be a common password, and not contain the first part of your email address.",
+        "After 5 wrong passwords the account is locked for 15 minutes. Sessions end after 30 minutes without activity and at the latest after 7 days."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Navigate the application"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Menu group",
+        "Menu items"
+      ],
+      "rows": [
+        [
+          "Workspace",
+          "HR dashboard"
+        ],
+        [
+          "Employee Services",
+          "My Attendance, My overtime, Attendance corrections, and your own leave menus if you are a contract employee"
+        ],
+        [
+          "Human Resources: Core",
+          "Organization Structure, Permanent employees, Contract employees, Supervisor assignments, Temporary assignments"
+        ],
+        [
+          "Human Resources: Leave management",
+          "Fiscal years, Leave types, Leave balances, Leave authorization"
+        ],
+        [
+          "Human Resources: Work schedule & shift",
+          "Work schedules, Holiday / off-day management, Shifts, Assignments"
+        ],
+        [
+          "Human Resources: Attendance",
+          "Attendance punches, HR attendance approval"
+        ],
+        [
+          "Reports",
+          "Attendance daily summary, Attendance punches, Late attendance, Overtime, Leave balances, Leave requests, Employee roster, Device sync"
+        ],
+        [
+          "Biometric",
+          "Biometric devices, Biometric exemptions"
+        ]
+      ],
+      "widths": [
+        3300,
+        6578
+      ]
+    },
+    {
+      "type": "p",
+      "text": "The **user menu** in the top right corner contains the calendar switcher (Gregorian or Ethiopian), the language switcher (English or Amharic), **Profile**, **Notifications**, and **Logout**."
+    },
+    {
+      "type": "figure",
+      "src": "02-navigation.png",
+      "caption": "HR menu with the Human Resources group expanded",
+      "number": 2,
+      "width": 2160,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Department restriction",
+      "text": "An administrator can limit an HR account to specific departments (Department assignment). A restricted HR user sees and manages only employees in those departments and every department below them in the organization structure, including in employee lists, attendance approval, leave, temporary assignments, and reports. Without a restriction, HR works across all departments."
+    },
+    {
+      "type": "note",
+      "label": "Leave management access",
+      "text": "HR users whose own employment type is Permanent do not see the Leave management menus. Contract employee leave is administered by HR users who are contract employees, or by an administrator."
+    },
+    {
+      "type": "h1",
+      "text": "Use the HR Dashboard"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **HR dashboard**. It shows today by default; use **Date** to view another day and **Refresh** to reload.",
+        "Review **Pending leave authorizations** and open it to authorize leave. **Pending manual requests** and **Recent returned corrections** are for information; attendance corrections are decided by supervisors.",
+        "Review attendance cards: **Employees on leave**, **Employees without punch**, **Missing check-out**, **Late employees**, and **Attendance exceptions**. Select a card to open the related page.",
+        "Review **Upcoming leave** (next 14 days) and **Leave balances near expiry** (active fiscal year ending within 30 days). The leave cards open the Leave requests report already filtered to authorized leave for those dates.",
+        "Review **Offline devices** and **Synchronization status**. Report device problems to the system administrator.",
+        "Use **Attendance reporting discipline** to see, by department, how many records supervisors have approved and corrected before reaching HR, and how many are payroll ready."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "03-hr-dashboard.png",
+      "caption": "HR dashboard cards and open items",
+      "number": 3,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h1",
+      "text": "Maintain the Organization Structure"
+    },
+    {
+      "type": "p",
+      "text": "**Organization Structure** holds every department and the department it belongs under. Permanent and contract departments form two separate structures. The structure also decides which departments a department-restricted HR user or a department head covers: a department always includes every department below it."
+    },
+    {
+      "type": "h2",
+      "text": "View the structure"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Organization Structure**.",
+        "Choose the **Permanent** or **Contract** tab.",
+        "Choose **Tree** to see departments as an expandable list, or **Chart** to see them as connected boxes. Each department shows its code, its head, the number of sub-departments, and an Inactive badge where applicable."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "04-org-tree.png",
+      "caption": "Organization Structure in the Tree view, with the Departments list and the Structure",
+      "number": 4,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "figure",
+      "src": "05-org-chart.png",
+      "caption": "Organization Structure in the Chart view",
+      "number": 5,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Add or edit a department"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Select **New department**, or choose **Add child department** or **Edit** from a department's actions menu (or select its box in the Chart view).",
+        "Enter the **English name** (required), and optionally the **Amharic name** and **Code**.",
+        "Choose the **Parent department**, or select **Top level** to place it at the top of the structure.",
+        "Set **Contract department** on for a contract department and off for a permanent one, and keep **Active** on.",
+        "Select **Save**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "06-org-department-dialog.png",
+      "caption": "Add department dialog",
+      "number": 6,
+      "width": 768,
+      "height": 834,
+      "scale": 0.6
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Department names must be unique within the permanent or contract structure, and codes must be unique.",
+        "A department can only be placed under an active department of the same type. To change a department's type, first move its sub-departments out; changing the type moves it to the top level.",
+        "Departments are never deleted. Turn **Active** off for a department that is no longer used; it stays in the structure but cannot be chosen as a parent."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Move a department"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "In the **Tree** view, drag the department onto its new parent in **Structure**, or onto **Drop here to make it a top-level department**.",
+        "Alternatively, choose **Move to…** from the actions menu, select the **Parent department**, and select **Move**, or choose **Make top-level**."
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Use the **Departments** list with **Search departments** and the **Not placed** filter to find departments that have no parent and no sub-departments, and place them.",
+        "A department cannot be moved under itself or under one of its own sub-departments.",
+        "Moving a department changes who covers it: it joins the scope of HR users and department heads assigned above its new position and leaves the scope of those above its old one."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Set a department head"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Choose **Set department head…** from the department's actions menu.",
+        "Search for the employee by name or code and select them. The head is saved immediately.",
+        "To clear the head, open the dialog again and select **Remove head**."
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "The department head sees attendance for the department and all of its sub-departments in the **Supervisor report**. One employee can head several departments.",
+        "Setting a head does not change approvals or give any role. Approvals still follow Supervisor assignments, and the head needs the Supervisor role (assigned by the system administrator) to open the Supervisor report."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Control",
+      "text": "Change the structure only to reflect the approved Ministry organization. Department moves and head changes are recorded with your name, date, and time."
+    },
+    {
+      "type": "h1",
+      "text": "Manage Employee Records"
+    },
+    {
+      "type": "p",
+      "text": "Permanent and contract employees are kept on separate pages: **Permanent employees** and **Contract employees**. The page you use sets the employment type, which cannot be changed later."
+    },
+    {
+      "type": "h2",
+      "text": "Find an employee"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Permanent employees** or **Contract employees**.",
+        "Use **Employee search**, **Employment status**, and **Department** to narrow the list.",
+        "Review Employee, Employee Id No, Department, Position, Gender, and Status, and open the employee to see the full record."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "07-employees-list.png",
+      "caption": "Permanent employees list",
+      "number": 7,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Add an employee"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "On the correct page, select **Add employee**.",
+        "Under **Employee profile**, enter **Employee code**, **Email**, **Phone number**, **First name**, and **Last name** (required), plus middle and Amharic names, gender, and national ID.",
+        "Under **Organization**, choose the **Department** (required), position, **Employment status**, **Hire date**, and, if applicable, **Termination date**. If the department does not exist yet, add it in Organization Structure first so that it is placed correctly.",
+        "Under **Additional details**, enter salary, step, and **Paid by IFMIS**. Payroll ID, Biometric ID, and Employee Id No are set to the employee code automatically.",
+        "Save."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The employee record and a login account (Employee role) are created together. The employee sets a password with Forgot your password?.",
+      "tone": "success"
+    },
+    {
+      "type": "figure",
+      "src": "08-employee-add.png",
+      "caption": "Add employee form",
+      "number": 8,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Duplicates",
+      "text": "Email and phone must not belong to a user already linked to another employee. Check the list before adding, and correct an existing record instead of creating a second one."
+    },
+    {
+      "type": "h2",
+      "text": "Update an employee or record a departure"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the employee and select **Edit employee**.",
+        "Update names, contact details, department, position, employment status, dates, salary, or Paid by IFMIS as authorized. Employee code, Employee Id No, and Employment type cannot be edited.",
+        "For a resignation or retirement, set **Employment status** to the corresponding value and enter the **Termination date**. The employee becomes inactive and is excluded from attendance.",
+        "Save."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Departing employees",
+      "text": "Changing the status does not disable the employee's login. Ask the system administrator to disable the user account, and use Employee Sync to remove the employee from biometric devices."
+    },
+    {
+      "type": "h1",
+      "text": "Import Employees from Excel"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Permanent employees** or **Contract employees** and select **Import**.",
+        "Choose an .xls or .xlsx file (maximum 2 MB). Only the first sheet is read.",
+        "Start the import and wait for the result.",
+        "Review **Created**, **Updated**, **Skipped**, **Failed**, and **Total rows**, and each listed **Row error**. Correct failed rows in the source file and import it again."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "09-employee-import.png",
+      "caption": "Import permanent employees dialog",
+      "number": 9,
+      "width": 768,
+      "height": 363,
+      "scale": 0.6
+    },
+    {
+      "type": "table",
+      "header": [
+        "Column (accepted header names)",
+        "Notes"
+      ],
+      "rows": [
+        [
+          "Department (Department, Dept)",
+          "Required. Matched by name or code; missing departments are created at the top level automatically unless your HR account is department-restricted. Place new departments in Organization Structure afterwards."
+        ],
+        [
+          "Full name (Full Name < English, Name of Employee)",
+          "Required. Split into first, middle, and last name."
+        ],
+        [
+          "Employee ID (Employee Id No, Employee ID, ID No)",
+          "Required for permanent employees; becomes the employee code, biometric ID, and payroll ID."
+        ],
+        [
+          "No. (No., Serial No)",
+          "Contract only: used as CONTRACT-{No.} when the employee ID is blank or \"Not found\"."
+        ],
+        [
+          "Status, Gender, Date / Hire date, Position, Code, Salary, Step",
+          "Optional."
+        ],
+        [
+          "Phone (Mobile, Tel No.) and Email (Email Address)",
+          "A login account is created when either is present."
+        ]
+      ],
+      "widths": [
+        4200,
+        5678
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "The import updates existing employees with the same employee code; rows with no changes are counted as Skipped.",
+        "The import runs in one step; there is no preview. Test a new file with a few rows first.",
+        "Contract employees imported without an employee ID get no usable biometric ID. Add the ID before enrolling them on devices."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Maintain Supervisor Assignments"
+    },
+    {
+      "type": "p",
+      "text": "Supervisor assignments decide who approves each employee's attendance, corrections, overtime, and leave."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Supervisor assignments**.",
+        "Choose the **Employment type**, then the **Department**, and use search and **Employment status** to list the employees.",
+        "Tick the employees and select **Assign supervisor**.",
+        "Choose the **Supervisor** (an active employee), **Effective from**, optional **Effective to**, and whether this is the **Primary** supervisor.",
+        "Save and check **Current primary supervisor** and **Effective period** in the list."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "10-supervisor-assignments.png",
+      "caption": "Supervisor assignments",
+      "number": 10,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "A new primary assignment ends the employee's current primary assignment the day before the new effective date.",
+        "All assigned supervisors approve attendance, corrections, and overtime; only the primary supervisor approves leave.",
+        "Assigning employees does not give the supervisor the Supervisor role. Ask the system administrator to grant the role so the Supervisor menu appears.",
+        "Single employees can also be assigned from the employee record, under **Supervisors** > **Assign supervisor**."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Record Temporary Department Assignments"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Temporary assignments** and select **Add temporary assignment**.",
+        "Choose the **Employee**, the **Temporary department**, **Start date**, **End date**, and enter the **Reason**. All fields are required.",
+        "Save. Use **Edit** to change an active assignment and **Deactivate** to end it."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "11-temporary-assignments.png",
+      "caption": "Temporary assignments",
+      "number": 11,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "The temporary department must differ from the home department, and an employee cannot have overlapping active assignments.",
+        "The move is shown on attendance screens with a Temporarily assigned badge. It does not change the employee's supervisor; update Supervisor assignments separately if approvals should move too.",
+        "A department-restricted HR user can record temporary assignments only for employees whose home department is in their scope."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Configure Shifts and Work Schedules"
+    },
+    {
+      "type": "h2",
+      "text": "Shifts"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Shifts** and select **Add shift** (or edit an existing one).",
+        "Enter the English and Amharic names and the tolerances below, and mark **Overnight shift** if it crosses midnight.",
+        "Add one **segment** per working session (for example Morning 08:30-12:30 and Afternoon 13:30-17:30) with Start time, End time, and Sort order. The gap between segments is the break."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "12-shifts.png",
+      "caption": "Shifts and their segments",
+      "number": 12,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "table",
+      "header": [
+        "Field",
+        "Effect on attendance"
+      ],
+      "rows": [
+        [
+          "Grace period minutes",
+          "How early before the first session a check-in is accepted."
+        ],
+        [
+          "Late after minutes",
+          "A check-in later than session start plus this value is Late; late minutes are counted from the session start."
+        ],
+        [
+          "Early out before minutes",
+          "The accepted checkout window after each session end, and the accepted early return before later sessions. A checkout before the session end is Early."
+        ]
+      ],
+      "widths": [
+        3000,
+        6878
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Each segment is evaluated as a separate session. A session with both a check-in and a check-out is Present; attendance days equal present sessions divided by scheduled sessions."
+    },
+    {
+      "type": "h2",
+      "text": "Work schedules"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Work schedules** and select **Add work schedule**.",
+        "Choose the **Schedule type**: **Weekly**, or **Roster cycle** with the number of **Duty days** and **Rest days**.",
+        "Add days: for a weekly schedule add each working day with its **Shift**; any day not listed, or marked **Off day**, is a rest day. For a roster, add a Roster duty day with its shift.",
+        "Save. Deactivate schedules that are no longer used rather than changing past ones."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "13-work-schedules.png",
+      "caption": "Work schedules and their days",
+      "number": 13,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Assign schedules to employees"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Assignments**, filter by employment type and department, and tick the employees.",
+        "Select **Assign work schedule**, choose the schedule, **Effective from**, and optional **Effective to**.",
+        "Review the result message for any failed employees."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "14-schedule-assignments.png",
+      "caption": "Work schedule assignments",
+      "number": 14,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Effective dating",
+      "text": "The latest active assignment covering a date applies, and a roster cycle counts from the assignment's effective-from date. Avoid overlapping assignments, and do not change schedules for past periods unless the change is approved and its attendance impact is understood."
+    },
+    {
+      "type": "h1",
+      "text": "Manage Holidays and Off Days"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Holiday / off-day management** and add a holiday.",
+        "Enter the English and Amharic name, choose **Public holiday** or **Institution off day**, and set **Start date** and **End date**.",
+        "Choose **Day coverage**: **Full day** or **Half day**. Add a description and save."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "15-holidays.png",
+      "caption": "Holiday / off-day management",
+      "number": 15,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Active holidays cannot overlap. Deactivate a holiday instead of deleting it.",
+        "A full-day holiday has no attendance requirement and counts as a paid day; a half day counts 0.5.",
+        "Holidays are excluded from leave: annual leave cannot be taken on a full-day holiday, and only a half day on a half-day holiday.",
+        "Enter holidays before the period starts. Attendance for dates already approved for payroll is not recalculated."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Review Attendance Punches"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Attendance punches**.",
+        "Choose the period (Today, Yesterday, This week, This month, or Custom range), employee, device, and **All punches / Unprocessed / Processed**.",
+        "Review Punch time, Employee, Biometric ID, Device, Punch type, Source, and Status."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "16-attendance-punches.png",
+      "caption": "Attendance punches",
+      "number": 16,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "p",
+      "text": "This page is read-only. Missing punches are corrected only through the employee's attendance correction request and supervisor approval."
+    },
+    {
+      "type": "h1",
+      "text": "Approve Attendance for Payroll"
+    },
+    {
+      "type": "p",
+      "text": "Supervisors approve their employees' daily records first. HR gives the final approval, which makes the record payroll ready and notifies Finance for IFMIS processing."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **HR attendance approval**. It opens on **Awaiting HR approval**, which lists every Supervisor approved record, whatever its date.",
+        "Narrow the list with **Employment type**, then **Department**, and **Employee search**. To review other records, choose a period in **Attendance date** (Today, This week, This month, This year, or Custom range); those periods show records of every status.",
+        "Review the tiles: **Pending supervisor**, **Returned**, **Supervisor approved**, **Payroll ready**, and **Worked during leave**, plus the late, early break, early out, and absent session totals.",
+        "Review each record: Sessions, Late mins, Early leave mins, Attendance days, Leave days, Holiday days, Payable days, Absence days, overtime, and the Status badges (holiday, exempt, payroll note).",
+        "For a correct record, select **Approve for payroll**, or tick several rows and select **Approve for payroll (N)**.",
+        "If something must be corrected, select **Return attendance**, enter what needs correction, and confirm."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "17-hr-attendance-approval.png",
+      "caption": "HR attendance approval opened on Awaiting HR approval",
+      "number": 17,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "Approved records become HR approved (Payroll ready) and leave the Awaiting HR approval list. Returned records go back to the supervisor with your reason; the supervisor corrects and approves them again.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "HR can approve or return only Supervisor approved records, and HR approved records cannot be returned.",
+        "HR cannot edit attendance values or add punches. The supervisor fixes a returned record with **Correct** (adding the missing punch) and approves it again; employees can also request an attendance correction.",
+        "**Worked during leave**: a red badge marks a record with both attendance and leave on the same date (for example 1 attendance day and 1 leave day). Use **Approval status** > **Worked during leave** to list them, and check the leave or the punches before approving.",
+        "**Permanent employees**: Approve for payroll requires a confirmed ISMIS leave check covering their dates (see the next section).",
+        "If an employee's correction is approved after payroll approval, the day automatically goes back to Supervisor approved for you to approve again.",
+        "Use **Refresh daily records** if punches, holidays, or leave arrived after the records were generated.",
+        "Before closing a period, choose the period in **Attendance date** and set **Approval status** to **Unapproved**; the list should be empty."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Verify Permanent Employee Leave (ISMIS)"
+    },
+    {
+      "type": "p",
+      "text": "Permanent employee leave is managed in ISMIS. Before HR approves permanent employees' attendance for payroll, HR imports the ISMIS leave export and confirms it for those dates. Supervisors can approve permanent employees' attendance without waiting for this check."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Export the approved leave from ISMIS as .xlsx or .xls with the columns መለያ ቁጥር (employee ID), ሙሉ ስም, ዓይነት, ከ (from), እስከ (to), and ቀናት. Dates must be Ethiopian calendar dates (dd/mm/yyyy).",
+        "Open **HR attendance approval** and select the dates to verify: keep **Awaiting HR approval** to cover the dates of the permanent employees' records in the list, or choose the exact period the file covers (for example the pay month).",
+        "In **Permanent employee leave verification**, choose the file and select **Import ISMIS leave**. A message shows how many employees and leave days were imported.",
+        "If IDs did not match a permanent employee, the message lists them. Select **Discard import**, correct the employee IDs in the TAMS employee records (or in the file), and import again.",
+        "When there are no unmatched IDs, select **I checked leave**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "17b-ismis-panel.png",
+      "caption": "Permanent employee leave verification panel at the top of HR attendance approval",
+      "number": 18,
+      "width": 1656,
+      "height": 149,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The dates are recorded as verified and attendance is recalculated for the imported leave days, including records a supervisor has already approved. The message shows how many records were corrected. You can now approve permanent employees' attendance for payroll for those dates.",
+      "tone": "success"
+    },
+    {
+      "type": "note",
+      "label": "Important",
+      "text": "If Approve for payroll reports that an ISMIS leave check is required, the check does not cover those dates yet: import and confirm the ISMIS leave for them. Use Discard import for a wrong file; discarded imports do not affect attendance."
+    },
+    {
+      "type": "h1",
+      "text": "Administer Contract Employee Leave"
+    },
+    {
+      "type": "p",
+      "text": "Leave requests in TAMS apply to contract employees. The employee requests, the primary supervisor approves, and HR authorizes."
+    },
+    {
+      "type": "h2",
+      "text": "Fiscal years"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Fiscal years** and select **Add fiscal year**.",
+        "Enter the **Fiscal year name** and the Gregorian **Starts at** and **Ends at** dates of the Ethiopian fiscal year.",
+        "Select **Set active** on the year in use. Only one fiscal year is active; activating a year deactivates the others."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "18-fiscal-years.png",
+      "caption": "Fiscal years",
+      "number": 19,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Year end",
+      "text": "Annual leave can be requested and balances entered only for the active fiscal year. Unused days are not carried forward automatically."
+    },
+    {
+      "type": "h2",
+      "text": "Leave types"
+    },
+    {
+      "type": "p",
+      "text": "Open **Leave types** to review or edit leave types. Each type has a code, English and Amharic names, and **Allowed days**: the maximum working days per request (blank for balance-backed annual leave)."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Code",
+        "Leave type",
+        "Allowed days per request"
+      ],
+      "rows": [
+        [
+          "ANNUAL",
+          "Annual Leave",
+          "Limited by balance"
+        ],
+        [
+          "SICK",
+          "Sick Leave",
+          "240"
+        ],
+        [
+          "MATERNITY",
+          "Maternity Leave",
+          "120"
+        ],
+        [
+          "PATERNITY",
+          "Paternity Leave",
+          "10"
+        ],
+        [
+          "SPECIAL_FULL_PAY",
+          "Special Leave with Full Pay",
+          "7"
+        ],
+        [
+          "UNPAID",
+          "Unpaid Leave",
+          "365 (unpaid in payroll)"
+        ]
+      ],
+      "widths": [
+        2600,
+        4200,
+        3078
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "19-leave-types.png",
+      "caption": "Leave types",
+      "number": 20,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Control",
+      "text": "Change allowed days only with written HR policy approval. Changes apply to new requests."
+    },
+    {
+      "type": "h2",
+      "text": "Opening balances"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Leave balances** and select the active fiscal year.",
+        "Filter by **Department** or **Employee search** to review Opening balance, Used, Reserved, and Available balance.",
+        "Select **Add leave balance** (or edit), choose the contract employee, and enter the **Opening balance** in whole or half days."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "20-leave-balances.png",
+      "caption": "Leave balances for the active fiscal year",
+      "number": 21,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Available = opening minus reserved (supervisor-approved) minus used (HR-authorized) days.",
+        "The opening balance cannot be set lower than days already used or reserved."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Authorize leave and leave recalls"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Leave authorization**, or select **Pending leave authorizations** on the dashboard.",
+        "Filter by employee, leave type, status, or request date. **Type** shows whether the item is a Leave request or an Interruption (recall).",
+        "Select **View details** and review the supervisor-approved dates, approved days, and available balance.",
+        "Select **Authorize**, or select **Reject**, enter the **Rejection reason**, and select **Reject authorization**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "21-leave-authorization.png",
+      "caption": "Leave authorization",
+      "number": 22,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "Authorized annual leave moves from reserved to used, and the leave appears on the employee's attendance. Rejection returns any reserved days to the balance. The employee receives an email and SMS.",
+      "tone": "success"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "HR cannot change the dates; to change them, reject with a reason so the employee can submit a new request.",
+        "Leave cannot be authorized for dates whose attendance is already approved for payroll, or that overlap other authorized leave.",
+        "For a recall, authorizing it replaces the interrupted leave dates with the approved continuation dates; the balance does not change."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Synchronize Employees to Biometric Devices"
+    },
+    {
+      "type": "p",
+      "text": "Only the system administrator can register devices or change their connection settings. HR uses **Biometric devices** to check device status, run **Test Connection** and **Sync**, review sync history, and use **Employee Sync** to keep employees enrolled on devices."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Biometric devices** and find the **Employee Sync** panel.",
+        "Choose the **Operation**: **Full synchronization** (compare all active enrolled employees; extra users on devices are not removed), **New employee or re-enrollment** (selected active employees with a biometric ID), or **Employee departure** (remove selected inactive employees).",
+        "Select **Preview synchronization** and review the differences per device in **Provisioning history**.",
+        "Select **Apply**, check the summary in **Confirm biometric provisioning**, and select **Confirm and apply**.",
+        "Review the result for each device and use **Retry failed** if any device failed."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "22-biometric-devices.png",
+      "caption": "Biometric devices with the Employee Sync panel",
+      "number": 23,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Before enrolment",
+      "text": "The employee must be active and have a biometric ID, and fingerprints must be enrolled on the enrollment source device first."
+    },
+    {
+      "type": "h1",
+      "text": "Manage Biometric Exemptions"
+    },
+    {
+      "type": "p",
+      "text": "A biometric exemption records an authorised arrangement under which an employee is not required to punch, for example an approved field assignment. Only HR manages exemptions. While an exemption is in effect the employee's days are counted as payable and marked Exempt."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Biometric exemptions** and select **Add exemption**.",
+        "Choose **Target type** Employee and select the employee.",
+        "Enter the **Reason**, **Arrangement type**, **Responsible authority**, **Authorized location**, **Effective from**, **Effective to**, and **Review due** date, and attach the **Supporting evidence**.",
+        "Save."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "23-biometric-exemptions.png",
+      "caption": "Biometric exemptions",
+      "number": 24,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "An exemption takes effect immediately; there is no separate approval step. Record only arrangements authorised in writing.",
+        "Only one active exemption is allowed per employee. For any arrangement type other than the default, Effective from, Review due, and Responsible authority are required.",
+        "An exemption applies to attendance dates between its effective dates and up to its review due date. Review and renew or end it before that date.",
+        "To end an exemption, use the remove action; the record is kept as Inactive.",
+        "Position-wide exemptions can be created only by an administrator."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Produce Reports"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the report from the **Reports** menu.",
+        "Set the dates and filters, then select **Refresh**. Reports open with today's date by default.",
+        "Check the totals against the selected scope.",
+        "Select **Excel** to download the report, or **PDF** to print or save it as PDF from the browser."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "24-report-attendance-daily.png",
+      "caption": "Attendance daily summary report",
+      "number": 25,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "table",
+      "header": [
+        "Report",
+        "Main filters"
+      ],
+      "rows": [
+        [
+          "Attendance daily summary",
+          "Dates, department, employee, approval status"
+        ],
+        [
+          "Attendance punches",
+          "Dates and times, department, employee, device, processed status"
+        ],
+        [
+          "Late attendance",
+          "Dates, department, employee, status, minimum late minutes"
+        ],
+        [
+          "Overtime",
+          "Dates, department, employee, status, minimum overtime minutes"
+        ],
+        [
+          "Leave balances",
+          "Fiscal year, department, employee, low balance only"
+        ],
+        [
+          "Leave requests",
+          "Dates, department, employee, leave type, status"
+        ],
+        [
+          "Employee roster",
+          "Department, employee, employment type, employment status"
+        ],
+        [
+          "Device sync",
+          "Dates, device, status"
+        ]
+      ],
+      "widths": [
+        3000,
+        6878
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Audit records of who changed what and when are kept by the system and reviewed by the system administrator. Ask the administrator when an investigation needs them."
+    },
+    {
+      "type": "note",
+      "label": "Confidentiality",
+      "text": "Export only the records needed for an authorized purpose and store them only in approved Ministry locations."
+    },
+    {
+      "type": "h1",
+      "text": "Notifications"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Event",
+        "Channel"
+      ],
+      "rows": [
+        [
+          "A supervisor approved attendance and it is waiting for HR",
+          "Email"
+        ],
+        [
+          "A supervisor approved a leave request (awaiting HR authorization)",
+          "Email"
+        ],
+        [
+          "A supervisor approved a leave recall",
+          "Email and SMS"
+        ]
+      ],
+      "widths": [
+        6800,
+        3078
+      ]
+    },
+    {
+      "type": "p",
+      "text": "Open **Notifications** in the user menu to see every message sent to you. Check the dashboard daily, since returned attendance and correction activity do not send messages."
+    },
+    {
+      "type": "figure",
+      "src": "25-notifications.png",
+      "caption": "Notifications log",
+      "number": 26,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h1",
+      "text": "Operational Checklists"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Frequency",
+        "Checklist"
+      ],
+      "rows": [
+        [
+          "Daily",
+          "Review the HR dashboard: employees without punch, missing check-outs, pending leave authorizations, offline devices, and sync status."
+        ],
+        [
+          "Weekly",
+          "Approve supervisor-approved attendance, authorize leave, follow up returned records and departments with low supervisor reporting rates, and check exemptions nearing review."
+        ],
+        [
+          "Before each pay period closes",
+          "Import and confirm ISMIS leave for the period, confirm all departments have approved attendance, approve for payroll, and check that Unapproved is empty for the period."
+        ],
+        [
+          "When staff join or leave",
+          "Add or update the employee, assign supervisor and schedule, and run Employee Sync (new employee or departure). Ask the administrator to disable login for leavers."
+        ],
+        [
+          "When the organization changes",
+          "Update Organization Structure (departments, parents, heads) on the effective date and check that department-restricted HR users still cover the right departments."
+        ],
+        [
+          "Before a new fiscal year",
+          "Create and activate the fiscal year and enter contract employees' opening balances."
+        ],
+        [
+          "Before a policy or schedule change",
+          "Confirm written approval and effective date, and plan the change for a future date."
+        ]
+      ],
+      "widths": [
+        2800,
+        7078
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Common Problems and Corrective Actions"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Problem",
+        "Action"
+      ],
+      "rows": [
+        [
+          "Cannot sign in",
+          "Check Email/Phone selection and password. After 5 wrong attempts wait 15 minutes. Use Forgot your password? or contact support."
+        ],
+        [
+          "Leave management menus are missing",
+          "They are hidden for HR users who are permanent employees. Ask a contract-employee HR user or an administrator."
+        ],
+        [
+          "An employee is not visible",
+          "Clear filters and check the correct Permanent or Contract page. If your HR account is department-restricted, the employee may be outside your departments."
+        ],
+        [
+          "Department cannot be moved or saved",
+          "Check that the new parent is active and of the same type (permanent or contract), that it is not one of the department's own sub-departments, and that the name and code are not already used."
+        ],
+        [
+          "Department head cannot open the Supervisor report",
+          "Ask the system administrator to give the head the Supervisor role."
+        ],
+        [
+          "Import row failed",
+          "Read the row error, correct the source row, and import again. Do not create the employee manually as a duplicate."
+        ],
+        [
+          "Department not found during import",
+          "Your account is department-restricted and cannot create departments. Ask an unrestricted HR user or correct the department name."
+        ],
+        [
+          "Supervisor cannot see an employee",
+          "Check the employee's supervisor assignment and effective dates, and that the supervisor has the Supervisor role."
+        ],
+        [
+          "Approve for payroll says an ISMIS leave check is required",
+          "Import the ISMIS leave for those dates and select I checked leave, then approve again."
+        ],
+        [
+          "ISMIS import shows unmatched IDs",
+          "Select Discard import, correct the employee ID in the employee record or the file, and import again."
+        ],
+        [
+          "Cannot approve a record for payroll",
+          "Only Supervisor approved records can be approved. Check its status and follow up with the supervisor. For permanent employees, the ISMIS leave check must cover the date."
+        ],
+        [
+          "Leave cannot be authorized",
+          "The dates may already be payroll ready or overlap another authorized leave. Reject with a reason if the request must change."
+        ],
+        [
+          "Attendance shows absent on a holiday",
+          "Check the holiday is active and covers the date, then select Refresh daily records."
+        ],
+        [
+          "Employee not on devices",
+          "Check the employee is active with a biometric ID and run Employee Sync (new employee or re-enrollment)."
+        ]
+      ],
+      "widths": [
+        3400,
+        6478
+      ]
+    },
+    {
+      "type": "note",
+      "label": "When contacting support",
+      "text": "Provide your name, the email or phone used to sign in, the date and time, the page, the employee and record concerned, the action attempted, and a screenshot of the message. Never send your password or verification code."
+    },
+    {
+      "type": "h1",
+      "text": "Support and Escalation"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Issue",
+        "Primary owner"
+      ],
+      "rows": [
+        [
+          "Organization structure, employee records, supervisor and schedule assignments, holidays",
+          "HR"
+        ],
+        [
+          "Attendance evidence and supervisor approval",
+          "Supervisor"
+        ],
+        [
+          "Leave policy, balances, and authorization",
+          "Authorized HR officer"
+        ],
+        [
+          "User accounts, roles, department restriction of HR accounts, audit trail review",
+          "System administrator"
+        ],
+        [
+          "Device registration, communication, and synchronization failures",
+          "System administrator or technical support"
+        ],
+        [
+          "IFMIS processing after payroll readiness",
+          "Finance"
+        ],
+        [
+          "Policy or approval dispute",
+          "Ministry management or designated authority"
+        ]
+      ],
+      "widths": [
+        5200,
+        4678
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Quick Reference"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Task",
+        "Where",
+        "Key action"
+      ],
+      "rows": [
+        [
+          "Add or move a department",
+          "Organization Structure",
+          "New department, or drag onto the new parent"
+        ],
+        [
+          "Set a department head",
+          "Organization Structure",
+          "Department actions > Set department head…"
+        ],
+        [
+          "Add an employee",
+          "Permanent / Contract employees",
+          "Add employee"
+        ],
+        [
+          "Import employees",
+          "Permanent / Contract employees",
+          "Import, review results"
+        ],
+        [
+          "Assign supervisors",
+          "Supervisor assignments",
+          "Filter, tick, Assign supervisor"
+        ],
+        [
+          "Assign schedules",
+          "Assignments",
+          "Filter, tick, Assign work schedule"
+        ],
+        [
+          "Add a holiday",
+          "Holiday / off-day management",
+          "Add, set dates and coverage"
+        ],
+        [
+          "Verify ISMIS leave",
+          "HR attendance approval",
+          "Set date filter, Import ISMIS leave, I checked leave"
+        ],
+        [
+          "Approve for payroll",
+          "HR attendance approval",
+          "Approve for payroll or Return attendance"
+        ],
+        [
+          "Enter opening balances",
+          "Leave balances",
+          "Add leave balance"
+        ],
+        [
+          "Authorize leave",
+          "Leave authorization",
+          "View details, Authorize or Reject"
+        ],
+        [
+          "Enrol employees on devices",
+          "Biometric devices > Employee Sync",
+          "Preview, Apply, Confirm and apply"
+        ],
+        [
+          "Record an exemption",
+          "Biometric exemptions",
+          "Add exemption"
+        ],
+        [
+          "Export a report",
+          "Reports",
+          "Set filters, Refresh, Excel or PDF"
+        ]
+      ],
+      "widths": [
+        3000,
+        3300,
+        3578
+      ]
+    }
+  ]
+}
