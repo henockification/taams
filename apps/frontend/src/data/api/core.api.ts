@@ -177,7 +177,7 @@ async function coreBlobFetch(path: string): Promise<Blob> {
 
 export const coreApi = {
   getIsmisLeaveImport: () => coreFetch<{ success: true; batch: any | null }>('/attendance-approvals/ismis-leave'),
-  importIsmisLeave: (file: File) => { const form = new FormData(); form.append('file', file); return coreFetch<{ success: true; id: string; unmatchedEmployeeIds?: string[] }>('/attendance-approvals/ismis-leave/import', { method: 'POST', body: form }); },
+  importIsmisLeave: (file: File) => { const form = new FormData(); form.append('file', file); return coreFetch<{ success: true; id: string; dayCount: number; matchedCount: number; unmatchedCount: number; unmatchedEmployeeIds?: string[] }>('/attendance-approvals/ismis-leave/import', { method: 'POST', body: form }); },
   completeIsmisLeave: (params: { batchId: string; dateFrom: string; dateTo: string }) => coreFetch<{ success: true; verification: any; recalculatedDates: number; recalculatedRecords: number }>('/attendance-approvals/ismis-leave/complete', { method: 'POST', body: JSON.stringify(params) }),
   rejectIsmisLeave: (batchId: string) => coreFetch<{ success: true; batch: any }>(`/attendance-approvals/ismis-leave/${batchId}/reject`, { method: 'POST' }),
   getIfmisAttendancePreview: (params: { payMonth: number; payYear: number }) => {
@@ -564,8 +564,9 @@ export const coreApi = {
 
     return coreFetch<AttendanceDailyRecordsResponse>(`/attendance/my${suffix}`);
   },
-  getSupervisorAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
+  getSupervisorAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string; returned?: boolean } = {}) => {
     const query = new URLSearchParams();
+    if (params.returned) query.set('returned', '1');
     if (params.date) query.set('date', params.date);
     if (params.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params.dateTo) query.set('dateTo', params.dateTo);
@@ -573,8 +574,9 @@ export const coreApi = {
 
     return coreFetch<AttendanceDailyRecordsResponse>(`/attendance-approvals/supervisor${suffix}`);
   },
-  getHrAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string } = {}) => {
+  getHrAttendanceDailyRecords: (params: { date?: string; dateFrom?: string; dateTo?: string; awaiting?: boolean } = {}) => {
     const query = new URLSearchParams();
+    if (params.awaiting) query.set('awaiting', '1');
     if (params.date) query.set('date', params.date);
     if (params.dateFrom) query.set('dateFrom', params.dateFrom);
     if (params.dateTo) query.set('dateTo', params.dateTo);
@@ -621,6 +623,11 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify({ attendanceDailyRecordIds }),
     }),
+  addAttendanceCorrectionPunch: (input: { attendanceDailyRecordId: string; punchTime: string; punchType: string; reason: string }) =>
+    coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/correction-punch`, {
+      method: 'POST',
+      body: JSON.stringify({ punchTime: input.punchTime, punchType: input.punchType, reason: input.reason }),
+    }),
   returnAttendanceDailyRecord: (input: { attendanceDailyRecordId: string; reason: string }) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/return`, {
       method: 'POST',
@@ -635,6 +642,11 @@ export const coreApi = {
   createManualPunchRequest: (input: CreateManualPunchRequestInput) =>
     coreFetch<ManualPunchRequestResponse>('/manual-punch-requests', {
       method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  updateManualPunchRequest: ({ manualPunchRequestId, ...input }: { manualPunchRequestId: string; requestedPunchTime: string; requestedPunchType: string; reason: string }) =>
+    coreFetch<ManualPunchRequestResponse>(`/manual-punch-requests/${manualPunchRequestId}`, {
+      method: 'PUT',
       body: JSON.stringify(input),
     }),
   changeManualPunchRequestStatus: ({ manualPunchRequestId, ...input }: ChangeManualPunchRequestStatusInput) =>

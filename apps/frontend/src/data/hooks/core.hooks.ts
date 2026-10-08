@@ -1360,11 +1360,14 @@ export function useCreateAttendancePunch() {
   });
 }
 
-export function useSupervisorAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
+export function useSupervisorAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true, options?: { returned?: boolean }) {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const returned = Boolean(options?.returned);
   return useQuery({
-    queryKey: coreQueryKeys.supervisorAttendanceDailyRecords(range),
-    queryFn: () => coreApi.getSupervisorAttendanceDailyRecords(range),
+    queryKey: returned
+      ? [...coreQueryKeys.supervisorAttendanceDailyRecords(), 'returned']
+      : coreQueryKeys.supervisorAttendanceDailyRecords(range),
+    queryFn: () => coreApi.getSupervisorAttendanceDailyRecords(returned ? { returned } : range),
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
     refetchInterval: range.dateFrom === today && range.dateTo === today ? 60 * 1000 : false,
@@ -1384,11 +1387,12 @@ export function useMyAttendanceDailyRecords(range: { dateFrom: string; dateTo: s
   });
 }
 
-export function useHrAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true) {
+export function useHrAttendanceDailyRecords(range: { dateFrom: string; dateTo: string }, enabled = true, options?: { awaiting?: boolean }) {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const awaiting = Boolean(options?.awaiting);
   return useQuery({
-    queryKey: coreQueryKeys.hrAttendanceDailyRecords(range),
-    queryFn: () => coreApi.getHrAttendanceDailyRecords(range),
+    queryKey: [...coreQueryKeys.hrAttendanceDailyRecords(range), awaiting ? 'awaiting' : 'range'],
+    queryFn: () => coreApi.getHrAttendanceDailyRecords(awaiting ? { awaiting } : range),
     enabled: enabled && Boolean(range.dateFrom && range.dateTo),
     staleTime: 60 * 1000,
     refetchInterval: range.dateFrom === today && range.dateTo === today ? 60 * 1000 : false,
@@ -1514,6 +1518,19 @@ export function useHrApproveAttendanceDailyRecords() {
   });
 }
 
+export function useAddAttendanceCorrectionPunch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { attendanceDailyRecordId: string; punchTime: string; punchType: string; reason: string }) => coreApi.addAttendanceCorrectionPunch(input),
+    onSuccess: (data) => {
+      patchAttendanceApprovalCaches(queryClient, [data.attendanceDailyRecord]);
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.departmentHeadDashboardSummary(data.attendanceDailyRecord.attendanceDate) });
+    },
+  });
+}
+
 export function useReturnAttendanceDailyRecord() {
   const queryClient = useQueryClient();
 
@@ -1569,6 +1586,17 @@ export function useManualPunchRequests(params: { mine?: boolean } = {}) {
     queryKey: coreQueryKeys.manualPunchRequests(params),
     queryFn: () => coreApi.getManualPunchRequests(params),
     staleTime: 60 * 1000,
+  });
+}
+
+export function useUpdateManualPunchRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { manualPunchRequestId: string; requestedPunchTime: string; requestedPunchType: string; reason: string }) => coreApi.updateManualPunchRequest(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'manual-punch-requests'] });
+    },
   });
 }
 

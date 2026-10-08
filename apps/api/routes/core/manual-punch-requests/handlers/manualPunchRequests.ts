@@ -2,11 +2,13 @@ import { Context } from 'hono';
 import {
   ChangeManualPunchRequestStatusRequestSchema,
   CreateManualPunchRequestRequestSchema,
+  UpdateManualPunchRequestRequestSchema,
 } from '../../../../schemas/core.schema';
 import {
   changeManualPunchRequestStatus,
   createManualPunchRequest,
   getManualPunchRequests,
+  updateOwnManualPunchRequest,
 } from '../../../../db/orm/core/manageManualPunchRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
@@ -152,4 +154,16 @@ async function resolveRoleNames(session: Awaited<ReturnType<typeof getSessionByT
   if (!session?.user?.id) throw new Error('Authentication required');
   const assignedRoles = await getUserRoleNames(session.user.id);
   return [...new Set([...(session.user.role ?? []), ...assignedRoles])];
+}
+
+export async function updateManualPunchRequestHandler(c: Context) {
+  try {
+    const parsed = UpdateManualPunchRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const session = await resolveSession(c);
+    const manualPunchRequest = await updateOwnManualPunchRequest(c.req.param('id'), parsed.data, session.user.id);
+    return c.json({ success: true, manualPunchRequest: formatManualPunchRequest(manualPunchRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to update manual punch request');
+  }
 }

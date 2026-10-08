@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import { attendanceDailyRecords, attendancePunches, employees, manualPunchRequests, user } from '../../schema';
@@ -14,6 +14,7 @@ import {
   resolveSupervisorActionContext,
 } from './manageSupervisorDelegations';
 import {
+  diffChanges,
   employeeAuditFields,
   formatEmployeeLabel,
   writeAuditEvent,
@@ -102,6 +103,54 @@ export async function getManualPunchRequests(input: {
   }
 
   return visibleRequests;
+}
+
+/**
+ * The employee may change their own correction request (time, type, reason) until
+ * a supervisor or HR has decided on it.
+ */
+export async function updateOwnManualPunchRequest(
+  id: string,
+  input: { requestedPunchTime: string; requestedPunchType: string; reason: string },
+  actorUserId: string,
+) {
+  const request = await getManualPunchRequestById(id);
+  if (!request) throw new Error('Manual punch request not found');
+  if (request.requestedBy !== actorUserId && request.employee?.userId !== actorUserId) {
+    throw new Error('Manual punch request not found');
+  }
+  if (!PENDING_CORRECTION_STATUSES.includes(request.status)) {
+    throw new Error('This correction request has already been reviewed and cannot be edited');
+  }
+
+  const requestedPunchTime = new Date(input.requestedPunchTime);
+  const updated = await db.transaction(async (tx) => {
+    // Guard on status so an edit cannot overwrite a request approved in the meantime.
+    const [row] = await tx.update(manualPunchRequests)
+      .set({
+        requestedPunchTime,
+        requestedPunchType: input.requestedPunchType,
+        reason: input.reason.trim(),
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(manualPunchRequests.id, id), inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES)))
+      .returning({ id: manualPunchRequests.id });
+    if (!row) throw new Error('This correction request has already been reviewed and cannot be edited');
+
+    await writeAuditEvent(tx, {
+      action: 'MANUAL_PUNCH_UPDATED',
+      resourceType: 'manual_punch_request',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(request.employee)} attendance correction`,
+      ...employeeAuditFields(request.employee),
+      changes: diffChanges(
+        { requestedPunchTime: new Date(request.requestedPunchTime).toISOString(), requestedPunchType: request.requestedPunchType, reason: request.reason },
+        { requestedPunchTime: requestedPunchTime.toISOString(), requestedPunchType: input.requestedPunchType, reason: input.reason.trim() },
+      ),
+    });
+    return getManualPunchRequestById(id, tx);
+  });
+  return updated;
 }
 
 export async function changeManualPunchRequestStatus(

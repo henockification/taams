@@ -8,6 +8,7 @@ import {
   hrApproveAttendanceDailyRecords,
   returnAttendanceDailyRecord,
   supervisorApproveAttendanceDailyRecords,
+  addSupervisorCorrectionPunch,
 } from '../../../../db/orm/core/manageAttendanceApprovals';
 import { userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
@@ -75,6 +76,7 @@ export async function getSupervisorAttendanceDailyRecordsHandler(c: Context) {
       dateFrom,
       dateTo,
       scope,
+      returnedOnly: c.req.query('returned') === '1',
     });
 
     return c.json({
@@ -100,7 +102,8 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     const dateFrom = c.req.query('dateFrom');
     const dateTo = c.req.query('dateTo');
     const scope = await resolveScope(session, permissions);
-    const records = await getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo });
+    const awaitingHr = c.req.query('awaiting') === '1';
+    const records = await getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo, awaitingHr });
 
     return c.json({
       success: true,
@@ -147,6 +150,25 @@ export async function supervisorApproveAttendanceDailyRecordsHandler(c: Context)
     return c.json(formatAttendanceBatchResponse(result));
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to supervisor approve attendance batch');
+  }
+}
+
+export async function addSupervisorCorrectionPunchHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const body = await c.req.json().catch(() => ({}));
+    const scope = await resolveScope(session);
+    const record = await addSupervisorCorrectionPunch(c.req.param('id'), {
+      userId: session.user.id,
+      roles: session.user.role ?? [],
+      scope,
+      punchTime: String(body.punchTime ?? ''),
+      punchType: String(body.punchType ?? ''),
+      reason: String(body.reason ?? ''),
+    });
+    return c.json({ success: true, attendanceDailyRecord: formatAttendanceDailyRecord(record) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to correct attendance');
   }
 }
 

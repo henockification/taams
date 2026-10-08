@@ -358,6 +358,64 @@ async function getPrimaryAssignedEmployeeIds(userId: string, tx: DbClient, refer
   return effectivePrimaryEmployeeIds(assignments, referenceDate);
 }
 
+/**
+ * Batch form of resolveSupervisorActionContext with the same rules, using a fixed
+ * number of queries however many records are approved at once. Returns contexts
+ * keyed by `${employeeId}|${date}`; throws if any target is not covered.
+ */
+export async function resolveSupervisorActionContexts(input: {
+  actorUserId: string;
+  targets: Array<{ employeeId: string; date: string }>;
+  tx?: DbClient;
+}): Promise<Map<string, SupervisorDelegationActionContext>> {
+  const tx = input.tx ?? db;
+  const key = (employeeId: string, date: string) => `${employeeId}|${date}`;
+  const contexts = new Map<string, SupervisorDelegationActionContext>();
+  const actorEmployee = await getEmployeeByUserId(input.actorUserId, tx);
+
+  const assignmentsFor = async (supervisorEmployeeId: string) => tx.query.employeeSupervisors.findMany({
+    where: eq(employeeSupervisors.supervisorId, supervisorEmployeeId),
+    columns: { employeeId: true, effectiveFrom: true, effectiveTo: true },
+  });
+  const covers = (assignments: Array<{ employeeId: string; effectiveFrom: any; effectiveTo: any }>, employeeId: string, date: string) => (
+    assignments.some((assignment) => assignment.employeeId === employeeId
+      && String(assignment.effectiveFrom).slice(0, 10) <= date
+      && (!assignment.effectiveTo || String(assignment.effectiveTo).slice(0, 10) >= date))
+  );
+
+  const directAssignments = actorEmployee ? await assignmentsFor(actorEmployee.id) : [];
+  let remaining = input.targets.filter((target) => {
+    if (!covers(directAssignments, target.employeeId, target.date)) return true;
+    contexts.set(key(target.employeeId, target.date), {
+      supervisorDelegationId: null,
+      effectiveSupervisorUserId: input.actorUserId,
+      effectiveSupervisorEmployeeId: actorEmployee?.id ?? null,
+    });
+    return false;
+  });
+  if (remaining.length === 0) return contexts;
+
+  if (remaining.some((target) => target.employeeId === actorEmployee?.id)) {
+    throw new Error('Delegates cannot act on their own records');
+  }
+  const delegations = await getActiveDelegatedSupervisorCapabilities(input.actorUserId, tx);
+  for (const delegation of delegations) {
+    if (remaining.length === 0) break;
+    const supervisorAssignments = await assignmentsFor(delegation.supervisorEmployeeId);
+    remaining = remaining.filter((target) => {
+      if (!covers(supervisorAssignments, target.employeeId, target.date)) return true;
+      contexts.set(key(target.employeeId, target.date), {
+        supervisorDelegationId: delegation.id,
+        effectiveSupervisorUserId: delegation.supervisorUserId,
+        effectiveSupervisorEmployeeId: delegation.supervisorEmployeeId,
+      });
+      return false;
+    });
+  }
+  if (remaining.length > 0) throw new Error('Only the assigned supervisor or an active delegate can perform this action');
+  return contexts;
+}
+
 export async function resolveSupervisorActionContext(input: {
   actorUserId: string;
   roles?: string[] | null;

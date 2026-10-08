@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { Check, ClipboardPlus, Plus, X } from 'lucide-react';
+import { Check, ClipboardPlus, Pencil, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,7 @@ import {
   useChangeManualPunchRequestStatus,
   useCreateManualPunchRequest,
   useManualPunchRequests,
+  useUpdateManualPunchRequest,
 } from '@/data/hooks/core.hooks';
 import type { Employee, ManualPunchRequest, PunchType } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
@@ -79,6 +80,10 @@ export function ManualPunchRequestsPage({
 
   const manualRequests = useManualPunchRequests({ mine: !isSupervisor });
   const createManualRequest = useCreateManualPunchRequest();
+  const updateManualRequest = useUpdateManualPunchRequest();
+  // Set while the dialog edits an existing (still pending) request instead of creating one.
+  const [editingRequest, setEditingRequest] = useState<ManualPunchRequest | null>(null);
+  const isSavingRequest = createManualRequest.isPending || updateManualRequest.isPending;
   const changeManualRequestStatus = useChangeManualPunchRequestStatus();
   const session = useSession();
 
@@ -91,7 +96,18 @@ export function ManualPunchRequestsPage({
   }, [hasFocusedRequest]);
 
   const openManualRequestDialog = () => {
+    setEditingRequest(null);
     setForm({ ...initialRequestForm, requestedPunchTime: toDateTimeLocal() });
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (request: ManualPunchRequest) => {
+    setEditingRequest(request);
+    setForm({
+      requestedPunchTime: toDateTimeLocal(new Date(request.requestedPunchTime)),
+      requestedPunchType: request.requestedPunchType,
+      reason: request.reason ?? '',
+    });
     setDialogOpen(true);
   };
 
@@ -99,18 +115,24 @@ export function ManualPunchRequestsPage({
     event.preventDefault();
 
     try {
-      await createManualRequest.mutateAsync({
+      const payload = {
         requestedPunchTime: toIso(form.requestedPunchTime),
         requestedPunchType: form.requestedPunchType,
         reason: form.reason.trim(),
-      });
+      };
+      if (editingRequest) {
+        await updateManualRequest.mutateAsync({ manualPunchRequestId: editingRequest.id, ...payload });
+      } else {
+        await createManualRequest.mutateAsync(payload);
+      }
 
       setDialogOpen(false);
       notifications.show({
         title: common('success'),
-        message: t('manualPunchRequestCreated'),
+        message: editingRequest ? t('manualPunchRequestUpdated') : t('manualPunchRequestCreated'),
         color: 'green',
       });
+      setEditingRequest(null);
     } catch (error) {
       notifications.show({
         title: common('error'),
@@ -181,7 +203,7 @@ export function ManualPunchRequestsPage({
                     <TableHead>{t('punchType')}</TableHead>
                     <TableHead>{t('reason')}</TableHead>
                     <TableHead>{t('status')}</TableHead>
-                    {isSupervisor ? <TableHead className="text-right">{t('actions')}</TableHead> : null}
+                    <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -240,7 +262,20 @@ export function ManualPunchRequestsPage({
                               </span>
                             )}
                           </TableCell>
-                        ) : null}
+                        ) : (
+                          <TableCell>
+                            {canSupervisorDecide(request.status) && request.requestedBy === session.data?.user?.id ? (
+                              <div className="flex justify-end">
+                                <Button type="button" size="sm" variant="outline" onClick={() => openEditDialog(request)}>
+                                  <Pencil className="size-4" />
+                                  {common('edit')}
+                                </Button>
+                              </div>
+                            ) : (
+                              <span className="block text-right text-xs text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}
@@ -255,8 +290,8 @@ export function ManualPunchRequestsPage({
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="sm:max-w-xl">
             <DialogHeader>
-              <DialogTitle>{t('requestAttendanceCorrection')}</DialogTitle>
-              <DialogDescription>{t('manualPunchRequestFormDescription')}</DialogDescription>
+              <DialogTitle>{editingRequest ? t('editAttendanceCorrection') : t('requestAttendanceCorrection')}</DialogTitle>
+              <DialogDescription>{editingRequest ? t('editAttendanceCorrectionDescription') : t('manualPunchRequestFormDescription')}</DialogDescription>
             </DialogHeader>
             <form className="space-y-4" onSubmit={saveManualRequest}>
               <Field label={t('punchTime')} id="request-time">
@@ -273,8 +308,8 @@ export function ManualPunchRequestsPage({
               </Field>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>{common('cancel')}</Button>
-                <Button type="submit" disabled={createManualRequest.isPending || !form.requestedPunchTime || !form.reason.trim()}>
-                  {createManualRequest.isPending ? t('saving') : common('save')}
+                <Button type="submit" disabled={isSavingRequest || !form.requestedPunchTime || !form.reason.trim()}>
+                  {isSavingRequest ? t('saving') : common('save')}
                 </Button>
               </DialogFooter>
             </form>

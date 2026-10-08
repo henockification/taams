@@ -32,12 +32,14 @@ export const AUDIT_ACTIONS = [
   'ATTENDANCE_SUPERVISOR_APPROVED',
   'ATTENDANCE_HR_APPROVED',
   'ATTENDANCE_RETURNED',
+  'ATTENDANCE_SUPERVISOR_CORRECTION',
   'ATTENDANCE_REOPENED_AFTER_CORRECTION',
   'ATTENDANCE_PAYROLL_ADJUSTED',
   'OVERTIME_ASSIGNED',
   'OVERTIME_APPROVED',
   'OVERTIME_REJECTED',
   'MANUAL_PUNCH_SUBMITTED',
+  'MANUAL_PUNCH_UPDATED',
   'MANUAL_PUNCH_HR_REVIEWED',
   'MANUAL_PUNCH_HR_REJECTED',
   'MANUAL_PUNCH_APPROVED',
@@ -116,12 +118,14 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   ATTENDANCE_SUPERVISOR_APPROVED: 'Supervisor-approved attendance',
   ATTENDANCE_HR_APPROVED: 'HR-approved attendance',
   ATTENDANCE_RETURNED: 'Returned attendance',
+  ATTENDANCE_SUPERVISOR_CORRECTION: 'Supervisor corrected attendance (added punch)',
   ATTENDANCE_REOPENED_AFTER_CORRECTION: 'Attendance reopened after correction',
   ATTENDANCE_PAYROLL_ADJUSTED: 'Adjusted attendance payroll days',
   OVERTIME_ASSIGNED: 'Assigned overtime',
   OVERTIME_APPROVED: 'Approved overtime',
   OVERTIME_REJECTED: 'Rejected overtime',
   MANUAL_PUNCH_SUBMITTED: 'Submitted attendance correction',
+  MANUAL_PUNCH_UPDATED: 'Edited attendance correction',
   MANUAL_PUNCH_HR_REVIEWED: 'HR-reviewed attendance correction',
   MANUAL_PUNCH_HR_REJECTED: 'HR-rejected attendance correction',
   MANUAL_PUNCH_APPROVED: 'Approved attendance correction',
@@ -214,13 +218,11 @@ export function getAuditContext(): AuditContext | undefined {
   return storage.getStore();
 }
 
-export async function writeAuditEvent(tx: DbClient, input: WriteAuditEventInput) {
+function auditEventRow(input: WriteAuditEventInput) {
   const ctx = getAuditContext();
   const actorType = input.actorType ?? ctx?.actorType ?? 'SYSTEM';
-  const actorUserId = input.actorUserId ?? ctx?.actorUserId ?? null;
-
-  await tx.insert(auditEvents).values({
-    actorUserId,
+  return {
+    actorUserId: input.actorUserId ?? ctx?.actorUserId ?? null,
     actorName: input.actorName ?? ctx?.actorName ?? (actorType === 'SYSTEM' ? 'System' : null),
     actorEmail: input.actorEmail ?? ctx?.actorEmail ?? null,
     actorType,
@@ -237,7 +239,17 @@ export async function writeAuditEvent(tx: DbClient, input: WriteAuditEventInput)
     requestId: input.requestId ?? ctx?.requestId ?? null,
     changes: input.changes ?? null,
     metadata: input.metadata ?? null,
-  });
+  };
+}
+
+export async function writeAuditEvent(tx: DbClient, input: WriteAuditEventInput) {
+  await tx.insert(auditEvents).values(auditEventRow(input));
+}
+
+/** Writes several audit events in one insert (one database round-trip). */
+export async function writeAuditEvents(tx: DbClient, inputs: WriteAuditEventInput[]) {
+  if (inputs.length === 0) return;
+  await tx.insert(auditEvents).values(inputs.map(auditEventRow));
 }
 
 export function formatEmployeeLabel(employee?: {

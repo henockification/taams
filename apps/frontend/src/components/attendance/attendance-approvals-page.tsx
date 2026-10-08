@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
-import { ArrowRight, CheckCircle2, History, RefreshCw, RotateCcw, ScanLine } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, History, RefreshCw, RotateCcw, ScanLine, Wrench } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +43,7 @@ import {
   useHrApproveAttendanceDailyRecords,
   useHrAttendanceDailyRecords,
   useReturnAttendanceDailyRecord,
+  useAddAttendanceCorrectionPunch,
   useSupervisorApproveAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
@@ -54,6 +55,7 @@ import {
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
+import { userHasPermission } from '@/config/app-navigation';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import {
   AttendanceSessions,
@@ -64,12 +66,21 @@ import {
 } from './attendance-record-display';
 
 type AttendanceApprovalMode = 'supervisor' | 'hr';
-type ApprovalFilter = 'all' | 'approved' | 'unapproved';
-type DateFilter = 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
+type ApprovalFilter = 'all' | 'approved' | 'unapproved' | 'conflicts';
+// AWAITING_HR (HR only) lists every supervisor-approved record and RETURNED (supervisor
+// only) every record HR sent back, whatever their dates.
+type DateFilter = 'AWAITING_HR' | 'RETURNED' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 const allDepartmentsValue = '__all_departments';
 const allEmploymentTypesValue = '__all_employment_types';
 const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
 const defaultPageSize = 50;
+const correctionPunchTypes = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT'] as const;
+
+/** Worked time and leave together exceed one day, e.g. full punches on a full leave day. */
+function hasLeaveAttendanceConflict(record: AttendanceDailyRecord) {
+  const attendance = Number(record.attendanceDays ?? 0);
+  return attendance > 0 && attendance + Number(record.leaveDays ?? 0) > 1;
+}
 
 function dateToYmd(date: Date) {
   const year = date.getFullYear();
@@ -93,7 +104,7 @@ function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string;
   const todayDate = new Date(`${today()}T12:00:00`);
   const end = new Date(todayDate);
 
-  if (dateFilter === 'TODAY') {
+  if (dateFilter === 'TODAY' || dateFilter === 'AWAITING_HR' || dateFilter === 'RETURNED') {
     return { fromDate: dateToYmd(todayDate), toDate: dateToYmd(end) };
   }
 
@@ -133,11 +144,13 @@ export function AttendanceApprovalsPage({
   const common = useTranslations('common');
   const { formatDate, formatDateTime } = useCalendarPreference();
   const initialDate = initialFilters?.date && initialFilters.date !== today() ? initialFilters.date : null;
-  const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : 'TODAY');
+  const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : mode === 'hr' ? 'AWAITING_HR' : 'TODAY');
   const [customDateFilters, setCustomDateFilters] = useState({ fromDate: initialDate ?? today(), toDate: initialDate ?? today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [historyRecord, setHistoryRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
+  const [correctingRecord, setCorrectingRecord] = useState<AttendanceDailyRecord | null>(null);
+  const [correction, setCorrection] = useState({ time: '', punchType: 'OUT', reason: '' });
   const [employeeSearch, setEmployeeSearch] = useState(initialFilters?.search ?? '');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [typeFilter, setTypeFilter] = useState<EmploymentType | typeof allEmploymentTypesValue>(allEmploymentTypesValue);
@@ -154,8 +167,13 @@ export function AttendanceApprovalsPage({
     dateTo: dateBounds.toDate,
   };
   const hasDateRange = Boolean(dateRange.dateFrom && dateRange.dateTo);
-  const supervisorQuery = useSupervisorAttendanceDailyRecords(dateRange, mode === 'supervisor' && hasDateRange);
-  const hrQuery = useHrAttendanceDailyRecords(dateRange, mode === 'hr' && hasDateRange);
+  const isAwaitingHr = mode === 'hr' && dateFilter === 'AWAITING_HR';
+  const isReturnedView = mode === 'supervisor' && dateFilter === 'RETURNED';
+  const supervisorQuery = useSupervisorAttendanceDailyRecords(dateRange, mode === 'supervisor' && hasDateRange, { returned: isReturnedView });
+  const returnedQuery = useSupervisorAttendanceDailyRecords(dateRange, mode === 'supervisor', { returned: true });
+  const returnedCount = returnedQuery.data?.attendanceDailyRecords.filter((record) => record.status === 'RETURNED').length ?? 0;
+  const addCorrectionPunch = useAddAttendanceCorrectionPunch();
+  const hrQuery = useHrAttendanceDailyRecords(dateRange, mode === 'hr' && hasDateRange, { awaiting: isAwaitingHr });
   const generateRecords = useGenerateAttendanceDailyRecords();
   const supervisorApprove = useSupervisorApproveAttendanceDailyRecord();
   const supervisorBatchApprove = useSupervisorApproveAttendanceDailyRecords();
@@ -169,6 +187,8 @@ export function AttendanceApprovalsPage({
   const latestLeave = useLatestIsmisLeaveImport(isHrMode);
   const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const session = useSession();
+  // The history dialog reads audit events, which only some roles may see.
+  const canViewHistory = userHasPermission(session.data?.user, 'reports-audit:read');
   const query = mode === 'supervisor' ? supervisorQuery : hrQuery;
   const records = query.data?.attendanceDailyRecords ?? [];
   const departments = useMemo(() => {
@@ -198,12 +218,24 @@ export function AttendanceApprovalsPage({
         || (record.effectiveDepartment?.id ?? employee?.departmentId) === departmentFilter;
       const matchesApproval = approvalFilter === 'all'
         || (approvalFilter === 'approved' && isAttendanceApproved(record, mode))
-        || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode));
+        || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode))
+        || (approvalFilter === 'conflicts' && hasLeaveAttendanceConflict(record));
       const matchesType = !isHrMode || !hasEmploymentType || employee?.employmentType === typeFilter;
       return matchesEmployee && matchesDepartment && matchesApproval && matchesType;
     });
   }, [approvalFilter, departmentFilter, deferredEmployeeSearch, hasEmploymentType, isHrMode, mode, records, typeFilter]);
   const summary = useMemo(() => summarize(filteredRecords), [filteredRecords]);
+  const conflictCount = useMemo(() => filteredRecords.filter(hasLeaveAttendanceConflict).length, [filteredRecords]);
+  // The ISMIS leave check must cover the dates HR is about to approve, which in the
+  // awaiting queue are the permanent employees' record dates rather than today.
+  const leaveCheckRange = useMemo(() => {
+    if (!isAwaitingHr) return dateRange;
+    const dates = records
+      .filter((record) => record.employee?.employmentType === 'PERMANENT')
+      .map((record) => record.attendanceDate.slice(0, 10))
+      .sort();
+    return dates.length ? { dateFrom: dates[0], dateTo: dates[dates.length - 1] } : dateRange;
+  }, [dateRange, isAwaitingHr, records]);
   const exceptionSummary = useMemo(() => summarizeAttendanceExceptions(filteredRecords), [filteredRecords]);
   const approvableRecords = useMemo(
     () => filteredRecords.filter((record) => canApprove(record, mode)),
@@ -286,6 +318,59 @@ export function AttendanceApprovalsPage({
     });
   }
 
+  // These run through mutateAsync so the result message shows even though the buttons
+  // that started them disappear once the import status changes.
+  async function handleLeaveImport() {
+    if (!leaveFile) return;
+    try {
+      const batch = await leaveImport.mutateAsync(leaveFile);
+      notifications.show({
+        title: batch.unmatchedCount > 0 ? common('error') : common('success'),
+        message: batch.unmatchedCount > 0
+          ? t('ismisLeaveImportedUnmatched', { count: batch.unmatchedCount, ids: (batch.unmatchedEmployeeIds ?? []).slice(0, 5).join(', ') })
+          : t('ismisLeaveImported', { employees: batch.matchedCount, days: batch.dayCount }),
+        color: batch.unmatchedCount > 0 ? 'red' : 'green',
+      });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  }
+
+  async function handleLeaveCheck(batchId: string) {
+    try {
+      const result = await completeLeave.mutateAsync({ batchId, ...leaveCheckRange });
+      notifications.show({ title: common('success'), message: t('ismisLeaveCheckCompleted', { count: result.recalculatedRecords }), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  }
+
+  async function handleLeaveDiscard(batchId: string) {
+    try {
+      await rejectLeave.mutateAsync(batchId);
+      notifications.show({ title: common('success'), message: t('ismisLeaveImportDiscarded'), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  }
+
+  async function handleCorrection() {
+    if (!correctingRecord || !correction.time || !correction.reason.trim()) return;
+    try {
+      await addCorrectionPunch.mutateAsync({
+        attendanceDailyRecordId: correctingRecord.id,
+        // Attendance dates are Addis Ababa calendar days.
+        punchTime: new Date(`${correctingRecord.attendanceDate.slice(0, 10)}T${correction.time}:00+03:00`).toISOString(),
+        punchType: correction.punchType,
+        reason: correction.reason.trim(),
+      });
+      setCorrectingRecord(null);
+      notifications.show({ title: common('success'), message: t('attendanceCorrected'), color: 'green' });
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  }
+
   async function handleReturn() {
     if (!returningRecord || !returnReason.trim()) return;
 
@@ -309,17 +394,27 @@ export function AttendanceApprovalsPage({
           <CardContent className="flex flex-wrap items-center gap-2 p-2">
             <div className="min-w-52 flex-1"><div className="text-xs font-medium">Permanent employee leave verification</div><div className="text-[11px] text-muted-foreground">Import ISMIS leave and confirm before payroll.</div></div>
             <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="h-8 max-w-xs text-xs" />
-            <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo }, {
-              onSuccess: (result) => notifications.show({ title: common('success'), message: t('ismisLeaveCheckCompleted', { count: result.recalculatedRecords }), color: 'green' }),
-              onError: (error) => notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' }),
-            })}>I checked leave</Button> : null}
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="ghost" disabled={rejectLeave.isPending} onClick={() => rejectLeave.mutate(latestLeave.data!.batch!.id)}>Discard import</Button> : null}
+            <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={handleLeaveImport}>Import ISMIS leave</Button>
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => handleLeaveCheck(latestLeave.data!.batch!.id)}>I checked leave</Button> : null}
+            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="ghost" disabled={rejectLeave.isPending} onClick={() => handleLeaveDiscard(latestLeave.data!.batch!.id)}>Discard import</Button> : null}
             {latestLeave.data?.batch ? <span className="text-xs text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
           </CardContent>
         </Card>
       ) : null}
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
+      {!isHrMode && !isReturnedView && returnedCount > 0 ? (
+        <Card className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <RotateCcw className="size-4 text-amber-700 dark:text-amber-400" />
+              {t('returnedByHrBanner', { count: returnedCount })}
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setDateFilter('RETURNED'); setSelectedRecordIds([]); setPage(1); }}>
+              {t('showReturnedRecords')}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-wrap items-end gap-2">
@@ -341,6 +436,8 @@ export function AttendanceApprovalsPage({
                 <SelectValue placeholder={t('today')} />
               </SelectTrigger>
               <SelectContent>
+                {isHrMode ? <SelectItem value="AWAITING_HR">{t('awaitingHrApproval')}</SelectItem> : null}
+                {!isHrMode ? <SelectItem value="RETURNED">{t('returnedByHr')}</SelectItem> : null}
                 <SelectItem value="TODAY">{t('today')}</SelectItem>
                 <SelectItem value="THIS_WEEK">{t('thisWeek')}</SelectItem>
                 <SelectItem value="THIS_MONTH">{t('thisMonth')}</SelectItem>
@@ -402,6 +499,7 @@ export function AttendanceApprovalsPage({
                 <SelectItem value="all">{t('allApprovalStatuses')}</SelectItem>
                 <SelectItem value="approved">{t('approved')}</SelectItem>
                 <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
+                <SelectItem value="conflicts">{t('workedDuringLeave')}</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>
@@ -468,6 +566,7 @@ export function AttendanceApprovalsPage({
         <Summary label={t('earlyBreak')} value={exceptionSummary.earlyBreak.records} detail={t('totalMinutes', { count: exceptionSummary.earlyBreak.minutes })} />
         <Summary label={t('earlyOut')} value={exceptionSummary.earlyOut.records} detail={t('totalMinutes', { count: exceptionSummary.earlyOut.minutes })} />
         <Summary label={t('absentSessions')} value={exceptionSummary.absentSessions} />
+        <Summary label={t('workedDuringLeave')} value={conflictCount} />
       </div>
 
       <Card className="rounded-lg">
@@ -478,7 +577,7 @@ export function AttendanceApprovalsPage({
             <EmptyState
               icon={ScanLine}
               title={t('noAttendanceApprovals')}
-              description={t('noAttendanceApprovalsDescription')}
+              description={isAwaitingHr ? t('noAwaitingHrApprovalsDescription') : t('noAttendanceApprovalsDescription')}
             />
           ) : filteredRecords.length === 0 ? (
             <EmptyState
@@ -532,6 +631,16 @@ export function AttendanceApprovalsPage({
                         <div className="min-w-0">
                           <p className="truncate font-medium">{employeeName(record.employee) || t('unknown')}</p>
                           <p className="truncate text-xs text-muted-foreground">{record.employee?.employeeCode ?? '-'}</p>
+                          {/* Shown next to the name so they are visible without scrolling the wide table. */}
+                          {hasLeaveAttendanceConflict(record) ? (
+                            <Badge variant="destructive" className="mt-1 w-fit gap-1" title={t('workedDuringLeaveDetail', { attendance: record.attendanceDays, leave: record.leaveDays })}>
+                              <AlertTriangle className="size-3" />
+                              {t('workedDuringLeave')}
+                            </Badge>
+                          ) : null}
+                          {record.returnReason ? (
+                            <p className="mt-1 max-w-64 whitespace-normal text-xs text-amber-700 dark:text-amber-400">{t('returnedByHrReason', { reason: record.returnReason })}</p>
+                          ) : null}
                         </div>
                       </TableCell>
                       <TableCell className="min-w-56">
@@ -588,9 +697,6 @@ export function AttendanceApprovalsPage({
                           {record.isHoliday ? (
                             <Badge variant="secondary">{record.holiday?.nameEn ?? t('holidayOffDay')}</Badge>
                           ) : null}
-                          {record.returnReason ? (
-                            <span className="max-w-56 truncate text-xs text-muted-foreground">{record.returnReason}</span>
-                          ) : null}
                           {record.payrollNote ? (
                             <span className="max-w-64 text-xs text-muted-foreground">{record.payrollNote}</span>
                           ) : null}
@@ -601,15 +707,17 @@ export function AttendanceApprovalsPage({
                       <TableCell>{record.overtimeHours ?? '0.00'}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setHistoryRecord(record)}
-                          >
-                            <History className="size-4" />
-                            {t('viewAuditHistory')}
-                          </Button>
+                          {canViewHistory ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setHistoryRecord(record)}
+                            >
+                              <History className="size-4" />
+                              {t('viewAuditHistory')}
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"
@@ -619,6 +727,20 @@ export function AttendanceApprovalsPage({
                             <CheckCircle2 className="size-4" />
                             {isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)}
                           </Button>
+                          {!isHrMode && (record.status === 'PENDING_SUPERVISOR' || record.status === 'RETURNED') ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setCorrectingRecord(record);
+                                setCorrection({ time: '', punchType: 'OUT', reason: '' });
+                              }}
+                            >
+                              <Wrench className="size-4" />
+                              {t('correctAttendance')}
+                            </Button>
+                          ) : null}
                           {isHrMode ? (
                             <Button
                               type="button"
@@ -696,6 +818,50 @@ export function AttendanceApprovalsPage({
             <Button type="button" variant="outline" onClick={() => setReturningRecord(null)}>{common('cancel')}</Button>
             <Button type="button" onClick={handleReturn} disabled={!returnReason.trim() || returnRecord.isPending}>
               {returnRecord.isPending ? t('saving') : isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(correctingRecord)} onOpenChange={(open) => { if (!open) setCorrectingRecord(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('correctAttendanceTitle')}</DialogTitle>
+          </DialogHeader>
+          {correctingRecord ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {employeeName(correctingRecord.employee)} · {formatDate(correctingRecord.attendanceDate.slice(0, 10))}
+              </p>
+              {correctingRecord.returnReason ? (
+                <p className="rounded-md bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">{t('returnedByHrReason', { reason: correctingRecord.returnReason })}</p>
+              ) : null}
+              <p className="text-xs text-muted-foreground">{t('correctAttendanceDescription')}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="correction-time">{t('punchTime')}</Label>
+                  <Input id="correction-time" type="time" value={correction.time} onChange={(event) => setCorrection((current) => ({ ...current, time: event.target.value }))} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="correction-type">{t('punchType')}</Label>
+                  <Select value={correction.punchType} onValueChange={(punchType) => setCorrection((current) => ({ ...current, punchType }))}>
+                    <SelectTrigger id="correction-type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {correctionPunchTypes.map((type) => <SelectItem key={type} value={type}>{t(`correctionPunchType${type}`)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="correction-reason">{t('reason')}</Label>
+                <Textarea id="correction-reason" rows={3} value={correction.reason} placeholder={t('correctionReasonPlaceholder')} onChange={(event) => setCorrection((current) => ({ ...current, reason: event.target.value }))} />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCorrectingRecord(null)}>{common('cancel')}</Button>
+            <Button type="button" onClick={handleCorrection} disabled={!correction.time || !correction.reason.trim() || addCorrectionPunch.isPending}>
+              {addCorrectionPunch.isPending ? t('saving') : t('saveCorrection')}
             </Button>
           </DialogFooter>
         </DialogContent>

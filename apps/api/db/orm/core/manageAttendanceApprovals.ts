@@ -22,18 +22,21 @@ import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
 import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
+import { createAttendancePunch } from './manageBiometricDevices';
 import { ATTENDANCE_CALCULATION_VERSION, addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import { rosterCycleIndex } from '../../../lib/attendance/roster';
 import {
   getVisibleEmployeeIdsByDateForSupervisorActor,
   getVisibleEmployeeIdsForSupervisorActor,
   resolveSupervisorActionContext,
+  resolveSupervisorActionContexts,
 } from './manageSupervisorDelegations';
 import {
   diffChanges,
   employeeAuditFields,
   formatEmployeeLabel,
   writeAuditEvent,
+  writeAuditEvents,
 } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
@@ -48,6 +51,8 @@ export type AttendanceApprovalBatchResult = {
 
 type ApprovalScope = {
   userId: string;
+  /** List every record HR returned to this supervisor, whatever its date. */
+  returnedOnly?: boolean;
   date?: string | null;
   dateFrom?: string | null;
   dateTo?: string | null;
@@ -346,6 +351,7 @@ async function recalculateOutdatedAttendance(range: { dateFrom: string; dateTo: 
 }
 
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
+  if (input.returnedOnly) return getSupervisorReturnedAttendanceDailyRecords(input);
   const range = resolveAttendanceDateRange(input);
   // Listing does not regenerate records, except those calculated by older rules.
   await recalculateOutdatedAttendance(range);
@@ -394,6 +400,26 @@ export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) 
   return records.filter((record) => visibilityByDate.get(record.attendanceDate)?.has(record.employeeId));
 }
 
+async function getSupervisorReturnedAttendanceDailyRecords(input: ApprovalScope) {
+  const candidates = await db.query.attendanceDailyRecords.findMany({
+    where: and(eq(attendanceDailyRecords.status, 'RETURNED'), workingAttendanceEmployeeFilter()),
+    columns: { id: true, employeeId: true, attendanceDate: true },
+    orderBy: (table, { asc }) => [asc(table.attendanceDate)],
+  });
+  if (candidates.length === 0) return [];
+
+  let visibleIds = candidates.map((record) => record.id);
+  if (input.scope?.type !== 'unrestricted') {
+    // Responsibility is resolved per record date, as in the date-range listing.
+    const dates = [...new Set(candidates.map((record) => String(record.attendanceDate)))];
+    const visibilityByDate = await getVisibleEmployeeIdsByDateForSupervisorActor(input.userId, dates, db);
+    visibleIds = candidates
+      .filter((record) => visibilityByDate.get(String(record.attendanceDate))?.has(record.employeeId))
+      .map((record) => record.id);
+  }
+  return keepWorkingEmployeeRecords(await getAttendanceDailyRecordsByIds(visibleIds));
+}
+
 export async function getMyAttendanceDailyRecords(input: {
   userId: string;
   date?: string | null;
@@ -436,23 +462,26 @@ export async function refreshAttendanceForAuthorizedLeave(request: any) {
 export async function getHrAttendanceDailyRecords(
   date?: string | null,
   scope?: EmployeeVisibilityScope,
-  rangeInput?: { dateFrom?: string | null; dateTo?: string | null },
+  rangeInput?: { dateFrom?: string | null; dateTo?: string | null; awaitingHr?: boolean },
 ) {
   const range = resolveAttendanceDateRange({ date, ...rangeInput });
   // Do not regenerate every employee/day while serving a grid read request.
 
   // HR sees every status so returned, payroll-ready, and still-pending records stay
-  // visible; HR actions remain limited to supervisor-approved records.
+  // visible; HR actions remain limited to supervisor-approved records. The awaiting-HR
+  // queue instead lists every supervisor-approved record, whatever its date.
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
-      attendanceDateFilter(range.dateFrom, range.dateTo),
+      rangeInput?.awaitingHr
+        ? eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED')
+        : attendanceDateFilter(range.dateFrom, range.dateTo),
       workingAttendanceEmployeeFilter(),
     ),
     with: recordRelations,
     orderBy: (table, { asc }) => [asc(table.attendanceDate), asc(table.checkInAt)],
   });
 
-  const enriched = await attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
+  const enriched = await attachEffectiveDepartmentContext(records, rangeInput?.awaitingHr ? addisToday() : clipDateToToday(range.dateTo));
   const working = keepWorkingEmployeeRecords(enriched);
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return working;
   if (scope.type === 'hr-departments') {
@@ -477,7 +506,6 @@ export async function supervisorApproveAttendanceDailyRecords(
   return db.transaction(async (tx) => {
     const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
     if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
-    const approvalContexts = [];
     for (const record of records) {
       if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
         throw new Error('Only pending or returned attendance records can be supervisor approved');
@@ -488,24 +516,30 @@ export async function supervisorApproveAttendanceDailyRecords(
       ))) {
         throw new Error('Attendance cannot be approved while a scheduled session is still in progress');
       }
-      approvalContexts.push(input.scope?.type === 'unrestricted'
-        ? { supervisorDelegationId: null }
-        : await resolveSupervisorActionContext({
-          actorUserId: input.userId,
-          roles: input.roles,
-          targetEmployeeId: record.employeeId,
-          referenceDate: record.attendanceDate,
-          tx,
-        }));
     }
+    // Resolve supervisor/delegate responsibility for the whole batch at once: per-record
+    // lookups cost several database round-trips each and made large approvals slow.
+    const contexts = input.scope?.type === 'unrestricted'
+      ? null
+      : await resolveSupervisorActionContexts({
+        actorUserId: input.userId,
+        targets: records.map((record: any) => ({ employeeId: record.employeeId, date: String(record.attendanceDate) })),
+        tx,
+      });
+    const delegationIdFor = (record: any) => contexts?.get(`${record.employeeId}|${String(record.attendanceDate)}`)?.supervisorDelegationId ?? null;
 
     const approvedAt = new Date();
-    for (let index = 0; index < records.length; index += 1) {
-      const [updated] = await tx.update(attendanceDailyRecords).set({
+    const recordsByDelegation = new Map<string | null, any[]>();
+    for (const record of records) {
+      const delegationId = delegationIdFor(record);
+      recordsByDelegation.set(delegationId, [...(recordsByDelegation.get(delegationId) ?? []), record]);
+    }
+    for (const [delegationId, group] of recordsByDelegation) {
+      const updated = await tx.update(attendanceDailyRecords).set({
         status: 'SUPERVISOR_APPROVED',
         supervisorApprovedBy: input.userId,
         supervisorApprovedAt: approvedAt,
-        supervisorDelegationId: approvalContexts[index].supervisorDelegationId,
+        supervisorDelegationId: delegationId,
         hrApprovedBy: null,
         hrApprovedAt: null,
         returnedBy: null,
@@ -514,24 +548,113 @@ export async function supervisorApproveAttendanceDailyRecords(
         payrollReadyAt: null,
         updatedAt: approvedAt,
       } as any).where(and(
-        eq(attendanceDailyRecords.id, records[index].id),
+        inArray(attendanceDailyRecords.id, group.map((record) => record.id)),
         inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
       )).returning({ id: attendanceDailyRecords.id });
-      if (!updated) throw new Error('Attendance record was already processed');
-      await writeAuditEvent(tx, {
-        action: 'ATTENDANCE_SUPERVISOR_APPROVED',
-        resourceType: 'attendance_daily_record',
-        resourceId: records[index].id,
-        resourceLabel: `${formatEmployeeLabel(records[index].employee)} attendance ${records[index].attendanceDate}`,
-        ...employeeAuditFields(records[index].employee),
-        supervisorDelegationId: approvalContexts[index].supervisorDelegationId,
-        changes: { status: { from: records[index].status, to: 'SUPERVISOR_APPROVED' } },
-      });
+      if (updated.length !== group.length) throw new Error('Attendance record was already processed');
     }
+    await writeAuditEvents(tx, records.map((record: any) => ({
+      action: 'ATTENDANCE_SUPERVISOR_APPROVED',
+      resourceType: 'attendance_daily_record',
+      resourceId: record.id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+      supervisorDelegationId: delegationIdFor(record),
+      changes: { status: { from: record.status, to: 'SUPERVISOR_APPROVED' } },
+    })));
 
-    const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
-    return buildAttendanceApprovalBatch(updatedRecords);
+    // Only the approval fields changed, so return the loaded records patched in memory
+    // instead of reading them (and their relations) back from the database.
+    return buildAttendanceApprovalBatch(records.map((record: any) => ({
+      ...record,
+      status: 'SUPERVISOR_APPROVED',
+      supervisorApprovedBy: input.userId,
+      supervisorApprovedAt: approvedAt,
+      supervisorDelegationId: delegationIdFor(record),
+      hrApprovedBy: null,
+      hrApprovedAt: null,
+      returnedBy: null,
+      returnedAt: null,
+      returnReason: null,
+      payrollReadyAt: null,
+      updatedAt: approvedAt,
+    })));
   });
+}
+
+const CORRECTION_PUNCH_TYPES = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT'] as const;
+
+/**
+ * Lets the supervisor fix a pending or HR-returned day by adding the missing punch
+ * themselves. Figures are never typed in: the punch is stored as an audited manual
+ * punch approved by the supervisor and the day is recalculated from punches. The
+ * record keeps its status, so the supervisor reviews the result and approves again.
+ */
+export async function addSupervisorCorrectionPunch(
+  id: string,
+  input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope; punchTime: string; punchType: string; reason: string },
+) {
+  const reason = input.reason?.trim();
+  if (!reason) throw new Error('A reason is required for an attendance correction');
+  if (!CORRECTION_PUNCH_TYPES.includes(input.punchType as any)) throw new Error('Invalid punch type');
+  const punchTime = new Date(input.punchTime);
+  if (Number.isNaN(punchTime.getTime())) throw new Error('Invalid punch time');
+
+  const record = await db.transaction(async (tx) => {
+    const record = await getAttendanceDailyRecordById(id, tx);
+    if (record.status !== 'PENDING_SUPERVISOR' && record.status !== 'RETURNED') {
+      throw new Error('Only pending or returned attendance records can be corrected');
+    }
+    const attendanceDate = String(record.attendanceDate);
+    const day = addisDayRange(attendanceDate);
+    if (punchTime < day.start || punchTime > day.end) {
+      throw new Error(`The corrected punch must be on ${attendanceDate}`);
+    }
+    if (punchTime.getTime() > Date.now()) throw new Error('A corrected punch cannot be in the future');
+    if (record.employee?.userId === input.userId) throw new Error('Cannot correct your own attendance');
+
+    const actionContext = input.scope?.type === 'unrestricted'
+      ? { supervisorDelegationId: null }
+      : await resolveSupervisorActionContext({
+        actorUserId: input.userId,
+        roles: input.roles,
+        targetEmployeeId: record.employeeId,
+        referenceDate: attendanceDate,
+        tx,
+      });
+
+    const biometricId = record.employee?.biometricId?.trim() || record.employee?.employeeCode?.trim();
+    if (!biometricId) throw new Error('Employee has no biometric ID or employee code');
+    const approvedAt = new Date();
+    const punch = await createAttendancePunch({
+      employeeId: record.employeeId,
+      biometricId,
+      punchTime: punchTime.toISOString(),
+      punchType: input.punchType,
+      source: 'MANUAL',
+      isManual: true,
+      manualReason: reason,
+      approvedBy: input.userId,
+      approvedAt: approvedAt.toISOString(),
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+    } as any, tx, { ignoreDuplicates: true });
+    if (!punch) throw new Error('A punch already exists at that time, so it cannot be added again');
+
+    await writeAuditEvent(tx, {
+      action: 'ATTENDANCE_SUPERVISOR_CORRECTION',
+      resourceType: 'attendance_daily_record',
+      resourceId: record.id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      changes: { punch: { from: null, to: `${input.punchType} ${attendanceDate} ${new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Addis_Ababa', hour: '2-digit', minute: '2-digit' }).format(punchTime)}` } },
+      metadata: { reason, attendancePunchId: punch.id, returnReason: record.returnReason ?? null },
+    });
+    return record;
+  });
+
+  await generateAttendanceDailyRecords(String(record.attendanceDate), { recalculateEmployeeIds: [record.employeeId] });
+  return getAttendanceDailyRecordById(id);
 }
 
 export async function updateSupervisorAttendanceDailyRecordPayroll(
@@ -724,16 +847,14 @@ export async function hrApproveAttendanceDailyRecords(
     )).returning({ id: attendanceDailyRecords.id });
     if (updated.length !== recordIds.length) throw new Error('One or more attendance records were already processed');
 
-    for (const record of records) {
-      await writeAuditEvent(tx, {
-        action: 'ATTENDANCE_HR_APPROVED',
-        resourceType: 'attendance_daily_record',
-        resourceId: record.id,
-        resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
-        ...employeeAuditFields(record.employee),
-        changes: { status: { from: record.status, to: 'HR_APPROVED' } },
-      });
-    }
+    await writeAuditEvents(tx, records.map((record: any) => ({
+      action: 'ATTENDANCE_HR_APPROVED',
+      resourceType: 'attendance_daily_record',
+      resourceId: record.id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+      changes: { status: { from: record.status, to: 'HR_APPROVED' } },
+    })));
 
     const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
     return buildAttendanceApprovalBatch(updatedRecords);

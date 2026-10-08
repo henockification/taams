@@ -988,6 +988,12 @@ export const CreateManualPunchRequestRequestSchema = z.object({
   requestedBy: z.string().min(1).optional(),
 });
 
+export const UpdateManualPunchRequestRequestSchema = z.object({
+  requestedPunchTime: z.string().datetime(),
+  requestedPunchType: PunchTypeSchema,
+  reason: z.string().trim().min(1),
+});
+
 export const ChangeManualPunchRequestStatusRequestSchema = z.object({
   status: z.enum(['HR_REVIEWED', 'HR_REJECTED', 'SUPERVISOR_APPROVED', 'SUPERVISOR_REJECTED', 'APPROVED', 'REJECTED']),
   approvedBy: z.string().min(1).optional(),

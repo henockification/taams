@@ -10,6 +10,7 @@ import {
 } from '../../../schemas/core.schema';
 import { openApiApp } from '../../../lib/openapi';
 import {
+  updateManualPunchRequestHandler,
   changeManualPunchRequestStatusHandler,
   createManualPunchRequestHandler,
   getManualPunchRequestsHandler,
@@ -94,6 +95,7 @@ export const changeManualPunchRequestStatusRoute = createRoute({
 
 manualPunchRequestsApp.post('/manual-punch-requests', requirePermission('manual-punch-requests:read'), createManualPunchRequestHandler);
 manualPunchRequestsApp.get('/manual-punch-requests', requirePermission('manual-punch-requests:read'), getManualPunchRequestsHandler);
+manualPunchRequestsApp.put('/manual-punch-requests/:id', requirePermission('manual-punch-requests:read'), updateManualPunchRequestHandler);
 manualPunchRequestsApp.post('/manual-punch-requests/:id/status', requirePermissionOrDelegation('manual-punch-requests:approve'), changeManualPunchRequestStatusHandler);
 
 openApiApp
