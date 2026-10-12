@@ -57,7 +57,8 @@ const allStatusesValue = '__all_statuses';
 const allEmploymentTypesValue = '__all_employment_types';
 const pageSizes = [25, 50, 100, 300];
 const employmentStatuses: EmploymentStatus[] = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'];
-const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
+// Only contract and permanent employees are managed; other types are not applicable.
+const employmentTypes: EmploymentType[] = ['CONTRACT', 'PERMANENT'];
 
 function todayInput() {
   return new Date().toISOString().slice(0, 10);

@@ -1,6 +1,6 @@
-import { and, gte, inArray, lte } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db } from '../../db';
-import { attendanceDailyRecords } from '../../schema';
+import { attendanceDailyRecordAdjustments, attendanceDailyRecords } from '../../schema';
 
 type EmployeeForReportingDiscipline = {
   id: string;
@@ -22,22 +22,28 @@ export async function getAttendanceReportingDisciplineSummary(input: {
 
   const employeeIds = input.employees.map((employee) => employee.id);
   const employeeById = new Map(input.employees.map((employee) => [employee.id, employee]));
-  const records = await db.query.attendanceDailyRecords.findMany({
-    where: and(
-      inArray(attendanceDailyRecords.employeeId, employeeIds),
-      gte(attendanceDailyRecords.attendanceDate, input.dateFrom),
-      lte(attendanceDailyRecords.attendanceDate, input.dateTo),
-    ),
-    with: {
-      employee: { with: { department: true } },
-      adjustments: true,
-    },
-  });
+  const inPeriod = and(
+    gte(attendanceDailyRecords.attendanceDate, input.dateFrom),
+    lte(attendanceDailyRecords.attendanceDate, input.dateTo),
+  );
+  // Slim columns plus a grouped adjustment count: loading each record with its employee,
+  // department and adjustments made this take several seconds for a month.
+  const [records, adjustmentCounts] = await Promise.all([
+    db.select({ id: attendanceDailyRecords.id, employeeId: attendanceDailyRecords.employeeId, status: attendanceDailyRecords.status })
+      .from(attendanceDailyRecords)
+      .where(and(inArray(attendanceDailyRecords.employeeId, employeeIds), inPeriod)),
+    db.select({ recordId: attendanceDailyRecordAdjustments.attendanceDailyRecordId, adjustments: count() })
+      .from(attendanceDailyRecordAdjustments)
+      .innerJoin(attendanceDailyRecords, eq(attendanceDailyRecords.id, attendanceDailyRecordAdjustments.attendanceDailyRecordId))
+      .where(and(inArray(attendanceDailyRecords.employeeId, employeeIds), inPeriod))
+      .groupBy(attendanceDailyRecordAdjustments.attendanceDailyRecordId),
+  ]);
+  const adjustmentsByRecord = new Map(adjustmentCounts.map((row) => [row.recordId, Number(row.adjustments)]));
 
-  const rows = records.map((record: any) => ({
-    ...record,
-    employee: record.employee ?? employeeById.get(record.employeeId) ?? null,
-    adjustments: record.adjustments ?? [],
+  const rows = records.map((record) => ({
+    status: record.status,
+    employee: employeeById.get(record.employeeId) ?? null,
+    adjustments: { length: adjustmentsByRecord.get(record.id) ?? 0 },
   }));
 
   return {

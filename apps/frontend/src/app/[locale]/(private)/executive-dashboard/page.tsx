@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowRight,
   ArrowUp,
   BriefcaseBusiness,
   Building2,
@@ -34,44 +35,51 @@ import {
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DashboardDataQualityNotice, DashboardDepartmentFilter, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useExecutiveDashboardSummary } from "@/data/hooks/core.hooks"
-import type { ExecutiveDashboardSeverity, ExecutiveDashboardSummary } from "@/data/types/core.types"
+import type { ExecutiveDashboardSeverity, ExecutiveDashboardSummary, ExecutiveDashboardTrend } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
-const distributionColors = ["#1f8a70", "#4f46e5", "#dc2626", "#f59e0b", "#0e7490"]
 type ExecutiveDashboardPeriod = "day" | "week" | "month"
 
-const distributionChartConfig = {
-  count: { label: "Count" },
-} satisfies ChartConfig
+// One colour per distribution status so a segment keeps its colour when others are absent.
+const distributionColors: Record<string, string> = {
+  onTime: "#1f8a70",
+  late: "#f59e0b",
+  leave: "#4f46e5",
+  officialDuty: "#0e7490",
+  absent: "#dc2626",
+  notYetArrived: "#94a3b8",
+  exempt: "#16a34a",
+  rest: "#cbd5e1",
+  noSchedule: "#a855f7",
+  notGenerated: "#78716c",
+}
 
-const rankingChartConfig = {
-  attendanceRate: { label: "Attendance %", color: "#1f8a70" },
-} satisfies ChartConfig
-
+const distributionChartConfig = { count: { label: "Count" } } satisfies ChartConfig
+const rankingChartConfig = { attendanceRate: { label: "Attendance %", color: "#1f8a70" } } satisfies ChartConfig
 const timelineChartConfig = {
-  count: { label: "Punches", color: "#2563eb" },
+  arrivals: { label: "Arrivals", color: "#1f8a70" },
+  count: { label: "All punches", color: "#2563eb" },
 } satisfies ChartConfig
-
-const trendChartConfig = {
-  attendanceRate: { label: "Attendance %", color: "#7c3aed" },
-} satisfies ChartConfig
+const trendChartConfig = { attendanceRate: { label: "Attendance %", color: "#7c3aed" } } satisfies ChartConfig
 
 export default function ExecutiveDashboardPage() {
   const t = useTranslations("executiveDashboard")
-  const { formatDateTime } = useCalendarPreference()
+  const { formatDate, formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
   const [month, setMonth] = React.useState(todayInput().slice(0, 7))
   const [period, setPeriod] = React.useState<ExecutiveDashboardPeriod>("day")
-  const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month, period })
+  const [departmentId, setDepartmentId] = React.useState<string | undefined>(undefined)
+  const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month, period, departmentId })
   const dashboard = data?.executiveDashboard
   const handlePeriodChange = (value: ExecutiveDashboardPeriod) => {
     const today = todayInput()
@@ -95,6 +103,10 @@ export default function ExecutiveDashboardPage() {
     )
   }
 
+  const coverage = dashboard.dateFrom === dashboard.dateTo
+    ? formatDate(dashboard.dateFrom)
+    : `${formatDate(dashboard.dateFrom)} – ${formatDate(dashboard.dateTo)}`
+
   return (
     <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
@@ -102,23 +114,30 @@ export default function ExecutiveDashboardPage() {
           <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
             {t("period")}
             <Select value={period} onValueChange={(value) => handlePeriodChange(value as ExecutiveDashboardPeriod)}>
-              <SelectTrigger className="w-full sm:w-44">
+              <SelectTrigger className="w-full sm:w-40">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="day">{t("today")}</SelectItem>
-                <SelectItem value="week">{t("thisWeek")}</SelectItem>
-                <SelectItem value="month">{t("thisMonth")}</SelectItem>
+                <SelectItem value="day">{t("day")}</SelectItem>
+                <SelectItem value="week">{t("week")}</SelectItem>
+                <SelectItem value="month">{t("monthPeriod")}</SelectItem>
               </SelectContent>
             </Select>
           </label>
-          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
-            {t("date")}
-            <CalendarDateField value={date} onChange={setDate} className="w-full sm:w-44" />
-          </label>
-          <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
-            {t("month")}
-            <Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-full sm:w-44" />
+          {period === "month" ? (
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
+              {t("month")}
+              <Input type="month" value={month} max={todayInput().slice(0, 7)} onChange={(event) => event.target.value && setMonth(event.target.value)} className="w-full sm:w-44" />
+            </label>
+          ) : (
+            <label className="grid min-w-0 gap-1.5 text-sm font-medium text-foreground">
+              {period === "week" ? t("weekContaining") : t("date")}
+              <CalendarDateField value={date} onChange={(value) => { setDate(value); setMonth(value.slice(0, 7)) }} className="w-full sm:w-44" />
+            </label>
+          )}
+          <label className="col-span-2 grid min-w-0 gap-1.5 text-sm font-medium text-foreground sm:col-span-1">
+            {t("department")}
+            <DashboardDepartmentFilter departments={dashboard.departments} value={departmentId} onChange={setDepartmentId} />
           </label>
           {isFetching ? (
             <Badge variant="secondary" className="mb-1 gap-2">
@@ -136,6 +155,13 @@ export default function ExecutiveDashboardPage() {
         </div>
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        {t("showing", { range: coverage, scope: dashboard.scope.departmentName ?? t("allDepartments") })}
+        {dashboard.scope.departmentName && dashboard.scope.departmentCount > 1 ? ` ${t("includingSubDepartments", { count: dashboard.scope.departmentCount - 1 })}` : ""}
+      </p>
+
+      <DashboardDataQualityNotice dataQuality={dashboard.dataQuality} isLive={dashboard.isLive} />
+
       <KpiGrid dashboard={dashboard} />
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
@@ -148,9 +174,11 @@ export default function ExecutiveDashboardPage() {
         <LiveTimeline dashboard={dashboard} />
       </div>
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <LeaveAndHrSummary dashboard={dashboard} />
-        <DepartmentPerformance dashboard={dashboard} />
+      <DepartmentPerformance dashboard={dashboard} onSelect={setDepartmentId} />
+
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
+        <LeaveSummary dashboard={dashboard} />
+        <HrPerformance dashboard={dashboard} />
       </div>
 
       <AttendanceReportingDiscipline dashboard={dashboard} />
@@ -165,15 +193,25 @@ export default function ExecutiveDashboardPage() {
 
 function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const t = useTranslations("executiveDashboard")
+  const status = dashboard.workforceStatus
+  const multiDay = dashboard.dateFrom !== dashboard.dateTo
+  const label = (key: string) => t(multiDay ? `${key}Days` : key)
   const items = [
-    { label: t("totalEmployees"), value: dashboard.workforceStatus.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white" },
-    { label: t("presentToday"), value: dashboard.workforceStatus.presentToday, icon: CheckCircle2, tone: "bg-emerald-600 text-white" },
-    { label: t("absentToday"), value: dashboard.workforceStatus.absentToday, icon: AlertTriangle, tone: "bg-rose-600 text-white" },
-    { label: t("onApprovedLeave"), value: dashboard.workforceStatus.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white" },
-    { label: t("lateArrivals"), value: dashboard.workforceStatus.lateArrivals, icon: Clock3, tone: "bg-amber-500 text-white" },
-    { label: t("workingRemotely"), value: dashboard.workforceStatus.workingRemotely, icon: BriefcaseBusiness, tone: "bg-cyan-700 text-white" },
-    { label: t("officialAssignment"), value: dashboard.workforceStatus.officialAssignment, icon: Building2, tone: "bg-teal-700 text-white" },
-    { label: t("attendanceRate"), value: `${dashboard.workforceStatus.attendanceRate}%`, icon: TrendingUp, tone: "bg-violet-700 text-white" },
+    { label: t("totalEmployees"), value: status.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white", hint: status.onEducationLeave ? t("onEducationLeaveHint", { count: status.onEducationLeave }) : null },
+    { label: label("present"), value: status.presentToday, icon: CheckCircle2, tone: "bg-emerald-600 text-white", hint: dashboard.isLive && status.notYetArrived ? t("notYetArrivedHint", { count: status.notYetArrived }) : null },
+    { label: label("absent"), value: status.absentToday, icon: AlertTriangle, tone: "bg-rose-600 text-white", hint: null },
+    { label: label("onLeave"), value: status.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white", hint: null },
+    { label: label("late"), value: status.lateArrivals, icon: Clock3, tone: "bg-amber-500 text-white", hint: status.punctualityRate !== null ? t("punctualityHint", { value: status.punctualityRate }) : null },
+    { label: label("remote"), value: status.workingRemotely, icon: BriefcaseBusiness, tone: "bg-cyan-700 text-white", hint: null },
+    { label: label("officialDuty"), value: status.officialAssignment, icon: Building2, tone: "bg-teal-700 text-white", hint: null },
+    {
+      label: t("attendanceRate"),
+      value: status.presentToday + status.absentToday > 0 ? `${status.attendanceRate}%` : "—",
+      icon: TrendingUp,
+      tone: "bg-violet-700 text-white",
+      hint: status.previousAttendanceRate !== null ? t("previousPeriodHint", { value: status.previousAttendanceRate }) : null,
+      trend: status.attendanceTrend,
+    },
   ]
 
   return (
@@ -186,7 +224,11 @@ function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{item.label}</p>
-              <p className="mt-1 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{item.value}</p>
+              <p className="mt-1 flex items-center gap-1.5 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+                {item.value}
+                {"trend" in item ? <TrendIcon trend={item.trend ?? null} /> : null}
+              </p>
+              {item.hint ? <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{item.hint}</p> : null}
             </div>
           </CardContent>
         </Card>
@@ -195,36 +237,53 @@ function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   )
 }
 
+function TrendIcon({ trend }: { trend: ExecutiveDashboardTrend }) {
+  if (trend === "UP") return <ArrowUp className="size-4 text-emerald-600" aria-label="Up" />
+  if (trend === "DOWN") return <ArrowDown className="size-4 text-rose-600" aria-label="Down" />
+  if (trend === "FLAT") return <ArrowRight className="size-4 text-muted-foreground" aria-label="Flat" />
+  return null
+}
+
 function WorkforceDistribution({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const t = useTranslations("executiveDashboard")
+  const segments = dashboard.workforceDistribution
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{t("workforceDistribution")}</CardTitle>
+        <CardDescription>{dashboard.dateFrom === dashboard.dateTo ? t("distributionDescriptionDay") : t("distributionDescriptionPeriod")}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <ChartContainer config={distributionChartConfig} className="min-h-52 sm:min-h-64">
-          <PieChart>
-            <ChartTooltip content={<ChartTooltipContent nameKey="label" />} />
-            <Pie data={dashboard.workforceDistribution} dataKey="count" nameKey="label" innerRadius={58} outerRadius={92} paddingAngle={2}>
-              {dashboard.workforceDistribution.map((segment, index) => (
-                <Cell key={segment.id} fill={distributionColors[index % distributionColors.length]} />
+        {segments.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noData")}</p>
+        ) : (
+          <>
+            <ChartContainer config={distributionChartConfig} className="min-h-52 sm:min-h-64">
+              <PieChart>
+                <ChartTooltip content={<ChartTooltipContent nameKey="label" />} />
+                <Pie data={segments} dataKey="count" nameKey="label" innerRadius={58} outerRadius={92} paddingAngle={2}>
+                  {segments.map((segment) => (
+                    <Cell key={segment.id} fill={distributionColors[segment.id] ?? "#64748b"} />
+                  ))}
+                </Pie>
+              </PieChart>
+            </ChartContainer>
+            <div className="grid content-center gap-2">
+              {segments.map((segment) => (
+                <div key={segment.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: distributionColors[segment.id] ?? "#64748b" }} />
+                    <span className="break-words text-sm font-medium leading-tight text-foreground">{t(`segment_${segment.id}`)}</span>
+                  </div>
+                  <span className="whitespace-nowrap text-sm text-muted-foreground">
+                    <span className="font-semibold text-foreground">{segment.count}</span> · {segment.percentage}%
+                  </span>
+                </div>
               ))}
-            </Pie>
-          </PieChart>
-        </ChartContainer>
-        <div className="grid content-center gap-2">
-          {dashboard.workforceDistribution.map((segment, index) => (
-            <div key={segment.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: distributionColors[index % distributionColors.length] }} />
-                <span className="break-words text-sm font-medium leading-tight text-foreground">{segment.label}</span>
-              </div>
-              <span className="text-sm text-muted-foreground">{segment.percentage}%</span>
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </CardContent>
     </Card>
   )
@@ -238,27 +297,24 @@ function DepartmentRanking({ dashboard }: { dashboard: ExecutiveDashboardSummary
     <Card>
       <CardHeader>
         <CardTitle>{t("departmentAttendanceRanking")}</CardTitle>
+        <CardDescription>{t("rankingDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="px-3 sm:px-6">
-        <ChartContainer config={rankingChartConfig} className="min-h-60 sm:min-h-72">
-          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 36 }}>
-            <CartesianGrid horizontal={false} />
-            <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
-            <YAxis
-              dataKey="department"
-              type="category"
-              width={148}
-              tickLine={false}
-              axisLine={false}
-              interval={0}
-              tick={<WrappedDepartmentTick />}
-            />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Bar dataKey="attendanceRate" fill="var(--color-attendanceRate)" radius={4}>
-              <LabelList dataKey="attendanceRate" position="right" formatter={(value) => `${value ?? 0}%`} />
-            </Bar>
-          </BarChart>
-        </ChartContainer>
+        {data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noData")}</p>
+        ) : (
+          <ChartContainer config={rankingChartConfig} className="min-h-60 sm:min-h-72">
+            <BarChart data={data} layout="vertical" margin={{ left: 8, right: 36 }}>
+              <CartesianGrid horizontal={false} />
+              <XAxis type="number" domain={[0, 100]} tickLine={false} axisLine={false} />
+              <YAxis dataKey="department" type="category" width={148} tickLine={false} axisLine={false} interval={0} tick={<WrappedDepartmentTick />} />
+              <ChartTooltip content={<ChartTooltipContent />} />
+              <Bar dataKey="attendanceRate" fill="var(--color-attendanceRate)" radius={4}>
+                <LabelList dataKey="attendanceRate" position="right" formatter={(value) => `${value ?? 0}%`} />
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        )}
       </CardContent>
     </Card>
   )
@@ -274,9 +330,7 @@ function WrappedDepartmentTick({ x = 0, y = 0, payload }: { x?: number; y?: numb
       <title>{value}</title>
       <text textAnchor="end" fill="currentColor" className="fill-muted-foreground text-[11px]">
         {lines.map((line, index) => (
-          <tspan key={`${line}-${index}`} x={0} dy={index === 0 ? 0 : 12}>
-            {line}
-          </tspan>
+          <tspan key={`${line}-${index}`} x={0} dy={index === 0 ? 0 : 12}>{line}</tspan>
         ))}
       </text>
     </g>
@@ -291,11 +345,8 @@ function wrapLabel(value: string, maxChars: number, maxLines: number) {
     const chunks = word.length > maxChars ? word.match(new RegExp(`.{1,${maxChars}}`, "g")) ?? [word] : [word]
     for (const chunk of chunks) {
       const current = lines[lines.length - 1]
-      if (!current || `${current} ${chunk}`.length > maxChars) {
-        lines.push(chunk)
-      } else {
-        lines[lines.length - 1] = `${current} ${chunk}`
-      }
+      if (!current || `${current} ${chunk}`.length > maxChars) lines.push(chunk)
+      else lines[lines.length - 1] = `${current} ${chunk}`
     }
   }
 
@@ -307,16 +358,17 @@ function wrapLabel(value: string, maxChars: number, maxLines: number) {
 
 function CompoundStatus({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
   const items = [
-    { label: t("currentlyInside"), value: dashboard.compoundStatus.currentlyInside, icon: DoorOpen },
+    { label: dashboard.isLive ? t("currentlyInside") : t("noCheckoutRecorded"), value: dashboard.compoundStatus.currentlyInside, icon: DoorOpen },
     { label: t("checkedOut"), value: dashboard.compoundStatus.checkedOut, icon: CheckCircle2 },
-    { label: t("notYetArrived"), value: dashboard.compoundStatus.notYetArrived, icon: Clock3 },
+    ...(dashboard.isLive ? [{ label: t("notYetArrived"), value: dashboard.compoundStatus.notYetArrived, icon: Clock3 }] : []),
   ]
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("compoundStatus")}</CardTitle>
+        <CardTitle>{dashboard.isLive ? t("compoundStatus") : t("compoundStatusOn", { date: formatDate(dashboard.focusDate) })}</CardTitle>
       </CardHeader>
       <CardContent className="grid gap-3">
         {items.map((item) => (
@@ -337,20 +389,23 @@ function CompoundStatus({ dashboard }: { dashboard: ExecutiveDashboardSummary })
 
 function LiveTimeline({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("liveAttendanceTimeline")}</CardTitle>
+        <CardTitle>{dashboard.isLive ? t("liveAttendanceTimeline") : t("attendanceTimelineOn", { date: formatDate(dashboard.focusDate) })}</CardTitle>
+        <CardDescription>{t("timelineDescription")}</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={timelineChartConfig} className="min-h-60 sm:min-h-72">
           <LineChart data={dashboard.liveAttendanceTimeline}>
             <CartesianGrid vertical={false} />
             <XAxis dataKey="time" tickLine={false} axisLine={false} minTickGap={20} />
-            <YAxis tickLine={false} axisLine={false} />
+            <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
             <ChartTooltip content={<ChartTooltipContent />} />
-            <Line dataKey="count" type="monotone" stroke="var(--color-count)" strokeWidth={2} dot={false} />
+            <Line dataKey="arrivals" type="monotone" stroke="var(--color-arrivals)" strokeWidth={2} dot={false} />
+            <Line dataKey="count" type="monotone" stroke="var(--color-count)" strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
           </LineChart>
         </ChartContainer>
       </CardContent>
@@ -358,10 +413,36 @@ function LiveTimeline({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   )
 }
 
-function LeaveAndHrSummary({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+function LeaveSummary({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const t = useTranslations("executiveDashboard")
-  const hrItems = [
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("leaveSummary")}</CardTitle>
+        <CardDescription>{t("leaveSummaryDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {dashboard.leaveSummary.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noData")}</p>
+        ) : dashboard.leaveSummary.map((item) => (
+          <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+            <span className="min-w-0 break-words text-sm font-medium leading-tight text-foreground">{item.label}</span>
+            <span className="whitespace-nowrap text-sm text-muted-foreground">
+              <span className="text-lg font-semibold text-foreground">{item.count}</span> {t("employeesShort")} · {item.days} {t("daysShort")}
+            </span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function HrPerformance({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const items: Array<[string, React.ReactNode]> = [
     [t("pendingHrApproval"), dashboard.hrPerformance.pendingHrApproval],
+    [t("pendingCorrections"), dashboard.hrPerformance.pendingCorrections],
     [t("pendingLeaveApproval"), dashboard.hrPerformance.pendingLeaveApproval],
     [t("averageApprovalTime"), t("hours", { value: dashboard.hrPerformance.averageApprovalTimeHours })],
     [t("correctionsReturned"), dashboard.hrPerformance.correctionsReturned],
@@ -369,77 +450,81 @@ function LeaveAndHrSummary({ dashboard }: { dashboard: ExecutiveDashboardSummary
   ]
 
   return (
-    <div className="grid min-w-0 gap-5">
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("leaveSummary")}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          {dashboard.leaveSummary.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("noData")}</p>
-          ) : dashboard.leaveSummary.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-              <span className="min-w-0 break-words text-sm font-medium leading-tight text-foreground">{item.label}</span>
-              <span className="text-xl font-semibold text-foreground">{item.count}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("hrPerformance")}</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2">
-          {hrItems.map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
-              <span className="text-sm font-medium text-muted-foreground">{label}</span>
-              <span className="text-lg font-semibold text-foreground">{value}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("hrPerformance")}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {items.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+            <span className="text-sm font-medium text-muted-foreground">{label}</span>
+            <span className="text-lg font-semibold text-foreground">{value}</span>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 
-function DepartmentPerformance({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+function DepartmentPerformance({ dashboard, onSelect }: { dashboard: ExecutiveDashboardSummary; onSelect: (departmentId: string) => void }) {
   const t = useTranslations("executiveDashboard")
+  const rate = (value: number | null) => (value === null ? "—" : `${value}%`)
 
   return (
     <Card className="min-w-0">
       <CardHeader>
         <CardTitle>{t("departmentPerformance")}</CardTitle>
+        <CardDescription>{t("departmentPerformanceDescription")}</CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto">
-        <Table className="min-w-[48rem] table-fixed">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[34%]">{t("department")}</TableHead>
-              <TableHead className="w-[14%]">{t("attendanceRate")}</TableHead>
-              <TableHead className="w-[16%]">{t("pendingApprovals")}</TableHead>
-              <TableHead className="w-[14%]">{t("lateEmployees")}</TableHead>
-              <TableHead className="w-[12%]">{t("leaveRate")}</TableHead>
-              <TableHead className="w-[10%]">{t("trend")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {dashboard.departmentPerformance.slice(0, 10).map((department) => (
-              <TableRow key={department.departmentId ?? department.department}>
-                <TableCell className="whitespace-normal break-words font-medium leading-5">{department.department}</TableCell>
-                <TableCell>{department.attendanceRate}%</TableCell>
-                <TableCell>{department.pendingApprovals}</TableCell>
-                <TableCell>{department.lateEmployees}</TableCell>
-                <TableCell>{department.leaveRate}%</TableCell>
-                <TableCell>
-                  <Badge variant={department.trend === "UP" ? "secondary" : "destructive"} className="gap-1">
-                    {department.trend === "UP" ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
-                    {department.trend}
-                  </Badge>
-                </TableCell>
+        <div className="max-h-[28rem] overflow-y-auto">
+          <Table className="min-w-[60rem] table-fixed">
+            <TableHeader className="sticky top-0 bg-card">
+              <TableRow>
+                <TableHead className="w-[26%]">{t("department")}</TableHead>
+                <TableHead className="w-[9%]">{t("employees")}</TableHead>
+                <TableHead className="w-[11%]">{t("attendanceRate")}</TableHead>
+                <TableHead className="w-[10%]">{t("punctuality")}</TableHead>
+                <TableHead className="w-[8%]">{t("absentShort")}</TableHead>
+                <TableHead className="w-[8%]">{t("lateShort")}</TableHead>
+                <TableHead className="w-[8%]">{t("leaveRate")}</TableHead>
+                <TableHead className="w-[10%]">{t("pendingApprovals")}</TableHead>
+                <TableHead className="w-[10%]">{t("trend")}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {dashboard.departmentPerformance.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-24 text-center text-sm text-muted-foreground">{t("noData")}</TableCell>
+                </TableRow>
+              ) : dashboard.departmentPerformance.map((department) => (
+                <TableRow
+                  key={department.departmentId ?? department.department}
+                  className={cn(department.departmentId && department.departmentId !== dashboard.scope.departmentId && "cursor-pointer")}
+                  onClick={() => department.departmentId && department.departmentId !== dashboard.scope.departmentId && onSelect(department.departmentId)}
+                  title={department.departmentId ? t("drillDown") : undefined}
+                >
+                  <TableCell className="whitespace-normal break-words font-medium leading-5">{department.department}</TableCell>
+                  <TableCell>{department.totalEmployees}</TableCell>
+                  <TableCell className={cn(department.attendanceRate !== null && department.attendanceRate < 90 && "font-semibold text-rose-600")}>{rate(department.attendanceRate)}</TableCell>
+                  <TableCell>{rate(department.punctualityRate)}</TableCell>
+                  <TableCell>{department.absent}</TableCell>
+                  <TableCell>{department.lateEmployees}</TableCell>
+                  <TableCell>{department.leaveRate}%</TableCell>
+                  <TableCell>{department.pendingApprovals}</TableCell>
+                  <TableCell>
+                    {department.trend ? (
+                      <Badge variant={department.trend === "DOWN" ? "destructive" : "secondary"} className="gap-1" title={department.previousAttendanceRate !== null ? t("previousPeriodHint", { value: department.previousAttendanceRate }) : undefined}>
+                        <TrendIcon trend={department.trend} />
+                        {t(`trend${department.trend}`)}
+                      </Badge>
+                    ) : <span className="text-muted-foreground">—</span>}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   )
@@ -470,9 +555,9 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: ExecutiveDash
             </div>
           ))}
         </div>
-        <div className="overflow-x-auto">
+        <div className="max-h-[24rem] overflow-auto">
           <Table className="min-w-[48rem] table-fixed">
-            <TableHeader>
+            <TableHeader className="sticky top-0 bg-card">
               <TableRow>
                 <TableHead className="w-[30%]">{t("department")}</TableHead>
                 <TableHead className="w-[13%]">{t("records")}</TableHead>
@@ -487,7 +572,7 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: ExecutiveDash
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">{t("noData")}</TableCell>
                 </TableRow>
-              ) : summary.departmentBreakdown.slice(0, 10).map((department) => (
+              ) : summary.departmentBreakdown.map((department) => (
                 <TableRow key={department.departmentId ?? department.department}>
                   <TableCell className="whitespace-normal break-words font-medium leading-5">{department.department}</TableCell>
                   <TableCell>{department.totalRecords}</TableCell>
@@ -512,6 +597,7 @@ function MonthlyTrend({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
     <Card>
       <CardHeader>
         <CardTitle>{t("monthlyAttendanceTrend")}</CardTitle>
+        <CardDescription>{t("monthlyTrendDescription")}</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={trendChartConfig} className="min-h-60 sm:min-h-72">
@@ -520,7 +606,7 @@ function MonthlyTrend({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
             <XAxis dataKey="month" tickLine={false} axisLine={false} />
             <YAxis domain={[0, 100]} tickLine={false} axisLine={false} />
             <ChartTooltip content={<ChartTooltipContent />} />
-            <Line dataKey="attendanceRate" type="monotone" stroke="var(--color-attendanceRate)" strokeWidth={2} dot />
+            <Line dataKey="attendanceRate" type="monotone" stroke="var(--color-attendanceRate)" strokeWidth={2} dot connectNulls={false} />
           </LineChart>
         </ChartContainer>
       </CardContent>
@@ -536,6 +622,7 @@ function AlertsPanel({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
       <Card>
         <CardHeader>
           <CardTitle>{t("deviceHealth")}</CardTitle>
+          <CardDescription>{t("deviceHealthDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-3">
           {[
@@ -623,6 +710,7 @@ function ExecutiveDashboardSkeleton() {
   )
 }
 
+/** Today's date in Addis Ababa (the server classifies attendance by Addis calendar days). */
 function todayInput() {
-  return new Date().toISOString().slice(0, 10)
+  return addisTodayInput()
 }

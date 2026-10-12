@@ -4,6 +4,7 @@ export const SOURCE_EMPLOYMENT_STATUS = {
   WORKING: 'በስራ ላይ',
   RESIGNED: 'በገዛ ፍቃድ የተሰናበቱ',
   RETIRED: 'በጡረታ የተገለሉ',
+  DECEASED: 'በሞት',
 } as const;
 
 export const SOURCE_EMPLOYMENT_STATUS_OPTIONS = [
@@ -27,6 +28,13 @@ export const SOURCE_EMPLOYMENT_STATUS_OPTIONS = [
     employmentStatus: 'TERMINATED' as const satisfies EmploymentStatus,
     isActive: false,
     matches: ['በጡረታ የተገለሉ', 'retired'],
+  },
+  {
+    key: 'DECEASED' as const,
+    value: SOURCE_EMPLOYMENT_STATUS.DECEASED,
+    employmentStatus: 'TERMINATED' as const satisfies EmploymentStatus,
+    isActive: false,
+    matches: ['በሞት', 'deceased', 'died', 'death'],
   },
 ] as const;
 

@@ -1,7 +1,7 @@
 {
   "id": "hr",
   "title": "TAMS Human Resources Training Manual",
-  "summary": "This manual supports HR officers who maintain the organization structure, employee records, supervisor assignments, schedules, and holidays; give the final approval of attendance for payroll; verify permanent employee leave from ISMIS; administer contract employee leave; manage biometric employee synchronization and exemptions; and produce reports.",
+  "summary": "This manual supports HR officers who maintain the organization structure, employee records, supervisor assignments, schedules, and holidays; give the final approval of attendance for payroll; verify permanent employee leave from ISMIS; administer contract employee leave; monitor biometric devices and record biometric exemptions; and produce reports.",
   "audience": "Users with the Human Resource role",
   "blocks": [
     {
@@ -52,7 +52,7 @@
     {
       "type": "bullets",
       "items": [
-        "Passwords must be at least 12 characters, contain no spaces, not be a common password, and not contain the first part of your email address.",
+        "Passwords must be at least 8 characters, contain no spaces, not be a common password, and not contain the first part of your email address.",
         "After 5 wrong passwords the account is locked for 15 minutes. Sessions end after 30 minutes without activity and at the latest after 7 days."
       ]
     },
@@ -343,7 +343,7 @@
     {
       "type": "note",
       "label": "Departing employees",
-      "text": "Changing the status does not disable the employee's login. Ask the system administrator to disable the user account, and use Employee Sync to remove the employee from biometric devices."
+      "text": "Changing the status does not disable the employee's login. Ask the system administrator to remove the user account's roles, and have the employee removed from each biometric device."
     },
     {
       "type": "h1",
@@ -885,26 +885,24 @@
     },
     {
       "type": "h1",
-      "text": "Synchronize Employees to Biometric Devices"
+      "text": "Monitor Biometric Devices"
     },
     {
       "type": "p",
-      "text": "Only the system administrator can register devices or change their connection settings. HR uses **Biometric devices** to check device status, run **Test Connection** and **Sync**, review sync history, and use **Employee Sync** to keep employees enrolled on devices."
+      "text": "Only the system administrator can register devices or change their connection settings. HR uses **Biometric devices** to check device status, run **Test Connection** and **Sync**, and review the sync history."
     },
     {
       "type": "steps",
       "items": [
-        "Open **Biometric devices** and find the **Employee Sync** panel.",
-        "Choose the **Operation**: **Full synchronization** (compare all active enrolled employees; extra users on devices are not removed), **New employee or re-enrollment** (selected active employees with a biometric ID), or **Employee departure** (remove selected inactive employees).",
-        "Select **Preview synchronization** and review the differences per device in **Provisioning history**.",
-        "Select **Apply**, check the summary in **Confirm biometric provisioning**, and select **Confirm and apply**.",
-        "Review the result for each device and use **Retry failed** if any device failed."
+        "Open **Biometric devices**. Check that each device is **Active** and its health is **ONLINE**.",
+        "Select **Test Connection** to confirm a device responds, or **Sync** to collect its latest punches now (devices are also read automatically every few minutes).",
+        "Review **Sync history**, and open **View all sync history** for failed or partial batches. Report repeated failures to the system administrator."
       ]
     },
     {
       "type": "figure",
       "src": "22-biometric-devices.png",
-      "caption": "Biometric devices with the Employee Sync panel",
+      "caption": "Biometric devices with Test Connection, Sync, and sync history",
       "number": 23,
       "width": 1728,
       "height": 1350,
@@ -912,8 +910,8 @@
     },
     {
       "type": "note",
-      "label": "Before enrolment",
-      "text": "The employee must be active and have a biometric ID, and fingerprints must be enrolled on the enrollment source device first."
+      "label": "Enrolling employees",
+      "text": "Employees are enrolled (fingerprint or face) directly on each biometric device by the device operator, using the employee's biometric ID, which is the same as the employee code. When an employee leaves, remove them from each device in the same way."
     },
     {
       "type": "h1",
@@ -947,8 +945,7 @@
         "An exemption takes effect immediately; there is no separate approval step. Record only arrangements authorised in writing.",
         "Only one active exemption is allowed per employee. For any arrangement type other than the default, Effective from, Review due, and Responsible authority are required.",
         "An exemption applies to attendance dates between its effective dates and up to its review due date. Review and renew or end it before that date.",
-        "To end an exemption, use the remove action; the record is kept as Inactive.",
-        "Position-wide exemptions can be created only by an administrator."
+        "To end an exemption, use the remove action; the record is kept as Inactive."
       ]
     },
     {
@@ -1094,7 +1091,7 @@
         ],
         [
           "When staff join or leave",
-          "Add or update the employee, assign supervisor and schedule, and run Employee Sync (new employee or departure). Ask the administrator to disable login for leavers."
+          "Add or update the employee, assign supervisor and schedule, and have the employee enrolled on (or removed from) the biometric devices. Ask the administrator to disable login for leavers."
         ],
         [
           "When the organization changes",
@@ -1179,7 +1176,7 @@
         ],
         [
           "Employee not on devices",
-          "Check the employee is active with a biometric ID and run Employee Sync (new employee or re-enrollment)."
+          "Check the employee is active with a biometric ID and is enrolled on the device under that ID."
         ]
       ],
       "widths": [
@@ -1306,8 +1303,8 @@
         ],
         [
           "Enrol employees on devices",
-          "Biometric devices > Employee Sync",
-          "Preview, Apply, Confirm and apply"
+          "Biometric device (operator)",
+          "Enrol fingerprint/face under the biometric ID"
         ],
         [
           "Record an exemption",

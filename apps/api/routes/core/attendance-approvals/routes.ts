@@ -18,6 +18,7 @@ import {
   getMyAttendanceDailyRecordsHandler,
   getSupervisorAttendanceDailyRecordsHandler,
   hrApproveAttendanceDailyRecordsHandler,
+  hrReturnAttendanceDailyRecordsHandler,
   hrApproveAttendanceDailyRecordHandler,
   returnAttendanceDailyRecordHandler,
   supervisorApproveAttendanceDailyRecordHandler,
@@ -231,6 +232,7 @@ attendanceApprovalsApp.get('/attendance-approvals/supervisor', requirePermission
 attendanceApprovalsApp.get('/attendance-approvals/hr', requirePermission('hr-attendance-approvals:approve'), getHrAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/supervisor/batch', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/hr/batch', requirePermission('hr-attendance-approvals:approve'), hrApproveAttendanceDailyRecordsHandler);
+attendanceApprovalsApp.post('/attendance-approvals/hr/return-batch', requirePermission('hr-attendance-approvals:approve'), hrReturnAttendanceDailyRecordsHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-approve', requirePermissionOrDelegation('attendance-approvals:approve'), supervisorApproveAttendanceDailyRecordHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/correction-punch', requirePermissionOrDelegation('attendance-approvals:approve'), addSupervisorCorrectionPunchHandler);
 attendanceApprovalsApp.post('/attendance-approvals/:id/supervisor-edit', requirePermissionOrDelegation('attendance-approvals:approve'), updateSupervisorAttendanceDailyRecordPayrollHandler);

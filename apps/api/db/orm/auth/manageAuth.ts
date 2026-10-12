@@ -212,6 +212,11 @@ export async function authenticateIdentifierPassword(input: { email?: string | n
     return { success: false as const, reason: 'INVALID_CREDENTIALS' };
   }
 
+  // Checked only after the password, so a wrong password never reveals that access was revoked.
+  if (foundUser.accessRevokedAt) {
+    return { success: false as const, reason: 'ACCESS_REVOKED' };
+  }
+
   await db.update(user).set({
     failedLoginCount: 0,
     lockedUntil: null,
@@ -274,6 +279,11 @@ export async function getSessionByToken(token: string) {
     },
   });
 
+  if (result?.user?.accessRevokedAt) {
+    await deleteSessionByToken(token);
+    return null;
+  }
+
   if (!result || result.expiresAt < new Date()) {
     if (result) {
       await deleteSessionByToken(token);
@@ -309,6 +319,40 @@ export async function deleteSessionByToken(token: string) {
     eq(authSessions.token, hashed),
     eq(authSessions.token, token),
   ));
+}
+
+/** Blocks sign-in and ends every active session until access is restored. */
+export async function revokeUserAccess(input: { userId: string; actorUserId: string; reason?: string | null }) {
+  return db.transaction(async (tx) => {
+    const found = await tx.query.user.findFirst({ where: eq(user.id, input.userId) });
+    if (!found) throw new Error('User not found');
+    if (found.accessRevokedAt) throw new Error("This user's access is already revoked");
+
+    const [updated] = await tx.update(user).set({
+      accessRevokedAt: new Date(),
+      accessRevokedBy: input.actorUserId,
+      accessRevokedReason: input.reason?.trim() || null,
+      updatedAt: new Date(),
+    }).where(eq(user.id, input.userId)).returning();
+    await tx.delete(authSessions).where(eq(authSessions.userId, input.userId));
+    return updated;
+  });
+}
+
+export async function restoreUserAccess(userId: string) {
+  const found = await db.query.user.findFirst({ where: eq(user.id, userId) });
+  if (!found) throw new Error('User not found');
+  if (!found.accessRevokedAt) throw new Error("This user's access is not revoked");
+
+  const [updated] = await db.update(user).set({
+    accessRevokedAt: null,
+    accessRevokedBy: null,
+    accessRevokedReason: null,
+    failedLoginCount: 0,
+    lockedUntil: null,
+    updatedAt: new Date(),
+  }).where(eq(user.id, userId)).returning();
+  return updated;
 }
 
 export async function unlockUserLogin(userId: string) {

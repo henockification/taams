@@ -27,7 +27,7 @@ import { requirePermission } from '../../../middleware/rbac';
 import { includesPrivilegedRole } from '../../../lib/privileged-roles';
 
 // Registering and reconfiguring devices is a system administration task. HR keeps
-// device monitoring, connection tests, attendance sync, and employee provisioning.
+// device monitoring, connection tests, and attendance sync.
 const requireDeviceAdministrator = createMiddleware(async (c, next) => {
   const session = c.get('session') as { user?: { role?: string[] | null } } | undefined;
   if (!includesPrivilegedRole(session?.user?.role)) {
@@ -192,7 +192,7 @@ biometricDevicesApp.post('/biometric-devices', requirePermission('biometric-devi
 biometricDevicesApp.get('/biometric-devices', requirePermission('biometric-devices:read'), getBiometricDevicesHandler);
 biometricDevicesApp.get('/biometric-devices/:id', requirePermission('biometric-devices:read'), getBiometricDeviceHandler);
 biometricDevicesApp.put('/biometric-devices/:id', requirePermission('biometric-devices:read'), requireDeviceAdministrator, updateBiometricDeviceHandler);
-biometricDevicesApp.post('/biometric-devices/:id/sync', requirePermission('biometric-devices:read', 'biometric-provisioning:execute'), syncBiometricDeviceHandler);
+biometricDevicesApp.post('/biometric-devices/:id/sync', requirePermission('biometric-devices:read'), syncBiometricDeviceHandler);
 biometricDevicesApp.post('/biometric-devices/:id/test-connection', requirePermission('biometric-devices:read'), testBiometricDeviceConnectionHandler);
 biometricDevicesApp.get('/biometric-devices/:id/sync-history', requirePermission('biometric-devices:read', 'reports-device-sync:read'), getBiometricDeviceSyncHistoryHandler);
 

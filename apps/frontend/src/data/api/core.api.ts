@@ -9,8 +9,6 @@ import type {
   BiometricDeviceConnectionTestResponse,
   BiometricDeviceResponse,
   BiometricDevicesResponse,
-  BiometricProvisioningJobResponse,
-  BiometricProvisioningJobsResponse,
   BiometricExemptionResponse,
   BiometricExemptionsResponse,
   BulkCreateEmployeeSupervisorInput,
@@ -21,6 +19,7 @@ import type {
   ChangeManualPunchRequestStatusInput,
   ChangeBiometricExemptionStatusInput,
   ChangeOvertimeRequestStatusInput,
+  UpdateOvertimeRequestInput,
   ChangeLeaveRequestStatusInput,
   AuthorizeLeaveInterruptionInput,
   AuthorizeLeaveRequestInput,
@@ -28,7 +27,6 @@ import type {
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
-  CreateBiometricProvisioningPreviewInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
   CreateEmployeeSupervisorInput,
@@ -193,18 +191,20 @@ export const coreApi = {
       body: JSON.stringify(params),
     }),
   getDashboardSummary: () => coreFetch<DashboardSummaryResponse>('/dashboard/summary'),
-  getExecutiveDashboardSummary: (params: { date?: string; month?: string; period?: 'day' | 'week' | 'month' } = {}) => {
+  getExecutiveDashboardSummary: (params: { date?: string; month?: string; period?: 'day' | 'week' | 'month'; departmentId?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
     if (params.month) query.set('month', params.month);
     if (params.period) query.set('period', params.period);
+    if (params.departmentId) query.set('departmentId', params.departmentId);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<ExecutiveDashboardSummaryResponse>(`/executive-dashboard/summary${suffix}`);
   },
-  getHrDashboardSummary: (params: { date?: string } = {}) => {
+  getHrDashboardSummary: (params: { date?: string; departmentId?: string } = {}) => {
     const query = new URLSearchParams();
     if (params.date) query.set('date', params.date);
+    if (params.departmentId) query.set('departmentId', params.departmentId);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<HrDashboardSummaryResponse>(`/hr-dashboard/summary${suffix}`);
@@ -511,15 +511,6 @@ export const coreApi = {
       method: 'POST',
     }),
   getBiometricDeviceSyncHistory: (biometricDeviceId: string) => coreFetch<AttendanceSyncBatchesResponse>(`/biometric-devices/${biometricDeviceId}/sync-history`),
-  getBiometricProvisioningJobs: () => coreFetch<BiometricProvisioningJobsResponse>('/biometric-provisioning/jobs'),
-  getBiometricProvisioningJob: (jobId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${jobId}`),
-  createBiometricProvisioningPreview: (input: CreateBiometricProvisioningPreviewInput) =>
-    coreFetch<BiometricProvisioningJobResponse>('/biometric-provisioning/previews', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    }),
-  applyBiometricProvisioningPreview: (previewId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${previewId}/apply`, { method: 'POST' }),
-  retryBiometricProvisioningJob: (jobId: string) => coreFetch<BiometricProvisioningJobResponse>(`/biometric-provisioning/jobs/${jobId}/retry`, { method: 'POST' }),
   createAttendancePunch: (input: CreateAttendancePunchInput) =>
     coreFetch<AttendancePunchResponse>('/attendance-punches', {
       method: 'POST',
@@ -623,6 +614,11 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify({ attendanceDailyRecordIds }),
     }),
+  hrReturnAttendanceDailyRecords: (input: { attendanceDailyRecordIds: string[]; reason: string }) =>
+    coreFetch<AttendanceApprovalBatchResponse>('/attendance-approvals/hr/return-batch', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   addAttendanceCorrectionPunch: (input: { attendanceDailyRecordId: string; punchTime: string; punchType: string; reason: string }) =>
     coreFetch<AttendanceDailyRecordResponse>(`/attendance-approvals/${input.attendanceDailyRecordId}/correction-punch`, {
       method: 'POST',
@@ -676,6 +672,11 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  updateOvertimeRequest: ({ overtimeRequestId, ...input }: UpdateOvertimeRequestInput) =>
+    coreFetch<OvertimeRequestResponse>(`/overtime-requests/${overtimeRequestId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
   changeOvertimeRequestStatus: ({ overtimeRequestId, ...input }: ChangeOvertimeRequestStatusInput) =>
     coreFetch<OvertimeRequestResponse>(`/overtime-requests/${overtimeRequestId}/status`, {
       method: 'POST',
@@ -710,6 +711,10 @@ export const coreApi = {
     coreFetch<LeaveTypeResponse>(`/leave/types/${leaveTypeId}`, {
       method: 'PUT',
       body: JSON.stringify(input),
+    }),
+  deleteLeaveType: (leaveTypeId: string) =>
+    coreFetch<{ success: boolean }>(`/leave/types/${leaveTypeId}`, {
+      method: 'DELETE',
     }),
   getLeaveBalances: (fiscalYearId?: string, view: LeaveBalanceView = 'self') => {
     const query = new URLSearchParams({ view });

@@ -1,7 +1,7 @@
 'use client';
 
 import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, History, RefreshCw, RotateCcw, ScanLine, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, History, Info, RefreshCw, RotateCcw, ScanLine, Wrench } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -42,6 +43,7 @@ import {
   useHrApproveAttendanceDailyRecord,
   useHrApproveAttendanceDailyRecords,
   useHrAttendanceDailyRecords,
+  useHrReturnAttendanceDailyRecords,
   useReturnAttendanceDailyRecord,
   useAddAttendanceCorrectionPunch,
   useSupervisorApproveAttendanceDailyRecord,
@@ -72,7 +74,8 @@ type ApprovalFilter = 'all' | 'approved' | 'unapproved' | 'conflicts';
 type DateFilter = 'AWAITING_HR' | 'RETURNED' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
 const allDepartmentsValue = '__all_departments';
 const allEmploymentTypesValue = '__all_employment_types';
-const employmentTypes: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
+// Only contract and permanent employees are managed; other types are not applicable.
+const employmentTypes: EmploymentType[] = ['CONTRACT', 'PERMANENT'];
 const defaultPageSize = 50;
 const correctionPunchTypes = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT'] as const;
 
@@ -147,6 +150,8 @@ export function AttendanceApprovalsPage({
   const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : mode === 'hr' ? 'AWAITING_HR' : 'TODAY');
   const [customDateFilters, setCustomDateFilters] = useState({ fromDate: initialDate ?? today(), toDate: initialDate ?? today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
+  const [isBulkReturnOpen, setIsBulkReturnOpen] = useState(false);
+  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [historyRecord, setHistoryRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [correctingRecord, setCorrectingRecord] = useState<AttendanceDailyRecord | null>(null);
@@ -180,6 +185,7 @@ export function AttendanceApprovalsPage({
   const hrApprove = useHrApproveAttendanceDailyRecord();
   const hrBatchApprove = useHrApproveAttendanceDailyRecords();
   const returnRecord = useReturnAttendanceDailyRecord();
+  const hrBatchReturn = useHrReturnAttendanceDailyRecords();
   const isHrMode = mode === 'hr';
   const leaveImport = useIsmisLeaveImport();
   const completeLeave = useCompleteIsmisLeave();
@@ -194,6 +200,13 @@ export function AttendanceApprovalsPage({
   const departments = useMemo(() => {
     if (!hasEmploymentType) return [];
     const byId = new Map<string, { id: string; nameEn: string }>();
+    // HR lists every department it may act on (its assignments), even those with no
+    // records in the current view; supervisors only see departments present in the grid.
+    for (const department of query.data?.departments ?? []) {
+      if (department.isContract === (typeFilter === 'CONTRACT')) {
+        byId.set(department.id, { id: department.id, nameEn: department.nameEn });
+      }
+    }
     for (const record of records) {
       const department = record.effectiveDepartment ?? record.employee?.department;
       if (department?.id && department.isContract === (typeFilter === 'CONTRACT')) {
@@ -201,7 +214,7 @@ export function AttendanceApprovalsPage({
       }
     }
     return [...byId.values()].sort((left, right) => left.nameEn.localeCompare(right.nameEn));
-  }, [hasEmploymentType, typeFilter, records]);
+  }, [hasEmploymentType, typeFilter, records, query.data?.departments]);
   const filteredRecords = useMemo(() => {
     const search = deferredEmployeeSearch.trim().toLowerCase();
     return records.filter((record) => {
@@ -245,6 +258,12 @@ export function AttendanceApprovalsPage({
     () => approvableRecords.filter((record) => selectedRecordIds.includes(record.id)),
     [approvableRecords, selectedRecordIds],
   );
+  const selectedReturnableRecords = useMemo(
+    () => (isHrMode ? filteredRecords.filter((record) => canHrReturn(record) && selectedRecordIds.includes(record.id)) : []),
+    [filteredRecords, isHrMode, selectedRecordIds],
+  );
+  const selectedCount = isHrMode ? selectedReturnableRecords.length : selectedApprovableRecords.length;
+  const isBatchPending = supervisorBatchApprove.isPending || hrBatchApprove.isPending || hrBatchReturn.isPending;
   const pageCount = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * pageSize;
@@ -252,13 +271,13 @@ export function AttendanceApprovalsPage({
     () => filteredRecords.slice(pageStart, pageStart + pageSize),
     [filteredRecords, pageSize, pageStart],
   );
-  const pageApprovableRecords = useMemo(
-    () => pageRecords.filter((record) => canApprove(record, mode)),
+  const pageSelectableRecords = useMemo(
+    () => pageRecords.filter((record) => canSelect(record, mode)),
     [mode, pageRecords],
   );
-  const selectedPageRecordCount = pageApprovableRecords.filter((record) => selectedRecordIds.includes(record.id)).length;
-  const allVisibleApprovableSelected = pageApprovableRecords.length > 0
-    && selectedPageRecordCount === pageApprovableRecords.length;
+  const selectedPageRecordCount = pageSelectableRecords.filter((record) => selectedRecordIds.includes(record.id)).length;
+  const allVisibleSelectableSelected = pageSelectableRecords.length > 0
+    && selectedPageRecordCount === pageSelectableRecords.length;
 
   async function handleRefresh() {
     try {
@@ -310,9 +329,9 @@ export function AttendanceApprovalsPage({
     ));
   }
 
-  function toggleVisibleApprovableRecords(checked: boolean) {
+  function toggleVisibleSelectableRecords(checked: boolean) {
     setSelectedRecordIds((current) => {
-      const visibleIds = new Set(pageApprovableRecords.map((record) => record.id));
+      const visibleIds = new Set(pageSelectableRecords.map((record) => record.id));
       if (!checked) return current.filter((id) => !visibleIds.has(id));
       return [...new Set([...current, ...visibleIds])];
     });
@@ -371,16 +390,32 @@ export function AttendanceApprovalsPage({
     }
   }
 
+  function closeReturnDialog() {
+    setReturningRecord(null);
+    setIsBulkReturnOpen(false);
+    setReturnReason('');
+  }
+
   async function handleReturn() {
-    if (!returningRecord || !returnReason.trim()) return;
+    if (!returnReason.trim() || (!returningRecord && !isBulkReturnOpen)) return;
 
     try {
+      if (isBulkReturnOpen) {
+        const result = await hrBatchReturn.mutateAsync({
+          attendanceDailyRecordIds: selectedReturnableRecords.map((record) => record.id),
+          reason: returnReason.trim(),
+        });
+        setSelectedRecordIds([]);
+        closeReturnDialog();
+        notifications.show({ title: common('success'), message: t('attendanceRecordsReturned', { count: result.recordCount }), color: 'green' });
+        return;
+      }
       await returnRecord.mutateAsync({
-        attendanceDailyRecordId: returningRecord.id,
+        attendanceDailyRecordId: returningRecord!.id,
         reason: returnReason.trim(),
       });
-      setReturningRecord(null);
-      setReturnReason('');
+      setSelectedRecordIds((current) => current.filter((id) => id !== returningRecord!.id));
+      closeReturnDialog();
       notifications.show({ title: common('success'), message: t('attendanceReturned'), color: 'green' });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
@@ -388,18 +423,14 @@ export function AttendanceApprovalsPage({
   }
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full flex-col gap-4">
       {isHrMode ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-wrap items-center gap-2 p-2">
-            <div className="min-w-52 flex-1"><div className="text-xs font-medium">Permanent employee leave verification</div><div className="text-[11px] text-muted-foreground">Import ISMIS leave and confirm before payroll.</div></div>
-            <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} className="h-8 max-w-xs text-xs" />
-            <Button size="sm" className="h-8 text-xs" disabled={!leaveFile || leaveImport.isPending} onClick={handleLeaveImport}>Import ISMIS leave</Button>
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => handleLeaveCheck(latestLeave.data!.batch!.id)}>I checked leave</Button> : null}
-            {latestLeave.data?.batch?.status === 'PENDING' ? <Button size="sm" className="h-8 text-xs" variant="ghost" disabled={rejectLeave.isPending} onClick={() => handleLeaveDiscard(latestLeave.data!.batch!.id)}>Discard import</Button> : null}
-            {latestLeave.data?.batch ? <span className="text-xs text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched</span> : null}
-          </CardContent>
-        </Card>
+        <IsmisLeaveReminder
+          batch={latestLeave.data?.batch ?? null}
+          formatDate={formatDate}
+          onOpen={() => setIsLeaveDialogOpen(true)}
+          t={t}
+        />
       ) : null}
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
       {!isHrMode && !isReturnedView && returnedCount > 0 ? (
@@ -416,8 +447,7 @@ export function AttendanceApprovalsPage({
         </Card>
       ) : null}
 
-      <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="flex flex-1 flex-wrap items-end gap-2">
+      <div className="flex w-full flex-wrap items-end gap-2 xl:flex-nowrap">
           <FilterField label={t('attendanceDate')} htmlFor="attendance-approval-date-filter">
             <Select
               value={dateFilter}
@@ -432,7 +462,7 @@ export function AttendanceApprovalsPage({
                 }
               }}
             >
-              <SelectTrigger id="attendance-approval-date-filter" className="w-full md:w-44">
+              <SelectTrigger id="attendance-approval-date-filter" className="w-full">
                 <SelectValue placeholder={t('today')} />
               </SelectTrigger>
               <SelectContent>
@@ -457,7 +487,7 @@ export function AttendanceApprovalsPage({
                     setSelectedRecordIds([]);
                     setPage(1);
                   }}
-                  className="w-full sm:w-44"
+                  className="w-full"
                 />
               </FilterField>
               <FilterField label={t('dateTo')} htmlFor="attendance-approval-date-to">
@@ -469,7 +499,7 @@ export function AttendanceApprovalsPage({
                     setSelectedRecordIds([]);
                     setPage(1);
                   }}
-                  className="w-full sm:w-44"
+                  className="w-full"
                 />
               </FilterField>
             </>
@@ -484,7 +514,7 @@ export function AttendanceApprovalsPage({
                 setPage(1);
               }}
               placeholder={t('searchEmployee')}
-              className="w-full md:max-w-xs"
+              className="w-full"
             />
           </FilterField>
           <FilterField label={t('approvalStatus')} htmlFor="attendance-approval-status-filter">
@@ -492,7 +522,7 @@ export function AttendanceApprovalsPage({
               setApprovalFilter(value as ApprovalFilter);
               setPage(1);
             }}>
-              <SelectTrigger id="attendance-approval-status-filter" className="w-full md:w-48">
+              <SelectTrigger id="attendance-approval-status-filter" className="w-full">
                 <SelectValue placeholder={t('approvalStatus')} />
               </SelectTrigger>
               <SelectContent>
@@ -511,7 +541,7 @@ export function AttendanceApprovalsPage({
                 setSelectedRecordIds([]);
                 setPage(1);
               }}>
-                <SelectTrigger id="attendance-approval-employment-type-filter" className="w-full md:w-52"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="attendance-approval-employment-type-filter" className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={allEmploymentTypesValue}>{t('allEmploymentTypes')}</SelectItem>
                   {employmentTypes.map((type) => <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>)}
@@ -525,7 +555,7 @@ export function AttendanceApprovalsPage({
                 setDepartmentFilter(value);
                 setPage(1);
               }}>
-                <SelectTrigger id="attendance-approval-department-filter" className="w-full md:w-64">
+                <SelectTrigger id="attendance-approval-department-filter" className="w-full">
                   {hasEmploymentType ? <SelectValue placeholder={t('selectDepartment')} /> : <span>{t('selectEmploymentTypeFirst')}</span>}
                 </SelectTrigger>
                 <SelectContent>
@@ -537,24 +567,6 @@ export function AttendanceApprovalsPage({
               </Select>
             </FilterField>
           ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={handleRefresh} disabled={!hasDateRange || generateRecords.isPending} className="w-full lg:w-auto">
-            <RefreshCw className="size-4" />
-            {t('generateDailyRecords')}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleBatchApprove}
-            disabled={selectedApprovableRecords.length === 0 || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
-            className="w-full lg:w-auto"
-          >
-            <CheckCircle2 className="size-4" />
-            {selectedApprovableRecords.length > 0
-              ? `${isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
-              : t('approveSelected')}
-          </Button>
-        </div>
       </div>
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-1.5">
@@ -570,7 +582,41 @@ export function AttendanceApprovalsPage({
       </div>
 
       <Card className="rounded-lg">
-        <CardContent>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {selectedCount > 0 ? t('recordsSelected', { count: selectedCount }) : null}
+            </p>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <Button type="button" variant="outline" onClick={handleRefresh} disabled={!hasDateRange || generateRecords.isPending} className="flex-1 sm:flex-none">
+                <RefreshCw className="size-4" />
+                {t('generateDailyRecords')}
+              </Button>
+              {isHrMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => { setReturnReason(''); setIsBulkReturnOpen(true); }}
+                  disabled={selectedReturnableRecords.length === 0 || isBatchPending}
+                  className="flex-1 sm:flex-none"
+                >
+                  <RotateCcw className="size-4" />
+                  {selectedReturnableRecords.length > 0 ? `${t('returnSelected')} (${selectedReturnableRecords.length})` : t('returnSelected')}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                onClick={handleBatchApprove}
+                disabled={selectedApprovableRecords.length === 0 || isBatchPending}
+                className="flex-1 sm:flex-none"
+              >
+                <CheckCircle2 className="size-4" />
+                {selectedApprovableRecords.length > 0
+                  ? `${isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)} (${selectedApprovableRecords.length})`
+                  : t('approveSelected')}
+              </Button>
+            </div>
+          </div>
           {query.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
           ) : records.length === 0 ? (
@@ -593,9 +639,9 @@ export function AttendanceApprovalsPage({
                     <TableHead className="w-12">
                       <Checkbox
                         aria-label={t('selectAll')}
-                        checked={allVisibleApprovableSelected ? true : selectedPageRecordCount > 0 ? 'indeterminate' : false}
-                        disabled={pageApprovableRecords.length === 0 || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
-                        onCheckedChange={(checked) => toggleVisibleApprovableRecords(Boolean(checked))}
+                        checked={allVisibleSelectableSelected ? true : selectedPageRecordCount > 0 ? 'indeterminate' : false}
+                        disabled={pageSelectableRecords.length === 0 || isBatchPending}
+                        onCheckedChange={(checked) => toggleVisibleSelectableRecords(Boolean(checked))}
                       />
                     </TableHead>
                     <TableHead>{t('employee')}</TableHead>
@@ -623,7 +669,7 @@ export function AttendanceApprovalsPage({
                         <Checkbox
                           aria-label={`${t('selectAttendanceRecord')} ${employeeName(record.employee) || (record.employee?.employeeCode ?? '')}`}
                           checked={selectedRecordIds.includes(record.id)}
-                          disabled={!canApprove(record, mode) || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
+                          disabled={!canSelect(record, mode) || isBatchPending}
                           onCheckedChange={(checked) => toggleRecordSelection(record.id, Boolean(checked))}
                         />
                       </TableCell>
@@ -722,7 +768,7 @@ export function AttendanceApprovalsPage({
                             type="button"
                             size="sm"
                             onClick={() => handleApprove(record)}
-                            disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending || supervisorBatchApprove.isPending || hrBatchApprove.isPending}
+                            disabled={!canApprove(record, mode) || supervisorApprove.isPending || hrApprove.isPending || isBatchPending}
                           >
                             <CheckCircle2 className="size-4" />
                             {isHrMode ? t('approveForPayroll') : delegatedActionLabel(t('approve'), session.data?.user)}
@@ -750,7 +796,7 @@ export function AttendanceApprovalsPage({
                                 setReturningRecord(record);
                                 setReturnReason('');
                               }}
-                              disabled={record.status === 'HR_APPROVED' || returnRecord.isPending}
+                              disabled={!canHrReturn(record) || returnRecord.isPending || isBatchPending}
                             >
                               <RotateCcw className="size-4" />
                               {t('returnAttendance')}
@@ -798,15 +844,13 @@ export function AttendanceApprovalsPage({
         </CardContent>
       </Card>
 
-      <Dialog open={Boolean(returningRecord)} onOpenChange={(open) => {
-        if (!open) {
-          setReturningRecord(null);
-          setReturnReason('');
-        }
-      }}>
+      <Dialog open={Boolean(returningRecord) || isBulkReturnOpen} onOpenChange={(open) => { if (!open) closeReturnDialog(); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('returnAttendance')}</DialogTitle>
+            <DialogTitle>
+              {isBulkReturnOpen ? t('returnSelectedTitle', { count: selectedReturnableRecords.length }) : t('returnAttendance')}
+            </DialogTitle>
+            {isBulkReturnOpen ? <DialogDescription>{t('returnSelectedDescription')}</DialogDescription> : null}
           </DialogHeader>
           <Textarea
             value={returnReason}
@@ -815,9 +859,13 @@ export function AttendanceApprovalsPage({
             rows={4}
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setReturningRecord(null)}>{common('cancel')}</Button>
-            <Button type="button" onClick={handleReturn} disabled={!returnReason.trim() || returnRecord.isPending}>
-              {returnRecord.isPending ? t('saving') : isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
+            <Button type="button" variant="outline" onClick={closeReturnDialog}>{common('cancel')}</Button>
+            <Button type="button" onClick={handleReturn} disabled={!returnReason.trim() || returnRecord.isPending || hrBatchReturn.isPending}>
+              {returnRecord.isPending || hrBatchReturn.isPending
+                ? t('saving')
+                : isBulkReturnOpen
+                  ? t('returnSelected')
+                  : isHrMode ? t('returnAttendance') : delegatedActionLabel(t('returnAttendance'), session.data?.user)}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -867,6 +915,62 @@ export function AttendanceApprovalsPage({
         </DialogContent>
       </Dialog>
 
+      {isHrMode ? (
+        <Dialog open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('ismisLeaveVerification')}</DialogTitle>
+              <DialogDescription>{t('ismisLeaveVerificationDescription')}</DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              {latestLeave.data?.batch ? (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  {t('ismisLeaveLatestImport', {
+                    file: latestLeave.data.batch.sourceFileName,
+                    status: t(`ismisStatus${latestLeave.data.batch.status}`),
+                    matched: latestLeave.data.batch.matchedCount,
+                    unmatched: latestLeave.data.batch.unmatchedCount,
+                  })}
+                </p>
+              ) : null}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="ismis-leave-file">{t('ismisLeaveFile')}</Label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input id="ismis-leave-file" type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} />
+                  <Button type="button" disabled={!leaveFile || leaveImport.isPending} onClick={handleLeaveImport}>
+                    <FileSpreadsheet className="size-4" />
+                    {t('importIsmisLeave')}
+                  </Button>
+                </div>
+              </div>
+              {latestLeave.data?.batch?.status === 'PENDING' ? (
+                <div className="flex flex-col gap-2 border-t border-border pt-4">
+                  <p className="text-xs text-muted-foreground">
+                    {t('ismisLeaveCheckCovers', { from: formatDate(leaveCheckRange.dateFrom), to: formatDate(leaveCheckRange.dateTo) })}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending}
+                      onClick={() => handleLeaveCheck(latestLeave.data!.batch!.id)}
+                    >
+                      <CheckCircle2 className="size-4" />
+                      {t('confirmIsmisLeaveChecked')}
+                    </Button>
+                    <Button type="button" variant="ghost" disabled={rejectLeave.isPending} onClick={() => handleLeaveDiscard(latestLeave.data!.batch!.id)}>
+                      {t('discardIsmisImport')}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsLeaveDialogOpen(false)}>{common('close')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+
       <Dialog open={Boolean(historyRecord)} onOpenChange={(open) => { if (!open) setHistoryRecord(null); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -881,9 +985,10 @@ export function AttendanceApprovalsPage({
   );
 }
 
+// Filters share one row on wide screens and wrap to two/three per row below that.
 function FilterField({ label, htmlFor, children }: { label: string; htmlFor: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div className="flex min-w-0 basis-full flex-col gap-1.5 sm:basis-[calc(50%-0.25rem)] lg:basis-[calc(33.333%-0.34rem)] xl:min-w-36 xl:flex-1 xl:basis-0">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
@@ -910,6 +1015,64 @@ function summarize(records: AttendanceDailyRecord[]) {
     SUPERVISOR_APPROVED: 0,
     HR_APPROVED: 0,
   });
+}
+
+type IsmisLeaveBatch = {
+  sourceFileName: string;
+  status: 'PENDING' | 'COMPLETED' | 'REJECTED';
+  unmatchedCount: number;
+  completedAt?: string | null;
+};
+
+function IsmisLeaveReminder({
+  batch,
+  formatDate,
+  onOpen,
+  t,
+}: {
+  batch: IsmisLeaveBatch | null;
+  formatDate: (value: string) => string;
+  onOpen: () => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const pending = batch?.status === 'PENDING';
+  const unmatched = pending && batch.unmatchedCount > 0;
+  const tone = unmatched
+    ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200'
+    : pending
+      ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+      : 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200';
+  const Icon = unmatched || pending ? AlertTriangle : Info;
+  const message = unmatched
+    ? t('ismisLeaveBannerUnmatched', { count: batch.unmatchedCount })
+    : pending
+      ? t('ismisLeaveBannerPending')
+      : t('ismisLeaveBannerReminder');
+
+  return (
+    <div role="status" className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border px-3 py-1.5 text-xs ${tone}`}>
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span className="min-w-0 flex-1">
+        {message}
+        {batch?.status === 'COMPLETED' && batch.completedAt ? (
+          <span className="opacity-75"> · {t('ismisLeaveLastChecked', { date: formatDate(batch.completedAt.slice(0, 10)) })}</span>
+        ) : null}
+      </span>
+      <Button type="button" size="sm" variant="outline" className="h-7 bg-background text-xs" onClick={onOpen}>
+        <FileSpreadsheet className="size-3.5" />
+        {t('verifyIsmisLeave')}
+      </Button>
+    </div>
+  );
+}
+
+/** HR can return any supervisor-approved record, even one it cannot approve yet. */
+function canHrReturn(record: AttendanceDailyRecord) {
+  return record.status === 'SUPERVISOR_APPROVED';
+}
+
+function canSelect(record: AttendanceDailyRecord, mode: AttendanceApprovalMode) {
+  return mode === 'hr' ? canHrReturn(record) : canApprove(record, mode);
 }
 
 function canApprove(record: AttendanceDailyRecord, mode: AttendanceApprovalMode) {

@@ -12,7 +12,7 @@ import {
 } from '../../../../db/orm/core/manageTemporaryDepartmentAssignments';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
-import { getUserPermissionNames } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rbac/manageRbac';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatEmployee, formatTemporaryDepartmentAssignment } from '../../helpers/formatters';
@@ -108,10 +108,13 @@ async function resolveContext(c: Context) {
     throw new Error('Authentication required');
   }
 
-  const roles = (session.user.role ?? []).map((role) => role.toLowerCase());
+  // Roles can be recorded on the user and in assigned roles; use both, as the route gate does.
+  const roleNames = [...new Set([...(session.user.role ?? []), ...await getUserRoleNames(session.user.id)])];
+  const roles = roleNames.map((role) => role.toLowerCase());
+  const permissions = await getUserPermissionNames(session.user.id);
   const canManageTemporaryAssignments = roles.some((role) =>
     ['super_admin', 'superadmin', 'admin', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'].includes(role),
-  );
+  ) || permissions.some((permission) => permission.startsWith('temporary-assignment:'));
   if (!canManageTemporaryAssignments) {
     throw new Error('Human Resources permission is required to manage temporary assignments');
   }
@@ -119,13 +122,13 @@ async function resolveContext(c: Context) {
   // Department-restricted HR users manage only employees in their assigned departments.
   const scope = await resolveEmployeeVisibilityScope({
     userId: session.user.id,
-    roles: session.user.role ?? [],
-    permissions: await getUserPermissionNames(session.user.id),
+    roles: roleNames,
+    permissions,
   });
 
   return {
     userId: session.user.id,
-    roles: session.user.role ?? [],
+    roles: roleNames,
     scope,
   };
 }

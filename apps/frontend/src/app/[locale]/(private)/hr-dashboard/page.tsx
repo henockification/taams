@@ -26,9 +26,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DashboardAttendanceStrip, DashboardDataQualityNotice, DashboardDepartmentFilter, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useHrDashboardSummary } from "@/data/hooks/core.hooks"
 import type {
   Employee,
@@ -42,7 +42,6 @@ import { useSession } from "@/lib/auth-client"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof HrDashboardSummary["widgets"]
-const allDepartmentsValue = "__all_departments"
 type HrDashboardMessageKey =
   | "pendingAuthorizations"
   | "pendingManualRequests"
@@ -77,7 +76,8 @@ export default function HrDashboardPage() {
   const { data: session } = useSession()
   const { formatDateTime } = useCalendarPreference()
   const [date, setDate] = React.useState(todayInput())
-  const { data, isLoading, isFetching, isError, error, refetch } = useHrDashboardSummary({ date })
+  const [departmentId, setDepartmentId] = React.useState<string | undefined>(undefined)
+  const { data, isLoading, isFetching, isError, error, refetch } = useHrDashboardSummary({ date, departmentId })
   const dashboard = data?.hrDashboard
   const showPersonalLeaveBalance = session?.user?.employeeEmploymentType === "CONTRACT"
 
@@ -104,6 +104,12 @@ export default function HrDashboardPage() {
             {t("date")}
             <CalendarDateField value={date} onChange={setDate} className="w-full sm:w-44" />
           </label>
+          {dashboard.departments.length > 1 ? (
+            <label className="grid w-full gap-1.5 text-sm font-medium text-foreground sm:w-auto">
+              {t("department")}
+              <DashboardDepartmentFilter departments={dashboard.departments} value={departmentId} onChange={setDepartmentId} />
+            </label>
+          ) : null}
           {isFetching ? (
             <Badge variant="secondary" className="mb-1 gap-2">
               <RefreshCw className="size-3.5 animate-spin" />
@@ -119,6 +125,9 @@ export default function HrDashboardPage() {
           </Button>
         </div>
       </div>
+
+      <DashboardDataQualityNotice dataQuality={dashboard.dataQuality} isLive={dashboard.isLive} />
+      <DashboardAttendanceStrip summary={dashboard.attendanceSummary} isLive={dashboard.isLive} />
 
       <div className={cn("grid gap-5", showPersonalLeaveBalance && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid dashboard={dashboard} />
@@ -330,30 +339,24 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: HrDashboardSu
 
 function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
-  const [departmentFilter, setDepartmentFilter] = React.useState(allDepartmentsValue)
-  const allRows = [
-    ...dashboard.details.employeesWithoutPunch.map((employee) => ({ id: `without-${employee.id}`, employee, status: t("employeesWithoutPunch") })),
-    ...dashboard.details.missingCheckoutEmployees.map((employee) => ({ id: `checkout-${employee.id}`, employee, status: t("missingCheckout") })),
-    ...dashboard.details.lateEmployees.map((employee) => ({ id: `late-${employee.id}`, employee, status: t("lateEmployees") })),
-  ]
-  const departmentOptions = React.useMemo(() => getDepartmentOptions(allRows.map((row) => row.employee)), [allRows])
-  const rows = allRows
-    .filter((row) => departmentFilter === allDepartmentsValue || getDepartmentId(row.employee) === departmentFilter)
-    .slice(0, 12)
+  const shared = useTranslations("dashboardShared")
+  const rows = dashboard.details.people.slice(0, 50)
 
   return (
     <Card>
-      <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader>
         <CardTitle>{t("people")}</CardTitle>
-        <DepartmentFilter value={departmentFilter} onChange={setDepartmentFilter} options={departmentOptions} />
       </CardHeader>
-      <CardContent className="overflow-x-auto">
+      <CardContent className="max-h-[28rem] overflow-auto">
         <SimpleTable headers={[t("employee"), t("department"), t("status")]} emptyLabel={t("noRows")}>
           {rows.map((row) => (
-            <TableRow key={row.id}>
+            <TableRow key={`${row.status}-${row.employeeId}`}>
               <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
               <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(row.employee)}</TableCell>
-              <TableCell className="min-w-44"><Badge variant="secondary">{row.status}</Badge></TableCell>
+              <TableCell className="min-w-44">
+                <Badge variant={row.status === "ABSENT" ? "destructive" : "secondary"}>{shared(`status_${row.status}`)}</Badge>
+                {row.minutes ? <span className="ml-2 text-xs text-muted-foreground">{shared("minutesShort", { value: row.minutes })}</span> : null}
+              </TableCell>
             </TableRow>
           ))}
         </SimpleTable>
@@ -365,7 +368,6 @@ function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
 function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
   const { formatDate } = useCalendarPreference()
-  const [departmentFilter, setDepartmentFilter] = React.useState(allDepartmentsValue)
   const leaveRows = [
     ...dashboard.details.upcomingLeave.map((request) => ({
       id: request.id,
@@ -382,16 +384,12 @@ function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
       variant: "default" as const,
     })),
   ]
-  const departmentOptions = React.useMemo(() => getDepartmentOptions(leaveRows.map((row) => row.employee)), [leaveRows])
-  const filteredRows = leaveRows
-    .filter((row) => departmentFilter === allDepartmentsValue || getDepartmentId(row.employee) === departmentFilter)
-    .slice(0, 10)
+  const filteredRows = leaveRows.slice(0, 10)
 
   return (
     <Card>
-      <CardHeader className="gap-3 sm:flex sm:flex-row sm:items-center sm:justify-between">
+      <CardHeader>
         <CardTitle>{t("upcomingLeave")}</CardTitle>
-        <DepartmentFilter value={departmentFilter} onChange={setDepartmentFilter} options={departmentOptions} />
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <SimpleTable headers={[t("employee"), t("leaveDates"), t("status")]} emptyLabel={t("noRows")}>
@@ -496,34 +494,6 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={variant}>{status}</Badge>
 }
 
-function DepartmentFilter({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  options: Array<{ id: string; name: string }>;
-}) {
-  const t = useTranslations("hrDashboard")
-
-  if (options.length <= 1) return null
-
-  return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-full sm:w-56">
-        <SelectValue placeholder={t("allDepartments")} />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={allDepartmentsValue}>{t("allDepartments")}</SelectItem>
-        {options.map((department) => (
-          <SelectItem key={department.id} value={department.id}>{department.name}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
-
 function DataTable({ children, emptyLabel }: { children: React.ReactNode; emptyLabel: string }) {
   const t = useTranslations("hrDashboard")
   const rows = React.Children.toArray(children)
@@ -581,7 +551,7 @@ function HrDashboardSkeleton() {
 }
 
 function todayInput() {
-  return new Date().toISOString().slice(0, 10)
+  return addisTodayInput()
 }
 
 function formatEmployeeName(employee: Employee | null | undefined) {
@@ -591,22 +561,6 @@ function formatEmployeeName(employee: Employee | null | undefined) {
 
 function formatDepartment(employee: Employee | null | undefined) {
   return employee?.department?.nameEn ?? employee?.sourceDepartmentName ?? "-"
-}
-
-function getDepartmentId(employee: Employee | null | undefined) {
-  return employee?.department?.id ?? employee?.departmentId ?? employee?.sourceDepartmentName ?? ""
-}
-
-function getDepartmentOptions(employees: Array<Employee | null | undefined>) {
-  const options = new Map<string, string>()
-  for (const employee of employees) {
-    const id = getDepartmentId(employee)
-    if (!id) continue
-    options.set(id, formatDepartment(employee))
-  }
-  return [...options.entries()]
-    .map(([id, name]) => ({ id, name }))
-    .sort((left, right) => left.name.localeCompare(right.name))
 }
 
 function formatDays(value: string | number | null | undefined) {

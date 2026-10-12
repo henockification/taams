@@ -159,6 +159,10 @@ export type CreateEmployeeInput = {
   salaryStep?: string | null;
   nationalId?: string | null;
   paidByIfmis?: boolean;
+  educationLeaveType?: 'ABROAD' | 'LOCAL' | null;
+  educationLeaveStart?: string | null;
+  educationLeaveExpectedReturn?: string | null;
+  educationLeaveReturnedOn?: string | null;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;
@@ -316,6 +320,10 @@ export type Employee = {
   salaryStep: string | null;
   nationalId: string | null;
   paidByIfmis: boolean;
+  educationLeaveType: string | null;
+  educationLeaveStart: string | null;
+  educationLeaveExpectedReturn: string | null;
+  educationLeaveReturnedOn: string | null;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;
@@ -409,9 +417,6 @@ export type BiometricDeviceType = 'BIOMETRIC' | 'RFID' | 'FACE_RECOGNITION' | 'M
 export type ConnectionType = 'TCP_IP' | 'USB' | 'WIFI' | 'API';
 export type DeviceIntegrationMode = 'PUSH_ADMS' | 'TCP_PULL' | 'HYBRID' | 'MANUAL_ONLY' | 'DISABLED';
 export type DeviceHealthStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'ERROR';
-export type BiometricProvisioningRole = 'ENROLLMENT_SOURCE' | 'TARGET';
-export type BiometricProvisioningMode = 'FULL_SYNC' | 'EMPLOYEE_UPSERT' | 'EMPLOYEE_REMOVE';
-export type BiometricProvisioningJobStatus = 'QUEUED' | 'RUNNING' | 'PREVIEW_READY' | 'WAITING_CONFIRMATION' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELED';
 export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
@@ -441,10 +446,6 @@ export type BiometricDevice = {
   firmwareVersion: string | null;
   platformVersion: string | null;
   fingerprintAlgorithm: string | null;
-  provisioningRole: BiometricProvisioningRole;
-  provisioningEnabled: boolean;
-  lastProvisioningAt: string | null;
-  lastProvisioningStatus: string | null;
   isActive: boolean;
   lastSyncAt: string | null;
   lastSuccessfulSyncAt: string | null;
@@ -460,44 +461,6 @@ export type BiometricDevice = {
   createdAt: string;
   updatedAt: string;
   department?: Department | null;
-};
-
-export type BiometricProvisioningDeviceResult = {
-  id: string;
-  jobId: string;
-  deviceId: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
-  addedUsers: number;
-  updatedUsers: number;
-  removedUsers: number;
-  missingTemplates: number;
-  uidConflicts: number;
-  differences: Record<string, unknown> | null;
-  errorMessage: string | null;
-  attempts: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  device?: BiometricDevice | null;
-};
-
-export type BiometricProvisioningJob = {
-  id: string;
-  previewJobId: string | null;
-  sourceDeviceId: string;
-  mode: BiometricProvisioningMode;
-  status: BiometricProvisioningJobStatus;
-  isPreview: boolean;
-  requestedEmployeeIds: string[];
-  requestedTargetDeviceIds: string[];
-  summary: Record<string, unknown> | null;
-  errorMessage: string | null;
-  requestedBy: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  sourceDevice?: BiometricDevice | null;
-  deviceResults?: BiometricProvisioningDeviceResult[];
 };
 
 export type AttendanceSyncBatch = {
@@ -753,8 +716,6 @@ export type CreateBiometricDeviceInput = {
   firmwareVersion?: string | null;
   platformVersion?: string | null;
   fingerprintAlgorithm?: string | null;
-  provisioningRole?: BiometricProvisioningRole;
-  provisioningEnabled?: boolean;
   syncIntervalMinutes?: number;
   autoSyncEnabled?: boolean;
   healthStatus?: DeviceHealthStatus;
@@ -764,12 +725,6 @@ export type CreateBiometricDeviceInput = {
 
 export type UpdateBiometricDeviceInput = Partial<CreateBiometricDeviceInput> & {
   biometricDeviceId: string;
-};
-
-export type CreateBiometricProvisioningPreviewInput = {
-  mode: BiometricProvisioningMode;
-  employeeIds?: string[];
-  targetDeviceIds?: string[];
 };
 
 export type CreateBiometricDeviceSyncInput = {

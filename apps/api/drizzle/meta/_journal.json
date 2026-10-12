@@ -309,6 +309,27 @@
       "when": 1790553600000,
       "tag": "0047_department_heads",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790640000000,
+      "tag": "0048_remove_biometric_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1790726400000,
+      "tag": "0049_user_access_revocation",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1790812800000,
+      "tag": "0050_employee_education_leave",
+      "breakpoints": true
     }
   ]
 }

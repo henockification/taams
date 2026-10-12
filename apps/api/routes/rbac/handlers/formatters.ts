@@ -49,5 +49,8 @@ export function formatUser(user: any) {
     updatedAt: user.updatedAt.toISOString(),
     image: user.image,
     ...formatUserLock(user),
+    accessRevoked: Boolean(user.accessRevokedAt),
+    accessRevokedAt: user.accessRevokedAt ? new Date(user.accessRevokedAt).toISOString() : null,
+    accessRevokedReason: user.accessRevokedReason ?? null,
   };
 }

@@ -216,6 +216,35 @@ export async function createLeaveType(input: CreateLeaveTypeInput) {
   return leaveType;
 }
 
+/**
+ * Deletes a leave type nobody has used. Built-in types are recreated on every read
+ * and drive leave rules, and used types anchor leave history, so both must be
+ * marked inactive instead.
+ */
+export async function deleteLeaveType(id: string) {
+  return db.transaction(async (tx) => {
+    const leaveType = await tx.query.leaveTypes.findFirst({ where: eq(leaveTypes.id, id) });
+    if (!leaveType) throw new Error('Leave type not found');
+    if (KNOWN_LEAVE_TYPES.some((known) => known.code === leaveType.code)) {
+      throw new Error('Built-in leave types cannot be deleted. Mark it inactive instead');
+    }
+    const [usage] = await tx.select({ count: sql<number>`count(*)::int` }).from(leaveRequests).where(eq(leaveRequests.leaveTypeId, id));
+    if (usage.count > 0) {
+      throw new Error(`This leave type cannot be deleted because ${usage.count} leave request(s) use it. Mark it inactive instead`);
+    }
+
+    await tx.delete(leaveTypes).where(eq(leaveTypes.id, id));
+    await writeAuditEvent(tx, {
+      action: 'LEAVE_TYPE_DELETED',
+      resourceType: 'leave_type',
+      resourceId: id,
+      resourceLabel: `${leaveType.code} ${leaveType.nameEn}`,
+      metadata: { code: leaveType.code, nameEn: leaveType.nameEn, nameAm: leaveType.nameAm },
+    });
+    return leaveType;
+  });
+}
+
 export async function updateLeaveType(id: string, input: UpdateLeaveTypeInput) {
   const [leaveType] = await db.update(leaveTypes)
     .set(removeUndefined({

@@ -33,7 +33,6 @@ import {
 } from '../../schemas/core.schema';
 import { openApiApp } from '../../lib/openapi';
 import biometricDevicesApp from './biometric-devices/routes';
-import biometricProvisioningApp from './biometric-provisioning/routes';
 import biometricExemptionsApp from './biometric-exemptions/routes';
 import holidaysApp from './holidays/routes';
 import attendancePunchesApp from './attendance-punches/routes';
@@ -54,7 +53,7 @@ import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentHeadCandidatesHandler, getDepartmentsHandler, moveDepartmentHandler, setDepartmentHeadHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
 import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
-import { requirePermission, requirePermissionOrDelegation } from '../../middleware/rbac';
+import { requirePermission, requirePermissionOrDelegation, requireHrSupervisorRole } from '../../middleware/rbac';
 
 const coreApp = new Hono();
 
@@ -676,10 +675,10 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
 // Anyone who can add employees can create a missing department while doing so.
 coreApp.post('/departments', requirePermission('employees:update', 'employees:create', 'organization-structure:edit'), createDepartmentHandler);
 coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read', 'organization-structure:read', 'organization-structure:edit'), getDepartmentsHandler);
-coreApp.put('/departments/:id', requirePermission('employees:update', 'organization-structure:edit'), updateDepartmentHandler);
-coreApp.patch('/departments/:id/parent', requirePermission('organization-structure:edit'), moveDepartmentHandler);
+coreApp.put('/departments/:id', requirePermission('employees:update', 'organization-structure:edit'), requireHrSupervisorRole(), updateDepartmentHandler);
+coreApp.patch('/departments/:id/parent', requirePermission('organization-structure:edit'), requireHrSupervisorRole(), moveDepartmentHandler);
 coreApp.get('/departments/head-candidates', requirePermission('organization-structure:edit'), getDepartmentHeadCandidatesHandler);
-coreApp.put('/departments/:id/head', requirePermission('organization-structure:edit'), setDepartmentHeadHandler);
+coreApp.put('/departments/:id/head', requirePermission('organization-structure:edit'), requireHrSupervisorRole(), setDepartmentHeadHandler);
 coreApp.post('/positions', requirePermission('employees:update'), createPositionHandler);
 coreApp.get('/positions', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getPositionsHandler);
 coreApp.put('/positions/:id', requirePermission('employees:update'), updatePositionHandler);
@@ -703,7 +702,6 @@ coreApp.post('/employees/:id/work-schedules', requirePermission('schedule-assign
 coreApp.get('/employees/:id/work-schedules', requirePermission('schedule-assignments:read', 'work-schedules:read', 'employees:read', 'dashboard:read'), getEmployeeWorkSchedulesHandler);
 coreApp.route('/', dashboardApp);
 coreApp.route('/', biometricDevicesApp);
-coreApp.route('/', biometricProvisioningApp);
 coreApp.route('/', biometricExemptionsApp);
 coreApp.route('/', holidaysApp);
 coreApp.route('/', attendancePunchesApp);

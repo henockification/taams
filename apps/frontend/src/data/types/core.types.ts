@@ -153,6 +153,7 @@ export type WorkScheduleWithDays = WorkSchedule & {
 
 export type EmploymentStatus = 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | 'SUSPENDED';
 export type EmploymentType = 'PERMANENT' | 'CONTRACT' | 'TEMPORARY' | 'DAILY';
+export type EducationLeaveType = 'ABROAD' | 'LOCAL';
 
 export type Employee = {
   id: string;
@@ -177,6 +178,8 @@ export type Employee = {
   hireDate: string | null;
   terminationDate: string | null;
   sourceIdNo: string | null;
+  sourceFullNameAm?: string | null;
+  sourceStaffIdNo?: string | null;
   sourceEmployeeCode: string | null;
   sourceEmploymentStatus: string | null;
   sourceDepartmentName: string | null;
@@ -186,6 +189,12 @@ export type Employee = {
   salaryStep: string | null;
   nationalId: string | null;
   paidByIfmis: boolean;
+  educationLeaveType?: EducationLeaveType | null;
+  educationLeaveStart?: string | null;
+  educationLeaveExpectedReturn?: string | null;
+  educationLeaveReturnedOn?: string | null;
+  /** True when the employee is away on education leave today. */
+  onEducationLeave?: boolean;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;
@@ -393,9 +402,6 @@ export type BiometricDeviceType = 'BIOMETRIC' | 'RFID' | 'FACE_RECOGNITION' | 'M
 export type ConnectionType = 'TCP_IP' | 'USB' | 'WIFI' | 'API';
 export type DeviceIntegrationMode = 'PUSH_ADMS' | 'TCP_PULL' | 'HYBRID' | 'MANUAL_ONLY' | 'DISABLED';
 export type DeviceHealthStatus = 'ONLINE' | 'OFFLINE' | 'UNKNOWN' | 'ERROR';
-export type BiometricProvisioningRole = 'ENROLLMENT_SOURCE' | 'TARGET';
-export type BiometricProvisioningMode = 'FULL_SYNC' | 'EMPLOYEE_UPSERT' | 'EMPLOYEE_REMOVE';
-export type BiometricProvisioningJobStatus = 'QUEUED' | 'RUNNING' | 'PREVIEW_READY' | 'WAITING_CONFIRMATION' | 'COMPLETED' | 'PARTIAL' | 'FAILED' | 'CANCELED';
 export type SyncStatus = 'STARTED' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
@@ -486,10 +492,6 @@ export type BiometricDevice = {
   firmwareVersion: string | null;
   platformVersion: string | null;
   fingerprintAlgorithm: string | null;
-  provisioningRole: BiometricProvisioningRole;
-  provisioningEnabled: boolean;
-  lastProvisioningAt: string | null;
-  lastProvisioningStatus: string | null;
   isActive: boolean;
   lastSyncAt: string | null;
   lastSuccessfulSyncAt: string | null;
@@ -505,77 +507,6 @@ export type BiometricDevice = {
   createdAt: string;
   updatedAt: string;
   department?: Department | null;
-};
-
-export type BiometricProvisioningDifferences = {
-  missingUsers: string[];
-  updatedUsers: string[];
-  removals: string[];
-  missingSourceTemplates: string[];
-  uidConflicts: Array<{
-    uid: number;
-    expectedBiometricId: string;
-    actualBiometricId?: string;
-    actualUid?: number;
-  }>;
-};
-
-export type BiometricProvisioningDeviceResult = {
-  id: string;
-  jobId: string;
-  deviceId: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'SKIPPED';
-  addedUsers: number;
-  updatedUsers: number;
-  removedUsers: number;
-  missingTemplates: number;
-  uidConflicts: number;
-  differences: BiometricProvisioningDifferences | null;
-  errorMessage: string | null;
-  attempts: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  device?: BiometricDevice | null;
-};
-
-export type BiometricProvisioningSourceDiagnostics = {
-  employeeCount: number;
-  sourceUserCount: number;
-  sourceFingerprintCount: number;
-  sourceUsersWithFingerprints: number;
-  sourceFaceCount?: number;
-  sourceUsersWithFaces?: number;
-  sourceUsersWithoutEnrollments?: string[];
-  faceProvisioningSupported?: boolean;
-  exactMatchedEmployeeCount: number;
-  missingSourceUserIds: string[];
-  sourceUsersWithoutFingerprints: string[];
-  possibleIdMismatches: Array<{ employeeBiometricId: string; sourceUserIds: string[] }>;
-  duplicateSourceUserIds: string[];
-  reportedUserCount: number | null;
-  reportedFingerprintCount: number | null;
-  reportedFaceCount: number | null;
-  userPacketSize: number | null;
-};
-
-export type BiometricProvisioningJob = {
-  id: string;
-  previewJobId: string | null;
-  sourceDeviceId: string;
-  mode: BiometricProvisioningMode;
-  status: BiometricProvisioningJobStatus;
-  isPreview: boolean;
-  requestedEmployeeIds: string[];
-  requestedTargetDeviceIds: string[];
-  summary: (Record<string, unknown> & { source?: BiometricProvisioningSourceDiagnostics }) | null;
-  errorMessage: string | null;
-  requestedBy: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  sourceDevice?: BiometricDevice | null;
-  deviceResults?: BiometricProvisioningDeviceResult[];
 };
 
 export type BiometricDeviceConnectionTest = {
@@ -866,12 +797,52 @@ export type DashboardPlaceholder = {
   isPreview: boolean;
 };
 
+/** One status per employee-day, as classified from attendance daily records. */
+export type AttendanceDayStatus = 'REST' | 'LEAVE' | 'EXEMPT' | 'ON_TIME' | 'LATE' | 'NO_SCHEDULE' | 'NOT_YET_ARRIVED' | 'ABSENT';
+
+export type DashboardAttendanceSummary = {
+  headcount: number;
+  present: number;
+  onTime: number;
+  late: number;
+  absent: number;
+  notYetArrived: number;
+  onLeave: number;
+  biometricExempt: number;
+  restDay: number;
+  noSchedule: number;
+  missingCheckout?: number;
+  attendanceRate: number | null;
+  punctualityRate: number | null;
+};
+
+export type DashboardDataQuality = { missingRecords: number; missingToday: number; noScheduleEmployees: number };
+
 export type EmployeeTodayAttendance = {
   date: string;
   checkIn: AttendancePunch | null;
   checkOut: AttendancePunch | null;
   workingMinutes: number;
   workingHours: number;
+  /** Null when today's attendance has not been generated yet. */
+  status?: AttendanceDayStatus | null;
+  lateMinutes?: number;
+  leaveType?: string | null;
+};
+
+export type EmployeeMonthSummary = {
+  month: string;
+  workingDays: number;
+  present: number;
+  onTime: number;
+  late: number;
+  lateMinutes: number;
+  absent: number;
+  onLeave: number;
+  restDays: number;
+  earlyDepartures: number;
+  approvedByHr: number;
+  attendanceRate: number | null;
 };
 
 export type DashboardAnnouncement = {
@@ -926,6 +897,7 @@ export type DashboardSummary = {
       leaveRequests: LeaveRequest[];
       annualLeaveBalances: LeaveBalance[];
       todayAttendance: EmployeeTodayAttendance;
+      monthSummary?: EmployeeMonthSummary;
       announcements: DashboardAnnouncement[];
     };
     setup?: {
@@ -963,11 +935,22 @@ export type AttendanceReportingDisciplineSummary = {
   }>;
 };
 
+export type ExecutiveDashboardTrend = 'UP' | 'DOWN' | 'FLAT' | null;
+
 export type ExecutiveDashboardSummary = {
   generatedAt: string | null;
   date: string;
   month: string;
   period: 'day' | 'week' | 'month';
+  /** First and last day the figures cover (the end never goes past today). */
+  dateFrom: string;
+  dateTo: string;
+  /** Day used for the compound status and punch timeline. */
+  focusDate: string;
+  isLive: boolean;
+  scope: { departmentId: string | null; departmentName: string | null; departmentCount: number };
+  departments: Array<{ id: string; name: string; parentDepartmentId: string | null }>;
+  dataQuality: { missingRecords: number; missingToday: number; noScheduleEmployees: number; classifiedDays: number };
   workforceStatus: {
     totalEmployees: number;
     presentToday: number;
@@ -977,35 +960,23 @@ export type ExecutiveDashboardSummary = {
     workingRemotely: number;
     officialAssignment: number;
     attendanceRate: number;
-  };
-  workforceDistribution: Array<{
-    id: string;
-    label: string;
-    count: number;
-    percentage: number;
-  }>;
-  departmentAttendanceRanking: Array<{
-    department: string;
-    attendanceRate: number;
-    present: number;
-    totalEmployees: number;
-  }>;
-  compoundStatus: {
-    currentlyInside: number;
-    checkedOut: number;
     notYetArrived: number;
+    biometricExempt: number;
+    restDays: number;
+    noSchedule: number;
+    onEducationLeave: number;
+    punctualityRate: number | null;
+    previousAttendanceRate: number | null;
+    attendanceTrend: ExecutiveDashboardTrend;
   };
-  liveAttendanceTimeline: Array<{
-    time: string;
-    count: number;
-  }>;
-  leaveSummary: Array<{
-    id: string;
-    label: string;
-    count: number;
-  }>;
+  workforceDistribution: Array<{ id: string; label: string; count: number; percentage: number }>;
+  departmentAttendanceRanking: Array<{ department: string; attendanceRate: number; present: number; totalEmployees: number }>;
+  compoundStatus: { currentlyInside: number; checkedOut: number; notYetArrived: number };
+  liveAttendanceTimeline: Array<{ time: string; count: number; arrivals: number }>;
+  leaveSummary: Array<{ id: string; label: string; category: 'LEAVE' | 'OFFICIAL_DUTY' | 'REMOTE' | 'UNPAID'; count: number; days: number }>;
   hrPerformance: {
     pendingHrApproval: number;
+    pendingCorrections: number;
     pendingLeaveApproval: number;
     averageApprovalTimeHours: number;
     correctionsReturned: number;
@@ -1019,36 +990,19 @@ export type ExecutiveDashboardSummary = {
     present: number;
     absent: number;
     lateEmployees: number;
+    onLeave: number;
+    dueDays: number;
     pendingApprovals: number;
     leaveRate: number;
-    attendanceRate: number;
-    trend: 'UP' | 'DOWN';
+    attendanceRate: number | null;
+    punctualityRate: number | null;
+    previousAttendanceRate: number | null;
+    trend: ExecutiveDashboardTrend;
   }>;
-  monthlyAttendanceTrend: Array<{
-    month: string;
-    present: number;
-    attendanceRate: number;
-  }>;
-  attendanceExceptions: Array<{
-    id: string;
-    severity: ExecutiveDashboardSeverity;
-    title: string;
-    count: number;
-    description: string;
-  }>;
-  deviceHealth: {
-    total: number;
-    online: number;
-    offline: number;
-    error: number;
-    unknown: number;
-  };
-  executiveAlerts: Array<{
-    id: string;
-    severity: ExecutiveDashboardSeverity;
-    title: string;
-    description: string;
-  }>;
+  monthlyAttendanceTrend: Array<{ month: string; monthKey: string; present: number; dueDays: number; attendanceRate: number | null }>;
+  attendanceExceptions: Array<{ id: string; severity: ExecutiveDashboardSeverity; title: string; count: number; description: string }>;
+  deviceHealth: { total: number; online: number; offline: number; error: number; unknown: number };
+  executiveAlerts: Array<{ id: string; severity: ExecutiveDashboardSeverity; title: string; description: string }>;
 };
 
 export type HrDashboardSeverity = 'critical' | 'warning' | 'info';
@@ -1060,9 +1014,17 @@ export type HrDashboardWidget = {
   href: string;
 };
 
+export type HrDashboardPersonStatus = 'ABSENT' | 'NOT_YET_ARRIVED' | 'LATE' | 'MISSING_CHECKOUT' | 'EARLY_DEPARTURE';
+
 export type HrDashboardSummary = {
   generatedAt: string | null;
   date: string;
+  isLive: boolean;
+  scope: { departmentId: string | null; departmentName: string | null };
+  /** Departments this HR user may filter by. */
+  departments: Array<{ id: string; name: string; parentDepartmentId: string | null }>;
+  attendanceSummary: DashboardAttendanceSummary;
+  dataQuality: DashboardDataQuality;
   currentAnnualLeaveBalance: LeaveBalance | null;
   attendanceReportingDiscipline: AttendanceReportingDisciplineSummary;
   widgets: {
@@ -1083,7 +1045,8 @@ export type HrDashboardSummary = {
     pendingManualRequests: ManualPunchRequest[];
     pendingLeaveRequests: LeaveRequest[];
     returnedCorrections: ManualPunchRequest[];
-    employeesOnLeave: LeaveRequest[];
+    employeesOnLeave: Array<{ employee: Employee; leaveType: string | null; category: string | null }>;
+    people: Array<{ employeeId: string; status: HrDashboardPersonStatus; minutes: number | null; employee: Employee }>;
     employeesWithoutPunch: Employee[];
     missingCheckoutEmployees: Employee[];
     lateEmployees: Employee[];
@@ -1122,6 +1085,9 @@ export type DepartmentHeadDashboardWidget = {
 export type DepartmentHeadDashboardSummary = {
   generatedAt: string | null;
   date: string;
+  isLive: boolean;
+  attendanceSummary: DashboardAttendanceSummary;
+  dataQuality: DashboardDataQuality;
   department: Department | null;
   supervisor: Employee;
   currentAnnualLeaveBalance: LeaveBalance | null;
@@ -1139,9 +1105,18 @@ export type DepartmentHeadDashboardSummary = {
     todaysStaff: Employee[];
     presentEmployees: Employee[];
     absentEmployees: Employee[];
-    employeesOnLeave: LeaveRequest[];
+    notYetArrivedEmployees: Employee[];
+    employeesOnLeave: Array<{ employee: Employee; leaveType: string | null }>;
     lateEmployees: Employee[];
-    pendingAttendance: AttendancePunch[];
+    /** Daily records for the date still awaiting the supervisor's approval. */
+    pendingAttendance: Array<{
+      id: string;
+      employee: Employee | null;
+      attendanceDate: string;
+      status: AttendanceDailyRecordStatus;
+      attendanceStatus: AttendanceDayStatus;
+      checkInAt: string | null;
+    }>;
     pendingLeave: LeaveRequest[];
     pendingCorrections: ManualPunchRequest[];
   };
@@ -1263,14 +1238,6 @@ export type BiometricDeviceResponse = {
   success: boolean;
   biometricDevice: BiometricDevice;
 };
-export type BiometricProvisioningJobResponse = {
-  success: boolean;
-  biometricProvisioningJob: BiometricProvisioningJob;
-};
-export type BiometricProvisioningJobsResponse = {
-  success: boolean;
-  biometricProvisioningJobs: BiometricProvisioningJob[];
-};
 export type BiometricExemptionsResponse = {
   success: boolean;
   biometricExemptions: BiometricExemption[];
@@ -1322,6 +1289,8 @@ export type AttendancePunchResponse = {
 export type AttendanceDailyRecordsResponse = {
   success: boolean;
   attendanceDailyRecords: AttendanceDailyRecord[];
+  /** HR only: departments the caller may filter by, from their department assignments. */
+  departments?: Array<{ id: string; nameEn: string; nameAm: string | null; isContract: boolean }>;
 };
 export type AttendanceDailyRecordResponse = {
   success: boolean;
@@ -1560,8 +1529,16 @@ export type ReportResponse = {
     rows: Record<string, string | number | boolean | null>[];
     summary: {
       totalRows: number;
+      /** Headline totals for attendance reports, shown above the table. */
+      highlights?: ReportHighlight[];
     };
   };
+};
+
+export type ReportHighlight = {
+  label: string;
+  value: string | number;
+  detail?: string;
 };
 
 export type AuditEvent = {
@@ -1717,6 +1694,10 @@ export type CreateEmployeeInput = {
   salaryStep?: string | null;
   nationalId?: string | null;
   paidByIfmis?: boolean;
+  educationLeaveType?: EducationLeaveType | null;
+  educationLeaveStart?: string | null;
+  educationLeaveExpectedReturn?: string | null;
+  educationLeaveReturnedOn?: string | null;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;
@@ -1786,8 +1767,6 @@ export type CreateBiometricDeviceInput = {
   firmwareVersion?: string | null;
   platformVersion?: string | null;
   fingerprintAlgorithm?: string | null;
-  provisioningRole?: BiometricProvisioningRole;
-  provisioningEnabled?: boolean;
   syncIntervalMinutes?: number;
   autoSyncEnabled?: boolean;
   healthStatus?: DeviceHealthStatus;
@@ -1797,12 +1776,6 @@ export type CreateBiometricDeviceInput = {
 
 export type UpdateBiometricDeviceInput = Partial<CreateBiometricDeviceInput> & {
   biometricDeviceId: string;
-};
-
-export type CreateBiometricProvisioningPreviewInput = {
-  mode: BiometricProvisioningMode;
-  employeeIds?: string[];
-  targetDeviceIds?: string[];
 };
 
 export type CreateBiometricDeviceSyncInput = {
@@ -1868,6 +1841,14 @@ export type CreateOvertimeRequestInput = {
   endAt: string;
   reason: string;
   requestedBy?: string;
+};
+
+export type UpdateOvertimeRequestInput = {
+  overtimeRequestId: string;
+  overtimeDate: string;
+  startAt: string;
+  endAt: string;
+  reason: string;
 };
 
 export type ChangeOvertimeRequestStatusInput = {

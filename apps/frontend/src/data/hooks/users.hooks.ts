@@ -80,6 +80,30 @@ export const useUnlockUser = () => {
   });
 };
 
+export const useRevokeUserAccess = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { id: string; reason?: string }) => usersApi.revokeUserAccess(input),
+    onSuccess: (_data, input) => {
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.detail(input.id) });
+    },
+  });
+};
+
+export const useRestoreUserAccess = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => usersApi.restoreUserAccess(id),
+    onSuccess: (_data, id) => {
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.lists() });
+      queryClient.invalidateQueries({ queryKey: userQueryKeys.detail(id) });
+    },
+  });
+};
+
 export const profileQueryKeys = {
   profile: ['profile'] as const,
 };

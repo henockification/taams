@@ -37,7 +37,7 @@
     {
       "type": "note",
       "label": "Password rules",
-      "text": "At least 12 characters, no spaces, not a commonly used password, and it must not contain the first part of your email address."
+      "text": "At least 8 characters, no spaces, not a commonly used password, and it must not contain the first part of your email address."
     },
     {
       "type": "h2",

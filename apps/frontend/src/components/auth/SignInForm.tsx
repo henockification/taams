@@ -105,6 +105,9 @@ export function SignInForm() {
       const error = err as { message?: string; code?: string; maxAttempts?: number; lockoutMinutes?: number };
       const max = error.maxAttempts ?? 5;
       const minutes = error.lockoutMinutes ?? 15;
+      if (error.code === 'ACCESS_REVOKED') {
+        return t('accessRevoked');
+      }
       if (error.code === 'ACCOUNT_LOCKED') {
         return t('accountLocked', { max, minutes });
       }

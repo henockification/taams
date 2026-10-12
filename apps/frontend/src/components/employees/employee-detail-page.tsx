@@ -216,6 +216,11 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
               {t('biometricExempt')}
             </Badge>
           ) : null}
+          {employee.onEducationLeave ? (
+            <Badge variant="outline" className="border-sky-500 text-sky-700 dark:text-sky-400">
+              {t('onEducationLeave')}
+            </Badge>
+          ) : null}
         </div>
       </div>
 
@@ -349,6 +354,44 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
                 />
               </div>
             </Field>
+            <Field
+              label={t('educationLeave')}
+              editing={isEditing}
+              value={employee.educationLeaveType
+                ? t('educationLeaveSummary', {
+                  type: t(`educationLeave${employee.educationLeaveType}`),
+                  start: formatDate(employee.educationLeaveStart) ?? '-',
+                })
+                : t('educationLeaveNone')}
+            >
+              <Select
+                value={draft?.educationLeaveType || 'NONE'}
+                onValueChange={(value) => patchDraft({ educationLeaveType: value === 'NONE' ? '' : value as 'ABROAD' | 'LOCAL' })}
+              >
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">{t('educationLeaveNone')}</SelectItem>
+                  <SelectItem value="ABROAD">{t('educationLeaveABROAD')}</SelectItem>
+                  <SelectItem value="LOCAL">{t('educationLeaveLOCAL')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            {(isEditing ? draft?.educationLeaveType : employee.educationLeaveType) ? (
+              <>
+                <Field label={t('educationLeaveStart')} editing={isEditing} value={formatDate(employee.educationLeaveStart)}>
+                  <CalendarDateField value={draft?.educationLeaveStart ?? ''} onChange={(educationLeaveStart) => patchDraft({ educationLeaveStart })} />
+                </Field>
+                <Field label={t('educationLeaveExpectedReturn')} editing={isEditing} value={formatDate(employee.educationLeaveExpectedReturn)}>
+                  <CalendarDateField value={draft?.educationLeaveExpectedReturn ?? ''} onChange={(educationLeaveExpectedReturn) => patchDraft({ educationLeaveExpectedReturn })} />
+                </Field>
+                <Field label={t('educationLeaveReturnedOn')} editing={isEditing} value={formatDate(employee.educationLeaveReturnedOn)}>
+                  <CalendarDateField value={draft?.educationLeaveReturnedOn ?? ''} onChange={(educationLeaveReturnedOn) => patchDraft({ educationLeaveReturnedOn })} />
+                </Field>
+                {isEditing ? (
+                  <p className="text-xs text-muted-foreground sm:col-span-2">{t('educationLeaveHint')}</p>
+                ) : null}
+              </>
+            ) : null}
           </CardContent>
         </Card>
 

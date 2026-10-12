@@ -11,10 +11,10 @@ import type {
   ChangeManualPunchRequestStatusInput,
   ChangeBiometricExemptionStatusInput,
   ChangeOvertimeRequestStatusInput,
+  UpdateOvertimeRequestInput,
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
-  CreateBiometricProvisioningPreviewInput,
   BulkCreateEmployeeSupervisorInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
@@ -113,8 +113,6 @@ export const coreQueryKeys = {
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
   biometricDevice: (id: string) => [...coreQueryKeys.biometricDevices(), id] as const,
   biometricDeviceSyncHistory: (id: string) => [...coreQueryKeys.biometricDevice(id), 'sync-history'] as const,
-  biometricProvisioningJobs: () => [...coreQueryKeys.all, 'biometric-provisioning-jobs'] as const,
-  biometricProvisioningJob: (id: string) => [...coreQueryKeys.biometricProvisioningJobs(), id] as const,
   biometricExemptions: () => [...coreQueryKeys.all, 'biometric-exemptions'] as const,
   biometricExemption: (id: string) => [...coreQueryKeys.biometricExemptions(), id] as const,
   attendancePunches: () => [...coreQueryKeys.all, 'attendance-punches'] as const,
@@ -194,9 +192,9 @@ export function useDashboardSummary(userId?: string | null) {
   });
 }
 
-export function useExecutiveDashboardSummary(params: { date: string; month: string; period?: 'day' | 'week' | 'month' }) {
+export function useExecutiveDashboardSummary(params: { date: string; month: string; period?: 'day' | 'week' | 'month'; departmentId?: string }) {
   return useQuery({
-    queryKey: coreQueryKeys.executiveDashboardSummary(params.date, params.month, params.period ?? 'day'),
+    queryKey: [...coreQueryKeys.executiveDashboardSummary(params.date, params.month, params.period ?? 'day'), params.departmentId ?? 'all'],
     queryFn: () => coreApi.getExecutiveDashboardSummary(params),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
@@ -204,9 +202,9 @@ export function useExecutiveDashboardSummary(params: { date: string; month: stri
   });
 }
 
-export function useHrDashboardSummary(params: { date: string }) {
+export function useHrDashboardSummary(params: { date: string; departmentId?: string }) {
   return useQuery({
-    queryKey: coreQueryKeys.hrDashboardSummary(params.date),
+    queryKey: [...coreQueryKeys.hrDashboardSummary(params.date), params.departmentId ?? 'all'],
     queryFn: () => coreApi.getHrDashboardSummary(params),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
@@ -1135,48 +1133,6 @@ export function useBiometricDeviceSyncHistory(biometricDeviceId: string) {
   });
 }
 
-export function useBiometricProvisioningJobs() {
-  return useQuery({
-    queryKey: coreQueryKeys.biometricProvisioningJobs(),
-    queryFn: () => coreApi.getBiometricProvisioningJobs(),
-    refetchInterval: (query) => (query.state.data?.biometricProvisioningJobs.some((job) => ['QUEUED', 'RUNNING'].includes(job.status)) ? 3000 : false),
-    staleTime: 3000,
-  });
-}
-
-export function useCreateBiometricProvisioningPreview() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateBiometricProvisioningPreviewInput) => coreApi.createBiometricProvisioningPreview(input),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.biometricProvisioningJobs(),
-      }),
-  });
-}
-
-export function useApplyBiometricProvisioningPreview() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (previewId: string) => coreApi.applyBiometricProvisioningPreview(previewId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.biometricProvisioningJobs(),
-      }),
-  });
-}
-
-export function useRetryBiometricProvisioningJob() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (jobId: string) => coreApi.retryBiometricProvisioningJob(jobId),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: coreQueryKeys.biometricProvisioningJobs(),
-      }),
-  });
-}
-
 export function useNotificationLogs(params: NotificationLogFilters = {}) {
   return useQuery({
     queryKey: coreQueryKeys.notificationLogs(params),
@@ -1518,6 +1474,20 @@ export function useHrApproveAttendanceDailyRecords() {
   });
 }
 
+export function useHrReturnAttendanceDailyRecords() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { attendanceDailyRecordIds: string[]; reason: string }) => coreApi.hrReturnAttendanceDailyRecords(input),
+    onSuccess: (data) => {
+      patchAttendanceApprovalCaches(queryClient, data.attendanceDailyRecords);
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.supervisorAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrAttendanceDailyRecords() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.hrDashboardSummary(data.dateTo) });
+    },
+  });
+}
+
 export function useAddAttendanceCorrectionPunch() {
   const queryClient = useQueryClient();
 
@@ -1681,6 +1651,17 @@ export function useCreateOvertimeRequest() {
   });
 }
 
+export function useUpdateOvertimeRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: UpdateOvertimeRequestInput) => coreApi.updateOvertimeRequest(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.all });
+    },
+  });
+}
+
 export function useChangeOvertimeRequestStatus() {
   const queryClient = useQueryClient();
 
@@ -1766,6 +1747,17 @@ export function useCreateLeaveType() {
 
   return useMutation({
     mutationFn: (input: CreateLeaveTypeInput) => coreApi.createLeaveType(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveTypes() });
+    },
+  });
+}
+
+export function useDeleteLeaveType() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (leaveTypeId: string) => coreApi.deleteLeaveType(leaveTypeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveTypes() });
     },

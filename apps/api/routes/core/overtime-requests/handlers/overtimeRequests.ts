@@ -2,12 +2,14 @@ import { Context } from 'hono';
 import {
   ChangeOvertimeRequestStatusRequestSchema,
   CreateOvertimeRequestRequestSchema,
+  UpdateOvertimeRequestRequestSchema,
 } from '../../../../schemas/core.schema';
 import {
   changeOvertimeRequestStatus,
   createOvertimeRequests,
   getOvertimeAssignableEmployees,
   getOvertimeRequests,
+  updateOvertimeRequest,
 } from '../../../../db/orm/core/manageOvertimeRequests';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, getUserRoleNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
@@ -110,6 +112,27 @@ export async function getOvertimeAssignableEmployeesHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch employees eligible for overtime');
+  }
+}
+
+export async function updateOvertimeRequestHandler(c: Context) {
+  try {
+    const parsed = UpdateOvertimeRequestRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+
+    const session = await resolveSession(c);
+    const roles = await resolveRoleNames(session);
+    const canEdit = await userHasPermission(session.user.id, 'overtime-requests:approve')
+      || await hasActiveSupervisorDelegation(session.user.id);
+    if (!canEdit) throw new Error('Cannot edit overtime without supervisor approval access');
+
+    const overtimeRequest = await updateOvertimeRequest(c.req.param('id'), parsed.data, {
+      actorUserId: session.user.id,
+      roles,
+    });
+    return c.json({ success: true, overtimeRequest: formatOvertimeRequest(overtimeRequest) });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to update overtime assignment');
   }
 }
 

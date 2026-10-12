@@ -1,3 +1,4 @@
+import { isOnEducationLeave } from '../employees/education-leave';
 export type IfmisReadinessIssueCode =
   | 'MISSING_SCHEDULE'
   | 'INVALID_SCHEDULE'
@@ -63,13 +64,21 @@ export function buildIfmisAttendancePreview(
   const rows: IfmisAttendanceRow[] = [];
 
   for (const employee of source.employees) {
+    // Employees not paid through IFMIS are never exported (nor checked for readiness).
+    if (employee.paidByIfmis === false) continue;
     const employeeName = englishName(employee);
     const assignments = schedulesByEmployee.get(employee.id) ?? [];
     const applicableDates: Array<{ date: string; window: ScheduleWindow }> = [];
     let absenteeism = 0;
     let late = 0;
 
-    for (const date of datesInclusive(start, end)) {
+    // Education-leave days are neither checked nor counted; an employee away for the
+    // whole month is not sent to IFMIS until they are back.
+    const monthDates = datesInclusive(start, end);
+    const workingDates = monthDates.filter((date) => !isOnEducationLeave(employee, date));
+    if (workingDates.length === 0) continue;
+
+    for (const date of workingDates) {
       const resolution = resolveScheduleWindow(date, assignments);
       if (resolution.kind === 'missing-assignment') {
         issues.push(issue('MISSING_SCHEDULE', employee, date, `No effective work schedule for ${date}`));

@@ -1,239 +1,201 @@
-import { and, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+import {
+  addDays,
+  attendanceRate,
+  countStatuses,
+  punctualityRate,
+} from '../../../lib/dashboard/executive-metrics';
 import { db } from '../../db';
 import {
   attendancePunches,
-  attendanceSyncBatches,
   biometricDevices,
-  biometricExemptions,
-  employeeWorkSchedules,
   employees,
   leaveBalances,
   leaveFiscalYears,
   leaveRequests,
   manualPunchRequests,
 } from '../../schema';
-import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { countMissingRecords, hasMissingCheckout, loadAttendanceDays, resolveDepartmentScope, type AttendanceDay } from './attendanceDays';
 import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
-import { scopedEmployeeWhere, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
 
-const DEFAULT_SHIFT_START = '08:30:00';
-const DEFAULT_SHIFT_END = '17:30:00';
 const UPCOMING_LEAVE_DAYS = 14;
 const LEAVE_EXPIRY_DAYS = 30;
+/** Detail lists show this many rows; widget counts are always complete. */
+const DETAIL_LIMIT = 20;
+const PEOPLE_LIMIT = 200;
 
 export type HrDashboardSummaryParams = {
   userId?: string;
   date?: string;
   scope?: EmployeeVisibilityScope;
+  departmentId?: string;
 };
 
-type Punch = typeof attendancePunches.$inferSelect;
+type PersonStatus = 'ABSENT' | 'NOT_YET_ARRIVED' | 'LATE' | 'MISSING_CHECKOUT' | 'EARLY_DEPARTURE';
 
 export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {}) {
-  const selectedDate = normalizeDateParam(params.date);
   const generatedAt = new Date();
-  const dayRange = getDayRange(selectedDate);
-  const monthRange = getMonthRange(selectedDate.slice(0, 7));
+  const today = addisToday(generatedAt);
+  const selectedDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) && params.date <= today ? params.date : today;
+  const isLive = selectedDate === today;
+  const monthStart = `${selectedDate.slice(0, 7)}-01`;
   const upcomingLeaveEnd = addDays(selectedDate, UPCOMING_LEAVE_DAYS);
   const leaveExpiryEnd = addDays(selectedDate, LEAVE_EXPIRY_DAYS);
 
-  const [activeEmployees, activeFiscalYear, currentEmployee] = await Promise.all([
-    db.query.employees.findMany({
-      where: and(eq(employees.isActive, true), params.scope ? scopedEmployeeWhere(params.scope) : undefined),
-      with: { department: true, position: true },
-    }),
-    db.query.leaveFiscalYears.findFirst({
-      where: and(
-        eq(leaveFiscalYears.isActive, true),
-        lte(leaveFiscalYears.startsAt, selectedDate),
-        gte(leaveFiscalYears.endsAt, selectedDate),
-      ),
-    }),
-    params.userId
-      ? db.query.employees.findFirst({
-        where: eq(employees.userId, params.userId),
-        with: { department: true, position: true },
-      })
-      : Promise.resolve(null),
-  ]);
-
-  const activeEmployeeIds = activeEmployees.map((employee) => employee.id);
-  const scopedEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(leaveRequests.employeeId, activeEmployeeIds) : sql`false`;
-  const scopedManualRequestEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(manualPunchRequests.employeeId, activeEmployeeIds) : sql`false`;
-  const scopedPunchEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(attendancePunches.employeeId, activeEmployeeIds) : sql`false`;
-  const scopedBalanceEmployeeCondition = activeEmployeeIds.length > 0 ? inArray(leaveBalances.employeeId, activeEmployeeIds) : sql`false`;
+  const context = await loadAttendanceDays({ from: selectedDate, to: selectedDate, now: generatedAt });
+  const allowedDepartmentIds = allowedDepartmentsForScope(params.scope);
+  const { selectedDepartment, inScope, visibleDepartments } = resolveDepartmentScope({
+    departments: context.departments,
+    departmentId: params.departmentId,
+    allowedDepartmentIds,
+  });
+  const inScopeEmployee = (employeeId: string | null | undefined, date = selectedDate) => Boolean(
+    employeeId && context.employeeById.has(employeeId) && inScope(context.effectiveDepartment(employeeId, date)),
+  );
+  const scopedEmployees = context.employees.filter((employee) => (
+    context.isCounted(employee, selectedDate) && inScope(context.effectiveDepartment(employee.id, selectedDate))
+  ));
+  const days = context.days.filter((day) => day.date === selectedDate && inScope(day.departmentId));
+  const counts = countStatuses(days);
+  const { missingRecords, missingToday } = countMissingRecords({
+    from: selectedDate,
+    to: selectedDate,
+    today,
+    employees: context.employees,
+    isCounted: context.isCounted,
+    effectiveDepartment: context.effectiveDepartment,
+    include: (_employee, departmentId) => inScope(departmentId),
+    days,
+  });
 
   const [
-    dayPunches,
-    approvedLeavesToday,
-    upcomingLeaveRequests,
-    pendingLeaveAuthorizations,
-    activeExemptions,
-    workScheduleAssignments,
-    pendingManualRequests,
+    activeFiscalYear,
+    currentEmployee,
+    pendingAuthorizations,
+    pendingCorrections,
     returnedCorrections,
+    upcomingLeave,
     unprocessedPunches,
     activeDevices,
     recentSyncBatches,
-    currentEmployeeLeaveBalances,
   ] = await Promise.all([
-    db.query.attendancePunches.findMany({
-      where: and(gte(attendancePunches.punchTime, dayRange.start), lte(attendancePunches.punchTime, dayRange.end)),
-      with: { employee: { with: { department: true, position: true } }, device: true },
-      orderBy: (table, { asc }) => [asc(table.punchTime)],
+    db.query.leaveFiscalYears.findFirst({
+      where: and(eq(leaveFiscalYears.isActive, true), lte(leaveFiscalYears.startsAt, selectedDate), gte(leaveFiscalYears.endsAt, selectedDate)),
     }),
+    params.userId
+      ? db.query.employees.findFirst({ where: eq(employees.userId, params.userId), with: { department: true, position: true } })
+      : Promise.resolve(null),
     db.query.leaveRequests.findMany({
-      where: and(
-        eq(leaveRequests.status, 'AUTHORIZED'),
-        lte(leaveRequests.startDate, selectedDate),
-        gte(leaveRequests.endDate, selectedDate),
-        scopedEmployeeCondition,
-      ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
-    }),
-    db.query.leaveRequests.findMany({
-      where: and(
-        eq(leaveRequests.status, 'AUTHORIZED'),
-        gte(leaveRequests.startDate, selectedDate),
-        lte(leaveRequests.startDate, upcomingLeaveEnd),
-        scopedEmployeeCondition,
-      ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
-      orderBy: (table, { asc }) => [asc(table.startDate)],
-      limit: 20,
-    }),
-    db.query.leaveRequests.findMany({
-      where: and(eq(leaveRequests.status, 'APPROVED'), scopedEmployeeCondition),
+      where: eq(leaveRequests.status, 'APPROVED'),
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.approvedAt), asc(table.createdAt)],
-      limit: 20,
-    }),
-    db.query.biometricExemptions.findMany({
-      where: eq(biometricExemptions.isActive, true),
-    }),
-    db.query.employeeWorkSchedules.findMany({
-      where: eq(employeeWorkSchedules.isActive, true),
-      with: {
-        workSchedule: {
-          with: {
-            days: {
-              with: {
-                shift: {
-                  with: {
-                    segments: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
     }),
     db.query.manualPunchRequests.findMany({
-      where: and(inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES), scopedManualRequestEmployeeCondition),
+      where: inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
       with: { employee: { with: { department: true, position: true } } },
       orderBy: (table, { asc }) => [asc(table.createdAt)],
-      limit: 20,
     }),
     db.query.manualPunchRequests.findMany({
       where: and(
         or(eq(manualPunchRequests.status, 'HR_REJECTED'), eq(manualPunchRequests.status, 'SUPERVISOR_REJECTED')),
-        gte(manualPunchRequests.createdAt, monthRange.start),
-        lte(manualPunchRequests.createdAt, monthRange.end),
-        scopedManualRequestEmployeeCondition,
+        gte(manualPunchRequests.createdAt, new Date(`${monthStart}T00:00:00+03:00`)),
+        lte(manualPunchRequests.createdAt, new Date(`${selectedDate}T23:59:59.999+03:00`)),
       ),
       with: { employee: { with: { department: true, position: true } } },
-      orderBy: (table, { desc }) => [desc(table.rejectedAt), desc(table.createdAt)],
-      limit: 20,
+      orderBy: (table) => [desc(table.rejectedAt), desc(table.createdAt)],
     }),
-    db.query.attendancePunches.findMany({
-      where: and(eq(attendancePunches.isProcessed, false), scopedPunchEmployeeCondition),
-      with: { employee: { with: { department: true, position: true } }, device: true },
-      orderBy: (table, { desc }) => [desc(table.punchTime)],
-      limit: 20,
+    db.query.leaveRequests.findMany({
+      where: and(eq(leaveRequests.status, 'AUTHORIZED'), gte(leaveRequests.startDate, addDays(selectedDate, 1)), lte(leaveRequests.startDate, upcomingLeaveEnd)),
+      with: { employee: { with: { department: true, position: true } }, leaveType: true },
+      orderBy: (table, { asc }) => [asc(table.startDate)],
     }),
-    db.query.biometricDevices.findMany({
-      where: eq(biometricDevices.isActive, true),
-      with: { department: true },
-    }),
+    db.select({ id: attendancePunches.id, employeeId: attendancePunches.employeeId }).from(attendancePunches).where(eq(attendancePunches.isProcessed, false)),
+    db.query.biometricDevices.findMany({ where: eq(biometricDevices.isActive, true), with: { department: true } }),
     db.query.attendanceSyncBatches.findMany({
-      orderBy: (table, { desc }) => [desc(table.createdAt)],
+      orderBy: (table) => [desc(table.createdAt)],
       with: { device: true },
       limit: 20,
     }),
-    currentEmployee?.employmentType === 'CONTRACT'
+  ]);
+
+  const scopedAuthorizations = pendingAuthorizations.filter((request) => inScopeEmployee(request.employeeId));
+  const scopedCorrections = pendingCorrections.filter((request) => inScopeEmployee(request.employeeId));
+  const scopedReturned = returnedCorrections.filter((request) => inScopeEmployee(request.employeeId));
+  const scopedUpcoming = upcomingLeave.filter((request) => inScopeEmployee(request.employeeId, String(request.startDate)));
+  const scopedUnprocessed = unprocessedPunches.filter((punch) => inScopeEmployee(punch.employeeId));
+
+  const [leaveBalancesNearExpiry, currentAnnualLeaveBalance, unprocessedDetails] = await Promise.all([
+    activeFiscalYear && String(activeFiscalYear.endsAt) <= leaveExpiryEnd
       ? db.query.leaveBalances.findMany({
-        where: eq(leaveBalances.employeeId, currentEmployee.id),
+        where: and(eq(leaveBalances.fiscalYearId, activeFiscalYear.id), gte(leaveBalances.available, '0.01')),
         with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
+      }).then((balances) => balances.filter((balance) => inScopeEmployee(balance.employeeId)))
+      : Promise.resolve([]),
+    currentEmployee?.employmentType === 'CONTRACT' && activeFiscalYear
+      ? db.query.leaveBalances.findFirst({
+        where: and(eq(leaveBalances.employeeId, currentEmployee.id), eq(leaveBalances.fiscalYearId, activeFiscalYear.id)),
+        with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
+      })
+      : Promise.resolve(null),
+    scopedUnprocessed.length
+      ? db.query.attendancePunches.findMany({
+        where: inArray(attendancePunches.id, scopedUnprocessed.slice(0, DETAIL_LIMIT).map((punch) => punch.id)),
+        with: { employee: { with: { department: true, position: true } }, device: true },
+        orderBy: (table) => [desc(table.punchTime)],
       })
       : Promise.resolve([]),
   ]);
 
-  const activeEmployeeIdSet = new Set(activeEmployeeIds);
-  const isVisibleEmployee = (employeeId: string | null | undefined) => Boolean(employeeId && activeEmployeeIdSet.has(employeeId));
-  const scopedDayPunches = dayPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
-  const scopedApprovedLeavesToday = approvedLeavesToday.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedUpcomingLeaveRequests = upcomingLeaveRequests.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedWorkScheduleAssignments = workScheduleAssignments.filter((assignment) => isVisibleEmployee(assignment.employeeId));
-  const scopedPendingManualRequests = pendingManualRequests.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedPendingLeaveRequests = pendingLeaveAuthorizations.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedReturnedCorrections = returnedCorrections.filter((request) => isVisibleEmployee(request.employeeId));
-  const scopedUnprocessedPunches = unprocessedPunches.filter((punch) => isVisibleEmployee(punch.employeeId));
-  const exemptEmployeeIds = new Set(
-    activeEmployees
-      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions, selectedDate))
-      .map((employee) => employee.id),
-  );
-  const punchesByEmployee = groupPunchesByEmployee(scopedDayPunches);
-  const coveredLeaveEmployeeIds = new Set(
-    scopedApprovedLeavesToday
-      .filter((request) => !isUnpaidLeaveType(request.leaveType))
-      .filter((request) => activeEmployeeIdSet.has(request.employeeId))
-      .map((request) => request.employeeId),
-  );
-  const scheduleByEmployee = getScheduleByEmployee(scopedWorkScheduleAssignments, selectedDate);
-  const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
-  const employeesWithoutPunch = activeEmployees.filter((employee) => (
-    !punchesByEmployee.has(employee.id)
-    && !coveredLeaveEmployeeIds.has(employee.id)
-    && !exemptEmployeeIds.has(employee.id)
-  ));
-  const missingCheckoutEmployees = getMissingCheckoutEmployees({
-    employees: activeEmployees,
-    punchesByEmployee,
-    scheduleByEmployee,
-    date: selectedDate,
-  });
-  const leaveBalancesNearExpiry = activeFiscalYear && activeFiscalYear.endsAt <= leaveExpiryEnd
-    ? await db.query.leaveBalances.findMany({
-      where: and(
-        eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
-        gte(leaveBalances.available, '0.01'),
-        scopedBalanceEmployeeCondition,
-      ),
-      with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
-      limit: 20,
-    })
+  // One row per person needing attention today; a person can appear for more than one reason.
+  const people: Array<{ employeeId: string; status: PersonStatus; minutes: number | null }> = [];
+  for (const day of days) {
+    if (day.status === 'ABSENT') people.push({ employeeId: day.record.employeeId, status: 'ABSENT', minutes: null });
+    if (day.status === 'NOT_YET_ARRIVED') people.push({ employeeId: day.record.employeeId, status: 'NOT_YET_ARRIVED', minutes: null });
+    if (day.status === 'LATE') people.push({ employeeId: day.record.employeeId, status: 'LATE', minutes: Number(day.record.lateMinutes ?? 0) });
+    if (hasMissingCheckout(day, generatedAt, today)) people.push({ employeeId: day.record.employeeId, status: 'MISSING_CHECKOUT', minutes: null });
+    if (isPresent(day) && Number(day.record.earlyDepartureMinutes ?? 0) > 0) {
+      people.push({ employeeId: day.record.employeeId, status: 'EARLY_DEPARTURE', minutes: Number(day.record.earlyDepartureMinutes) });
+    }
+  }
+  const leaveDays = days.filter((day) => day.status === 'LEAVE');
+  const detailEmployeeIds = [...new Set([...people.slice(0, PEOPLE_LIMIT), ...leaveDays].map((item: any) => item.employeeId ?? item.record.employeeId))];
+  const detailEmployees = detailEmployeeIds.length
+    ? await db.query.employees.findMany({ where: inArray(employees.id, detailEmployeeIds), with: { department: true, position: true } })
     : [];
-  const scopedLeaveBalancesNearExpiry = leaveBalancesNearExpiry.filter((balance) => isVisibleEmployee(balance.employeeId));
-  const currentAnnualLeaveBalance = selectCurrentAnnualLeaveBalance(
-    currentEmployee,
-    currentEmployeeLeaveBalances,
-    activeFiscalYear?.id,
-  );
+  const employeeDetail = new Map(detailEmployees.map((employee) => [employee.id, employee]));
+  const peopleWithEmployees = people
+    .slice(0, PEOPLE_LIMIT)
+    .map((person) => ({ ...person, employee: employeeDetail.get(person.employeeId) ?? null }))
+    .filter((person) => person.employee);
+  const byStatus = (status: PersonStatus) => peopleWithEmployees.filter((person) => person.status === status).map((person) => person.employee!);
 
+  const missingCheckoutCount = people.filter((person) => person.status === 'MISSING_CHECKOUT').length;
+  const earlyDepartureCount = people.filter((person) => person.status === 'EARLY_DEPARTURE').length;
+  const withoutPunchCount = counts.ABSENT + counts.NOT_YET_ARRIVED;
   const offlineDevices = activeDevices.filter((device) => device.healthStatus === 'OFFLINE');
   const syncStatus = buildSyncStatus(recentSyncBatches);
   const attendanceExceptions = buildAttendanceExceptions({
-    employeesWithoutPunch: employeesWithoutPunch.length,
-    missingCheckout: missingCheckoutEmployees.length,
-    lateEmployees: lateEmployeeIds.size,
-    unprocessedPunches: scopedUnprocessedPunches.length,
+    absent: counts.ABSENT,
+    missingCheckout: missingCheckoutCount,
+    late: counts.LATE,
+    earlyDeparture: earlyDepartureCount,
+    noSchedule: counts.NO_SCHEDULE,
+    notGenerated: missingRecords,
+    unprocessedPunches: scopedUnprocessed.length,
+    isLive,
   });
   const attendanceReportingDiscipline = await getAttendanceReportingDisciplineSummary({
-    employees: activeEmployees,
+    employees: context.employees
+      .filter((employee) => context.isCounted(employee, selectedDate) && inScope(employee.departmentId))
+      .map((employee) => ({
+        id: employee.id,
+        departmentId: employee.departmentId,
+        department: employee.departmentId ? { nameEn: context.departmentById.get(employee.departmentId)?.nameEn ?? null } : null,
+        sourceDepartmentName: employee.sourceDepartmentName,
+      })),
     dateFrom: selectedDate,
     dateTo: selectedDate,
   });
@@ -241,261 +203,106 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   return {
     generatedAt,
     date: selectedDate,
-    currentAnnualLeaveBalance,
+    isLive,
+    scope: { departmentId: selectedDepartment?.id ?? null, departmentName: selectedDepartment?.nameEn ?? null },
+    departments: visibleDepartments,
+    currentAnnualLeaveBalance: currentAnnualLeaveBalance ?? null,
     attendanceReportingDiscipline,
+    attendanceSummary: {
+      headcount: scopedEmployees.length,
+      present: counts.ON_TIME + counts.LATE,
+      onTime: counts.ON_TIME,
+      late: counts.LATE,
+      absent: counts.ABSENT,
+      notYetArrived: counts.NOT_YET_ARRIVED,
+      onLeave: counts.LEAVE,
+      biometricExempt: counts.EXEMPT,
+      restDay: counts.REST,
+      noSchedule: counts.NO_SCHEDULE,
+      attendanceRate: attendanceRate(counts),
+      punctualityRate: punctualityRate(counts),
+    },
+    dataQuality: { missingRecords, missingToday, noScheduleEmployees: counts.NO_SCHEDULE },
     widgets: {
-      pendingApprovals: createWidget(
-        'pending-approvals',
-        'Pending Approvals',
-        scopedPendingLeaveRequests.length,
-        '/leave-management/authorizations',
-      ),
-      correctionsReturned: createWidget(
-        'corrections-returned',
-        'Corrections Returned',
-        scopedReturnedCorrections.length,
-        // Corrections are decided by supervisors; HR has no review page to open.
-        '',
-      ),
-      manualAttendanceRequests: createWidget(
-        'manual-attendance-requests',
-        'Manual Attendance Requests',
-        scopedPendingManualRequests.length,
-        '',
-      ),
-      employeesOnLeave: createWidget(
-        'employees-on-leave',
-        'Employees on Leave',
-        scopedApprovedLeavesToday.length,
-        `/reports/leave-requests?status=AUTHORIZED&dateFrom=&dateTo=${selectedDate}`,
-      ),
-      employeesWithoutPunch: createWidget(
-        'employees-without-punch',
-        'Employees Without Punch',
-        employeesWithoutPunch.length,
-        '/attendance-punches',
-      ),
-      missingCheckout: createWidget(
-        'missing-check-out',
-        'Missing Check-out',
-        missingCheckoutEmployees.length,
-        '/attendance-punches',
-      ),
-      lateEmployees: createWidget(
-        'late-employees',
-        'Late Employees',
-        lateEmployeeIds.size,
-        '/attendance-punches',
-      ),
-      attendanceExceptions: createWidget(
-        'attendance-exceptions',
-        'Attendance Exceptions',
-        attendanceExceptions.total,
-        '/attendance-punches',
-      ),
-      upcomingLeave: createWidget(
-        'upcoming-leave',
-        'Upcoming Leave',
-        scopedUpcomingLeaveRequests.length,
-        `/reports/leave-requests?status=AUTHORIZED&dateFrom=${selectedDate}&dateTo=${addDaysIso(selectedDate, 14)}`,
-      ),
-      employeesNearLeaveExpiry: createWidget(
-        'employees-near-leave-expiry',
-        'Employees Near Leave Expiry',
-        scopedLeaveBalancesNearExpiry.length,
-        '/leave-management/balances',
-      ),
-      devicesOffline: createWidget(
-        'devices-offline',
-        'Devices Offline',
-        offlineDevices.length,
-        '/biometric-devices',
-      ),
-      synchronizationStatus: createWidget(
-        'synchronization-status',
-        'Synchronization Status',
-        syncStatus.openIssues,
-        '/biometric-devices',
-      ),
+      pendingApprovals: createWidget('pending-approvals', 'Pending Approvals', scopedAuthorizations.length, '/leave-management/authorizations'),
+      // Corrections are decided by supervisors; HR has no review page to open.
+      correctionsReturned: createWidget('corrections-returned', 'Corrections Returned', scopedReturned.length, ''),
+      manualAttendanceRequests: createWidget('manual-attendance-requests', 'Manual Attendance Requests', scopedCorrections.length, ''),
+      employeesOnLeave: createWidget('employees-on-leave', 'Employees on Leave', counts.LEAVE, `/reports/leave-requests?status=AUTHORIZED&dateFrom=&dateTo=${selectedDate}`),
+      employeesWithoutPunch: createWidget('employees-without-punch', 'Employees Without Punch', withoutPunchCount, attendanceApprovalsHref(selectedDate)),
+      missingCheckout: createWidget('missing-check-out', 'Missing Check-out', missingCheckoutCount, attendanceApprovalsHref(selectedDate)),
+      lateEmployees: createWidget('late-employees', 'Late Employees', counts.LATE, attendanceApprovalsHref(selectedDate)),
+      attendanceExceptions: createWidget('attendance-exceptions', 'Attendance Exceptions', attendanceExceptions.total, attendanceApprovalsHref(selectedDate)),
+      upcomingLeave: createWidget('upcoming-leave', 'Upcoming Leave', scopedUpcoming.length, `/reports/leave-requests?status=AUTHORIZED&dateFrom=${addDays(selectedDate, 1)}&dateTo=${upcomingLeaveEnd}`),
+      employeesNearLeaveExpiry: createWidget('employees-near-leave-expiry', 'Employees Near Leave Expiry', leaveBalancesNearExpiry.length, '/leave-management/balances'),
+      devicesOffline: createWidget('devices-offline', 'Devices Offline', offlineDevices.length, '/biometric-devices'),
+      synchronizationStatus: createWidget('synchronization-status', 'Synchronization Status', syncStatus.openIssues, '/biometric-devices'),
     },
     details: {
-      pendingManualRequests: scopedPendingManualRequests,
-      pendingLeaveRequests: scopedPendingLeaveRequests,
-      returnedCorrections: scopedReturnedCorrections,
-      employeesOnLeave: scopedApprovedLeavesToday,
-      employeesWithoutPunch,
-      missingCheckoutEmployees,
-      lateEmployees: activeEmployees.filter((employee) => lateEmployeeIds.has(employee.id)),
+      pendingManualRequests: scopedCorrections.slice(0, DETAIL_LIMIT),
+      pendingLeaveRequests: scopedAuthorizations.slice(0, DETAIL_LIMIT),
+      returnedCorrections: scopedReturned.slice(0, DETAIL_LIMIT),
+      employeesOnLeave: leaveDays.slice(0, PEOPLE_LIMIT).map((day) => ({
+        employee: employeeDetail.get(day.record.employeeId) ?? null,
+        leaveType: day.leave?.typeLabel ?? null,
+        category: day.leave?.category ?? null,
+      })).filter((item) => item.employee),
+      people: peopleWithEmployees,
+      employeesWithoutPunch: [...byStatus('ABSENT'), ...byStatus('NOT_YET_ARRIVED')],
+      missingCheckoutEmployees: byStatus('MISSING_CHECKOUT'),
+      lateEmployees: byStatus('LATE'),
       attendanceExceptions: attendanceExceptions.items,
-      upcomingLeave: scopedUpcomingLeaveRequests,
-      employeesNearLeaveExpiry: scopedLeaveBalancesNearExpiry,
+      upcomingLeave: scopedUpcoming.slice(0, DETAIL_LIMIT),
+      employeesNearLeaveExpiry: leaveBalancesNearExpiry.slice(0, DETAIL_LIMIT),
       devicesOffline: offlineDevices,
       synchronizationStatus: syncStatus,
-      unprocessedPunches: scopedUnprocessedPunches,
+      unprocessedPunches: unprocessedDetails,
     },
   };
 }
 
-function isUnpaidLeaveType(leaveType: any) {
-  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
+function allowedDepartmentsForScope(scope?: EmployeeVisibilityScope) {
+  if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return null;
+  if (scope.type === 'hr-departments') return scope.departmentIds;
+  return [];
 }
 
-function selectCurrentAnnualLeaveBalance(employee: any, balances: any[], activeFiscalYearId?: string | null) {
-  if (employee?.employmentType !== 'CONTRACT') return null;
-
-  if (!activeFiscalYearId) return null;
-  return balances.find((balance) => balance.fiscalYearId === activeFiscalYearId) ?? null;
+function isPresent(day: AttendanceDay) {
+  return day.status === 'ON_TIME' || day.status === 'LATE';
 }
 
-function normalizeDateParam(date?: string) {
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getDayRange(date: string) {
-  return {
-    start: new Date(`${date}T00:00:00`),
-    end: new Date(`${date}T23:59:59.999`),
-  };
-}
-
-function getMonthRange(month: string) {
-  const [year, zeroBasedMonth] = month.split('-').map(Number);
-  return {
-    start: new Date(year, zeroBasedMonth - 1, 1, 0, 0, 0, 0),
-    end: new Date(year, zeroBasedMonth, 0, 23, 59, 59, 999),
-  };
-}
-
-function addDays(date: string, days: number) {
-  const value = new Date(`${date}T00:00:00`);
-  value.setDate(value.getDate() + days);
-  return value.toISOString().slice(0, 10);
-}
-
-function groupPunchesByEmployee(punches: any[]) {
-  const grouped = new Map<string, Punch[]>();
-
-  for (const punch of punches) {
-    if (!punch.employeeId) continue;
-    grouped.set(punch.employeeId, [...(grouped.get(punch.employeeId) ?? []), punch]);
-  }
-
-  return grouped;
-}
-
-function getScheduleByEmployee(assignments: any[], date: string) {
-  const selected = new Map<string, any>();
-
-  for (const assignment of assignments) {
-    if (assignment.effectiveFrom > date) continue;
-    if (assignment.effectiveTo && assignment.effectiveTo < date) continue;
-    if (!selected.has(assignment.employeeId)) {
-      selected.set(assignment.employeeId, assignment);
-    }
-  }
-
-  return selected;
-}
-
-function getLateEmployeeIds(punchesByEmployee: Map<string, Punch[]>, scheduleByEmployee: Map<string, any>, date: string) {
-  const lateEmployeeIds = new Set<string>();
-  const dayOfWeek = getDayOfWeek(date);
-
-  for (const [employeeId, punches] of punchesByEmployee) {
-    const firstPunch = punches[0];
-    if (!firstPunch) continue;
-    const lateAfter = getShiftBoundary(scheduleByEmployee.get(employeeId), dayOfWeek, date, 'start');
-    if (firstPunch.punchTime > lateAfter) {
-      lateEmployeeIds.add(employeeId);
-    }
-  }
-
-  return lateEmployeeIds;
-}
-
-function getMissingCheckoutEmployees(input: {
-  employees: any[];
-  punchesByEmployee: Map<string, Punch[]>;
-  scheduleByEmployee: Map<string, any>;
-  date: string;
-}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const dayOfWeek = getDayOfWeek(input.date);
-
-  return input.employees.filter((employee) => {
-    const punches = input.punchesByEmployee.get(employee.id);
-    const latestPunch = punches?.[punches.length - 1];
-    if (!latestPunch || latestPunch.punchType === 'OUT' || latestPunch.punchType === 'BREAK_OUT') return false;
-    if (input.date < today) return true;
-    if (input.date > today) return false;
-    return new Date() >= getShiftBoundary(input.scheduleByEmployee.get(employee.id), dayOfWeek, input.date, 'end');
-  });
-}
-
-function getShiftBoundary(assignment: any, dayOfWeek: string, date: string, boundary: 'start' | 'end') {
-  const day = assignment?.workSchedule?.days?.find((item: any) => item.dayOfWeek === dayOfWeek && item.isActive && !item.isOffDay);
-  const shift = day?.shift;
-  const segments = [...(shift?.segments ?? [])].sort((left: any, right: any) => {
-    const sortOrder = Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0);
-    return sortOrder || String(left.startTime).localeCompare(String(right.startTime));
-  });
-  const segment = boundary === 'start' ? segments[0] : segments[segments.length - 1];
-  const fallback = boundary === 'start' ? DEFAULT_SHIFT_START : DEFAULT_SHIFT_END;
-  const time = boundary === 'start' ? segment?.startTime ?? fallback : segment?.endTime ?? fallback;
-  const value = new Date(`${date}T${time}`);
-
-  if (boundary === 'start') {
-    const graceMinutes = Number(shift?.gracePeriodMinutes ?? 0) + Number(shift?.lateAfterMinutes ?? 0);
-    value.setMinutes(value.getMinutes() + graceMinutes);
-  }
-
-  return value;
-}
-
-function getDayOfWeek(date: string) {
-  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T00:00:00`).getDay()];
+function attendanceApprovalsHref(date: string) {
+  return `/attendance-approvals/hr?date=${date}`;
 }
 
 function buildAttendanceExceptions(input: {
-  employeesWithoutPunch: number;
+  absent: number;
   missingCheckout: number;
-  lateEmployees: number;
+  late: number;
+  earlyDeparture: number;
+  noSchedule: number;
+  notGenerated: number;
   unprocessedPunches: number;
+  isLive: boolean;
 }) {
+  const severity = (count: number) => (count > 0 ? 'warning' : 'info') as 'warning' | 'info';
   const items = [
+    { id: 'absent', severity: severity(input.absent), title: 'Absent', count: input.absent, description: 'Due to work with no check-in. Rest days, approved leave and biometric-exempt staff are excluded.' },
+    { id: 'missing-check-out', severity: severity(input.missingCheckout), title: 'Missing check-out', count: input.missingCheckout, description: 'Checked in for a session but did not check out before its window closed.' },
+    { id: 'late-employees', severity: severity(input.late), title: 'Late arrivals', count: input.late, description: "Checked in after the shift's allowed start." },
+    { id: 'early-departure', severity: severity(input.earlyDeparture), title: 'Early departure', count: input.earlyDeparture, description: 'Left before the end of the last session.' },
+    { id: 'no-schedule', severity: severity(input.noSchedule), title: 'No work schedule', count: input.noSchedule, description: 'Attendance cannot be judged without a schedule; assign work schedules.' },
     {
-      id: 'employees-without-punch',
-      severity: input.employeesWithoutPunch > 0 ? 'warning' : 'info',
-      title: 'Employees without punch',
-      count: input.employeesWithoutPunch,
-      description: 'Active employees with no punch for the selected date.',
+      id: 'not-generated',
+      severity: severity(input.notGenerated),
+      title: 'Attendance not generated',
+      count: input.notGenerated,
+      description: input.isLive ? 'No attendance record yet today; it appears after the next biometric sync.' : 'Generate daily records for this date.',
     },
-    {
-      id: 'missing-check-out',
-      severity: input.missingCheckout > 0 ? 'warning' : 'info',
-      title: 'Missing check-out',
-      count: input.missingCheckout,
-      description: 'Employees whose latest punch does not close the work day.',
-    },
-    {
-      id: 'late-employees',
-      severity: input.lateEmployees > 0 ? 'warning' : 'info',
-      title: 'Late employees',
-      count: input.lateEmployees,
-      description: 'Employees whose first punch is after the scheduled grace period.',
-    },
-    {
-      id: 'unprocessed-punches',
-      severity: input.unprocessedPunches > 0 ? 'warning' : 'info',
-      title: 'Unprocessed attendance punches',
-      count: input.unprocessedPunches,
-      description: 'Raw punches that still need attendance processing.',
-    },
-  ] as const;
-
+    { id: 'unprocessed-punches', severity: severity(input.unprocessedPunches), title: 'Unprocessed attendance punches', count: input.unprocessedPunches, description: 'Raw punches that still need attendance processing.' },
+  ];
   return {
-    total: items.reduce((sum, item) => sum + item.count, 0),
+    total: input.absent + input.missingCheckout + input.late + input.earlyDeparture,
     items,
   };
 }
@@ -507,19 +314,7 @@ function buildSyncStatus(batches: any[]) {
     failed: batches.filter((batch) => batch.syncStatus === 'FAILED').length,
     partial: batches.filter((batch) => batch.syncStatus === 'PARTIAL').length,
   };
-
-  return {
-    latest: batches[0] ?? null,
-    recent: batches,
-    counts,
-    openIssues: counts.started + counts.failed + counts.partial,
-  };
-}
-
-function addDaysIso(date: string, days: number) {
-  const value = new Date(`${date}T00:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
+  return { latest: batches[0] ?? null, recent: batches, counts, openIssues: counts.started + counts.failed + counts.partial };
 }
 
 function createWidget(id: string, label: string, count: number, href: string) {

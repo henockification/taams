@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useMemo, useState } from 'react';
-import { AlertTriangle, Check, Clock3, Plus, X } from 'lucide-react';
+import { AlertTriangle, Check, Clock3, Pencil, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -23,6 +23,7 @@ import {
   useCreateOvertimeRequest,
   useOvertimeAssignableEmployees,
   useOvertimeRequests,
+  useUpdateOvertimeRequest,
 } from '@/data/hooks/core.hooks';
 import type {
   Employee,
@@ -51,6 +52,8 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
   const { formatDate, formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
   const [assignOpen, setAssignOpen] = useState(false);
+  // Set while the assign dialog edits an existing (still unreviewed) assignment.
+  const [editing, setEditing] = useState<OvertimeRequest | null>(null);
   const [reviewing, setReviewing] = useState<OvertimeRequest | null>(null);
   const [approvedMinutes, setApprovedMinutes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
@@ -62,7 +65,8 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
   const overtimeRequests = useOvertimeRequests({ dateFrom, dateTo, status, mine: !isSupervisor });
   const createOvertimeRequest = useCreateOvertimeRequest();
   const changeOvertimeRequestStatus = useChangeOvertimeRequestStatus();
-  const employeesQuery = useOvertimeAssignableEmployees(isSupervisor && assignOpen);
+  const updateOvertimeRequest = useUpdateOvertimeRequest();
+  const employeesQuery = useOvertimeAssignableEmployees(isSupervisor && assignOpen && !editing);
   const session = useSession();
 
   const employees = employeesQuery.data?.employees ?? [];
@@ -72,10 +76,40 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
     [employees, session.data?.user?.id],
   );
 
+  const closeAssignDialog = () => {
+    setAssignOpen(false);
+    setEditing(null);
+    setForm(initialForm);
+  };
+
+  const openEdit = (request: OvertimeRequest) => {
+    setEditing(request);
+    setForm({
+      employeeIds: [request.employeeId],
+      overtimeDate: request.overtimeDate.slice(0, 10),
+      startTime: toLocalTime(request.startAt),
+      endTime: toLocalTime(request.endAt),
+      reason: request.reason ?? '',
+    });
+    setAssignOpen(true);
+  };
+
   const saveAssignment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       const window = toIsoWindow(form.overtimeDate, form.startTime, form.endTime);
+      if (editing) {
+        await updateOvertimeRequest.mutateAsync({
+          overtimeRequestId: editing.id,
+          overtimeDate: form.overtimeDate,
+          startAt: window.startAt,
+          endAt: window.endAt,
+          reason: form.reason.trim(),
+        });
+        closeAssignDialog();
+        notifications.show({ title: common('success'), message: t('overtimeAssignmentUpdated'), color: 'green' });
+        return;
+      }
       await createOvertimeRequest.mutateAsync({
         employeeIds: form.employeeIds,
         overtimeDate: form.overtimeDate,
@@ -206,7 +240,11 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                         {isSupervisor ? (
                           <TableCell>
                             {request.status === 'ASSIGNED' && request.employee?.userId !== session.data?.user?.id ? (
-                              <div className="flex justify-end">
+                              <div className="flex justify-end gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={() => openEdit(request)}>
+                                  <Pencil className="size-4" />
+                                  {common('edit')}
+                                </Button>
                                 <Button type="button" size="sm" variant="outline" onClick={() => openReview(request)}>
                                   {t('review')}
                                 </Button>
@@ -230,12 +268,20 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
 
       {isSupervisor ? (
         <>
-          <Dialog open={assignOpen} onOpenChange={(open) => { setAssignOpen(open); if (!open) setForm(initialForm); }}>
+          <Dialog open={assignOpen} onOpenChange={(open) => { if (open) setAssignOpen(true); else closeAssignDialog(); }}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle>{t('assignOvertime')}</DialogTitle>
+                <DialogTitle>{editing ? t('editOvertimeAssignment') : t('assignOvertime')}</DialogTitle>
               </DialogHeader>
               <form className="space-y-4" onSubmit={saveAssignment}>
+                {editing ? (
+                  <div className="space-y-2">
+                    <Label>{t('employee')}</Label>
+                    <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                      {editing.employee?.employeeCode ? `${editing.employee.employeeCode} - ` : ''}{employeeName(editing.employee) || t('unknown')}
+                    </p>
+                  </div>
+                ) : (
                 <div className="space-y-2">
                   <Label>{t('selectEmployees')}</Label>
                   <MultiSelect
@@ -256,6 +302,7 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                     <p className="text-sm text-muted-foreground">{t('noMatchingEmployees')}</p>
                   ) : null}
                 </div>
+                )}
                 <div className="grid gap-4 sm:grid-cols-3">
                   <Field label={t('date')} type="date" value={form.overtimeDate} onChange={(value) => setForm((current) => ({ ...current, overtimeDate: value }))} />
                   <Field label={t('startTime')} type="time" value={form.startTime} onChange={(value) => setForm((current) => ({ ...current, startTime: value }))} />
@@ -266,8 +313,8 @@ export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervis
                   <Textarea value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} required />
                 </div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setAssignOpen(false)}>{common('cancel')}</Button>
-                  <Button type="submit" disabled={form.employeeIds.length === 0 || !form.reason.trim() || createOvertimeRequest.isPending}>
+                  <Button type="button" variant="outline" onClick={closeAssignDialog}>{common('cancel')}</Button>
+                  <Button type="submit" disabled={form.employeeIds.length === 0 || !form.reason.trim() || createOvertimeRequest.isPending || updateOvertimeRequest.isPending}>
                     {common('save')}
                   </Button>
                 </DialogFooter>
@@ -405,6 +452,11 @@ function toIsoWindow(date: string, startTime: string, endTime: string) {
     endAt = new Date(endAt.getTime() + 24 * 60 * 60 * 1000);
   }
   return { startAt: startAt.toISOString(), endAt: endAt.toISOString() };
+}
+
+function toLocalTime(value: string) {
+  const date = new Date(value);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 function normalizeTime(value: string) {

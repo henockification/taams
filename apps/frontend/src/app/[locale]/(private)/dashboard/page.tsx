@@ -34,6 +34,8 @@ import type {
   ManualPunchRequest,
   LeaveRequest,
   WorkScheduleDayWithShift,
+  EmployeeTodayAttendance,
+  EmployeeMonthSummary,
 } from "@/data/types/core.types"
 import { Link, useRouter } from "@/i18n"
 import { useSession } from "@/lib/auth-client"
@@ -287,10 +289,13 @@ function EmployeeDashboard({
                   {t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}
                 </p>
               </div>
-              <Badge variant="secondary">
-                <Fingerprint className="mr-2 size-3.5" />
-                {formatDate(todayAttendance?.date ?? new Date().toISOString())}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-2">
+                <TodayStatusBadge attendance={todayAttendance} />
+                <Badge variant="secondary">
+                  <Fingerprint className="mr-2 size-3.5" />
+                  {formatDate(todayAttendance?.date ?? new Date().toISOString())}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="grid gap-2 p-3 sm:grid-cols-3 sm:gap-3 sm:p-4">
@@ -365,6 +370,8 @@ function EmployeeDashboard({
         </Card> : null}
       </div>
 
+      {section?.monthSummary ? <MonthSummaryCard summary={section.monthSummary} /> : null}
+
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <PunchList
           title={t("attendanceHistory")}
@@ -432,6 +439,49 @@ function SetupRequiredDashboard({ dashboard }: { dashboard: DashboardSummary }) 
       </Card>
       <QuickActions actions={dashboard.quickActions} />
     </div>
+  )
+}
+
+/** Today's attendance status from the daily record (late minutes, leave type, or not generated yet). */
+function TodayStatusBadge({ attendance }: { attendance?: EmployeeTodayAttendance }) {
+  const shared = useTranslations("dashboardShared")
+  if (!attendance) return null
+  if (!attendance.status) return <Badge variant="outline">{shared("notGeneratedYet")}</Badge>
+  const variant = attendance.status === "ABSENT" ? "destructive" : attendance.status === "LATE" ? "secondary" : "outline"
+  const detail = attendance.status === "LATE" && attendance.lateMinutes
+    ? ` · ${shared("minutesShort", { value: attendance.lateMinutes })}`
+    : attendance.status === "LEAVE" && attendance.leaveType ? ` · ${attendance.leaveType}` : ""
+  return <Badge variant={variant}>{shared(`status_${attendance.status}`)}{detail}</Badge>
+}
+
+function MonthSummaryCard({ summary }: { summary: EmployeeMonthSummary }) {
+  const t = useTranslations("dashboard")
+  const shared = useTranslations("dashboardShared")
+  const items: Array<[string, React.ReactNode, string?]> = [
+    [t("monthWorkingDays"), summary.workingDays],
+    [shared("present"), summary.present, "text-emerald-700 dark:text-emerald-400"],
+    [shared("late"), summary.late ? `${summary.late} · ${shared("minutesShort", { value: summary.lateMinutes })}` : 0, "text-amber-700 dark:text-amber-400"],
+    [shared("absent"), summary.absent, "text-rose-700 dark:text-rose-400"],
+    [shared("onLeave"), summary.onLeave],
+    [t("monthEarlyDepartures"), summary.earlyDepartures],
+    [shared("attendanceRate"), summary.attendanceRate === null ? "—" : `${summary.attendanceRate}%`],
+    [t("monthApprovedByHr"), `${summary.approvedByHr}`],
+  ]
+  return (
+    <Card>
+      <CardHeader className="px-4 sm:px-6">
+        <CardTitle>{t("thisMonth")}</CardTitle>
+        <p className="text-sm text-muted-foreground">{t("thisMonthDescription")}</p>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 sm:grid-cols-4 sm:px-6">
+        {items.map(([label, value, tone]) => (
+          <div key={label} className="min-w-0">
+            <p className="truncate text-xs text-muted-foreground">{label}</p>
+            <p className={cn("text-lg font-semibold text-foreground", tone)}>{value}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   )
 }
 

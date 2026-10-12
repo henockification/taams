@@ -150,7 +150,7 @@ function andActiveHrDepartmentAssignment(userId: string) {
   return sql`${hrDepartmentAssignments.userId} = ${userId} AND ${hrDepartmentAssignments.isActive} = true`;
 }
 
-function expandDepartmentDescendants(
+export function expandDepartmentDescendants(
   rootIds: string[],
   allDepartments: Array<{ id: string; parentDepartmentId: string | null }>,
 ) {

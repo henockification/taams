@@ -31,9 +31,9 @@ export function UserManualPage({ initialManual }: { initialManual?: string }) {
     <div className="flex w-full flex-col gap-4">
       {manuals.length > 1 ? (
         <Tabs value={selected.id} onValueChange={(value) => setSelectedId(value as ManualId)}>
-          <TabsList className="h-auto flex-wrap">
+          <TabsList className="h-auto max-w-full flex-wrap justify-start">
             {manuals.map((manual) => (
-              <TabsTrigger key={manual.id} value={manual.id}>{manual.content.title.replace(/^TAMS\s+/, '')}</TabsTrigger>
+              <TabsTrigger key={manual.id} value={manual.id} className="flex-none">{shortTitle(manual.content.title)}</TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
@@ -178,6 +178,11 @@ function ManualBlockView({ block, manualId }: { block: ManualBlock; manualId: st
     default:
       return null;
   }
+}
+
+/** "TAMS Supervisor Training Manual" -> "Supervisor". */
+function shortTitle(title: string) {
+  return title.replace(/^TAMS\s+/, '').replace(/\s+(Training\s+)?Manual$/, '');
 }
 
 /** Group blocks under their top-level (h1) heading. */

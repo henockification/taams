@@ -23,7 +23,7 @@ import {
   getWorkSchedulesHandler,
   updateWorkScheduleHandler,
 } from './handlers/workSchedules';
-import { requirePermission } from '../../../middleware/rbac';
+import { requirePermission, requireHrSupervisorRole } from '../../../middleware/rbac';
 
 const workSchedulesApp = new Hono();
 
@@ -187,13 +187,13 @@ export const updateWorkScheduleDayRoute = createRoute({
   },
 });
 
-workSchedulesApp.post('/work-schedules', requirePermission('work-schedules:read'), createWorkScheduleHandler);
+workSchedulesApp.post('/work-schedules', requirePermission('work-schedules:read'), requireHrSupervisorRole(), createWorkScheduleHandler);
 workSchedulesApp.get('/work-schedules', requirePermission('work-schedules:read'), getWorkSchedulesHandler);
 workSchedulesApp.get('/work-schedules/:id', requirePermission('work-schedules:read'), getWorkScheduleHandler);
-workSchedulesApp.put('/work-schedules/:id', requirePermission('work-schedules:read'), updateWorkScheduleHandler);
-workSchedulesApp.post('/work-schedules/:id/days', requirePermission('work-schedules:read'), createWorkScheduleDayHandler);
+workSchedulesApp.put('/work-schedules/:id', requirePermission('work-schedules:read'), requireHrSupervisorRole(), updateWorkScheduleHandler);
+workSchedulesApp.post('/work-schedules/:id/days', requirePermission('work-schedules:read'), requireHrSupervisorRole(), createWorkScheduleDayHandler);
 workSchedulesApp.get('/work-schedules/:id/days', requirePermission('work-schedules:read'), getWorkScheduleDaysHandler);
-workSchedulesApp.put('/work-schedule-days/:id', requirePermission('work-schedules:read'), updateWorkScheduleDayHandler);
+workSchedulesApp.put('/work-schedule-days/:id', requirePermission('work-schedules:read'), requireHrSupervisorRole(), updateWorkScheduleDayHandler);
 
 openApiApp
   .openapi(createWorkScheduleRoute, createWorkScheduleHandler as any)

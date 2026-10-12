@@ -1,3 +1,6 @@
+import { isOnEducationLeave } from '../../../lib/employees/education-leave';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+
 export function formatDate(value: unknown) {
   if (!value) return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -198,6 +201,12 @@ export function formatNotificationLog(log: any) {
   };
 }
 
+function sourcePayloadText(payload: unknown, key: string) {
+  if (!payload || typeof payload !== 'object') return null;
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 export function formatEmployee(employee: any, options?: { includeSensitive?: boolean }) {
   const includeSensitive = options?.includeSensitive === true;
   return {
@@ -223,6 +232,9 @@ export function formatEmployee(employee: any, options?: { includeSensitive?: boo
     hireDate: formatDate(employee.hireDate),
     terminationDate: formatDate(employee.terminationDate),
     sourceIdNo: employee.sourceIdNo ?? null,
+    // The ISMIS import keeps these only in the raw row; expose them so pickers can search by them.
+    sourceFullNameAm: sourcePayloadText(employee.sourceRawPayload, 'Full Name'),
+    sourceStaffIdNo: sourcePayloadText(employee.sourceRawPayload, 'Id No'),
     sourceEmployeeCode: employee.sourceEmployeeCode ?? null,
     sourceEmploymentStatus: employee.sourceEmploymentStatus ?? null,
     sourceDepartmentName: employee.sourceDepartmentName ?? null,
@@ -232,6 +244,11 @@ export function formatEmployee(employee: any, options?: { includeSensitive?: boo
     salaryStep: includeSensitive ? employee.salaryStep ?? null : null,
     nationalId: includeSensitive ? employee.nationalId ?? null : null,
     paidByIfmis: employee.paidByIfmis ?? true,
+    educationLeaveType: employee.educationLeaveType ?? null,
+    educationLeaveStart: employee.educationLeaveStart ?? null,
+    educationLeaveExpectedReturn: employee.educationLeaveExpectedReturn ?? null,
+    educationLeaveReturnedOn: employee.educationLeaveReturnedOn ?? null,
+    onEducationLeave: isOnEducationLeave(employee, addisToday()),
     sourceImportedAt: formatTimestamp(employee.sourceImportedAt),
     sourceRawPayload: includeSensitive ? employee.sourceRawPayload ?? null : null,
     isActive: employee.isActive,
@@ -351,10 +368,6 @@ export function formatBiometricDevice(device: any) {
     firmwareVersion: device.firmwareVersion ?? null,
     platformVersion: device.platformVersion ?? null,
     fingerprintAlgorithm: device.fingerprintAlgorithm ?? null,
-    provisioningRole: device.provisioningRole ?? 'TARGET',
-    provisioningEnabled: device.provisioningEnabled ?? false,
-    lastProvisioningAt: formatTimestamp(device.lastProvisioningAt),
-    lastProvisioningStatus: device.lastProvisioningStatus ?? null,
     isActive: device.isActive,
     lastSyncAt: formatTimestamp(device.lastSyncAt),
     lastSuccessfulSyncAt: formatTimestamp(device.lastSuccessfulSyncAt),
@@ -370,48 +383,6 @@ export function formatBiometricDevice(device: any) {
     createdAt: formatTimestamp(device.createdAt),
     updatedAt: formatTimestamp(device.updatedAt),
     department: device.department ? formatDepartment(device.department) : null,
-  };
-}
-
-export function formatBiometricProvisioningDeviceResult(result: any) {
-  return {
-    id: result.id,
-    jobId: result.jobId,
-    deviceId: result.deviceId,
-    status: result.status,
-    addedUsers: result.addedUsers,
-    updatedUsers: result.updatedUsers,
-    removedUsers: result.removedUsers,
-    missingTemplates: result.missingTemplates,
-    uidConflicts: result.uidConflicts,
-    differences: result.differences ?? null,
-    errorMessage: result.errorMessage ?? null,
-    attempts: result.attempts,
-    startedAt: formatTimestamp(result.startedAt),
-    completedAt: formatTimestamp(result.completedAt),
-    device: result.device ? formatBiometricDevice(result.device) : null,
-  };
-}
-
-export function formatBiometricProvisioningJob(job: any) {
-  return {
-    id: job.id,
-    previewJobId: job.previewJobId ?? null,
-    sourceDeviceId: job.sourceDeviceId,
-    mode: job.mode,
-    status: job.status,
-    isPreview: job.isPreview,
-    requestedEmployeeIds: job.requestedEmployeeIds ?? [],
-    requestedTargetDeviceIds: job.requestedTargetDeviceIds ?? [],
-    summary: job.summary ?? null,
-    errorMessage: job.errorMessage ?? null,
-    requestedBy: job.requestedBy,
-    startedAt: formatTimestamp(job.startedAt),
-    completedAt: formatTimestamp(job.completedAt),
-    createdAt: formatTimestamp(job.createdAt),
-    updatedAt: formatTimestamp(job.updatedAt),
-    sourceDevice: job.sourceDevice ? formatBiometricDevice(job.sourceDevice) : null,
-    deviceResults: job.deviceResults?.map(formatBiometricProvisioningDeviceResult) ?? [],
   };
 }
 

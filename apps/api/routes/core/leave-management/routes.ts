@@ -43,6 +43,7 @@ import {
   updateLeaveFiscalYearHandler,
   updateLeaveRequestHandler,
   updateLeaveTypeHandler,
+  deleteLeaveTypeHandler,
   upsertLeaveBalanceHandler,
 } from './handlers/leaveManagement';
 import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
@@ -257,6 +258,7 @@ leaveManagementApp.post('/leave/fiscal-years/:id/active', requirePermission('lea
 leaveManagementApp.get('/leave/types', requirePermission('leave-types:read', 'annual-leave-requests:read', 'other-leave-requests:read'), getLeaveTypesHandler);
 leaveManagementApp.post('/leave/types', requirePermission('leave-types:read'), createLeaveTypeHandler);
 leaveManagementApp.put('/leave/types/:id', requirePermission('leave-types:read'), updateLeaveTypeHandler);
+leaveManagementApp.delete('/leave/types/:id', requirePermission('leave-types:read'), deleteLeaveTypeHandler);
 leaveManagementApp.get('/leave/balances', requirePermissionOrDelegation('leave-balances:read', 'annual-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveBalancesHandler);
 leaveManagementApp.post('/leave/balances', requirePermission('leave-balances:read'), upsertLeaveBalanceHandler);
 leaveManagementApp.post('/leave/balances/bulk', requirePermission('leave-balances:read'), bulkUpsertLeaveBalancesHandler);

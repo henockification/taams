@@ -24,6 +24,7 @@ import {
   Sheet,
   ShieldCheck,
   ScanLine,
+  SlidersHorizontal,
   Timer,
   UserCheck,
   UserRoundCog,
@@ -107,7 +108,7 @@ export type AppNavGroup = {
 };
 
 export type AccessibleNavSection = {
-  labelKey: 'core' | 'leaveManagement' | 'workScheduleShift' | 'attendance';
+  labelKey: 'core' | 'hrConfiguration' | 'leaveManagement' | 'workScheduleShift' | 'attendance';
   icon: LucideIcon;
   items: AppNavItem[];
 };
@@ -537,6 +538,22 @@ export const appNavGroups: AppNavGroup[] = [
   },
 ] as const;
 
+// HR setup operations, collected under Human Resources > HR Configuration, are only
+// for employees holding both the human_resource and supervisor roles (or an
+// unrestricted role); their usual permission checks still apply on top.
+const HR_CONFIGURATION_URLS = [
+  '/organization-structure',
+  '/department-assignments',
+  '/work-schedules',
+  '/shifts',
+  '/holidays',
+  '/biometric-exemptions',
+] as const;
+
+function isHrConfigurationPath(pathname: string) {
+  return HR_CONFIGURATION_URLS.some((url) => pathname === url || pathname.startsWith(`${url}/`));
+}
+
 // Role-gated items have no permission an admin could meaningfully grant.
 const ROLE_GATED_URLS = new Set(['/reports/supervisor']);
 
@@ -573,7 +590,7 @@ export function userHasPermission(user: AuthzUser, permission: string) {
 }
 
 export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
-  if (item.url.startsWith('/leave-management/') && isPermanentHumanResourceEmployee(user)) return false;
+  if (isHrConfigurationPath(item.url) && !hasHrSupervisorAccess(user)) return false;
   if (item.url === '/annual-leave-requests' || item.url === '/other-leave-requests') return hasContractEmployee(user);
   if (item.url === '/biometric-exemptions') return hasHumanResourceRole(user) || isSuperAdmin(user);
   if (item.url === '/dashboard') return hasEmployeeDashboardRole(user);
@@ -586,7 +603,7 @@ export function userCanAccessNavItem(user: AuthzUser, item: AppNavItem) {
   if (item.url === '/leave-management/authorizations') return userHasPermission(user, 'leave-authorizations:approve');
   if (item.url === '/leave-management/balances') return hasLeaveBalanceManagementAccess(user);
   if (item.url === '/temporary-assignments') return hasTemporaryAssignmentAccess(user);
-  if (item.url === '/department-assignments') return hasHrDepartmentAssignmentManagementAccess(user);
+  if (item.url === '/department-assignments') return hasHrSupervisorAccess(user);
   if (item.url === '/supervisor-delegations') return hasExactSupervisorRole(user) || isSuperAdmin(user);
   if (item.url === '/overtime-assignments')
     return (
@@ -708,15 +725,7 @@ export function getNavItemForPath(pathname: string) {
 }
 
 export function userCanAccessPath(user: AuthzUser, pathname: string) {
-  if (
-    isPermanentHumanResourceEmployee(user)
-    && (
-      pathname === '/leave-balances'
-      || pathname.startsWith('/leave-balances/')
-      || pathname === '/leave-management'
-      || pathname.startsWith('/leave-management/')
-    )
-  ) return false;
+  if (isHrConfigurationPath(pathname) && !hasHrSupervisorAccess(user)) return false;
   if (pathname === '/organization-structure' || pathname.startsWith('/organization-structure/'))
     return userHasPermission(user, 'organization-structure:read') || userHasPermission(user, 'organization-structure:edit');
   if (pathname === '/positions' || pathname.startsWith('/positions/')) return false;
@@ -749,7 +758,7 @@ export function userCanAccessPath(user: AuthzUser, pathname: string) {
   if (pathname === '/help' || pathname.startsWith('/help/')) return Boolean(user);
   if (pathname === '/notification-logs' || pathname.startsWith('/notification-logs/')) return Boolean(user);
   if (pathname === '/temporary-assignments' || pathname.startsWith('/temporary-assignments/')) return hasTemporaryAssignmentAccess(user);
-  if (pathname === '/department-assignments' || pathname.startsWith('/department-assignments/')) return hasHrDepartmentAssignmentManagementAccess(user);
+  if (pathname === '/department-assignments' || pathname.startsWith('/department-assignments/')) return hasHrSupervisorAccess(user);
   if (pathname === '/department-head-dashboard') return hasSupervisorApprovalAccess(user, 'department-head-dashboard:read');
   if (pathname === '/attendance-approvals/supervisor') return hasSupervisorApprovalAccess(user, 'attendance-approvals:approve');
   if (pathname === '/attendance-approvals/hr') return hasHrAttendanceApprovalAccess(user);
@@ -784,12 +793,17 @@ export function getAccessibleNavGroups(user: AuthzUser): AccessibleNavGroup[] {
   const biometricGroup = findGroup('biometric');
   const attendanceTitles = new Set<AppNavItem['titleKey']>(['attendancePunches', 'hrAttendanceApproval']);
   const attendanceItems = biometricGroup?.items.filter((item) => attendanceTitles.has(item.titleKey)) ?? [];
-  const biometricItems = biometricGroup?.items.filter((item) => !attendanceTitles.has(item.titleKey)) ?? [];
+  const isConfigurationItem = (item: AppNavItem) => isHrConfigurationPath(item.url);
+  const biometricItems = biometricGroup?.items.filter((item) => !attendanceTitles.has(item.titleKey) && !isConfigurationItem(item)) ?? [];
+  const configurationItems = HR_CONFIGURATION_URLS
+    .map((url) => [...coreItems, ...scheduleItems, ...(biometricGroup?.items ?? [])].find((item) => item.url === url))
+    .filter((item): item is AppNavItem => Boolean(item));
 
   const hrSections: AccessibleNavSection[] = [
-    { labelKey: 'core', icon: Building2, items: [...coreItems, ...temporaryAssignmentItems] },
+    { labelKey: 'core', icon: Building2, items: [...coreItems, ...temporaryAssignmentItems].filter((item) => !isConfigurationItem(item)) },
+    { labelKey: 'hrConfiguration', icon: SlidersHorizontal, items: configurationItems },
     { labelKey: 'leaveManagement', icon: PlaneTakeoff, items: leaveItems },
-    { labelKey: 'workScheduleShift', icon: CalendarClock, items: scheduleItems },
+    { labelKey: 'workScheduleShift', icon: CalendarClock, items: scheduleItems.filter((item) => !isConfigurationItem(item)) },
     { labelKey: 'attendance', icon: ScanLine, items: attendanceItems },
   ].filter((section) => section.items.length > 0) as AccessibleNavSection[];
 
@@ -862,17 +876,11 @@ function hasHumanResourceRole(user: AuthzUser) {
   return roles.some((role) => role === 'human_resource');
 }
 
-function isPermanentHumanResourceEmployee(user: AuthzUser) {
-  return !hasUnrestrictedRole(user)
-    && hasHumanResourceRole(user)
-    && user?.employeeEmploymentType === 'PERMANENT';
-}
-
 function hasLeaveBalanceManagementAccess(user: AuthzUser) {
   return (hasUnrestrictedRole(user) || hasHumanResourceRole(user)) && userHasPermission(user, 'leave-balances:read');
 }
 
-function hasHrDepartmentAssignmentManagementAccess(user: AuthzUser) {
+function hasHrSupervisorAccess(user: AuthzUser) {
   return hasUnrestrictedRole(user) || (hasHumanResourceRole(user) && hasExactSupervisorRole(user));
 }
 
@@ -887,5 +895,5 @@ function hasTemporaryAssignmentAccess(user: AuthzUser) {
       role === 'hr' ||
       role === 'hr_manager' ||
       role === 'hr_clerk',
-  );
+  ) || userHasPermission(user, 'temporary-assignment:read');
 }

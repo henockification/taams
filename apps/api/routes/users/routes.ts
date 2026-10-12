@@ -15,6 +15,7 @@ import { getUserHandler } from './handlers/getUserHandler';
 import { createUserHandler } from './handlers/createUserHandler';
 import { updateUserHandler } from './handlers/updateUserHandler';
 import { unlockUserHandler } from './handlers/unlockUserHandler';
+import { restoreUserAccessHandler, revokeUserAccessHandler } from './handlers/userAccessHandlers';
 import { assignUserRolesHandler } from '../rbac/handlers/assignUserRolesHandler';
 import { disabledSignupHandler } from './handlers/disabledSignupHandler';
 import { requirePermission } from '../../middleware/rbac';
@@ -230,6 +231,8 @@ usersApp.get('/users/:id', requirePermission('users:read'), getUserHandler);
 usersApp.post('/users', requirePermission('users:create'), createUserHandler);
 usersApp.patch('/users/:id', requirePermission('users:update'), updateUserHandler);
 usersApp.post('/users/:id/unlock', requirePermission('users:update'), unlockUserHandler);
+usersApp.post('/users/:id/revoke-access', requirePermission('users:update'), revokeUserAccessHandler);
+usersApp.post('/users/:id/restore-access', requirePermission('users:update'), restoreUserAccessHandler);
 usersApp.post('/users/:id/roles', requirePermission('users:assign-roles'), assignUserRolesHandler);
 
 // Register the OpenAPI definition

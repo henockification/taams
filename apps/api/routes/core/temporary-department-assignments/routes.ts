@@ -16,7 +16,11 @@ import {
   getTemporaryDepartmentAssignmentsHandler,
   updateTemporaryDepartmentAssignmentHandler,
 } from './handlers/temporaryDepartmentAssignments';
-import { requirePermission } from '../../../middleware/rbac';
+import { requirePermissionOrRole } from '../../../middleware/rbac';
+
+// Same audience as the Temporary assignments menu: HR and admin roles, or anyone granted the
+// temporary-assignment permissions, so a role whose permissions drifted still works.
+const TEMPORARY_ASSIGNMENT_ROLES = ['super_admin', 'superadmin', 'admin', 'human_resource', 'hr', 'hr_manager', 'hr_clerk'];
 
 const temporaryDepartmentAssignmentsApp = new Hono();
 
@@ -121,11 +125,11 @@ export const deactivateTemporaryDepartmentAssignmentRoute = createRoute({
   },
 });
 
-temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', requirePermission('temporary-assignment:read'), getTemporaryDepartmentAssignmentsHandler);
-temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments/eligible-employees', requirePermission('temporary-assignment:read'), getTemporaryAssignmentEligibleEmployeesHandler);
-temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', requirePermission('temporary-assignment:add'), createTemporaryDepartmentAssignmentHandler);
-temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', requirePermission('temporary-assignment:edit'), updateTemporaryDepartmentAssignmentHandler);
-temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments/:id/deactivate', requirePermission('temporary-assignment:edit'), deactivateTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', requirePermissionOrRole(['temporary-assignment:read'], TEMPORARY_ASSIGNMENT_ROLES), getTemporaryDepartmentAssignmentsHandler);
+temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments/eligible-employees', requirePermissionOrRole(['temporary-assignment:read'], TEMPORARY_ASSIGNMENT_ROLES), getTemporaryAssignmentEligibleEmployeesHandler);
+temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', requirePermissionOrRole(['temporary-assignment:add'], TEMPORARY_ASSIGNMENT_ROLES), createTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', requirePermissionOrRole(['temporary-assignment:edit'], TEMPORARY_ASSIGNMENT_ROLES), updateTemporaryDepartmentAssignmentHandler);
+temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments/:id/deactivate', requirePermissionOrRole(['temporary-assignment:edit'], TEMPORARY_ASSIGNMENT_ROLES), deactivateTemporaryDepartmentAssignmentHandler);
 
 openApiApp
   .openapi(getTemporaryDepartmentAssignmentsRoute, getTemporaryDepartmentAssignmentsHandler as any)

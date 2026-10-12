@@ -11,6 +11,7 @@ import {
 import { openApiApp } from '../../../lib/openapi';
 import {
   changeOvertimeRequestStatusHandler,
+  updateOvertimeRequestHandler,
   createOvertimeRequestHandler,
   getOvertimeRequestsHandler,
   getOvertimeAssignableEmployeesHandler,
@@ -106,6 +107,7 @@ overtimeRequestsApp.post('/overtime-requests', requirePermissionOrDelegation('ov
 overtimeRequestsApp.get('/overtime-requests/assignable-employees', requirePermissionOrDelegation('overtime-requests:approve'), getOvertimeAssignableEmployeesHandler);
 overtimeRequestsApp.get('/overtime-requests', requirePermission('overtime-requests:read'), getOvertimeRequestsHandler);
 overtimeRequestsApp.post('/overtime-requests/:id/status', requirePermissionOrDelegation('overtime-requests:approve'), changeOvertimeRequestStatusHandler);
+overtimeRequestsApp.put('/overtime-requests/:id', requirePermissionOrDelegation('overtime-requests:approve'), updateOvertimeRequestHandler);
 
 openApiApp
   .openapi(createOvertimeRequestRoute, createOvertimeRequestHandler as any)

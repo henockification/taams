@@ -1,0 +1,581 @@
+{
+  "id": "system-admin",
+  "title": "TAMS System Administration Manual",
+  "summary": "Manage users, roles, permissions, HR department scope, and biometric devices, and review the audit trail.",
+  "audience": "Users with the Admin role",
+  "blocks": [
+    {
+      "type": "h1",
+      "text": "Administrator Roles and Access"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Role",
+        "What it can do"
+      ],
+      "rows": [
+        [
+          "Admin",
+          "System administration: manages users (including giving the Admin role), roles, permissions, HR department scope, and biometric devices (including registering and changing devices), and reviews the audit trail."
+        ],
+        [
+          "Executive",
+          "Organization-wide dashboards and reports, including the audit views; no user or role management."
+        ],
+        [
+          "Finance",
+          "IFMIS attendance review and export only."
+        ]
+      ],
+      "widths": [
+        2200,
+        7678
+      ]
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Sign in with your email or phone, password, and the 6-digit verification code. Admins land on the **HR dashboard**.",
+        "Open the **Security** menu group for **Users**, **Roles**, **Permissions**, and **Audit timeline**. Devices are under **Biometric** and reports under **Reports**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a02-navigation.png",
+      "caption": "Administrator menu with the Security group expanded",
+      "number": 1,
+      "width": 2160,
+      "height": 1140,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Security rule",
+      "text": "Keep the number of Admin accounts to a minimum (named people only), review them monthly, and never share administrator credentials or verification codes."
+    },
+    {
+      "type": "h1",
+      "text": "Manage Users"
+    },
+    {
+      "type": "h2",
+      "text": "How user accounts are created"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "User accounts are created automatically when HR adds or imports an employee with an email or phone number. Each employee has at most one account, and each email and phone number belongs to only one account.",
+        "New accounts receive the **employee** role. Administrators add other roles (for example **human_resource** or **supervisor**) as needed.",
+        "Nobody sets a password for another person. Each user sets their own password with **Forgot your password?** on the sign in page and the 6-digit code sent by email or SMS. Passwords need at least 8 characters, no spaces, must not be a common password, and must not contain the first part of the email address."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Find a user and review the account"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Security** > **Users**. Use **Search users...** (name, email, phone, or role) and **Filters** (Login: Active/Locked, Status: Verified/Unverified).",
+        "Select a row to open the user. Review **Account Information** (email, phone, login status), **Timestamps**, and **Roles & Permissions**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a03-users.png",
+      "caption": "Users list filtered by search",
+      "number": 2,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "figure",
+      "src": "a04-user-detail.png",
+      "caption": "User detail with account information",
+      "number": 3,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Update contact details"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "In **Account Information**, correct **Email Address** or **Phone**.",
+        "Select **Save contact details**. The linked employee record is updated at the same time."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Unlock a locked account"
+    },
+    {
+      "type": "p",
+      "text": "After 5 wrong passwords an account is locked for 15 minutes. The user can wait, or you can unlock it."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Confirm the request comes from the account owner (for example by calling the number on the employee record).",
+        "Open the user. **Login** shows **Locked** and the time it is locked until.",
+        "Select **Unlock account**."
+      ]
+    },
+    {
+      "type": "note",
+      "label": "Expected result",
+      "text": "The user can sign in again immediately. The unlock is recorded in the audit trail.",
+      "tone": "success"
+    },
+    {
+      "type": "h2",
+      "text": "Assign roles"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open the user and go to **Roles & Permissions**.",
+        "Tick every role the person needs and untick the ones they should no longer have. Saving replaces the full list.",
+        "Select **Save roles**."
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Only an Admin can give someone the Admin role. Give it only with written approval and record it in the access register.",
+        "The server applies role changes immediately. The person sees new menus after reloading the page or signing in again.",
+        "A user with no roles left keeps a basic signed-in account with no menus."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "When a person leaves"
+    },
+    {
+      "type": "p",
+      "text": "TAMS has no delete or disable button for user accounts. Use this procedure:"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "HR sets the employee's employment status to resigned or retired (this removes them from attendance).",
+        "Remove all roles from the user account and save.",
+        "Have the person removed from each biometric device by the device operator.",
+        "Record the change and its approval reference in the access register."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Manage Roles and Permissions"
+    },
+    {
+      "type": "p",
+      "text": "A permission is a single capability (for example **leave-authorizations:approve**). A role is a named set of permissions. Users receive roles, never individual permissions."
+    },
+    {
+      "type": "table",
+      "header": [
+        "System role",
+        "Purpose"
+      ],
+      "rows": [
+        [
+          "admin",
+          "System administration."
+        ],
+        [
+          "executive",
+          "Organization-wide dashboards and reports."
+        ],
+        [
+          "human_resource",
+          "HR operations: employees, schedules, leave, payroll approval, devices monitoring."
+        ],
+        [
+          "supervisor",
+          "Team approvals (needs supervisor assignments by HR)."
+        ],
+        [
+          "employee",
+          "Self-service: attendance, overtime, corrections, own leave."
+        ],
+        [
+          "finance",
+          "IFMIS attendance export."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Create a custom role"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Security** > **Roles** and select **Add role**.",
+        "Enter a **Role name** in lower case with underscores (for example attendance_auditor) and a **Role description**, then select **Create role**. System role names are reserved and cannot be reused.",
+        "Select the role in **Assign permissions**, tick the capabilities it should grant (grouped by screen), and select **Save permissions**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a05-roles.png",
+      "caption": "Roles with the permission assignment panel",
+      "number": 4,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "figure",
+      "src": "a06-role-dialog.png",
+      "caption": "Create role dialog",
+      "number": 5,
+      "width": 768,
+      "height": 516,
+      "scale": 0.6
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Saving replaces the role's complete permission set. Review the selected count before saving.",
+        "System roles cannot be renamed, but their permissions can be changed. Change them only with written approval and record what you changed.",
+        "Roles and permissions cannot be deleted. Remove a role from all users instead of trying to delete it."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Permissions catalog"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Security** > **Permissions** to see all capabilities grouped by screen.",
+        "Use **Add permission** only when the development team asks for it for a new screen: choose the **Resource** (screen) and **Action** (Read, Add, Edit, Approve, Reject, Push)."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a07-permissions.png",
+      "caption": "Permissions catalog",
+      "number": 6,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "note",
+      "label": "Important",
+      "text": "Never edit or rename the permissions that came with the system. The application checks them by exact name; changing one silently removes that capability from every role that uses it."
+    },
+    {
+      "type": "h1",
+      "text": "Limit HR Users to Departments"
+    },
+    {
+      "type": "p",
+      "text": "By default an HR user works across all departments. **Department assignment** limits an HR user to selected departments and everything below them in the organization structure. It applies to employee lists, attendance approval, leave, temporary assignments, reports, and the audit views."
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Human Resources** > **Core** > **Department assignment** (available to Admins, Executives, and HR users who are also supervisors).",
+        "Find the HR user with **Search HR users** and select **Edit**.",
+        "Choose the **Departments** and select **Save**. Use **Clear assignments** to restore access to all departments."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a08-department-assignments.png",
+      "caption": "Department assignment for HR users",
+      "number": 7,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Only users with the human_resource role who are linked to a working employee appear in this list.",
+        "Assigning a parent department includes its sub-departments automatically, so moving departments in the organization structure also changes HR coverage."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Administer Biometric Devices"
+    },
+    {
+      "type": "p",
+      "text": "Biometric devices are ZKTeco terminals. Only Admins can register or change a device; HR can view devices, test the connection, and start a sync."
+    },
+    {
+      "type": "table",
+      "header": [
+        "Integration mode",
+        "Use"
+      ],
+      "rows": [
+        [
+          "TCP_PULL",
+          "TAMS connects to the device on the LAN (port 4370) and reads the attendance log. **Use this mode in the current release.**"
+        ],
+        [
+          "HYBRID",
+          "Push heartbeat plus TCP pull. Pull still collects the attendance."
+        ],
+        [
+          "PUSH_ADMS",
+          "The device contacts TAMS over HTTPS. In the current release push only marks the device online; it does not record attendance, so do not rely on it alone."
+        ],
+        [
+          "MANUAL_ONLY / DISABLED",
+          "No automatic collection."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Register or update a device"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Biometric** > **Biometric devices** and select **Add device** (or the pencil icon on an existing device).",
+        "On **Basic info**, enter **Device name**, a unique **Device code**, **Device type**, **Connection type**, **Department**, **Location**, and the device **Serial number**. Leave **Active** on.",
+        "On **Integration & sync**, choose the **Integration mode** (TCP_PULL), enter the device's fixed **IP address** and **Port** (4370), and keep **Pull enabled** and **Auto sync enabled** on.",
+        "Select **Save**, then **Test Connection** on the device row."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a09-devices.png",
+      "caption": "Biometric devices with Test Connection and Sync",
+      "number": 8,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "figure",
+      "src": "a10-device-basic.png",
+      "caption": "Add device: Basic info",
+      "number": 9,
+      "width": 768,
+      "height": 1098,
+      "scale": 0.6
+    },
+    {
+      "type": "figure",
+      "src": "a11-device-integration.png",
+      "caption": "Add device: Integration & sync",
+      "number": 10,
+      "width": 768,
+      "height": 1215,
+      "scale": 0.6
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Test Connection works only for private LAN addresses (10.x, 172.16-31.x, 192.168.x).",
+        "Set each device's clock to Addis Ababa time and give it a fixed IP address on the facility network.",
+        "Devices cannot be deleted. To retire one, switch **Active** off.",
+        "The automatic pull interval is set on the server for all devices (every 5 minutes by default); the per-device **Sync interval minutes** field is not used."
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Sync attendance and read the sync history"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Select **Sync** on a device to read its attendance log now. New punches are matched to employees by biometric ID and the affected days are recalculated.",
+        "Review the result in **Sync history** on the right, or open **View all sync history** for the full list (status, start and end time, total, successful, and failed records, and any error message)."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a12-sync-history.png",
+      "caption": "Device sync history",
+      "number": 11,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "table",
+      "header": [
+        "Health status",
+        "Meaning"
+      ],
+      "rows": [
+        [
+          "UNKNOWN",
+          "New device, never contacted."
+        ],
+        [
+          "ONLINE",
+          "Last test, sync, or push succeeded."
+        ],
+        [
+          "ERROR",
+          "Last test or sync failed. Read **Last error message** and check network, power, and IP address."
+        ]
+      ],
+      "widths": [
+        2600,
+        7278
+      ]
+    },
+    {
+      "type": "h2",
+      "text": "Enrol employees on devices"
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "Fingerprints and faces are enrolled directly on each device by the device operator, under the employee's biometric ID (the same as the employee code). Enrol each employee on every device they will use.",
+        "When an employee leaves, delete them from each device in the same way. Historical attendance in TAMS is kept."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Review the Audit Trail"
+    },
+    {
+      "type": "p",
+      "text": "TAMS records sign-ins, permission denials, and every change to users, roles, permissions, employees, departments, schedules, attendance, leave, overtime, devices, and IFMIS exports, with the actor, time, outcome, and changed values."
+    },
+    {
+      "type": "h2",
+      "text": "Audit trail report"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Reports** > **Audit trail**.",
+        "Set **Start date** and **End date**, and filter by **Actor**, **Action**, **Resource type**, **Employee**, **Department**, **Outcome** (SUCCESS, DENIED, FAILED), or **Delegated only**.",
+        "Select **Refresh**, then **Excel** to export or **PDF** to print."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a13-audit-trail.png",
+      "caption": "Audit trail report filtered by actor",
+      "number": 12,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Audit timeline"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Open **Security** > **Audit timeline** for a quick chronological view of the latest 250 events.",
+        "Filter by **Actor**, **From**, **To**, **Resource type**, **Outcome**, and **Delegation**."
+      ]
+    },
+    {
+      "type": "figure",
+      "src": "a14-audit-timeline.png",
+      "caption": "Audit timeline with a permission denied event",
+      "number": 13,
+      "width": 1728,
+      "height": 1350,
+      "scale": 1.0
+    },
+    {
+      "type": "h2",
+      "text": "Investigate an incident"
+    },
+    {
+      "type": "steps",
+      "items": [
+        "Agree the question and the period (for example: who changed this employee's department last week?).",
+        "In **Audit trail**, filter by the resource type and the employee or department, and export the result to Excel.",
+        "Check DENIED and FAILED outcomes for attempts outside a person's role, and repeated failed sign-ins for the same account.",
+        "Record the findings, the export file, and the follow-up actions in the incident register."
+      ]
+    },
+    {
+      "type": "bullets",
+      "items": [
+        "The Action filter does not list every recorded action; leave it on All and filter by resource type if an action is missing from the list.",
+        "The audit trail is read-only. Corrections are made through the normal screens, which create new audit entries."
+      ]
+    },
+    {
+      "type": "h1",
+      "text": "Common Problems for Administrators"
+    },
+    {
+      "type": "table",
+      "header": [
+        "Problem",
+        "Action"
+      ],
+      "rows": [
+        [
+          "User cannot sign in and is locked",
+          "Verify identity, then Unlock account."
+        ],
+        [
+          "User never received a password",
+          "Users set their own password with Forgot your password?. Check that the email or phone on the account is correct."
+        ],
+        [
+          "Verification code not received",
+          "Check the contact details and the notification service (Part 2)."
+        ],
+        [
+          "Menu missing after a role change",
+          "Ask the user to reload the page or sign in again."
+        ],
+        [
+          "Cannot assign the Admin role",
+          "Only an Admin can assign the Admin role."
+        ],
+        [
+          "Role name rejected",
+          "System role names are reserved; choose another name."
+        ],
+        [
+          "HR user sees too few employees",
+          "Check Department assignment for that user."
+        ],
+        [
+          "Test Connection fails",
+          "Check that the device is powered, on the LAN, at the saved IP, port 4370, and that the server can reach that network."
+        ],
+        [
+          "Device shows ONLINE but no new punches",
+          "The device may be pushing only. Use TCP_PULL and check the attendance worker (Part 2)."
+        ],
+        [
+          "\"Only system administrators can register or change biometric devices\"",
+          "Device changes need the Admin role."
+        ]
+      ],
+      "widths": [
+        3600,
+        6278
+      ]
+    }
+  ]
+}

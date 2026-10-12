@@ -24,8 +24,10 @@ import type {
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
 import { buildDepartmentImportCache, findOrCreateImportDepartment } from '../../../lib/employees/department-import';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
+import { assertValidEducationLeave } from '../../../lib/employees/education-leave';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
+import { revokeSeparatedEmployeeAccess } from '../users/revokeSeparatedEmployeeAccess';
 import {
   diffChanges,
   employeeAuditFields,
@@ -311,6 +313,7 @@ export async function updatePosition(id: string, input: UpdatePositionInput) {
 
 export async function createEmployee(input: CreateEmployeeInput) {
   await assertEmployeeReferences(input);
+  assertValidEducationLeave(input);
 
   const createdEmployee = await db.transaction(async (tx) => {
     const employeeInput = {
@@ -328,6 +331,7 @@ export async function createEmployee(input: CreateEmployeeInput) {
         email: created.email,
         phoneNumber: created.phoneNumber,
       }, tx);
+      await revokeSeparatedEmployeeAccess([{ userId: created.userId, previousStatus: null, nextStatus: created.sourceEmploymentStatus }], tx);
     }
     return created;
   });
@@ -466,6 +470,12 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
   const updatedEmployee = await db.transaction(async (tx) => {
     const current = await getEmployeeById(id, tx);
     if (!current) throw new Error('Employee not found');
+    assertValidEducationLeave({
+      educationLeaveType: pick(updateData, 'educationLeaveType', current.educationLeaveType),
+      educationLeaveStart: pick(updateData, 'educationLeaveStart', current.educationLeaveStart),
+      educationLeaveExpectedReturn: pick(updateData, 'educationLeaveExpectedReturn', current.educationLeaveExpectedReturn),
+      educationLeaveReturnedOn: pick(updateData, 'educationLeaveReturnedOn', current.educationLeaveReturnedOn),
+    });
 
     await tx
       .update(employees)
@@ -473,6 +483,11 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
       .where(eq(employees.id, id));
 
     const updated = await getEmployeeById(id, tx);
+    await revokeSeparatedEmployeeAccess([{
+      userId: updated?.userId,
+      previousStatus: current.sourceEmploymentStatus,
+      nextStatus: updated?.sourceEmploymentStatus,
+    }], tx);
     const contactChanges = {
       email: input.email !== undefined && input.email !== current.email ? updated?.email : undefined,
       phoneNumber: input.phoneNumber !== undefined && input.phoneNumber !== current.phoneNumber ? updated?.phoneNumber : undefined,
@@ -626,6 +641,11 @@ export async function upsertPermanentEmployees(
     .returning();
 
     await syncImportedUserContacts(inputs, existingEmployeeByCode, userIdByEmployeeCode, tx);
+    await revokeSeparatedEmployeeAccess(rows.map((row) => ({
+      userId: row.userId,
+      previousStatus: existingEmployeeByCode.get(row.employeeCode)?.sourceEmploymentStatus ?? null,
+      nextStatus: row.sourceEmploymentStatus,
+    })), tx);
     return rows;
   });
 
@@ -1142,6 +1162,11 @@ function normalizePositionInput(input: UpdatePositionInput) {
   });
 }
 
+/** The updated value when the field is part of the update, otherwise the stored one. */
+function pick<T extends Record<string, unknown>>(update: T, key: string, current: string | null) {
+  return key in update ? (update[key] as string | null) : current;
+}
+
 function normalizeEmployeeInput(input: UpdateEmployeeInput) {
   let sourceImportedAt: Date | null | undefined;
   if (input.sourceImportedAt instanceof Date) {
@@ -1183,6 +1208,10 @@ function normalizeEmployeeInput(input: UpdateEmployeeInput) {
     salaryStep: input.salaryStep,
     nationalId: input.nationalId,
     paidByIfmis: input.paidByIfmis,
+    educationLeaveType: input.educationLeaveType,
+    educationLeaveStart: input.educationLeaveStart,
+    educationLeaveExpectedReturn: input.educationLeaveExpectedReturn,
+    educationLeaveReturnedOn: input.educationLeaveReturnedOn,
     sourceImportedAt,
     sourceRawPayload: input.sourceRawPayload,
     isActive: input.isActive,

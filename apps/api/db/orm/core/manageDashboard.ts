@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, lte } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import {
@@ -15,6 +15,9 @@ import {
   positions,
 } from '../../schema';
 import { getTimeOperationsSummary } from './manageTimeOperations';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+import { attendanceRate, countStatuses } from '../../../lib/dashboard/executive-metrics';
+import { loadAttendanceDays } from './attendanceDays';
 
 const MANAGER_ROLE_NAMES = ['admin', 'supervisor'];
 
@@ -131,6 +134,15 @@ async function buildManagerDashboard(
   generatedAt: Date,
 ) {
   const directReportIds = directReports.map((assignment) => assignment.employeeId);
+  const today = addisToday(generatedAt);
+  const [pendingManualCount, pendingLeaveCount, teamToday] = directReportIds.length > 0
+    ? await Promise.all([
+      getCount(manualPunchRequests, and(inArray(manualPunchRequests.employeeId, directReportIds), inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES))),
+      getCount(leaveRequests, and(inArray(leaveRequests.employeeId, directReportIds), eq(leaveRequests.status, 'PENDING'))),
+      loadAttendanceDays({ from: today, to: today, employeeIds: directReportIds, now: generatedAt }),
+    ])
+    : [0, 0, null];
+  const teamCounts = countStatuses(teamToday?.days ?? []);
   const [pendingManualPunchRequests, pendingLeaveRequests, recentTeamPunches, currentAnnualLeaveBalance] = directReportIds.length > 0
     ? await Promise.all([
       db.query.manualPunchRequests.findMany({
@@ -173,9 +185,15 @@ async function buildManagerDashboard(
     currentAnnualLeaveBalance,
     metrics: [
       createMetric('direct-reports', 'Direct reports', directReports.length, 'Employees assigned to your supervision', '/contract-employees'),
-      createMetric('pending-requests', 'Pending requests', pendingManualPunchRequests.length, 'Manual punch requests awaiting supervisor action', '/attendance-correction-approvals'),
-      createMetric('pending-leave-requests', 'Pending leave requests', pendingLeaveRequests.length, 'Leave requests awaiting supervisor action', '/leave-request-approvals'),
-      createMetric('recent-team-punches', 'Recent team punches', recentTeamPunches.length, 'Latest punch records from your team', '/attendance-punches'),
+      createMetric('pending-requests', 'Pending requests', pendingManualCount, 'Manual punch requests awaiting supervisor action', '/attendance-correction-approvals'),
+      createMetric('pending-leave-requests', 'Pending leave requests', pendingLeaveCount, 'Leave requests awaiting supervisor action', '/leave-request-approvals'),
+      createMetric(
+        'team-present-today',
+        'Team present today',
+        `${teamCounts.ON_TIME + teamCounts.LATE} / ${teamCounts.ON_TIME + teamCounts.LATE + teamCounts.ABSENT + teamCounts.NOT_YET_ARRIVED}`,
+        `${teamCounts.LATE} late, ${teamCounts.ABSENT} absent, ${teamCounts.NOT_YET_ARRIVED} not yet arrived, ${teamCounts.LEAVE} on leave`,
+        '/attendance-approvals/supervisor',
+      ),
     ],
     quickActions: [
       createQuickAction('Manual punch requests', 'Review correction requests from your team.', '/attendance-correction-approvals'),
@@ -202,8 +220,9 @@ async function buildManagerDashboard(
 }
 
 async function buildEmployeeDashboard(user: DashboardUser, employee: any, generatedAt: Date) {
-  const selectedDate = new Date().toISOString().slice(0, 10);
+  const selectedDate = addisToday(generatedAt);
   const dayRange = getDayRange(selectedDate);
+  const monthStart = `${selectedDate.slice(0, 7)}-01`;
   const [
     latestWorkSchedule,
     recentPunches,
@@ -243,7 +262,33 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
     getEmployeeDashboardAnnualLeaveBalances(employee),
     employee.employmentType === 'CONTRACT' ? getCurrentAnnualLeaveBalance(employee.id) : Promise.resolve(null),
   ]);
-  const todayAttendance = buildTodayAttendance(todayPunches);
+  const [attendance, pendingRequestCount] = await Promise.all([
+    loadAttendanceDays({ from: monthStart, to: selectedDate, employeeIds: [employee.id], now: generatedAt }),
+    getCount(manualPunchRequests, and(eq(manualPunchRequests.employeeId, employee.id), inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES))),
+  ]);
+  const monthDays = attendance.days;
+  const todayDay = monthDays.find((day) => day.date === selectedDate) ?? null;
+  const monthCounts = countStatuses(monthDays);
+  const monthSummary = {
+    month: selectedDate.slice(0, 7),
+    workingDays: monthCounts.ON_TIME + monthCounts.LATE + monthCounts.ABSENT,
+    present: monthCounts.ON_TIME + monthCounts.LATE,
+    onTime: monthCounts.ON_TIME,
+    late: monthCounts.LATE,
+    lateMinutes: monthDays.reduce((sum, day) => sum + (day.status === 'LATE' ? Number(day.record.lateMinutes ?? 0) : 0), 0),
+    absent: monthCounts.ABSENT,
+    onLeave: monthCounts.LEAVE,
+    restDays: monthCounts.REST,
+    earlyDepartures: monthDays.filter((day) => Number(day.record.earlyDepartureMinutes ?? 0) > 0).length,
+    approvedByHr: monthDays.filter((day) => day.record.status === 'HR_APPROVED').length,
+    attendanceRate: attendanceRate(monthCounts),
+  };
+  const todayAttendance = {
+    ...buildTodayAttendance(todayPunches, selectedDate),
+    status: todayDay?.status ?? null,
+    lateMinutes: todayDay?.status === 'LATE' ? Number(todayDay.record.lateMinutes ?? 0) : 0,
+    leaveType: todayDay?.leave?.typeLabel ?? null,
+  };
   const annualLeaveMetricValue = dashboardAnnualLeaveBalances.length > 0
     ? dashboardAnnualLeaveBalances.map((balance: any) => balance.available).join(' / ')
     : 'Not set';
@@ -256,8 +301,21 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
     employee,
     currentAnnualLeaveBalance,
     metrics: [
-      createMetric('recent-punches', 'Recent punches', recentPunches.length, 'Latest attendance punches linked to your profile', '/attendance-punches'),
-      createMetric('manual-requests', 'Manual requests', manualPunchRequestItems.length, 'Your recent correction requests', '/attendance-corrections'),
+      createMetric(
+        'days-present',
+        'Days present this month',
+        monthSummary.workingDays ? `${monthSummary.present} / ${monthSummary.workingDays}` : '—',
+        monthSummary.workingDays ? `${monthSummary.absent} absent, ${monthSummary.onLeave} on leave` : 'No scheduled working days recorded yet this month',
+        '/my-attendance',
+      ),
+      createMetric(
+        'late-this-month',
+        'Late arrivals this month',
+        monthSummary.late,
+        monthSummary.late ? `${monthSummary.lateMinutes} minutes late in total` : 'No late arrivals this month',
+        '/my-attendance',
+      ),
+      createMetric('manual-requests', 'Pending correction requests', pendingRequestCount, 'Your attendance corrections awaiting a decision', '/attendance-corrections'),
       ...(employee.employmentType === 'CONTRACT'
         ? [createMetric('annual-leave-balance', 'Annual leave balance', annualLeaveMetricValue, 'Available annual leave in the active fiscal year', '/annual-leave-requests')]
         : []),
@@ -279,6 +337,7 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
         annualLeaveBalances: dashboardAnnualLeaveBalances,
         manualPunchRequests: manualPunchRequestItems,
         todayAttendance,
+        monthSummary,
         announcements: [],
       },
     },
@@ -351,14 +410,15 @@ async function getLatestEmployeeWorkSchedule(employeeId: string) {
   });
 }
 
+/** Addis Ababa calendar day. */
 function getDayRange(date: string) {
   return {
-    start: new Date(`${date}T00:00:00`),
-    end: new Date(`${date}T23:59:59.999`),
+    start: new Date(`${date}T00:00:00+03:00`),
+    end: new Date(`${date}T23:59:59.999+03:00`),
   };
 }
 
-function buildTodayAttendance(punches: any[]) {
+function buildTodayAttendance(punches: any[], date: string) {
   const checkIn = punches[0] ?? null;
   const checkOut = punches.length > 1 ? punches[punches.length - 1] : null;
   const workingMinutes = checkIn && checkOut
@@ -366,7 +426,7 @@ function buildTodayAttendance(punches: any[]) {
     : 0;
 
   return {
-    date: new Date().toISOString().slice(0, 10),
+    date,
     checkIn,
     checkOut,
     workingMinutes,

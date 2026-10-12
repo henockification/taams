@@ -218,6 +218,11 @@ export const EmployeeSchema = z.object({
   salaryStep: z.string().nullable().openapi({ example: 'III' }),
   nationalId: z.string().nullable().openapi({ example: '0045678901' }),
   paidByIfmis: z.boolean().openapi({ example: true }),
+  educationLeaveType: z.enum(['ABROAD', 'LOCAL']).nullable().optional().openapi({ example: 'ABROAD' }),
+  educationLeaveStart: z.string().nullable().optional().openapi({ example: '2026-09-01' }),
+  educationLeaveExpectedReturn: z.string().nullable().optional().openapi({ example: '2028-08-31' }),
+  educationLeaveReturnedOn: z.string().nullable().optional().openapi({ example: null }),
+  onEducationLeave: z.boolean().optional().openapi({ example: true }),
   sourceImportedAt: z.string().nullable().openapi({ example: '2026-07-06T09:30:00.000Z' }),
   sourceRawPayload: z
     .record(z.any())
@@ -359,9 +364,6 @@ export const BiometricDeviceTypeSchema = z.enum(['BIOMETRIC', 'RFID', 'FACE_RECO
 export const ConnectionTypeSchema = z.enum(['TCP_IP', 'USB', 'WIFI', 'API']);
 export const DeviceIntegrationModeSchema = z.enum(['PUSH_ADMS', 'TCP_PULL', 'HYBRID', 'MANUAL_ONLY', 'DISABLED']);
 export const DeviceHealthStatusSchema = z.enum(['ONLINE', 'OFFLINE', 'UNKNOWN', 'ERROR']);
-export const BiometricProvisioningRoleSchema = z.enum(['ENROLLMENT_SOURCE', 'TARGET']);
-export const BiometricProvisioningModeSchema = z.enum(['FULL_SYNC', 'EMPLOYEE_UPSERT', 'EMPLOYEE_REMOVE']);
-export const BiometricProvisioningJobStatusSchema = z.enum(['QUEUED', 'RUNNING', 'PREVIEW_READY', 'WAITING_CONFIRMATION', 'COMPLETED', 'PARTIAL', 'FAILED', 'CANCELED']);
 export const SyncStatusSchema = z.enum(['STARTED', 'COMPLETED', 'FAILED', 'PARTIAL']);
 export const PunchTypeSchema = z.enum(['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN']);
 export const PunchSourceSchema = z.enum(['DEVICE', 'MANUAL', 'IMPORT', 'MOBILE', 'WEB']);
@@ -391,10 +393,6 @@ export const BiometricDeviceSchema = z.object({
   firmwareVersion: z.string().nullable(),
   platformVersion: z.string().nullable(),
   fingerprintAlgorithm: z.string().nullable(),
-  provisioningRole: BiometricProvisioningRoleSchema,
-  provisioningEnabled: z.boolean(),
-  lastProvisioningAt: z.string().nullable(),
-  lastProvisioningStatus: z.string().nullable(),
   communicationKeyConfigured: z.boolean(),
   isActive: z.boolean().openapi({ example: true }),
   lastSyncAt: z.string().nullable().openapi({ example: null }),
@@ -792,6 +790,10 @@ export const CreateEmployeeRequestSchema = z.object({
   salaryStep: z.string().max(50).nullable().optional(),
   nationalId: z.string().max(50).nullable().optional(),
   paidByIfmis: z.boolean().optional(),
+  educationLeaveType: z.enum(['ABROAD', 'LOCAL']).nullable().optional(),
+  educationLeaveStart: OptionalDateSchema,
+  educationLeaveExpectedReturn: OptionalDateSchema,
+  educationLeaveReturnedOn: OptionalDateSchema,
   sourceImportedAt: z.string().datetime().nullable().optional(),
   sourceRawPayload: z.record(z.any()).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -850,8 +852,6 @@ export const CreateBiometricDeviceRequestSchema = z.object({
   firmwareVersion: z.string().max(150).nullable().optional(),
   platformVersion: z.string().max(150).nullable().optional(),
   fingerprintAlgorithm: z.string().max(150).nullable().optional(),
-  provisioningRole: BiometricProvisioningRoleSchema.optional(),
-  provisioningEnabled: z.boolean().optional(),
   syncIntervalMinutes: z.number().int().positive().optional(),
   autoSyncEnabled: z.boolean().optional(),
   healthStatus: DeviceHealthStatusSchema.optional(),
@@ -860,60 +860,6 @@ export const CreateBiometricDeviceRequestSchema = z.object({
 });
 
 export const UpdateBiometricDeviceRequestSchema = CreateBiometricDeviceRequestSchema.partial();
-
-export const CreateBiometricProvisioningPreviewRequestSchema = z
-  .object({
-    mode: BiometricProvisioningModeSchema,
-    employeeIds: z.array(UuidSchema).max(5000).optional().default([]),
-    targetDeviceIds: z.array(UuidSchema).max(50).optional().default([]),
-  })
-  .superRefine((value, context) => {
-    if (value.mode !== 'FULL_SYNC' && value.employeeIds.length === 0) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['employeeIds'],
-        message: 'At least one employee is required',
-      });
-    }
-  });
-
-export const BiometricProvisioningDeviceResultSchema = z.object({
-  id: UuidSchema,
-  jobId: UuidSchema,
-  deviceId: UuidSchema,
-  status: z.enum(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED']),
-  addedUsers: z.number().int(),
-  updatedUsers: z.number().int(),
-  removedUsers: z.number().int(),
-  missingTemplates: z.number().int(),
-  uidConflicts: z.number().int(),
-  differences: z.record(z.unknown()).nullable(),
-  errorMessage: z.string().nullable(),
-  attempts: z.number().int(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  device: BiometricDeviceSchema.nullable().optional(),
-});
-
-export const BiometricProvisioningJobSchema = z.object({
-  id: UuidSchema,
-  previewJobId: UuidSchema.nullable(),
-  sourceDeviceId: UuidSchema,
-  mode: BiometricProvisioningModeSchema,
-  status: BiometricProvisioningJobStatusSchema,
-  isPreview: z.boolean(),
-  requestedEmployeeIds: z.array(UuidSchema),
-  requestedTargetDeviceIds: z.array(UuidSchema),
-  summary: z.record(z.unknown()).nullable(),
-  errorMessage: z.string().nullable(),
-  requestedBy: z.string(),
-  startedAt: z.string().nullable(),
-  completedAt: z.string().nullable(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  sourceDevice: BiometricDeviceSchema.nullable().optional(),
-  deviceResults: z.array(BiometricProvisioningDeviceResultSchema).optional(),
-});
 
 export const CreateBiometricDeviceSyncRequestSchema = z.object({
   syncStatus: SyncStatusSchema.optional(),
@@ -1004,6 +950,13 @@ export const ChangeManualPunchRequestStatusRequestSchema = z.object({
   rejectedBy: z.string().min(1).optional(),
   rejectedAt: z.string().datetime().optional(),
   rejectionReason: z.string().nullable().optional(),
+});
+
+export const UpdateOvertimeRequestRequestSchema = z.object({
+  overtimeDate: RequiredDateSchema.optional(),
+  startAt: z.string().datetime(),
+  endAt: z.string().datetime(),
+  reason: z.string().trim().min(1),
 });
 
 export const CreateOvertimeRequestRequestSchema = z
@@ -1501,16 +1454,6 @@ export const BiometricDeviceConnectionTestResponseSchema = z.object({
   biometricDevice: BiometricDeviceSchema,
 });
 
-export const BiometricProvisioningJobResponseSchema = z.object({
-  success: z.boolean(),
-  biometricProvisioningJob: BiometricProvisioningJobSchema,
-});
-
-export const BiometricProvisioningJobsResponseSchema = z.object({
-  success: z.boolean(),
-  biometricProvisioningJobs: z.array(BiometricProvisioningJobSchema),
-});
-
 export const AttendanceSyncBatchesResponseSchema = z.object({
   success: z.boolean(),
   attendanceSyncBatches: z.array(AttendanceSyncBatchSchema),
@@ -1541,6 +1484,13 @@ export const AttendancePunchResponseSchema = z.object({
 export const AttendanceDailyRecordsResponseSchema = z.object({
   success: z.boolean(),
   attendanceDailyRecords: z.array(AttendanceDailyRecordSchema),
+  /** HR only: departments the caller may filter by, from their department assignments. */
+  departments: z.array(z.object({
+    id: z.string(),
+    nameEn: z.string(),
+    nameAm: z.string().nullable(),
+    isContract: z.boolean(),
+  })).optional(),
 });
 
 export const AttendanceDailyRecordResponseSchema = z.object({
@@ -1550,6 +1500,10 @@ export const AttendanceDailyRecordResponseSchema = z.object({
 
 export const AttendanceApprovalBatchRequestSchema = z.object({
   attendanceDailyRecordIds: z.array(UuidSchema).min(1).max(5000),
+});
+
+export const AttendanceReturnBatchRequestSchema = AttendanceApprovalBatchRequestSchema.extend({
+  reason: z.string().trim().min(1),
 });
 
 export const AttendanceApprovalBatchResponseSchema = z.object({
@@ -1734,6 +1688,22 @@ export const ExecutiveDashboardSummarySchema = z.object({
   date: z.string(),
   month: z.string(),
   period: z.enum(['day', 'week', 'month']),
+  dateFrom: z.string(),
+  dateTo: z.string(),
+  focusDate: z.string(),
+  isLive: z.boolean(),
+  scope: z.object({
+    departmentId: z.string().uuid().nullable(),
+    departmentName: z.string().nullable(),
+    departmentCount: z.number().int().nonnegative(),
+  }),
+  departments: z.array(z.object({ id: z.string().uuid(), name: z.string(), parentDepartmentId: z.string().uuid().nullable() })),
+  dataQuality: z.object({
+    missingRecords: z.number().int().nonnegative(),
+    missingToday: z.number().int().nonnegative(),
+    noScheduleEmployees: z.number().int().nonnegative(),
+    classifiedDays: z.number().int().nonnegative(),
+  }),
   workforceStatus: z.object({
     totalEmployees: z.number().int().nonnegative(),
     presentToday: z.number().int().nonnegative(),
@@ -1743,6 +1713,14 @@ export const ExecutiveDashboardSummarySchema = z.object({
     workingRemotely: z.number().int().nonnegative(),
     officialAssignment: z.number().int().nonnegative(),
     attendanceRate: z.number().nonnegative(),
+    notYetArrived: z.number().int().nonnegative(),
+    biometricExempt: z.number().int().nonnegative(),
+    restDays: z.number().int().nonnegative(),
+    noSchedule: z.number().int().nonnegative(),
+    onEducationLeave: z.number().int().nonnegative(),
+    punctualityRate: z.number().nullable(),
+    previousAttendanceRate: z.number().nullable(),
+    attendanceTrend: z.enum(['UP', 'DOWN', 'FLAT']).nullable(),
   }),
   workforceDistribution: z.array(
     z.object({
@@ -1769,17 +1747,21 @@ export const ExecutiveDashboardSummarySchema = z.object({
     z.object({
       time: z.string(),
       count: z.number().int().nonnegative(),
+      arrivals: z.number().int().nonnegative(),
     }),
   ),
   leaveSummary: z.array(
     z.object({
       id: z.string(),
       label: z.string(),
-      count: z.number().int().nonnegative(),
+      category: z.enum(['LEAVE', 'OFFICIAL_DUTY', 'REMOTE', 'UNPAID']),
+      count: z.number().int().nonnegative().openapi({ description: 'Employees on this leave type in the period' }),
+      days: z.number().nonnegative().openapi({ description: 'Working days on this leave type in the period' }),
     }),
   ),
   hrPerformance: z.object({
     pendingHrApproval: z.number().int().nonnegative(),
+    pendingCorrections: z.number().int().nonnegative(),
     pendingLeaveApproval: z.number().int().nonnegative(),
     averageApprovalTimeHours: z.number().nonnegative(),
     correctionsReturned: z.number().int().nonnegative(),
@@ -1793,17 +1775,23 @@ export const ExecutiveDashboardSummarySchema = z.object({
       present: z.number().int().nonnegative(),
       absent: z.number().int().nonnegative(),
       lateEmployees: z.number().int().nonnegative(),
+      onLeave: z.number().int().nonnegative(),
+      dueDays: z.number().int().nonnegative(),
       pendingApprovals: z.number().int().nonnegative(),
       leaveRate: z.number().nonnegative(),
-      attendanceRate: z.number().nonnegative(),
-      trend: z.enum(['UP', 'DOWN']),
+      attendanceRate: z.number().nullable(),
+      punctualityRate: z.number().nullable(),
+      previousAttendanceRate: z.number().nullable(),
+      trend: z.enum(['UP', 'DOWN', 'FLAT']).nullable(),
     }),
   ),
   monthlyAttendanceTrend: z.array(
     z.object({
       month: z.string(),
+      monthKey: z.string(),
       present: z.number().int().nonnegative(),
-      attendanceRate: z.number().nonnegative(),
+      dueDays: z.number().int().nonnegative(),
+      attendanceRate: z.number().nullable(),
     }),
   ),
   attendanceExceptions: z.array(

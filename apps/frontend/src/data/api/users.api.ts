@@ -158,6 +158,33 @@ export const usersApi = {
     return data;
   },
 
+  revokeUserAccess: async ({ id, reason }: { id: string; reason?: string }): Promise<CreateUserResponse> => {
+    const response = await fetch(`${API_BASE_URL}/api/users/${id}/revoke-access`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason: reason?.trim() || null }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
+    }
+    return data;
+  },
+
+  restoreUserAccess: async (id: string): Promise<CreateUserResponse> => {
+    const response = await fetch(`${API_BASE_URL}/api/users/${id}/restore-access`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.success === false) {
+      throw new Error(data?.error || data?.details || `HTTP error! status: ${response.status}`);
+    }
+    return data;
+  },
+
   getProfile: async (): Promise<UserProfileResponse> => {
     const response = await apiClient.get('/api/profile', {
       headers: {

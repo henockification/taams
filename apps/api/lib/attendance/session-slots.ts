@@ -46,6 +46,52 @@ export function recordSessions(record: any): AttendanceSession[] {
     .map(materializeSession);
 }
 
+/**
+ * Late, late-return, early-break and early-departure minutes for a day, derived from its sessions
+ * exactly as the attendance approval screen derives them. Days without sessions keep the stored totals.
+ */
+export function recordExceptionMinutes(record: any, sessions: AttendanceSession[] = recordSessions(record)) {
+  if (sessions.length === 0) {
+    return {
+      lateMinutes: record.lateMinutes ?? 0,
+      lateReturnMinutes: record.lateReturnMinutes ?? 0,
+      earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
+      earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
+    };
+  }
+  const finalSession = sessions[sessions.length - 1];
+  return {
+    lateMinutes: sessions[0].lateMinutes ?? 0,
+    lateReturnMinutes: sessions.slice(1).reduce((total, session) => total + (session.lateMinutes ?? 0), 0),
+    earlyBreakMinutes: sessions.slice(0, -1).reduce(
+      (total, session) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes ?? 0 : 0),
+      0,
+    ),
+    earlyDepartureMinutes: finalSession.checkOutStatus === 'EARLY' ? finalSession.earlyCheckoutMinutes ?? 0 : 0,
+  };
+}
+
+/** Minutes between check-in and check-out of every completed session, or of the day's first and last punch. */
+export function recordWorkedMinutes(record: any, sessions: AttendanceSession[] = recordSessions(record)) {
+  const span = (from: string | Date | null | undefined, to: string | Date | null | undefined) => (
+    from && to ? Math.max(0, Math.floor((new Date(to).getTime() - new Date(from).getTime()) / 60_000)) : 0
+  );
+  if (sessions.length === 0) return span(record.checkInAt, record.checkOutAt);
+  return sessions.reduce((total, session) => total + span(session.checkInAt, session.checkOutAt), 0);
+}
+
+/** 125 -> "2h 05m", for durations people read rather than add up. */
+export function formatDuration(minutes: number) {
+  if (!minutes) return '0m';
+  const hours = Math.floor(minutes / 60);
+  const rest = String(minutes % 60).padStart(2, '0');
+  return hours > 0 ? `${hours}h ${rest}m` : `${minutes % 60}m`;
+}
+
+export function minutesToHours(minutes: number) {
+  return Math.round((minutes / 60) * 100) / 100;
+}
+
 export function formatAddisTime(value: string | Date | null | undefined) {
   if (!value) return '';
   return new Intl.DateTimeFormat('en-GB', {
@@ -110,10 +156,20 @@ export function sessionSlotValues(record: any, sessions: AttendanceSession[], sl
   }
 
   // Off days, holidays and records without a shift: first and last punch only.
-  slots.session1In = formatAddisTime(record.checkInAt);
+  const noDuty = isNoDutyDay(record);
+  slots.session1In = formatAddisTime(record.checkInAt) || (noDuty ? '' : 'No punches');
   slots[`session${slotCount}Out`] = formatAddisTime(record.checkOutAt);
-  slots.session1Status = isNoDutyDay(record)
+  slots.session1Status = noDuty
     ? record.isHoliday ? `Holiday${record.holiday?.nameEn ? `: ${record.holiday.nameEn}` : ''}` : 'Off day'
-    : '';
+    : dayStatusLabel(record);
   return slots;
+}
+
+/** Status for a duty day that has no session breakdown, from its payroll day values. */
+function dayStatusLabel(record: any) {
+  if (Number(record.leaveDays ?? 0) > 0) return 'On leave';
+  if (record.isBiometricExempt) return 'Exempt';
+  if (Number(record.absenceDays ?? 0) > 0) return 'Absent';
+  if (Number(record.attendanceDays ?? 0) > 0) return 'Present';
+  return '';
 }

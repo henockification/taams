@@ -32,6 +32,7 @@ import {
   updateLeaveFiscalYear,
   updateLeaveRequestScoped,
   updateLeaveType,
+  deleteLeaveType,
   upsertLeaveBalanceScoped,
 } from '../../../../db/orm/core/manageLeave';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
@@ -139,6 +140,15 @@ export async function updateLeaveTypeHandler(c: Context) {
     return c.json({ success: true, leaveType: formatLeaveType(leaveType) });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to update leave type');
+  }
+}
+
+export async function deleteLeaveTypeHandler(c: Context) {
+  try {
+    await deleteLeaveType(c.req.param('id'));
+    return c.json({ success: true });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to delete leave type');
   }
 }
 

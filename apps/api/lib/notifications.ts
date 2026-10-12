@@ -180,38 +180,33 @@ class EthioTelecomSmsProvider implements NotificationProvider {
     return workflowNotificationsAreEnabled() && isTruthyEnv('NOTIFICATIONS_SMS_ENABLED');
   }
 
+  // Sends through the internal SMS gateway (src/workers/sms-gateway.ts), which holds the
+  // SMPP bind to the Ethio telecom SMSC.
   async send(input: { destination: string; message: string }): Promise<SendResult> {
-    const baseUrl = process.env.ETHIOTELECOM_SMS_BASE_URL;
-    const path = process.env.ETHIOTELECOM_SMS_PATH ?? '/sms/send';
-    if (!baseUrl) throw new Error('ETHIOTELECOM_SMS_BASE_URL is not configured');
+    const gatewayUrl = process.env.SMS_GATEWAY_URL;
+    const token = process.env.SMS_GATEWAY_TOKEN;
+    if (!gatewayUrl) throw new Error('SMS_GATEWAY_URL is not configured');
+    if (!token) throw new Error('SMS_GATEWAY_TOKEN is not configured');
 
-    const url = new URL(path, baseUrl);
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    const apiKey = process.env.ETHIOTELECOM_SMS_API_KEY;
-    if (apiKey) {
-      const authHeader = process.env.ETHIOTELECOM_SMS_AUTH_HEADER ?? 'Authorization';
-      const authPrefix = process.env.ETHIOTELECOM_SMS_AUTH_PREFIX ?? 'Bearer';
-      headers[authHeader] = authPrefix ? `${authPrefix} ${apiKey}` : apiKey;
-    }
-
-    const response = await fetch(url, {
-      method: process.env.ETHIOTELECOM_SMS_METHOD ?? 'POST',
-      headers,
-      body: JSON.stringify({
-        to: input.destination,
-        msisdn: input.destination.replace(/^\+/, ''),
-        message: input.message,
-        text: input.message,
-        sender: process.env.ETHIOTELECOM_SMS_SENDER_ID,
-        senderId: process.env.ETHIOTELECOM_SMS_SENDER_ID,
-      }),
+    const response = await fetch(new URL('/send', gatewayUrl), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ to: input.destination, message: input.message }),
+      signal: AbortSignal.timeout(Number(process.env.SMS_GATEWAY_TIMEOUT_MS ?? 15_000)),
     });
 
-    const providerResponse = await response.json().catch(async () => ({ raw: await response.text().catch(() => '') }));
+    const responseText = await response.text().catch(() => '');
+    let providerResponse: unknown;
+    try {
+      providerResponse = JSON.parse(responseText);
+    } catch {
+      providerResponse = { raw: responseText };
+    }
     if (!response.ok) {
-      throw new Error(`Ethio telecom SMS request failed (${response.status}): ${JSON.stringify(providerResponse)}`);
+      throw new Error(`SMS gateway request failed (${response.status}): ${JSON.stringify(providerResponse)}`);
     }
 
     return {

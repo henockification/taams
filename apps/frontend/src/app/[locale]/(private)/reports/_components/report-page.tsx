@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -39,7 +40,7 @@ import {
   useLeaveTypes,
   useReport,
 } from '@/data/hooks/core.hooks';
-import type { ReportKey } from '@/data/types/core.types';
+import type { ReportHighlight, ReportKey } from '@/data/types/core.types';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -50,6 +51,8 @@ type FilterConfig = {
   label: string;
   type: FilterType;
   options?: { value: string; label: string }[];
+  /** A select that always has a value, e.g. a view switch; the first option is the default. */
+  required?: boolean;
 };
 
 type ReportConfig = {
@@ -71,8 +74,8 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
   'attendance-daily': {
     key: 'attendance-daily',
     title: 'Attendance Daily Summary',
-    description: 'Daily payroll-ready attendance status by employee.',
-    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus'],
+    description: 'Session check-ins and check-outs, late and early minutes, attendance, leave and absence days by employee.',
+    filterKeys: ['view', 'dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus'],
   },
   'attendance-punches': {
     key: 'attendance-punches',
@@ -83,8 +86,8 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
   'late-attendance': {
     key: 'late-attendance',
     title: 'Late Attendance',
-    description: 'Employees whose first punch is later than their assigned shift threshold.',
-    filterKeys: ['dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus', 'minLateMinutes'],
+    description: 'Late check-ins and late returns from break, per session, as shown on attendance approval.',
+    filterKeys: ['view', 'dateFrom', 'dateTo', 'departmentId', 'employeeId', 'attendanceStatus', 'minLateMinutes'],
   },
   overtime: {
     key: 'overtime',
@@ -206,7 +209,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${reportKey}-report.xlsx`;
+      link.download = `${reportKey}${filters.view === 'summary' ? '-employee-totals' : ''}-report.xlsx`;
       link.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -277,7 +280,9 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
             <div className="flex items-center gap-3">
               <Image src="/logo.png" alt="Tams" width={42} height={42} className="size-10 object-contain" />
               <div>
-                <CardTitle className="text-lg">{configBase.title}</CardTitle>
+                <CardTitle className="text-lg">
+                  {configBase.title}{filters.view === 'summary' ? ' — Employee totals' : ''}
+                </CardTitle>
                 <p className="text-xs text-muted-foreground">Tams Attendance Management System</p>
               </div>
             </div>
@@ -305,12 +310,19 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
               {reportQuery.error instanceof Error ? reportQuery.error.message : common('error')}
             </div>
           ) : report && report.rows.length > 0 ? (
-            <div className="overflow-x-auto">
+            <div className="space-y-4">
+              <ReportHighlights highlights={report.summary.highlights} />
+              <div className="overflow-x-auto rounded-md border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
                     {report.columns.map((column) => (
-                      <TableHead key={column.key} className="whitespace-nowrap">{column.label}</TableHead>
+                      <TableHead
+                        key={column.key}
+                        className={wideTextColumns.has(column.key) ? 'min-w-48' : 'whitespace-nowrap'}
+                      >
+                        {column.label}
+                      </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
@@ -318,14 +330,18 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
                   {report.rows.map((row, index) => (
                     <TableRow key={index}>
                       {report.columns.map((column) => (
-                        <TableCell key={column.key} className="whitespace-nowrap">
-                          {formatReportValue(row[column.key], formatDate, formatDateTime)}
+                        <TableCell
+                          key={column.key}
+                          className={wideTextColumns.has(column.key) ? 'min-w-48 max-w-72 whitespace-normal' : 'whitespace-nowrap'}
+                        >
+                          <ReportCell columnKey={column.key} value={formatReportValue(row[column.key], formatDate, formatDateTime)} />
                         </TableCell>
                       ))}
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border text-center">
@@ -360,12 +376,15 @@ function FilterControl({
 
     return (
       <FilterShell filter={filter}>
-        <Select value={value || 'all'} onValueChange={(next) => onChange(next === 'all' ? '' : next)}>
+        <Select
+          value={value || (filter.required ? filter.options?.[0]?.value : 'all')}
+          onValueChange={(next) => onChange(next === 'all' ? '' : next)}
+        >
           <SelectTrigger size="sm" className="h-8 w-full min-w-0 px-2.5 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="start" className="min-w-[var(--radix-select-trigger-width)]">
-            <SelectItem value="all" className="text-xs">All</SelectItem>
+            {filter.required ? null : <SelectItem value="all" className="text-xs">All</SelectItem>}
             {(filter.options ?? []).map((option) => (
               <SelectItem key={option.value} value={option.value} className="text-xs">{option.label}</SelectItem>
             ))}
@@ -472,6 +491,57 @@ function SearchableEmployeeFilter({
   );
 }
 
+/** Free-text columns that would otherwise stretch the table and push the figures out of view. */
+const wideTextColumns = new Set(['department', 'temporaryFrom', 'directSupervisor', 'payrollNote', 'reason', 'changesSummary', 'errorMessage']);
+
+function ReportHighlights({ highlights }: { highlights?: ReportHighlight[] }) {
+  if (!highlights?.length) return null;
+  return (
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-1.5">
+      {highlights.map((highlight) => (
+        <div key={highlight.label} className="min-w-0 rounded-md border border-border px-2.5 py-2">
+          <p className="text-[11px] leading-tight text-muted-foreground">{highlight.label}</p>
+          <p className="mt-1 text-xl font-semibold leading-none">{highlight.value}</p>
+          {highlight.detail ? <p className="mt-1 text-[10px] leading-tight text-muted-foreground">{highlight.detail}</p> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Styles attendance cells the way the attendance approval screen does: status badges and flagged exceptions. */
+function ReportCell({ columnKey, value }: { columnKey: string; value: string }) {
+  if (/^session\d+Status$/.test(columnKey) && value) {
+    const variant = value === 'Present' ? 'default' : value === 'Absent' ? 'destructive' : 'secondary';
+    return <Badge variant={variant}>{value}</Badge>;
+  }
+  if (/^session\d+(In|Out)$/.test(columnKey)) {
+    if (value.startsWith('Missing')) return <span className="text-destructive">{value}</span>;
+    if (value === 'No punches') return <span className="text-muted-foreground">{value}</span>;
+    if (/ (Late|Early) \(/.test(value) || value.includes('Late check-out')) {
+      return <span className="font-medium text-amber-600">{value}</span>;
+    }
+    return <>{value}</>;
+  }
+  if (flaggedMinuteColumns.has(columnKey) && Number(value) > 0) {
+    return <span className="font-medium text-amber-600">{value}</span>;
+  }
+  if (columnKey === 'absenceDays' || columnKey === 'absentSessions') {
+    return Number(value) > 0 ? <span className="font-medium text-destructive">{value}</span> : <>{value}</>;
+  }
+  return <>{value}</>;
+}
+
+const flaggedMinuteColumns = new Set([
+  'lateMinutes',
+  'lateCheckInMinutes',
+  'lateReturnMinutes',
+  'earlyBreakMinutes',
+  'earlyDepartureMinutes',
+  'earlyLeaveMinutes',
+  'lateDays',
+]);
+
 function filterWidthClass(filter: FilterConfig) {
   if (filter.key === 'employeeId') return 'w-full min-w-[16rem] sm:w-[18rem]';
   if (filter.type === 'search') return 'w-full min-w-[13rem] sm:w-[15rem]';
@@ -500,6 +570,7 @@ function buildFilters(input: {
     leaveTypeId: input.leaveTypes.map((leaveType) => ({ value: leaveType.id, label: leaveType.nameEn })),
   };
   const definitions: Record<string, FilterConfig> = {
+    view: { key: 'view', label: 'View', type: 'select', options: reportViews, required: true },
     dateFrom: { key: 'dateFrom', label: 'Start date', type: 'date' },
     dateTo: { key: 'dateTo', label: 'End date', type: 'date' },
     timeFrom: { key: 'timeFrom', label: 'Start time', type: 'time' },
@@ -550,11 +621,21 @@ function formatReportValue(
   return String(value ?? '');
 }
 
-const attendanceStatuses = ['PENDING_SUPERVISOR', 'RETURNED', 'SUPERVISOR_APPROVED', 'HR_APPROVED'].map((value) => ({ value, label: value }));
+const attendanceStatuses = [
+  { value: 'PENDING_SUPERVISOR', label: 'Pending supervisor' },
+  { value: 'RETURNED', label: 'Returned' },
+  { value: 'SUPERVISOR_APPROVED', label: 'Supervisor approved' },
+  { value: 'HR_APPROVED', label: 'HR approved' },
+];
+const reportViews = [
+  { value: 'daily', label: 'Daily records' },
+  { value: 'summary', label: 'Employee totals' },
+];
 const punchStatuses = [{ value: 'processed', label: 'Processed' }, { value: 'unprocessed', label: 'Unprocessed' }];
 const leaveStatuses = ['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED'].map((value) => ({ value, label: value }));
 const syncStatuses = ['STARTED', 'COMPLETED', 'FAILED', 'PARTIAL'].map((value) => ({ value, label: value }));
-const employmentTypes = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'].map((value) => ({ value, label: value }));
+// Only contract and permanent employees are managed; other types are not applicable.
+const employmentTypes = [{ value: 'CONTRACT', label: 'Contract' }, { value: 'PERMANENT', label: 'Permanent' }];
 const employmentStatuses = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'].map((value) => ({ value, label: value }));
 const auditOutcomes = ['SUCCESS', 'DENIED', 'FAILED'].map((value) => ({ value, label: value }));
 const auditResourceTypes = [
@@ -588,6 +669,7 @@ const auditActions = [
   'AUTH_SESSIONS_REVOKED',
   'PERMISSION_DENIED',
   'LEAVE_REQUEST_SUBMITTED',
+  'LEAVE_TYPE_DELETED',
   'LEAVE_REQUEST_UPDATED',
   'LEAVE_REQUEST_APPROVED',
   'LEAVE_REQUEST_REJECTED',
@@ -608,6 +690,7 @@ const auditActions = [
   'ATTENDANCE_REOPENED_AFTER_CORRECTION',
   'ATTENDANCE_PAYROLL_ADJUSTED',
   'OVERTIME_ASSIGNED',
+  'OVERTIME_UPDATED',
   'OVERTIME_APPROVED',
   'OVERTIME_REJECTED',
   'MANUAL_PUNCH_SUBMITTED',
@@ -626,6 +709,8 @@ const auditActions = [
   'USER_CREATED',
   'USER_UPDATED',
   'USER_ROLES_ASSIGNED',
+  'USER_ACCESS_REVOKED',
+  'USER_ACCESS_RESTORED',
   'ROLE_CREATED',
   'ROLE_UPDATED',
   'EMPLOYEE_CREATED',

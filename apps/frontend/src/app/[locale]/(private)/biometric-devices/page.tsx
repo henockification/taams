@@ -18,7 +18,6 @@ import { useBiometricDeviceSyncHistory, useBiometricDevices, useCreateBiometricD
 import type { BiometricDevice, BiometricDeviceType, ConnectionType, DeviceHealthStatus, DeviceIntegrationMode } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
-import { EmployeeSyncPanel } from '@/components/biometric/employee-sync-panel';
 import { getReadableSyncError } from '@/components/biometric/sync-history-error';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import { Link } from '@/i18n';
@@ -139,8 +138,6 @@ const initialForm = {
   firmwareVersion: '',
   platformVersion: '',
   fingerprintAlgorithm: '',
-  provisioningRole: 'TARGET' as 'ENROLLMENT_SOURCE' | 'TARGET',
-  provisioningEnabled: false,
   syncIntervalMinutes: '5',
   autoSyncEnabled: true,
   healthStatus: 'UNKNOWN' as DeviceHealthStatus,
@@ -212,8 +209,6 @@ export default function BiometricDevicesPage() {
       firmwareVersion: device.firmwareVersion ?? '',
       platformVersion: device.platformVersion ?? '',
       fingerprintAlgorithm: device.fingerprintAlgorithm ?? '',
-      provisioningRole: device.provisioningRole,
-      provisioningEnabled: device.provisioningEnabled,
       syncIntervalMinutes: String(device.syncIntervalMinutes),
       autoSyncEnabled: device.autoSyncEnabled,
       healthStatus: device.healthStatus,
@@ -251,8 +246,6 @@ export default function BiometricDevicesPage() {
         firmwareVersion: form.firmwareVersion.trim() || null,
         platformVersion: form.platformVersion.trim() || null,
         fingerprintAlgorithm: form.fingerprintAlgorithm.trim() || null,
-        provisioningRole: form.provisioningRole,
-        provisioningEnabled: form.provisioningEnabled,
         syncIntervalMinutes: fieldVisibility.syncIntervalMinutes && form.syncIntervalMinutes ? Number(form.syncIntervalMinutes) : 5,
         autoSyncEnabled: fieldVisibility.autoSyncEnabled ? form.autoSyncEnabled : false,
         healthStatus: editingDevice?.healthStatus ?? form.healthStatus,
@@ -391,7 +384,6 @@ export default function BiometricDevicesPage() {
                         <p className="font-medium">{device.deviceName}</p>
                         <Badge variant={device.isActive ? 'default' : 'secondary'}>{device.isActive ? t('active') : t('inactive')}</Badge>
                         <Badge variant={device.healthStatus === 'ERROR' ? 'destructive' : 'outline'}>{device.healthStatus}</Badge>
-                        {device.provisioningEnabled ? <Badge variant="secondary">{device.provisioningRole === 'ENROLLMENT_SOURCE' ? 'Enrollment source' : 'Sync target'}</Badge> : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {device.deviceCode} · {device.deviceType} · {device.integrationMode}
@@ -488,10 +480,6 @@ export default function BiometricDevicesPage() {
           ) : null}
         </CardContent>
       </Card>
-
-      <div className="xl:col-span-2">
-        <EmployeeSyncPanel devices={devices} />
-      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
@@ -689,35 +677,6 @@ export default function BiometricDevicesPage() {
                         }
                       />
                     </Field>
-                    <Field label="Provisioning role" id="device-provisioning-role">
-                      <Select
-                        value={form.provisioningRole}
-                        onValueChange={(value) =>
-                          setForm((current) => ({
-                            ...current,
-                            provisioningRole: value as 'ENROLLMENT_SOURCE' | 'TARGET',
-                          }))
-                        }
-                      >
-                        <SelectTrigger id="device-provisioning-role">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ENROLLMENT_SOURCE">Enrollment source</SelectItem>
-                          <SelectItem value="TARGET">Target</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <ToggleRow
-                      label="Enable employee provisioning"
-                      checked={form.provisioningEnabled}
-                      onCheckedChange={(checked) =>
-                        setForm((current) => ({
-                          ...current,
-                          provisioningEnabled: checked,
-                        }))
-                      }
-                    />
                     <ToggleRow
                       label={t('active')}
                       checked={form.isActive}

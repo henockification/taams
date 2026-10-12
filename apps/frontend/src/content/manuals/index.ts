@@ -9,8 +9,9 @@ import contractEmployeeManual from './contract-employee.json';
 import hrManual from './hr.json';
 import permanentEmployeeManual from './permanent-employee.json';
 import supervisorManual from './supervisor.json';
+import systemAdminManual from './system-admin.json';
 
-export type ManualId = 'hr' | 'supervisor' | 'contract-employee' | 'permanent-employee';
+export type ManualId = 'system-admin' | 'hr' | 'supervisor' | 'contract-employee' | 'permanent-employee';
 
 type ManualEntry = {
   id: ManualId;
@@ -24,6 +25,7 @@ const isAdministrator = (user: AuthzUser) => isSuperAdmin(user) || roles(user).i
 
 // Ordered by priority: the first manual that applies opens by default.
 const MANUALS: ManualEntry[] = [
+  { id: 'system-admin', content: systemAdminManual as ManualContent, appliesTo: (user) => isAdministrator(user) },
   { id: 'hr', content: hrManual as ManualContent, appliesTo: (user) => roles(user).includes('human_resource') },
   {
     id: 'supervisor',

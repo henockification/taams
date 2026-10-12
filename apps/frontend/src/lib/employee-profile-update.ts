@@ -1,4 +1,4 @@
-import type { Department, Employee, CreateEmployeeInput } from '../data/types/core.types';
+import type { Department, Employee, CreateEmployeeInput, EducationLeaveType } from '../data/types/core.types';
 import { canonicalSourceEmploymentStatus, resolveEmploymentFields } from './employment-status';
 
 export type ProfileDraft = {
@@ -23,6 +23,11 @@ export type ProfileDraft = {
   salaryStep: string;
   nationalId: string;
   paidByIfmis: boolean;
+  /** '' when the employee is not on education leave. */
+  educationLeaveType: EducationLeaveType | '';
+  educationLeaveStart: string;
+  educationLeaveExpectedReturn: string;
+  educationLeaveReturnedOn: string;
 };
 
 export function toDraft(employee: Employee): ProfileDraft {
@@ -48,6 +53,10 @@ export function toDraft(employee: Employee): ProfileDraft {
     salaryStep: employee.salaryStep ?? '',
     nationalId: employee.nationalId ?? '',
     paidByIfmis: employee.paidByIfmis ?? true,
+    educationLeaveType: employee.educationLeaveType ?? '',
+    educationLeaveStart: employee.educationLeaveStart ?? '',
+    educationLeaveExpectedReturn: employee.educationLeaveExpectedReturn ?? '',
+    educationLeaveReturnedOn: employee.educationLeaveReturnedOn ?? '',
   };
 }
 
@@ -81,6 +90,11 @@ function profileFields(draft: ProfileDraft, departmentName: string | null) {
     salaryStep: emptyToNull(draft.salaryStep),
     nationalId: emptyToNull(draft.nationalId),
     paidByIfmis: draft.paidByIfmis,
+    // Clearing the leave type clears its dates too.
+    educationLeaveType: draft.educationLeaveType || null,
+    educationLeaveStart: draft.educationLeaveType ? emptyToNull(draft.educationLeaveStart) : null,
+    educationLeaveExpectedReturn: draft.educationLeaveType ? emptyToNull(draft.educationLeaveExpectedReturn) : null,
+    educationLeaveReturnedOn: draft.educationLeaveType ? emptyToNull(draft.educationLeaveReturnedOn) : null,
   };
 }
 

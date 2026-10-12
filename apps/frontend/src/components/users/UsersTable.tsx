@@ -48,7 +48,8 @@ export default function UsersTable() {
 
       if (lockedFilter !== undefined && lockedFilter !== '') {
         const values = Array.isArray(lockedFilter) ? lockedFilter : [lockedFilter];
-        const matchesLock = values.some((value) => String(Boolean(user.locked)) === String(value));
+        const status = user.accessRevoked ? 'revoked' : String(Boolean(user.locked));
+        const matchesLock = values.some((value) => status === String(value));
         if (!matchesLock) return false;
       }
 
@@ -154,13 +155,14 @@ export default function UsersTable() {
       key: 'locked',
       title: t('loginStatus'),
       dataIndex: 'locked',
-      render: (value) => (
-        <Badge variant={value ? 'destructive' : 'outline'}>
-          {value ? t('locked') : t('active')}
+      render: (value, record) => (
+        <Badge variant={record.accessRevoked || value ? 'destructive' : 'outline'}>
+          {record.accessRevoked ? t('accessRevoked') : value ? t('locked') : t('active')}
         </Badge>
       ),
       filterable: true,
       filterOptions: [
+        { label: t('accessRevoked'), value: 'revoked' },
         { label: t('locked'), value: 'true' },
         { label: t('active'), value: 'false' },
       ],

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import * as XLSX from 'xlsx';
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, lte, or } from 'drizzle-orm';
 import { db } from '../../db/db';
 import {
   attendanceDailyRecords,
@@ -8,8 +8,7 @@ import {
   attendanceSyncBatches,
   biometricDevices,
   departments,
-  employeeWorkSchedules,
-  employees,
+    employees,
   leaveBalances,
   leaveFiscalYears,
   leaveRequests,
@@ -31,7 +30,17 @@ import {
   getSupervisorAttendanceRecords,
   type SupervisorReportScope,
 } from '../../db/orm/core/manageSupervisorReport';
-import { buildSessionSlotColumns, recordSessions, sessionSlotValues } from '../../lib/attendance/session-slots';
+import {
+  buildSessionSlotColumns,
+  formatDuration,
+  isNoDutyDay,
+  minutesToHours,
+  recordExceptionMinutes,
+  recordSessions,
+  recordWorkedMinutes,
+  sessionSlotValues,
+  type AttendanceSession,
+} from '../../lib/attendance/session-slots';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 
 type ReportKey =
@@ -65,6 +74,14 @@ type ReportDefinition = {
 type ReportResult = {
   rows: Record<string, unknown>[];
   columns: ReportColumn[];
+  /** Headline totals shown above the table, like the counters on the attendance approval screen. */
+  highlights?: ReportHighlight[];
+};
+
+type ReportHighlight = {
+  label: string;
+  value: string | number;
+  detail?: string;
 };
 
 type ReportInput = {
@@ -76,41 +93,90 @@ type ReportInput = {
 const SUPERVISOR_REPORT_ADMIN_ROLES = ['super_admin', 'superadmin', 'admin'];
 
 const reportsApp = new Hono();
-const DEFAULT_SHIFT_START = '08:30:00';
+
+// Session check-in/check-out/status columns are inserted after the department column by the builders.
+const attendanceDailyColumns: ReportColumn[] = [
+  { key: 'attendanceDate', label: 'Date' },
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'workedTime', label: 'Worked time' },
+  { key: 'lateMinutes', label: 'Late (min)' },
+  { key: 'earlyBreakMinutes', label: 'Early break (min)' },
+  { key: 'earlyDepartureMinutes', label: 'Early leave (min)' },
+  { key: 'attendanceDays', label: 'Attendance days' },
+  { key: 'leaveDays', label: 'Leave days' },
+  { key: 'holidayDays', label: 'Holiday/off days' },
+  { key: 'payableDays', label: 'Payable days' },
+  { key: 'absenceDays', label: 'Absence days' },
+  { key: 'overtimeMinutes', label: 'Overtime (min)' },
+  { key: 'overtimeHours', label: 'Overtime hours' },
+  { key: 'status', label: 'Approval status' },
+  { key: 'payrollNote', label: 'Note' },
+];
+
+const attendanceTotalsColumns: ReportColumn[] = [
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'daysRecorded', label: 'Days recorded' },
+  { key: 'workedTime', label: 'Worked time' },
+  { key: 'workedHours', label: 'Worked hours' },
+  { key: 'attendanceDays', label: 'Attendance days' },
+  { key: 'absenceDays', label: 'Absence days' },
+  { key: 'absentSessions', label: 'Absent sessions' },
+  { key: 'leaveDays', label: 'Leave days' },
+  { key: 'holidayDays', label: 'Holiday/off days' },
+  { key: 'payableDays', label: 'Payable days' },
+  { key: 'lateDays', label: 'Late days' },
+  { key: 'lateMinutes', label: 'Late (min)' },
+  { key: 'lateTime', label: 'Late time' },
+  { key: 'earlyLeaveDays', label: 'Early leave days' },
+  { key: 'earlyLeaveMinutes', label: 'Early break + leave (min)' },
+  { key: 'overtimeHours', label: 'Overtime hours' },
+  { key: 'pendingSupervisor', label: 'Pending supervisor' },
+  { key: 'payrollReady', label: 'Payroll ready' },
+];
+
+const lateAttendanceColumns: ReportColumn[] = [
+  { key: 'attendanceDate', label: 'Date' },
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'lateCheckInMinutes', label: 'Late check-in (min)' },
+  { key: 'lateReturnMinutes', label: 'Late return (min)' },
+  { key: 'lateMinutes', label: 'Total late (min)' },
+  { key: 'lateTime', label: 'Late time' },
+  { key: 'attendanceDays', label: 'Attendance days' },
+  { key: 'absenceDays', label: 'Absence days' },
+  { key: 'leaveDays', label: 'Leave days' },
+  { key: 'status', label: 'Approval status' },
+];
+
+const lateTotalsColumns: ReportColumn[] = [
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'lateDays', label: 'Late days' },
+  { key: 'lateCheckInMinutes', label: 'Late check-in (min)' },
+  { key: 'lateReturnMinutes', label: 'Late return (min)' },
+  { key: 'lateMinutes', label: 'Total late (min)' },
+  { key: 'lateTime', label: 'Late time' },
+  { key: 'averageLateMinutes', label: 'Average per late day (min)' },
+];
+
+const attendanceStatusLabels: Record<string, string> = {
+  PENDING_SUPERVISOR: 'Pending supervisor',
+  RETURNED: 'Returned',
+  SUPERVISOR_APPROVED: 'Supervisor approved',
+  HR_APPROVED: 'HR approved',
+};
 
 const reportDefinitions: Record<ReportKey, ReportDefinition> = {
   'attendance-daily': {
     title: 'Attendance Daily Summary',
     permission: 'reports-attendance-daily:read',
-    columns: [
-      { key: 'attendanceDate', label: 'Date' },
-      { key: 'employeeCode', label: 'Employee ID' },
-      { key: 'employeeName', label: 'Employee name' },
-      { key: 'department', label: 'Department' },
-      { key: 'checkInAt', label: 'Check in' },
-      { key: 'checkOutAt', label: 'Check out' },
-      { key: 'scheduledStartAt', label: 'Scheduled start' },
-      { key: 'scheduledEndAt', label: 'Scheduled end' },
-      { key: 'lateMinutes', label: 'Late minutes' },
-      { key: 'lateReturnMinutes', label: 'Late return minutes' },
-      { key: 'earlyBreakMinutes', label: 'Early break minutes' },
-      { key: 'earlyDepartureMinutes', label: 'Early departure minutes' },
-      { key: 'toleranceStatus', label: 'Tolerance status' },
-      { key: 'totalPunches', label: 'Punches' },
-      { key: 'attendanceDays', label: 'Attendance days' },
-      { key: 'leaveDays', label: 'Leave days' },
-      { key: 'holidayDays', label: 'Holiday/off-day days' },
-      { key: 'holidayName', label: 'Holiday/off-day' },
-      { key: 'holidayType', label: 'Holiday/off-day type' },
-      { key: 'payableDays', label: 'Payable days' },
-      { key: 'absenceDays', label: 'Absence days' },
-      { key: 'overtimeMinutes', label: 'Approved overtime minutes' },
-      { key: 'unapprovedOvertimeMinutes', label: 'Unapproved overtime minutes' },
-      { key: 'overtimeHours', label: 'Approved overtime hours' },
-      { key: 'overtimeDays', label: 'Overtime days' },
-      { key: 'payrollNote', label: 'Payroll note' },
-      { key: 'status', label: 'Status' },
-    ],
+    columns: attendanceDailyColumns,
     buildRows: buildAttendanceDailyRows,
   },
   'attendance-punches': {
@@ -132,19 +198,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
   'late-attendance': {
     title: 'Late Attendance',
     permission: 'reports-late-attendance:read',
-    columns: [
-      { key: 'attendanceDate', label: 'Date' },
-      { key: 'employeeCode', label: 'Employee ID' },
-      { key: 'employeeName', label: 'Employee name' },
-      { key: 'department', label: 'Department' },
-      { key: 'shiftName', label: 'Shift' },
-      { key: 'scheduledStart', label: 'Scheduled start' },
-      { key: 'lateThreshold', label: 'Late threshold' },
-      { key: 'checkInAt', label: 'Actual check in' },
-      { key: 'arrivalDelayMinutes', label: 'Delay from start (min)' },
-      { key: 'lateMinutes', label: 'Late after grace (min)' },
-      { key: 'status', label: 'Status' },
-    ],
+    columns: lateAttendanceColumns,
     buildRows: buildLateAttendanceRows,
   },
   overtime: {
@@ -265,11 +319,13 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'directSupervisor', label: 'Direct supervisor' },
       // Check-in/check-out/status columns per shift session are inserted here by the builder.
-      { key: 'lateMinutes', label: 'Late minutes' },
-      { key: 'earlyBreakMinutes', label: 'Early break minutes' },
-      { key: 'earlyDepartureMinutes', label: 'Early departure minutes' },
+      { key: 'workedTime', label: 'Worked time' },
+      { key: 'lateMinutes', label: 'Late (min)' },
+      { key: 'earlyBreakMinutes', label: 'Early break (min)' },
+      { key: 'earlyDepartureMinutes', label: 'Early leave (min)' },
       { key: 'attendanceDays', label: 'Attendance days' },
       { key: 'leaveDays', label: 'Leave days' },
+      { key: 'holidayDays', label: 'Holiday/off days' },
       { key: 'absenceDays', label: 'Absence days' },
       { key: 'status', label: 'Approval status' },
     ],
@@ -286,13 +342,17 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'directSupervisor', label: 'Direct supervisor' },
       { key: 'daysRecorded', label: 'Days recorded' },
       { key: 'temporaryAssignmentDays', label: 'Days on temporary assignment' },
+      { key: 'workedTime', label: 'Worked time' },
       { key: 'attendanceDays', label: 'Attendance days' },
       { key: 'absenceDays', label: 'Absence days' },
-      { key: 'leaveDays', label: 'Leave days' },
-      { key: 'lateDays', label: 'Late days' },
-      { key: 'totalLateMinutes', label: 'Total late minutes' },
       { key: 'absentSessions', label: 'Absent sessions' },
-      { key: 'pendingApproval', label: 'Pending approval' },
+      { key: 'leaveDays', label: 'Leave days' },
+      { key: 'holidayDays', label: 'Holiday/off days' },
+      { key: 'lateDays', label: 'Late days' },
+      { key: 'lateMinutes', label: 'Total late (min)' },
+      { key: 'lateTime', label: 'Late time' },
+      { key: 'earlyLeaveMinutes', label: 'Early break + leave (min)' },
+      { key: 'pendingSupervisor', label: 'Pending approval' },
     ],
     buildRows: buildSupervisorAttendanceSummaryRows,
   },
@@ -326,7 +386,7 @@ reportsApp.get('/reports/:key', async (c) => {
     if (!definition) return c.json({ success: false, error: 'Report not found' }, 404);
 
     const context = await getReportContext(c, definition);
-    const { rows, columns } = await runReport(definition, {
+    const { rows, columns, highlights } = await runReport(definition, {
       query: new URL(c.req.url).searchParams,
       scope: context.scope,
       supervisorScope: context.supervisorScope,
@@ -340,7 +400,7 @@ reportsApp.get('/reports/:key', async (c) => {
         generatedAt: new Date().toISOString(),
         columns,
         rows,
-        summary: { totalRows: rows.length },
+        summary: { totalRows: rows.length, highlights: highlights ?? [] },
       },
     });
   } catch (error) {
@@ -421,51 +481,293 @@ async function getReportContext(c: any, definition: ReportDefinition) {
   return { session, scope, supervisorScope };
 }
 
-async function buildAttendanceDailyRows({ query, scope }: ReportInput) {
+/**
+ * One attendance day prepared for reporting: its sessions and exception minutes are derived the
+ * same way the attendance approval screen derives them, so both always show the same numbers.
+ */
+type AttendanceDay = {
+  record: any;
+  department: string;
+  homeDepartment: string;
+  isTemporary: boolean;
+  sessions: AttendanceSession[];
+  noDuty: boolean;
+  lateCheckInMinutes: number;
+  lateReturnMinutes: number;
+  lateMinutes: number;
+  earlyBreakMinutes: number;
+  earlyDepartureMinutes: number;
+  workedMinutes: number;
+};
+
+function toAttendanceDay(record: any, department: string, homeDepartment = department, isTemporary = false): AttendanceDay {
+  const sessions = recordSessions(record);
+  const exceptions = recordExceptionMinutes(record, sessions);
+  return {
+    record,
+    department,
+    homeDepartment,
+    isTemporary,
+    sessions,
+    noDuty: isNoDutyDay(record),
+    lateCheckInMinutes: exceptions.lateMinutes,
+    lateReturnMinutes: exceptions.lateReturnMinutes,
+    lateMinutes: exceptions.lateMinutes + exceptions.lateReturnMinutes,
+    earlyBreakMinutes: exceptions.earlyBreakMinutes,
+    earlyDepartureMinutes: exceptions.earlyDepartureMinutes,
+    workedMinutes: recordWorkedMinutes(record, sessions),
+  };
+}
+
+async function loadAttendanceDays({ query, scope }: ReportInput) {
   const records = await db.query.attendanceDailyRecords.findMany({
     where: and(
       dateFrom(query) ? gte(attendanceDailyRecords.attendanceDate, dateFrom(query)!) : undefined,
       dateTo(query) ? lte(attendanceDailyRecords.attendanceDate, dateTo(query)!) : undefined,
       query.get('status') ? eq(attendanceDailyRecords.status, query.get('status')!) : undefined,
+      query.get('employeeId') ? eq(attendanceDailyRecords.employeeId, query.get('employeeId')!) : undefined,
     ),
     with: {
-      employee: { with: { department: true, position: true } },
+      employee: { with: { department: true } },
       holiday: true,
     },
     orderBy: (table, { desc }) => [desc(table.attendanceDate)],
   });
 
-  return records
+  return sortAttendanceDays(records
     .filter((record) => matchesEmployeeFilters(record.employee, query, scope))
-    .map((record) => ({
-      attendanceDate: record.attendanceDate,
+    .map((record) => toAttendanceDay(record, record.employee?.department?.nameEn ?? '')));
+}
+
+/** Newest day first, then by department and name so each day reads like the approval list. */
+function sortAttendanceDays(days: AttendanceDay[]) {
+  return days.sort((a, b) => (
+    String(b.record.attendanceDate).localeCompare(String(a.record.attendanceDate))
+    || a.department.localeCompare(b.department)
+    || employeeName(a.record.employee).localeCompare(employeeName(b.record.employee))
+  ));
+}
+
+function isSummaryView(query: URLSearchParams) {
+  return query.get('view') === 'summary';
+}
+
+/** Puts one check-in, check-out and status column per shift session right after `afterKey`. */
+function withSessionColumns(baseColumns: ReportColumn[], afterKey: string, days: AttendanceDay[]) {
+  const { slotCount, columns: sessionColumns } = buildSessionSlotColumns(days.map((day) => day.sessions));
+  const insertAt = baseColumns.findIndex((column) => column.key === afterKey) + 1;
+  return {
+    columns: [...baseColumns.slice(0, insertAt), ...sessionColumns, ...baseColumns.slice(insertAt)],
+    sessionCells: (day: AttendanceDay) => sessionSlotValues(day.record, day.sessions, slotCount),
+  };
+}
+
+/** Exception minutes do not apply on rest days and holidays; a dash reads better than a 0 there. */
+function dutyMinutes(day: AttendanceDay, minutes: number) {
+  return day.noDuty ? '-' : minutes;
+}
+
+function attendanceDayValues(day: AttendanceDay) {
+  const { record } = day;
+  return {
+    attendanceDate: record.attendanceDate,
+    employeeCode: record.employee?.employeeCode ?? '',
+    employeeName: employeeName(record.employee),
+    department: day.department,
+    workedTime: day.workedMinutes ? formatDuration(day.workedMinutes) : '',
+    lateMinutes: dutyMinutes(day, day.lateMinutes),
+    earlyBreakMinutes: dutyMinutes(day, day.earlyBreakMinutes),
+    earlyDepartureMinutes: dutyMinutes(day, day.earlyDepartureMinutes),
+    attendanceDays: record.attendanceDays,
+    leaveDays: record.leaveDays,
+    holidayDays: record.holidayDays ?? '0.00',
+    payableDays: record.payableDays,
+    absenceDays: record.absenceDays,
+    overtimeMinutes: record.overtimeMinutes ?? 0,
+    overtimeHours: record.overtimeHours ?? '0.00',
+    status: attendanceStatusLabels[record.status] ?? record.status,
+    payrollNote: record.payrollNote ?? '',
+  };
+}
+
+type EmployeeAttendanceTotals = {
+  employeeCode: string;
+  employeeName: string;
+  department: string;
+  directSupervisor: string;
+  daysRecorded: number;
+  temporaryAssignmentDays: number;
+  workedMinutes: number;
+  attendanceDays: number;
+  absenceDays: number;
+  absentSessions: number;
+  leaveDays: number;
+  holidayDays: number;
+  payableDays: number;
+  lateDays: number;
+  lateCheckInMinutes: number;
+  lateReturnMinutes: number;
+  lateMinutes: number;
+  earlyLeaveDays: number;
+  earlyLeaveMinutes: number;
+  overtimeMinutes: number;
+  pendingSupervisor: number;
+  payrollReady: number;
+};
+
+/** Per-employee totals; days arrive newest first, so the department shown is the latest one in range. */
+function totalAttendanceByEmployee(days: AttendanceDay[]) {
+  const totals = new Map<string, EmployeeAttendanceTotals>();
+  for (const day of days) {
+    const { record } = day;
+    const total = totals.get(record.employeeId) ?? {
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      department: record.employee?.department?.nameEn ?? '',
-      checkInAt: formatDateTime(record.checkInAt),
-      checkOutAt: formatDateTime(record.checkOutAt),
-      scheduledStartAt: formatDateTime(record.scheduledStartAt),
-      scheduledEndAt: formatDateTime(record.scheduledEndAt),
-      lateMinutes: record.lateMinutes ?? 0,
-      lateReturnMinutes: record.lateReturnMinutes ?? 0,
-      earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
-      earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
-      toleranceStatus: record.toleranceStatus ?? 'NONE',
-      totalPunches: record.totalPunches,
-      attendanceDays: record.attendanceDays,
-      leaveDays: record.leaveDays,
-      holidayDays: record.holidayDays ?? '0.00',
-      holidayName: record.holiday?.nameEn ?? '',
-      holidayType: record.holiday?.type ?? '',
-      payableDays: record.payableDays,
-      absenceDays: record.absenceDays,
-      overtimeMinutes: record.overtimeMinutes ?? 0,
-      unapprovedOvertimeMinutes: record.unapprovedOvertimeMinutes ?? 0,
-      overtimeHours: record.overtimeHours ?? '0.00',
-      overtimeDays: record.overtimeDays ?? '0.00',
-      payrollNote: record.payrollNote ?? '',
-      status: record.status,
+      department: day.department,
+      directSupervisor: directSupervisorName(record.employee),
+      daysRecorded: 0,
+      temporaryAssignmentDays: 0,
+      workedMinutes: 0,
+      attendanceDays: 0,
+      absenceDays: 0,
+      absentSessions: 0,
+      leaveDays: 0,
+      holidayDays: 0,
+      payableDays: 0,
+      lateDays: 0,
+      lateCheckInMinutes: 0,
+      lateReturnMinutes: 0,
+      lateMinutes: 0,
+      earlyLeaveDays: 0,
+      earlyLeaveMinutes: 0,
+      overtimeMinutes: 0,
+      pendingSupervisor: 0,
+      payrollReady: 0,
+    };
+    total.daysRecorded += 1;
+    if (day.isTemporary) total.temporaryAssignmentDays += 1;
+    total.workedMinutes += day.workedMinutes;
+    total.attendanceDays += Number(record.attendanceDays ?? 0);
+    total.absenceDays += Number(record.absenceDays ?? 0);
+    total.absentSessions += day.sessions.filter((session) => session.attendanceStatus === 'ABSENT').length;
+    total.leaveDays += Number(record.leaveDays ?? 0);
+    total.holidayDays += Number(record.holidayDays ?? 0);
+    total.payableDays += Number(record.payableDays ?? 0);
+    if (!day.noDuty && day.lateMinutes > 0) total.lateDays += 1;
+    if (!day.noDuty) {
+      total.lateCheckInMinutes += day.lateCheckInMinutes;
+      total.lateReturnMinutes += day.lateReturnMinutes;
+      total.lateMinutes += day.lateMinutes;
+      const earlyLeave = day.earlyBreakMinutes + day.earlyDepartureMinutes;
+      if (earlyLeave > 0) total.earlyLeaveDays += 1;
+      total.earlyLeaveMinutes += earlyLeave;
+    }
+    total.overtimeMinutes += Number(record.overtimeMinutes ?? 0);
+    if (record.status === 'PENDING_SUPERVISOR') total.pendingSupervisor += 1;
+    if (record.status === 'HR_APPROVED') total.payrollReady += 1;
+    totals.set(record.employeeId, total);
+  }
+
+  return [...totals.values()]
+    .sort((a, b) => a.department.localeCompare(b.department) || a.employeeName.localeCompare(b.employeeName))
+    .map((total) => ({
+      ...total,
+      workedTime: formatDuration(total.workedMinutes),
+      workedHours: minutesToHours(total.workedMinutes),
+      attendanceDays: roundDays(total.attendanceDays),
+      absenceDays: roundDays(total.absenceDays),
+      leaveDays: roundDays(total.leaveDays),
+      holidayDays: roundDays(total.holidayDays),
+      payableDays: roundDays(total.payableDays),
+      lateTime: formatDuration(total.lateMinutes),
+      overtimeHours: minutesToHours(total.overtimeMinutes),
+      averageLateMinutes: total.lateDays ? Math.round(total.lateMinutes / total.lateDays) : 0,
     }));
+}
+
+function roundDays(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function attendanceHighlights(days: AttendanceDay[]): ReportHighlight[] {
+  const sum = (pick: (day: AttendanceDay) => number) => days.reduce((total, day) => total + pick(day), 0);
+  const dutyDays = days.filter((day) => !day.noDuty);
+  const lateDays = dutyDays.filter((day) => day.lateMinutes > 0);
+  const earlyDays = dutyDays.filter((day) => day.earlyBreakMinutes + day.earlyDepartureMinutes > 0);
+  return [
+    { label: 'Employees', value: new Set(days.map((day) => day.record.employeeId)).size, detail: `${days.length} day records` },
+    { label: 'Attendance days', value: roundDays(sum((day) => Number(day.record.attendanceDays ?? 0))) },
+    { label: 'Absence days', value: roundDays(sum((day) => Number(day.record.absenceDays ?? 0))) },
+    {
+      label: 'Absent sessions',
+      value: sum((day) => day.sessions.filter((session) => session.attendanceStatus === 'ABSENT').length),
+    },
+    { label: 'Leave days', value: roundDays(sum((day) => Number(day.record.leaveDays ?? 0))) },
+    { label: 'Late', value: lateDays.length, detail: formatDuration(lateDays.reduce((total, day) => total + day.lateMinutes, 0)) },
+    {
+      label: 'Early break / leave',
+      value: earlyDays.length,
+      detail: formatDuration(earlyDays.reduce((total, day) => total + day.earlyBreakMinutes + day.earlyDepartureMinutes, 0)),
+    },
+    { label: 'Payable days', value: roundDays(sum((day) => Number(day.record.payableDays ?? 0))) },
+  ];
+}
+
+async function buildAttendanceDailyRows(input: ReportInput): Promise<ReportResult> {
+  const days = await loadAttendanceDays(input);
+  const highlights = attendanceHighlights(days);
+  if (isSummaryView(input.query)) {
+    return { rows: totalAttendanceByEmployee(days), columns: attendanceTotalsColumns, highlights };
+  }
+
+  const { columns, sessionCells } = withSessionColumns(attendanceDailyColumns, 'department', days);
+  const rows = days.map((day) => {
+    const { attendanceDate, employeeCode, employeeName, department, ...metrics } = attendanceDayValues(day);
+    return { attendanceDate, employeeCode, employeeName, department, ...sessionCells(day), ...metrics };
+  });
+  return { rows, columns, highlights };
+}
+
+async function buildLateAttendanceRows(input: ReportInput): Promise<ReportResult> {
+  const minLateMinutes = numberFilter(input.query, 'minLateMinutes');
+  const lateDays = (await loadAttendanceDays(input))
+    .filter((day) => !day.noDuty && day.lateMinutes > 0 && day.lateMinutes >= minLateMinutes);
+  const totalLate = lateDays.reduce((total, day) => total + day.lateMinutes, 0);
+  const highlights: ReportHighlight[] = [
+    { label: 'Late records', value: lateDays.length },
+    { label: 'Employees late', value: new Set(lateDays.map((day) => day.record.employeeId)).size },
+    { label: 'Total late time', value: formatDuration(totalLate), detail: `${totalLate} min` },
+    { label: 'Late check-in', value: formatDuration(lateDays.reduce((total, day) => total + day.lateCheckInMinutes, 0)) },
+    { label: 'Late return from break', value: formatDuration(lateDays.reduce((total, day) => total + day.lateReturnMinutes, 0)) },
+    { label: 'Average per late day', value: lateDays.length ? `${Math.round(totalLate / lateDays.length)} min` : '0 min' },
+  ];
+
+  if (isSummaryView(input.query)) {
+    const rows = totalAttendanceByEmployee(lateDays)
+      .sort((a, b) => b.lateMinutes - a.lateMinutes || a.employeeName.localeCompare(b.employeeName));
+    return { rows, columns: lateTotalsColumns, highlights };
+  }
+
+  const { columns, sessionCells } = withSessionColumns(lateAttendanceColumns, 'department', lateDays);
+  const rows = lateDays.map((day) => {
+    const { attendanceDate, employeeCode, employeeName, department, attendanceDays, absenceDays, leaveDays, status } = attendanceDayValues(day);
+    return {
+      attendanceDate,
+      employeeCode,
+      employeeName,
+      department,
+      ...sessionCells(day),
+      lateCheckInMinutes: day.lateCheckInMinutes,
+      lateReturnMinutes: day.lateReturnMinutes,
+      lateMinutes: day.lateMinutes,
+      lateTime: formatDuration(day.lateMinutes),
+      attendanceDays,
+      absenceDays,
+      leaveDays,
+      status,
+    };
+  });
+  return { rows, columns, highlights };
 }
 
 async function buildAttendancePunchRows({ query, scope }: ReportInput) {
@@ -497,38 +799,6 @@ async function buildAttendancePunchRows({ query, scope }: ReportInput) {
       source: record.source,
       processed: record.isProcessed ? 'Yes' : 'No',
     }));
-}
-
-async function buildLateAttendanceRows({ query, scope }: ReportInput) {
-  const records = await getScheduleBasedAttendanceRecords(query);
-  const schedules = await getScheduleAssignmentsForRecords(records);
-  const minLateMinutes = numberFilter(query, 'minLateMinutes');
-
-  return records
-    .filter((record) => matchesEmployeeFilters(record.employee, query, scope))
-    .map((record) => {
-      if (!record.checkInAt) return null;
-      const schedule = resolveScheduleWindow(record, schedules);
-      if (!schedule) return null;
-      const checkInAt = new Date(record.checkInAt);
-      const lateMinutes = minutesBetween(schedule.lateThreshold, checkInAt);
-      if (lateMinutes <= 0 || lateMinutes < minLateMinutes) return null;
-
-      return {
-        attendanceDate: record.attendanceDate,
-        employeeCode: record.employee?.employeeCode ?? '',
-        employeeName: employeeName(record.employee),
-        department: record.employee?.department?.nameEn ?? '',
-        shiftName: schedule.shiftName,
-        scheduledStart: formatDateTime(schedule.scheduledStart),
-        lateThreshold: formatDateTime(schedule.lateThreshold),
-        checkInAt: formatDateTime(checkInAt),
-        arrivalDelayMinutes: Math.max(0, minutesBetween(schedule.scheduledStart, checkInAt)),
-        lateMinutes,
-        status: record.status,
-      };
-    })
-    .filter(Boolean) as Record<string, unknown>[];
 }
 
 async function buildOvertimeRows({ query, scope }: ReportInput) {
@@ -705,117 +975,9 @@ async function buildDeviceSyncRows({ query }: ReportInput) {
   }));
 }
 
-async function getScheduleBasedAttendanceRecords(query: URLSearchParams) {
-  return db.query.attendanceDailyRecords.findMany({
-    where: and(
-      dateFrom(query) ? gte(attendanceDailyRecords.attendanceDate, dateFrom(query)!) : undefined,
-      dateTo(query) ? lte(attendanceDailyRecords.attendanceDate, dateTo(query)!) : undefined,
-      query.get('status') ? eq(attendanceDailyRecords.status, query.get('status')!) : undefined,
-      query.get('employeeId') ? eq(attendanceDailyRecords.employeeId, query.get('employeeId')!) : undefined,
-    ),
-    with: {
-      employee: { with: { department: true, position: true } },
-    },
-    orderBy: (table, { desc }) => [desc(table.attendanceDate)],
-  });
-}
-
-async function getScheduleAssignmentsForRecords(records: any[]) {
-  if (records.length === 0) return new Map<string, any[]>();
-
-  const employeeIds = [...new Set(records.map((record) => record.employeeId).filter(Boolean))];
-  const dates = records.map((record) => String(record.attendanceDate));
-  const minDate = dates.reduce((min, date) => date < min ? date : min, dates[0]);
-  const maxDate = dates.reduce((max, date) => date > max ? date : max, dates[0]);
-
-  const assignments = await db.query.employeeWorkSchedules.findMany({
-    where: and(
-      inArray(employeeWorkSchedules.employeeId, employeeIds),
-      eq(employeeWorkSchedules.isActive, true),
-      lte(employeeWorkSchedules.effectiveFrom, maxDate),
-      or(
-        isNull(employeeWorkSchedules.effectiveTo),
-        gte(employeeWorkSchedules.effectiveTo, minDate),
-      ),
-    ),
-    with: {
-      workSchedule: {
-        with: {
-          days: {
-            with: {
-              shift: {
-                with: {
-                  segments: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-    orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
-  });
-
-  const grouped = new Map<string, any[]>();
-  for (const assignment of assignments) {
-    grouped.set(assignment.employeeId, [...(grouped.get(assignment.employeeId) ?? []), assignment]);
-  }
-  return grouped;
-}
-
-function resolveScheduleWindow(record: any, schedulesByEmployee: Map<string, any[]>) {
-  const date = String(record.attendanceDate);
-  const assignment = (schedulesByEmployee.get(record.employeeId) ?? []).find((item) => (
-    item.effectiveFrom <= date && (!item.effectiveTo || item.effectiveTo >= date)
-  ));
-  const dayOfWeek = getDayOfWeek(date);
-  const day = assignment?.workSchedule?.days?.find((item: any) => item.dayOfWeek === dayOfWeek && item.isActive && !item.isOffDay);
-  const shift = day?.shift;
-  if (!shift) return null;
-
-  const segments = [...(shift.segments ?? [])].filter((segment: any) => segment.isActive).sort((left: any, right: any) => {
-    const sortOrder = Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0);
-    return sortOrder || String(left.startTime).localeCompare(String(right.startTime));
-  });
-  const firstSegment = segments[0];
-  const lastSegment = segments[segments.length - 1];
-  const startTime = firstSegment?.startTime ?? DEFAULT_SHIFT_START;
-  const endTime = lastSegment?.endTime ?? shiftEndFallback(startTime);
-  const scheduledStart = new Date(`${date}T${startTime}`);
-  const scheduledEnd = new Date(`${date}T${endTime}`);
-
-  if (shift.isOvernight || scheduledEnd <= scheduledStart) {
-    scheduledEnd.setDate(scheduledEnd.getDate() + 1);
-  }
-
-  const lateThreshold = new Date(scheduledStart);
-  lateThreshold.setMinutes(lateThreshold.getMinutes() + Number(shift.gracePeriodMinutes ?? 0) + Number(shift.lateAfterMinutes ?? 0));
-
-  return {
-    shiftName: shift.nameEn ?? '',
-    scheduledStart,
-    lateThreshold,
-    scheduledEnd,
-  };
-}
-
-function getDayOfWeek(date: string) {
-  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T00:00:00`).getDay()];
-}
-
-function shiftEndFallback(startTime: string) {
-  const start = new Date(`2000-01-01T${startTime}`);
-  start.setHours(start.getHours() + 8);
-  return start.toTimeString().slice(0, 8);
-}
-
-function minutesBetween(start: Date, end: Date) {
-  return Math.floor((end.getTime() - start.getTime()) / 60_000);
-}
-
-async function loadSupervisorAttendanceRecords({ query, supervisorScope }: ReportInput) {
+async function loadSupervisorAttendanceDays({ query, supervisorScope }: ReportInput) {
   if (!supervisorScope) throw new Error('You do not have permission to view this report');
-  return getSupervisorAttendanceRecords({
+  const rows = await getSupervisorAttendanceRecords({
     scope: supervisorScope,
     departmentId: query.get('departmentId'),
     search: query.get('search'),
@@ -823,6 +985,9 @@ async function loadSupervisorAttendanceRecords({ query, supervisorScope }: Repor
     dateTo: dateTo(query),
     status: query.get('status'),
   });
+  return rows.map(({ record, effectiveDepartmentName, homeDepartmentName, isTemporary }) => (
+    toAttendanceDay(record, effectiveDepartmentName, homeDepartmentName, isTemporary)
+  ));
 }
 
 function directSupervisorName(employee: any) {
@@ -830,98 +995,45 @@ function directSupervisorName(employee: any) {
 }
 
 async function buildSupervisorAttendanceRows(input: ReportInput): Promise<ReportResult> {
-  const rows = await loadSupervisorAttendanceRecords(input);
-  const sessionsByRow = rows.map(({ record }) => recordSessions(record));
-  const { slotCount, columns: sessionColumns } = buildSessionSlotColumns(sessionsByRow);
-  const baseColumns = reportDefinitions['supervisor-attendance'].columns;
-  const insertAt = baseColumns.findIndex((column) => column.key === 'directSupervisor') + 1;
-  const columns = [...baseColumns.slice(0, insertAt), ...sessionColumns, ...baseColumns.slice(insertAt)];
+  const days = await loadSupervisorAttendanceDays(input);
+  const { columns, sessionCells } = withSessionColumns(
+    reportDefinitions['supervisor-attendance'].columns,
+    'directSupervisor',
+    days,
+  );
 
-  const reportRows = rows.map(({ record, effectiveDepartmentName, homeDepartmentName, isTemporary }, rowIndex) => {
-    const slots = sessionSlotValues(record, sessionsByRow[rowIndex], slotCount);
+  const rows = days.map((day) => {
+    const values = attendanceDayValues(day);
     return {
-      attendanceDate: record.attendanceDate,
-      employeeCode: record.employee?.employeeCode ?? '',
-      employeeName: employeeName(record.employee),
-      department: effectiveDepartmentName,
-      temporaryFrom: isTemporary ? homeDepartmentName : '',
-      directSupervisor: directSupervisorName(record.employee),
-      ...slots,
-      lateMinutes: totalLateMinutes(record),
-      earlyBreakMinutes: record.earlyBreakMinutes ?? 0,
-      earlyDepartureMinutes: record.earlyDepartureMinutes ?? 0,
-      attendanceDays: record.attendanceDays,
-      leaveDays: record.leaveDays,
-      absenceDays: record.absenceDays,
-      status: record.status,
+      attendanceDate: values.attendanceDate,
+      employeeCode: values.employeeCode,
+      employeeName: values.employeeName,
+      department: values.department,
+      temporaryFrom: day.isTemporary ? day.homeDepartment : '',
+      directSupervisor: directSupervisorName(day.record.employee),
+      ...sessionCells(day),
+      workedTime: values.workedTime,
+      lateMinutes: values.lateMinutes,
+      earlyBreakMinutes: values.earlyBreakMinutes,
+      earlyDepartureMinutes: values.earlyDepartureMinutes,
+      attendanceDays: values.attendanceDays,
+      leaveDays: values.leaveDays,
+      holidayDays: values.holidayDays,
+      absenceDays: values.absenceDays,
+      status: values.status,
     };
   });
 
-  return { rows: reportRows, columns };
+  return { rows, columns, highlights: attendanceHighlights(days) };
 }
 
-/** Morning lateness plus late return from break, as the attendance approval screen totals it. */
-function totalLateMinutes(record: any) {
-  return (record.lateMinutes ?? 0) + (record.lateReturnMinutes ?? 0);
-}
-
-async function buildSupervisorAttendanceSummaryRows(input: ReportInput) {
-  const rows = await loadSupervisorAttendanceRecords(input);
-  const summaries = new Map<string, {
-    employeeCode: string;
-    employeeName: string;
-    department: string;
-    directSupervisor: string;
-    daysRecorded: number;
-    temporaryAssignmentDays: number;
-    attendanceDays: number;
-    absenceDays: number;
-    leaveDays: number;
-    lateDays: number;
-    totalLateMinutes: number;
-    absentSessions: number;
-    pendingApproval: number;
-  }>();
-
-  // Rows arrive newest first, so each employee's department is the one on their latest day in range.
-  for (const { record, effectiveDepartmentName, isTemporary } of rows) {
-    const summary = summaries.get(record.employeeId) ?? {
-      employeeCode: record.employee?.employeeCode ?? '',
-      employeeName: employeeName(record.employee),
-      department: effectiveDepartmentName,
-      directSupervisor: directSupervisorName(record.employee),
-      daysRecorded: 0,
-      temporaryAssignmentDays: 0,
-      attendanceDays: 0,
-      absenceDays: 0,
-      leaveDays: 0,
-      lateDays: 0,
-      totalLateMinutes: 0,
-      absentSessions: 0,
-      pendingApproval: 0,
-    };
-    summary.daysRecorded += 1;
-    if (isTemporary) summary.temporaryAssignmentDays += 1;
-    summary.attendanceDays += Number(record.attendanceDays ?? 0);
-    summary.absenceDays += Number(record.absenceDays ?? 0);
-    summary.leaveDays += Number(record.leaveDays ?? 0);
-    const lateMinutes = totalLateMinutes(record);
-    if (lateMinutes > 0) summary.lateDays += 1;
-    summary.totalLateMinutes += lateMinutes;
-    summary.absentSessions += recordSessions(record).filter((session) => session.attendanceStatus === 'ABSENT').length;
-    if (record.status === 'PENDING_SUPERVISOR') summary.pendingApproval += 1;
-    summaries.set(record.employeeId, summary);
-  }
-
-  const roundDays = (value: number) => Math.round(value * 100) / 100;
-  return [...summaries.values()]
-    .sort((a, b) => a.department.localeCompare(b.department) || a.employeeName.localeCompare(b.employeeName))
-    .map((summary) => ({
-      ...summary,
-      attendanceDays: roundDays(summary.attendanceDays),
-      absenceDays: roundDays(summary.absenceDays),
-      leaveDays: roundDays(summary.leaveDays),
-    }));
+async function buildSupervisorAttendanceSummaryRows(input: ReportInput): Promise<ReportResult> {
+  const days = await loadSupervisorAttendanceDays(input);
+  return {
+    rows: totalAttendanceByEmployee(days),
+    columns: reportDefinitions['supervisor-attendance-summary'].columns,
+    highlights: attendanceHighlights(days),
+  };
 }
 
 function matchesEmployeeFilters(employee: any, query: URLSearchParams, scope: EmployeeVisibilityScope) {

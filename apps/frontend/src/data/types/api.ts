@@ -11,6 +11,9 @@ export interface User {
   locked?: boolean;
   lockedUntil?: string | null;
   failedLoginCount?: number;
+  accessRevoked?: boolean;
+  accessRevokedAt?: string | null;
+  accessRevokedReason?: string | null;
   role: string[];
   createdAt: string;
   updatedAt?: string;

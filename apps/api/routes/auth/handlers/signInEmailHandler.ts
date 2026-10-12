@@ -45,6 +45,12 @@ export async function signInEmailHandler(c: Context) {
         requestId: c.get('requestId') ?? null,
         metadata: { reason: authResult.reason, method: parsed.email ? 'email' : 'phone' },
       });
+      if (authResult.reason === 'ACCESS_REVOKED') {
+        return c.json({
+          message: 'Your access to this system has been revoked. Contact an administrator if you need access again.',
+          code: 'ACCESS_REVOKED',
+        }, 403);
+      }
       const locked = authResult.reason === 'ACCOUNT_LOCKED';
       return c.json({
         message: locked

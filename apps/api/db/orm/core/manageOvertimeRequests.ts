@@ -110,6 +110,74 @@ export async function createOvertimeRequests(
   return attachAttendanceEvidence(created);
 }
 
+/**
+ * Lets the supervisor (or an active delegate) correct an assignment's date, time
+ * window or reason until it is reviewed. Approved or rejected assignments already
+ * feed attendance and payroll, so they stay locked.
+ */
+export async function updateOvertimeRequest(
+  id: string,
+  input: { overtimeDate?: string | null; startAt: string; endAt: string; reason: string },
+  context: { actorUserId: string; roles?: string[] | null },
+) {
+  const reason = input.reason.trim();
+  if (!reason) throw new Error('A reason is required');
+  const { startAt, endAt, overtimeDate } = resolveOvertimeWindow(input.overtimeDate, input.startAt, input.endAt);
+  const requestedMinutes = Math.max(0, Math.floor((endAt.getTime() - startAt.getTime()) / 60_000));
+  if (requestedMinutes <= 0) throw new Error('Overtime duration must be greater than zero');
+
+  const updated = await db.transaction(async (tx) => {
+    const request = await getOvertimeRequestById(id, tx);
+    if (!request) throw new Error('Overtime request not found');
+    if (request.status !== 'ASSIGNED' && request.status !== 'PENDING') {
+      throw new Error('This overtime assignment is already processed and cannot be edited');
+    }
+
+    const actionContext = await resolveSupervisorActionContext({
+      actorUserId: context.actorUserId,
+      roles: context.roles,
+      targetEmployeeId: request.employeeId,
+      tx,
+    });
+    await assertSameSupervisorDepartment(request.employeeId, actionContext.effectiveSupervisorEmployeeId, tx);
+    const attendanceDailyRecord = await findAttendanceDailyRecord(request.employeeId, overtimeDate, tx);
+
+    await tx.update(overtimeRequests).set({
+      overtimeDate,
+      startAt,
+      endAt,
+      requestedMinutes,
+      reason,
+      attendanceDailyRecordId: attendanceDailyRecord?.id ?? null,
+      updatedAt: new Date(),
+    } as any).where(and(eq(overtimeRequests.id, id), eq(overtimeRequests.status, request.status)));
+
+    const changes: Record<string, { from: unknown; to: unknown }> = {};
+    const compare = (field: string, from: unknown, to: unknown) => {
+      if (String(from) !== String(to)) changes[field] = { from, to };
+    };
+    compare('overtimeDate', request.overtimeDate, overtimeDate);
+    compare('startAt', asDate(request.startAt).toISOString(), startAt.toISOString());
+    compare('endAt', asDate(request.endAt).toISOString(), endAt.toISOString());
+    compare('requestedMinutes', request.requestedMinutes, requestedMinutes);
+    compare('reason', request.reason, reason);
+
+    await writeAuditEvent(tx, {
+      action: 'OVERTIME_UPDATED',
+      resourceType: 'overtime_request',
+      resourceId: id,
+      resourceLabel: `${formatEmployeeLabel(request.employee)} overtime ${overtimeDate}`,
+      ...employeeAuditFields(request.employee),
+      supervisorDelegationId: actionContext.supervisorDelegationId,
+      changes: Object.keys(changes).length ? changes : null,
+    });
+    return getOvertimeRequestById(id, tx);
+  });
+
+  const [withEvidence] = await attachAttendanceEvidence(updated ? [updated] : []);
+  return withEvidence ?? updated;
+}
+
 export async function getOvertimeAssignableEmployees(input: {
   userId: string;
   roles?: string[] | null;

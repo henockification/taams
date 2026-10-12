@@ -11,12 +11,23 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useSession } from '@/lib/auth-client';
 import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
-import { ArrowLeft, AlertCircle, RotateCw, Loader2 } from 'lucide-react';
+import { ArrowLeft, AlertCircle, RotateCw, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
 import { useAssignUserRoles, useRoles } from '@/data/hooks/rbac.hooks';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
-import { useUnlockUser, useUpdateUser } from '@/data/hooks/users.hooks';
+import { useRestoreUserAccess, useRevokeUserAccess, useUnlockUser, useUpdateUser } from '@/data/hooks/users.hooks';
 import { useTranslations } from 'next-intl';
 
 interface User {
@@ -28,6 +39,9 @@ interface User {
   locked?: boolean;
   lockedUntil?: string | null;
   failedLoginCount?: number;
+  accessRevoked?: boolean;
+  accessRevokedAt?: string | null;
+  accessRevokedReason?: string | null;
   role: string[];
   createdAt: string;
   updatedAt: string;
@@ -56,6 +70,11 @@ export default function UserDetailPage() {
   const assignUserRoles = useAssignUserRoles();
   const unlockUser = useUnlockUser();
   const updateUser = useUpdateUser();
+  const revokeAccess = useRevokeUserAccess();
+  const restoreAccess = useRestoreUserAccess();
+  const session = useSession();
+  const [accessDialog, setAccessDialog] = useState<'revoke' | 'restore' | null>(null);
+  const [revokeReason, setRevokeReason] = useState('');
   const roles = rolesResponse?.roles ?? [];
 
   const fetchUser = useCallback(async () => {
@@ -157,6 +176,31 @@ export default function UserDetailPage() {
       });
     }
   };
+
+  const handleAccessChange = async () => {
+    if (!user || !accessDialog) return;
+    try {
+      if (accessDialog === 'revoke') {
+        await revokeAccess.mutateAsync({ id: user.id, reason: revokeReason });
+        notifications.show({ title: t('accessRevokedTitle'), message: t('accessRevokedMessage'), color: 'green' });
+      } else {
+        await restoreAccess.mutateAsync(user.id);
+        notifications.show({ title: t('accessRestoredTitle'), message: t('accessRestoredMessage'), color: 'green' });
+      }
+      setAccessDialog(null);
+      setRevokeReason('');
+      await fetchUser();
+    } catch (err) {
+      notifications.show({
+        title: 'Error',
+        message: err instanceof Error ? err.message : t('accessChangeFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  const isOwnAccount = session.data?.user?.id === user?.id;
+  const accessPending = revokeAccess.isPending || restoreAccess.isPending;
 
   const contactChanged = Boolean(user)
     && (email.trim() !== (user?.email ?? '') || phone.trim() !== (user?.phone ?? ''));
@@ -290,9 +334,13 @@ export default function UserDetailPage() {
                   <Badge variant={user.emailVerified ? 'default' : 'secondary'}>
                     {user.emailVerified ? 'Verified' : 'Unverified'}
                   </Badge>
-                  <Badge variant={user.locked ? 'destructive' : 'outline'}>
-                    {user.locked ? t('locked') : t('active')}
-                  </Badge>
+                  {user.accessRevoked ? (
+                    <Badge variant="destructive">{t('accessRevoked')}</Badge>
+                  ) : (
+                    <Badge variant={user.locked ? 'destructive' : 'outline'}>
+                      {user.locked ? t('locked') : t('active')}
+                    </Badge>
+                  )}
                   <div className="flex items-center gap-2">
                     {user.role.map((role) => (
                       <Badge key={role} variant="outline">
@@ -362,6 +410,41 @@ export default function UserDetailPage() {
                     {t('lockedUntil')}: {formatDateTime(user.lockedUntil)}
                   </p>
                 ) : null}
+              </div>
+              <Separator />
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">{t('access')}</p>
+                {user.accessRevoked ? (
+                  <div className="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    <div className="flex items-start gap-2 text-sm">
+                      <ShieldOff className="mt-0.5 size-4 shrink-0 text-destructive" />
+                      <div className="space-y-1">
+                        <p className="font-medium text-destructive">
+                          {user.accessRevokedAt
+                            ? t('accessRevokedOn', { date: formatDateTime(user.accessRevokedAt) })
+                            : t('accessRevoked')}
+                        </p>
+                        {user.accessRevokedReason ? (
+                          <p className="text-muted-foreground">{t('accessRevokedReason', { reason: user.accessRevokedReason })}</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setAccessDialog('restore')} disabled={accessPending}>
+                      <ShieldCheck className="size-4" />
+                      {t('restoreAccess')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-xs text-muted-foreground">
+                      {isOwnAccount ? t('cannotRevokeOwnAccess') : t('revokeAccessHint')}
+                    </p>
+                    <Button size="sm" variant="destructive" onClick={() => setAccessDialog('revoke')} disabled={isOwnAccount || accessPending}>
+                      <ShieldOff className="size-4" />
+                      {t('revokeAccess')}
+                    </Button>
+                  </div>
+                )}
               </div>
               <Separator />
               <div>
@@ -461,6 +544,49 @@ export default function UserDetailPage() {
         </Card>
 
       </div>
+
+      <AlertDialog
+        open={Boolean(accessDialog)}
+        onOpenChange={(open) => { if (!open && !accessPending) { setAccessDialog(null); setRevokeReason(''); } }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{accessDialog === 'restore' ? t('restoreAccessTitle') : t('revokeAccessTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {accessDialog === 'restore'
+                ? t('restoreAccessDescription', { name: user.name || user.email || user.phone || '' })
+                : t('revokeAccessDescription', { name: user.name || user.email || user.phone || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {accessDialog === 'revoke' ? (
+            <div className="space-y-2">
+              <Label htmlFor="revoke-reason">{t('revokeReasonLabel')}</Label>
+              <Textarea
+                id="revoke-reason"
+                rows={3}
+                maxLength={500}
+                value={revokeReason}
+                onChange={(event) => setRevokeReason(event.target.value)}
+                placeholder={t('revokeReasonPlaceholder')}
+              />
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={accessPending}>{t('cancel')}</AlertDialogCancel>
+            {/* A plain button keeps the dialog open while saving and if the server refuses. */}
+            <Button
+              type="button"
+              variant={accessDialog === 'restore' ? 'default' : 'destructive'}
+              onClick={handleAccessChange}
+              disabled={accessPending}
+            >
+              {accessPending
+                ? t('savingAccess')
+                : accessDialog === 'restore' ? t('restoreAccess') : t('revokeAccess')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

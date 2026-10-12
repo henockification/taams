@@ -3,7 +3,7 @@ import { db } from '../../db';
 import { departments, employees, hrDepartmentAssignments, roles, user, userRoles } from '../../schema';
 import { SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
 import { diffChanges, writeAuditEvent } from '../../../lib/audit';
-import { normalizeRoleName } from '../../../lib/privileged-roles';
+import { hasHrSupervisorRoles, normalizeRoleName } from '../../../lib/privileged-roles';
 
 type DbClient = typeof db | any;
 
@@ -32,10 +32,8 @@ export async function assertCanManageHrDepartmentAssignments(input: {
   roles?: string[] | null;
 }) {
   const roleNames = await getCombinedRoleNames(input.userId, input.roles);
-  const hasUnrestrictedRole = roleNames.some((role) => ['super_admin', 'superadmin', 'admin', 'executive'].includes(role));
-  const hasHrSupervisorRoles = roleNames.includes('human_resource') && roleNames.includes('supervisor');
 
-  if (!hasUnrestrictedRole && !hasHrSupervisorRoles) {
+  if (!hasHrSupervisorRoles(roleNames)) {
     throw new Error('Department assignment management permission is required');
   }
 }

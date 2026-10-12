@@ -18,6 +18,7 @@ import {
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee, SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
+import { isOnEducationLeave } from '../../../lib/employees/education-leave';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
@@ -84,6 +85,9 @@ export async function generateAttendanceDailyRecords(
         sourceEmploymentStatus: true,
         employmentStatus: true,
         isActive: true,
+        educationLeaveType: true,
+        educationLeaveStart: true,
+        educationLeaveReturnedOn: true,
       },
     }),
     db.query.attendancePunches.findMany({
@@ -145,7 +149,8 @@ export async function generateAttendanceDailyRecords(
     }),
   ]);
 
-  const activeEmployees = allEmployees.filter(isWorkingEmployee);
+  // Employees away on education leave have no attendance for the day.
+  const activeEmployees = allEmployees.filter((employee) => isWorkingEmployee(employee) && !isOnEducationLeave(employee, attendanceDate));
 
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
@@ -491,6 +496,22 @@ export async function getHrAttendanceDailyRecords(
     return working.filter((record) => Boolean(record.employeeId && scope.employeeIds.includes(record.employeeId)));
   }
   return working.filter((record) => record.employee?.userId === scope.userId);
+}
+
+/**
+ * Departments HR may filter the approval grid by: every assigned department (and
+ * its sub-departments) for department-scoped HR, otherwise all departments. Listed
+ * independently of the loaded records so assigned departments with nothing pending
+ * still appear in the filter.
+ */
+export async function getHrAttendanceVisibleDepartments(scope?: EmployeeVisibilityScope) {
+  if (scope && scope.type !== 'unrestricted' && scope.type !== 'hr' && scope.type !== 'hr-departments') return [];
+  if (scope?.type === 'hr-departments' && scope.departmentIds.length === 0) return [];
+  return db.query.departments.findMany({
+    where: scope?.type === 'hr-departments' ? inArray(departments.id, scope.departmentIds) : undefined,
+    columns: { id: true, nameEn: true, nameAm: true, isContract: true },
+    orderBy: (table, { asc }) => [asc(table.nameEn)],
+  });
 }
 
 export async function supervisorApproveAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; scope?: EmployeeVisibilityScope }) {
@@ -861,6 +882,65 @@ export async function hrApproveAttendanceDailyRecords(
   });
 }
 
+/**
+ * HR returns several supervisor-approved records to their supervisors in one step,
+ * with one reason. All records are returned or none, as with HR batch approval.
+ */
+export async function hrReturnAttendanceDailyRecords(
+  ids: string[],
+  input: { userId: string; reason: string; scope?: EmployeeVisibilityScope },
+): Promise<AttendanceApprovalBatchResult> {
+  const recordIds = uniqueRecordIds(ids);
+  const reason = input.reason.trim();
+  if (!reason) throw new Error('A return reason is required');
+  return db.transaction(async (tx) => {
+    const records = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    if (records.length !== recordIds.length) throw new Error('Attendance daily record not found');
+    for (const record of records) {
+      if (input.scope?.type === 'hr-departments') {
+        if (!isDepartmentVisibleInScope(record.effectiveDepartment?.id ?? record.employee?.departmentId, input.scope)) {
+          throw new Error('Attendance daily record not found');
+        }
+      } else if (input.scope) {
+        await assertCanAccessEmployee(record.employeeId, input.scope, tx);
+      }
+      if (record.status !== 'SUPERVISOR_APPROVED') {
+        throw new Error('Only supervisor-approved attendance records can be returned by HR');
+      }
+    }
+
+    const returnedAt = new Date();
+    const updated = await tx.update(attendanceDailyRecords).set({
+      status: 'RETURNED',
+      returnedBy: input.userId,
+      returnedAt,
+      returnReason: reason,
+      supervisorDelegationId: null,
+      hrApprovedBy: null,
+      hrApprovedAt: null,
+      payrollReadyAt: null,
+      updatedAt: returnedAt,
+    } as any).where(and(
+      inArray(attendanceDailyRecords.id, recordIds),
+      eq(attendanceDailyRecords.status, 'SUPERVISOR_APPROVED'),
+    )).returning({ id: attendanceDailyRecords.id });
+    if (updated.length !== recordIds.length) throw new Error('One or more attendance records were already processed');
+
+    await writeAuditEvents(tx, records.map((record: any) => ({
+      action: 'ATTENDANCE_RETURNED',
+      resourceType: 'attendance_daily_record',
+      resourceId: record.id,
+      resourceLabel: `${formatEmployeeLabel(record.employee)} attendance ${record.attendanceDate}`,
+      ...employeeAuditFields(record.employee),
+      changes: { status: { from: record.status, to: 'RETURNED' } },
+      metadata: { reason },
+    })));
+
+    const updatedRecords = await getAttendanceDailyRecordsByIds(recordIds, tx);
+    return buildAttendanceApprovalBatch(updatedRecords);
+  });
+}
+
 export async function returnAttendanceDailyRecord(id: string, input: { userId: string; roles?: string[] | null; reason: string; canHrReturn?: boolean; scope?: EmployeeVisibilityScope }) {
   const record = await getAttendanceDailyRecordById(id);
   if (!record) throw new Error('Attendance daily record not found');
@@ -985,8 +1065,10 @@ function uniqueRecordIds(ids: string[]) {
   return recordIds;
 }
 
-function keepWorkingEmployeeRecords<T extends { employee?: Parameters<typeof isWorkingEmployee>[0] | null }>(records: T[]) {
-  return records.filter((record) => isWorkingEmployee(record.employee));
+/** Drops records of employees who left, or who were away on education leave that day. */
+function keepWorkingEmployeeRecords<T extends { attendanceDate?: string | null; employee?: (Parameters<typeof isWorkingEmployee>[0] & Parameters<typeof isOnEducationLeave>[0]) | null }>(records: T[]) {
+  return records.filter((record) => isWorkingEmployee(record.employee)
+    && !(record.attendanceDate && isOnEducationLeave(record.employee, String(record.attendanceDate))));
 }
 
 export function buildAttendanceApprovalBatch(records: any[]): AttendanceApprovalBatchResult {
@@ -1245,6 +1327,9 @@ const recordRelations = {
       sourcePositionName: true,
       sourcePositionCode: true,
       isActive: true,
+      educationLeaveType: true,
+      educationLeaveStart: true,
+      educationLeaveReturnedOn: true,
     },
     with: { department: true },
   },

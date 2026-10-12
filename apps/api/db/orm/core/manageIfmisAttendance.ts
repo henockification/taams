@@ -16,8 +16,7 @@ export async function getIfmisAttendancePreview(payMonth: number, payYear: numbe
   const source = await loadSource(payMonth, payYear);
   const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
   const { start, end } = getGregorianMonthRange(payMonth, payYear);
-  const hasPermanentEmployees = source.employees.some((employee: any) => employee.employmentType === 'PERMANENT');
-  if (hasPermanentEmployees && !(await isPermanentLeaveVerified(start, end))) {
+  if (exportsPermanentEmployees(source, preview) && !(await isPermanentLeaveVerified(start, end))) {
     preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
     preview.ready = false;
   }
@@ -33,7 +32,7 @@ export async function pushIfmisAttendance(payMonth: number, payYear: number, pus
   const source = await loadSource(payMonth, payYear);
   const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
   const period = getGregorianMonthRange(payMonth, payYear);
-  if (source.employees.some((employee: any) => employee.employmentType === 'PERMANENT') && !(await isPermanentLeaveVerified(period.start, period.end))) {
+  if (exportsPermanentEmployees(source, preview) && !(await isPermanentLeaveVerified(period.start, period.end))) {
     preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
     preview.ready = false;
   }
@@ -73,6 +72,15 @@ export async function pushIfmisAttendance(payMonth: number, payYear: number, pus
     if (isUniqueViolation(error)) throw new IfmisExportError('This payroll month is already exported or currently processing', 'ALREADY_EXPORTED');
     throw new IfmisExportError('IFMIS could not accept the attendance batch. No rows were committed.', 'ORACLE_FAILED');
   }
+}
+
+/** Leave verification only matters for permanent employees actually being exported. */
+function exportsPermanentEmployees(
+  source: Awaited<ReturnType<typeof loadSource>>,
+  preview: ReturnType<typeof buildIfmisAttendancePreview>,
+) {
+  const exportedIds = new Set(preview.rows.map((row) => row.employeeId));
+  return source.employees.some((employee: any) => exportedIds.has(employee.id) && employee.employmentType === 'PERMANENT');
 }
 
 async function loadSource(payMonth: number, payYear: number) {

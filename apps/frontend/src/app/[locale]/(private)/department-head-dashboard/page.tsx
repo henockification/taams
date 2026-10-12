@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { DashboardAttendanceStrip, DashboardDataQualityNotice, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
 import { Link, useRouter } from "@/i18n"
 import { useSession } from "@/lib/auth-client"
@@ -131,6 +132,9 @@ export default function DepartmentHeadDashboardPage() {
         </div>
       </div>
 
+      <DashboardDataQualityNotice dataQuality={dashboard.dataQuality} isLive={dashboard.isLive} />
+      <DashboardAttendanceStrip summary={dashboard.attendanceSummary} isLive={dashboard.isLive} />
+
       <div className={cn("grid gap-5", showPersonalBalance && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid widgets={dashboard.widgets} showLeave={showLeave} date={dashboard.date} />
         {showPersonalBalance
@@ -229,9 +233,12 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
 
 function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardSummary }) {
   const t = useTranslations("departmentHeadDashboard")
+  const shared = useTranslations("dashboardShared")
+  // Who needs attention first: absent, then not yet arrived, then present.
   const rows = [
-    ...dashboard.details.presentEmployees.map((employee) => ({ id: `present-${employee.id}`, employee, status: t("present") })),
     ...dashboard.details.absentEmployees.map((employee) => ({ id: `absent-${employee.id}`, employee, status: t("absent") })),
+    ...(dashboard.details.notYetArrivedEmployees ?? []).map((employee) => ({ id: `waiting-${employee.id}`, employee, status: shared("notYetArrived") })),
+    ...dashboard.details.presentEmployees.map((employee) => ({ id: `present-${employee.id}`, employee, status: t("present") })),
   ].slice(0, 12)
 
   return (
@@ -256,16 +263,17 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
 
 function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashboardSummary; showLeave: boolean }) {
   const t = useTranslations("departmentHeadDashboard")
+  const shared = useTranslations("dashboardShared")
   const router = useRouter()
   const { formatDate, formatDateTime } = useCalendarPreference()
   const rows = [
-    ...dashboard.details.pendingAttendance.map((punch) => ({
-      id: `attendance-${punch.id}`,
-      employee: punch.employee ?? null,
+    ...dashboard.details.pendingAttendance.map((record) => ({
+      id: `attendance-${record.id}`,
+      employee: record.employee ?? null,
       type: t("pendingAttendance"),
-      date: punch.punchTime,
-      note: punch.device?.deviceName ?? punch.biometricId,
-      href: attendanceApprovalsHref({ date: dashboard.date, search: punch.employee?.employeeCode }),
+      date: record.checkInAt ?? record.attendanceDate,
+      note: shared(`status_${record.attendanceStatus}`),
+      href: attendanceApprovalsHref({ date: dashboard.date, search: record.employee?.employeeCode }),
     })),
     ...(showLeave ? dashboard.details.pendingLeave : []).map((request) => ({
       id: `leave-${request.id}`,
@@ -396,7 +404,7 @@ function DepartmentHeadDashboardSkeleton() {
 }
 
 function todayInput() {
-  return new Date().toISOString().slice(0, 10)
+  return addisTodayInput()
 }
 
 function formatEmployeeName(employee: Employee | AttendancePunch["employee"] | ManualPunchRequest["employee"] | LeaveRequest["employee"] | null | undefined) {

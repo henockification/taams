@@ -493,12 +493,17 @@ async function assertActorCanAssignRoles(roleIds: string[] | undefined, tx: DbCl
 
   const actorUserId = getAuditContext()?.actorUserId;
   if (!actorUserId) {
-    throw new Error('Only a super administrator can assign privileged roles');
+    throw new Error('Only an administrator can assign privileged roles');
   }
 
+  // Admins may give the Admin role (production runs without Super admins);
+  // only a Super admin may give the Super admin role.
   const actorRoles = await getUserRoleNames(actorUserId);
-  if (!hasSuperAdminRole(actorRoles)) {
-    throw new Error('Only a super administrator can assign privileged roles');
+  if (hasSuperAdminRole(roleNames) && !hasSuperAdminRole(actorRoles)) {
+    throw new Error('Only a super administrator can assign the super administrator role');
+  }
+  if (!includesPrivilegedRole(actorRoles)) {
+    throw new Error('Only an administrator can assign privileged roles');
   }
 }
 

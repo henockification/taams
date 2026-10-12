@@ -1,9 +1,18 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CalendarPlus, Edit, Plus } from 'lucide-react';
+import { CalendarPlus, Edit, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -33,6 +42,7 @@ import {
   useSetActiveLeaveFiscalYear,
   useUpdateLeaveFiscalYear,
   useUpdateLeaveType,
+  useDeleteLeaveType,
   useUpsertLeaveBalance,
   useEmployeesPaginated,
 } from '@/data/hooks/core.hooks';
@@ -232,7 +242,9 @@ export function LeaveTypesSection() {
   const leaveTypesQuery = useLeaveTypes();
   const createLeaveType = useCreateLeaveType();
   const updateLeaveType = useUpdateLeaveType();
+  const deleteLeaveType = useDeleteLeaveType();
   const leaveTypes = leaveTypesQuery.data?.leaveTypes ?? [];
+  const [deletingLeaveType, setDeletingLeaveType] = useState<LeaveType | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLeaveType, setEditingLeaveType] = useState<LeaveType | null>(null);
   const [search, setSearch] = useState('');
@@ -293,6 +305,17 @@ export function LeaveTypesSection() {
     }
   };
 
+  const handleDeleteLeaveType = async () => {
+    if (!deletingLeaveType) return;
+    try {
+      await deleteLeaveType.mutateAsync(deletingLeaveType.id);
+      notifications.show({ title: common('success'), message: t('leaveTypeDeleted', { name: deletingLeaveType.nameEn }), color: 'green' });
+      setDeletingLeaveType(null);
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
+    }
+  };
+
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -333,10 +356,22 @@ export function LeaveTypesSection() {
                     <TableCell>{type.allowedDays ?? '-'}</TableCell>
                     <TableCell>{type.isActive ? t('active') : t('inactive')}</TableCell>
                     <TableCell className="text-right">
-                      <Button type="button" size="sm" variant="outline" onClick={() => openLeaveTypeDialog(type)}>
-                        <Edit className="size-4" />
-                        {common('edit')}
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => openLeaveTypeDialog(type)}>
+                          <Edit className="size-4" />
+                          {common('edit')}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setDeletingLeaveType(type)}
+                        >
+                          <Trash2 className="size-4" />
+                          {common('delete')}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -414,6 +449,27 @@ export function LeaveTypesSection() {
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={Boolean(deletingLeaveType)}
+        onOpenChange={(open) => { if (!open && !deleteLeaveType.isPending) setDeletingLeaveType(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteLeaveTypeTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingLeaveType ? t('deleteLeaveTypeDescription', { name: deletingLeaveType.nameEn, code: deletingLeaveType.code }) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLeaveType.isPending}>{common('cancel')}</AlertDialogCancel>
+            {/* A plain button keeps the dialog open while deleting and when the server refuses. */}
+            <Button type="button" variant="destructive" disabled={deleteLeaveType.isPending} onClick={handleDeleteLeaveType}>
+              <Trash2 className="size-4" />
+              {deleteLeaveType.isPending ? t('deleting') : common('delete')}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

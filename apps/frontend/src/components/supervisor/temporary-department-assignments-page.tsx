@@ -202,6 +202,8 @@ export function TemporaryDepartmentAssignmentsPage() {
         <CardContent>
           {assignmentsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">{common('loading')}</p>
+          ) : assignmentsQuery.isError ? (
+            <p className="text-sm text-destructive">{assignmentsQuery.error.message}</p>
           ) : filteredAssignments.length === 0 ? (
             <EmptyState icon={ArrowRightLeft} title={t('noTemporaryAssignments')} description={t('noTemporaryAssignmentsDescription')} />
           ) : (
@@ -296,10 +298,10 @@ export function TemporaryDepartmentAssignmentsPage() {
                   options={employees.map((employee) => ({
                     value: employee.id,
                     label: employeeName(employee),
-                    description: employee.employeeCode,
+                    description: [...new Set([employee.employeeCode, employee.sourceIdNo, employee.sourceStaffIdNo, employee.sourceFullNameAm].filter(Boolean))].join(' · '),
                     employee,
                   }))}
-                  placeholder={t('selectEmployee')}
+                  placeholder={employeesQuery.isLoading ? t('loadingEmployees') : t('selectEmployee')}
                   searchPlaceholder={t('searchEmployee')}
                   emptyMessage={t('noMatchingEmployees')}
                 />

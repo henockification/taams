@@ -3,9 +3,11 @@ import {
   generateAttendanceDailyRecords,
   generateAttendanceDailyRecordsInRange,
   getHrAttendanceDailyRecords,
+  getHrAttendanceVisibleDepartments,
   getMyAttendanceDailyRecords,
   getSupervisorAttendanceDailyRecords,
   hrApproveAttendanceDailyRecords,
+  hrReturnAttendanceDailyRecords,
   returnAttendanceDailyRecord,
   supervisorApproveAttendanceDailyRecords,
   addSupervisorCorrectionPunch,
@@ -17,6 +19,7 @@ import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import {
   AttendanceApprovalBatchRequestSchema,
+  AttendanceReturnBatchRequestSchema,
   ReturnAttendanceDailyRecordRequestSchema,
 } from '../../../../schemas/core.schema';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
@@ -103,11 +106,15 @@ export async function getHrAttendanceDailyRecordsHandler(c: Context) {
     const dateTo = c.req.query('dateTo');
     const scope = await resolveScope(session, permissions);
     const awaitingHr = c.req.query('awaiting') === '1';
-    const records = await getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo, awaitingHr });
+    const [records, departments] = await Promise.all([
+      getHrAttendanceDailyRecords(date, scope, { dateFrom, dateTo, awaitingHr }),
+      getHrAttendanceVisibleDepartments(scope),
+    ]);
 
     return c.json({
       success: true,
       attendanceDailyRecords: records.map(formatAttendanceDailyRecord),
+      departments,
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch HR attendance approvals');
@@ -222,6 +229,26 @@ export async function hrApproveAttendanceDailyRecordsHandler(c: Context) {
     return c.json(formatAttendanceBatchResponse(result));
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to HR approve attendance batch');
+  }
+}
+
+export async function hrReturnAttendanceDailyRecordsHandler(c: Context) {
+  try {
+    const session = await requireAuthenticatedUser(c);
+    const permissions = await getUserPermissionNames(session.user.id);
+    const hasPermission = await canUseHrApproval(session.user.id, session.user.role ?? [], permissions);
+    if (!hasPermission) return c.json({ success: false, error: 'Only HR can return attendance records' }, 403);
+    const parsed = AttendanceReturnBatchRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const scope = await resolveScope(session, permissions);
+    const result = await hrReturnAttendanceDailyRecords(parsed.data.attendanceDailyRecordIds, {
+      userId: session.user.id,
+      reason: parsed.data.reason,
+      scope,
+    });
+    return c.json(formatAttendanceBatchResponse(result));
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to return attendance batch');
   }
 }
 

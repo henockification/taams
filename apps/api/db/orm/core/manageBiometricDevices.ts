@@ -90,7 +90,7 @@ export async function updateBiometricDevice(id: string, input: UpdateBiometricDe
   return updated;
 }
 
-export async function acquireBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE' | 'PROVISIONING', ownerId: string, ttlMilliseconds = 120_000) {
+export async function acquireBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE', ownerId: string, ttlMilliseconds = 120_000) {
   await assertBiometricDeviceExists(deviceId);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlMilliseconds);
@@ -108,7 +108,7 @@ export async function acquireBiometricDeviceLock(deviceId: string, ownerType: 'A
   });
 }
 
-export async function releaseBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE' | 'PROVISIONING', ownerId: string) {
+export async function releaseBiometricDeviceLock(deviceId: string, ownerType: 'ATTENDANCE', ownerId: string) {
   await db
     .delete(biometricDeviceLocks)
     .where(and(eq(biometricDeviceLocks.deviceId, deviceId), eq(biometricDeviceLocks.ownerType, ownerType), eq(biometricDeviceLocks.ownerId, ownerId)));
@@ -738,8 +738,6 @@ function normalizeBiometricDeviceInput(input: Partial<CreateBiometricDeviceInput
     firmwareVersion: input.firmwareVersion,
     platformVersion: input.platformVersion,
     fingerprintAlgorithm: input.fingerprintAlgorithm,
-    provisioningRole: input.provisioningRole,
-    provisioningEnabled: input.provisioningEnabled,
     manufacturer: input.manufacturer,
     syncIntervalMinutes: input.syncIntervalMinutes,
     autoSyncEnabled: input.autoSyncEnabled,

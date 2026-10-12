@@ -70,7 +70,8 @@ export async function getExecutiveDashboardSummaryHandler(c: Context) {
     const date = c.req.query('date');
     const month = c.req.query('month');
     const period = c.req.query('period') as 'day' | 'week' | 'month' | undefined;
-    const executiveDashboard = await getExecutiveDashboardSummary({ date, month, period });
+    const departmentId = c.req.query('departmentId') || undefined;
+    const executiveDashboard = await getExecutiveDashboardSummary({ date, month, period, departmentId });
 
     return c.json({
       success: true,
@@ -117,7 +118,8 @@ export async function getHrDashboardSummaryHandler(c: Context) {
       roles: session.user.role ?? [],
       permissions,
     });
-    const hrDashboard = await getHrDashboardSummary({ date, userId: session.user.id, scope });
+    const departmentId = c.req.query('departmentId') || undefined;
+    const hrDashboard = await getHrDashboardSummary({ date, userId: session.user.id, scope, departmentId });
 
     return c.json({
       success: true,

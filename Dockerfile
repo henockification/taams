@@ -209,27 +209,18 @@ WORKDIR /app/apps/api
 CMD ["npm", "run", "worker:zkteco"]
 
 # =======================================================
-# Private G3 Pro Provisioning Worker
+# SMS Gateway (SMPP bind to Ethio telecom SMSC)
+# Run a single instance on the host with the whitelisted LAN IP.
 # =======================================================
-FROM python:3.12-slim-bookworm AS biometric-provisioning-worker
+FROM source AS sms-gateway
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production
 
-WORKDIR /app
+WORKDIR /app/apps/api
 
-COPY apps/api/python/biometric_provisioning/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+EXPOSE 3090
 
-COPY apps/api/python/biometric_provisioning/device_adapter.py ./device_adapter.py
-COPY apps/api/python/biometric_provisioning/face_sdk_adapter.py ./face_sdk_adapter.py
-COPY apps/api/python/biometric_provisioning/provisioning_errors.py ./provisioning_errors.py
-COPY apps/api/python/biometric_provisioning/source_diagnostics.py ./source_diagnostics.py
-COPY apps/api/python/biometric_provisioning/worker.py ./worker.py
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.SMS_GATEWAY_PORT||3090)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-RUN useradd --create-home --uid 10001 provisioning
-USER provisioning
-
-ENV PYTHONUNBUFFERED=1
-CMD ["python", "worker.py"]
+CMD ["npm", "run", "worker:sms"]

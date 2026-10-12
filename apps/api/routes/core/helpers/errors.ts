@@ -20,7 +20,7 @@ export function coreErrorResponse(c: Context, error: unknown, fallback: string) 
       ? 404
       : lowerMessage.includes('authentication required')
         ? 401
-        : lowerMessage.includes('duplicate') || lowerMessage.includes('unique')
+        : lowerMessage.includes('duplicate') || lowerMessage.includes('unique') || lowerMessage.includes('already has an active')
           ? 409
           : lowerMessage.includes('only ') || lowerMessage.includes('not authorized') || lowerMessage.includes('permission')
             ? 403

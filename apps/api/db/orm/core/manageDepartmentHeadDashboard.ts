@@ -1,20 +1,15 @@
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+import { attendanceRate, countStatuses, punctualityRate } from '../../../lib/dashboard/executive-metrics';
 import { db } from '../../db';
-import {
-  attendancePunches,
-  biometricExemptions,
-  employeeWorkSchedules,
-  employees,
-  leaveBalances,
-  leaveFiscalYears,
-  leaveRequests,
-  manualPunchRequests,
-} from '../../schema';
-import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { employees, leaveBalances, leaveFiscalYears, leaveRequests, manualPunchRequests } from '../../schema';
+import { countMissingRecords, hasMissingCheckout, loadAttendanceDays } from './attendanceDays';
 import { getVisibleEmployeeIdsForSupervisorActor } from './manageSupervisorDelegations';
 
-const DEFAULT_SHIFT_START = '08:30:00';
+/** Detail lists show this many rows; widget counts are always complete. */
+const DETAIL_LIMIT = 20;
+const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
 
 export type DepartmentHeadDashboardSummaryParams = {
   userId: string;
@@ -22,14 +17,10 @@ export type DepartmentHeadDashboardSummaryParams = {
   date?: string;
 };
 
-type Punch = typeof attendancePunches.$inferSelect;
-
-const SUPERVISOR_ROLE_NAMES = ['supervisor', 'admin', 'super_admin', 'superadmin'];
-
 export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDashboardSummaryParams) {
-  const selectedDate = normalizeDateParam(params.date);
   const generatedAt = new Date();
-  const dayRange = getDayRange(selectedDate);
+  const today = addisToday(generatedAt);
+  const selectedDate = params.date && /^\d{4}-\d{2}-\d{2}$/.test(params.date) && params.date <= today ? params.date : today;
   const roles = (params.roles ?? []).map((role) => role.toLowerCase());
   const hasSupervisorRole = roles.some((role) => SUPERVISOR_ROLE_NAMES.includes(role));
 
@@ -37,194 +28,120 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     where: eq(employees.userId, params.userId),
     with: { department: true, position: true },
   });
+  if (!supervisor) throw new Error('Department head dashboard requires a linked employee profile');
 
-  if (!supervisor) {
-    throw new Error('Department head dashboard requires a linked employee profile');
-  }
+  // Direct reports on the selected date (including any taken over through a delegation).
+  const reportIds = await getVisibleEmployeeIdsForSupervisorActor(params.userId, params.roles, db, selectedDate);
+  if (!hasSupervisorRole && reportIds.length === 0) throw new Error('Department head dashboard is available only to supervisors');
 
-  const departmentEmployeeIds = await getVisibleEmployeeIdsForSupervisorActor(params.userId, params.roles, db, selectedDate);
-
-  if (!hasSupervisorRole && departmentEmployeeIds.length === 0) {
-    throw new Error('Department head dashboard is available only to supervisors');
-  }
-
-  const departmentEmployees = await db.query.employees.findMany({
-    where: inArray(employees.id, departmentEmployeeIds),
-    with: { department: true, position: true },
-    orderBy: (table, { asc }) => [asc(table.firstNameEn), asc(table.lastNameEn)],
-  });
-
-  if (departmentEmployeeIds.length === 0) {
-    return createEmptySummary({ generatedAt, selectedDate, supervisor });
-  }
-
-  const [
-    dayPunches,
-    approvedLeaves,
-    pendingLeaveRequests,
-    pendingCorrections,
-    pendingAttendancePunches,
-    activeExemptions,
-    workScheduleAssignments,
-    currentAnnualLeaveBalance,
-  ] = await Promise.all([
-    db.query.attendancePunches.findMany({
-      where: and(
-        inArray(attendancePunches.employeeId, departmentEmployeeIds),
-        gte(attendancePunches.punchTime, dayRange.start),
-        lte(attendancePunches.punchTime, dayRange.end),
-      ),
-      with: { employee: { with: { department: true, position: true } }, device: true },
-      orderBy: (table, { asc }) => [asc(table.punchTime)],
-    }),
-    db.query.leaveRequests.findMany({
-      where: and(
-        inArray(leaveRequests.employeeId, departmentEmployeeIds),
-        eq(leaveRequests.status, 'AUTHORIZED'),
-        lte(leaveRequests.startDate, selectedDate),
-        gte(leaveRequests.endDate, selectedDate),
-      ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
-    }),
-    db.query.leaveRequests.findMany({
-      where: and(
-        inArray(leaveRequests.employeeId, departmentEmployeeIds),
-        eq(leaveRequests.status, 'PENDING'),
-      ),
-      with: { employee: { with: { department: true, position: true } }, leaveType: true },
-      orderBy: (table, { asc }) => [asc(table.createdAt)],
-      limit: 20,
-    }),
-    db.query.manualPunchRequests.findMany({
-      where: and(
-        inArray(manualPunchRequests.employeeId, departmentEmployeeIds),
-        inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES),
-      ),
-      with: { employee: { with: { department: true, position: true } } },
-      orderBy: (table, { asc }) => [asc(table.createdAt)],
-      limit: 20,
-    }),
-    db.query.attendancePunches.findMany({
-      where: and(
-        inArray(attendancePunches.employeeId, departmentEmployeeIds),
-        eq(attendancePunches.isProcessed, false),
-        gte(attendancePunches.punchTime, dayRange.start),
-        lte(attendancePunches.punchTime, dayRange.end),
-      ),
-      with: { employee: { with: { department: true, position: true } }, device: true },
-      orderBy: (table, { asc }) => [asc(table.punchTime)],
-      limit: 20,
-    }),
-    db.query.biometricExemptions.findMany({
-      where: eq(biometricExemptions.isActive, true),
-    }),
-    db.query.employeeWorkSchedules.findMany({
-      where: and(
-        inArray(employeeWorkSchedules.employeeId, departmentEmployeeIds),
-        eq(employeeWorkSchedules.isActive, true),
-      ),
-      with: {
-        workSchedule: {
-          with: {
-            days: {
-              with: {
-                shift: {
-                  with: {
-                    segments: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      orderBy: (table, { desc }) => [desc(table.effectiveFrom), desc(table.createdAt)],
-    }),
-    supervisor.employmentType === 'CONTRACT'
-      ? getCurrentAnnualLeaveBalance(supervisor.id)
-      : Promise.resolve(null),
+  const [context, reports, pendingLeave, pendingCorrections, currentAnnualLeaveBalance] = await Promise.all([
+    loadAttendanceDays({ from: selectedDate, to: selectedDate, employeeIds: reportIds, now: generatedAt }),
+    reportIds.length
+      ? db.query.employees.findMany({
+        where: inArray(employees.id, reportIds),
+        with: { department: true, position: true },
+        orderBy: (table, { asc }) => [asc(table.firstNameEn), asc(table.lastNameEn)],
+      })
+      : Promise.resolve([]),
+    reportIds.length
+      ? db.query.leaveRequests.findMany({
+        where: and(inArray(leaveRequests.employeeId, reportIds), eq(leaveRequests.status, 'PENDING')),
+        with: { employee: { with: { department: true, position: true } }, leaveType: true },
+        orderBy: (table, { asc }) => [asc(table.createdAt)],
+      })
+      : Promise.resolve([]),
+    reportIds.length
+      ? db.query.manualPunchRequests.findMany({
+        where: and(inArray(manualPunchRequests.employeeId, reportIds), inArray(manualPunchRequests.status, PENDING_CORRECTION_STATUSES)),
+        with: { employee: { with: { department: true, position: true } } },
+        orderBy: (table, { asc }) => [asc(table.createdAt)],
+      })
+      : Promise.resolve([]),
+    supervisor.employmentType === 'CONTRACT' ? getCurrentAnnualLeaveBalance(supervisor.id) : Promise.resolve(null),
   ]);
 
-  const punchesByEmployee = groupPunchesByEmployee(dayPunches);
-  const presentEmployeeIds = new Set([...punchesByEmployee.keys()]);
-  const leaveEmployeeIds = new Set(approvedLeaves.map((request) => request.employeeId));
-  const coveredLeaveEmployeeIds = new Set(
-    approvedLeaves
-      .filter((request) => !isUnpaidLeaveType(request.leaveType))
-      .map((request) => request.employeeId),
-  );
-  const exemptEmployeeIds = new Set(
-    departmentEmployees
-      .filter((employee) => isEmployeeBiometricExempt(employee, activeExemptions, selectedDate))
-      .map((employee) => employee.id),
-  );
-  const scheduleByEmployee = getScheduleByEmployee(workScheduleAssignments, selectedDate);
-  const lateEmployeeIds = getLateEmployeeIds(punchesByEmployee, scheduleByEmployee, selectedDate);
-  const absentEmployees = departmentEmployees.filter((employee) => (
-    !presentEmployeeIds.has(employee.id)
-    && !coveredLeaveEmployeeIds.has(employee.id)
-    && !exemptEmployeeIds.has(employee.id)
-  ));
+  const reportById = new Map(reports.map((employee) => [employee.id, employee]));
+  const staff = reports.filter((employee) => {
+    const row = context.employeeById.get(employee.id);
+    return row ? context.isCounted(row, selectedDate) : false;
+  });
+  const reportIdSet = new Set(reportIds);
+  const days = context.days.filter((day) => day.date === selectedDate && reportIdSet.has(day.record.employeeId));
+  const counts = countStatuses(days);
+  const { missingRecords, missingToday } = countMissingRecords({
+    from: selectedDate,
+    to: selectedDate,
+    today,
+    employees: context.employees.filter((employee) => reportIdSet.has(employee.id)),
+    isCounted: context.isCounted,
+    effectiveDepartment: context.effectiveDepartment,
+    include: () => true,
+    days,
+  });
+
+  const employeesWith = (status: string) => days
+    .filter((day) => day.status === status)
+    .map((day) => reportById.get(day.record.employeeId))
+    .filter((employee): employee is NonNullable<typeof employee> => Boolean(employee));
+  // Daily records the supervisor still has to approve for this date.
+  const pendingAttendance = days
+    .filter((day) => day.record.status === 'PENDING_SUPERVISOR' || day.record.status === 'RETURNED')
+    .map((day) => ({
+      id: day.record.id,
+      employee: reportById.get(day.record.employeeId) ?? null,
+      attendanceDate: day.date,
+      status: day.record.status,
+      attendanceStatus: day.status,
+      checkInAt: day.record.checkInAt,
+    }));
+  const missingCheckout = days.filter((day) => hasMissingCheckout(day, generatedAt, today)).length;
 
   return {
     generatedAt,
     date: selectedDate,
+    isLive: selectedDate === today,
     department: supervisor.department ?? null,
     supervisor,
     currentAnnualLeaveBalance,
+    attendanceSummary: {
+      headcount: staff.length,
+      present: counts.ON_TIME + counts.LATE,
+      onTime: counts.ON_TIME,
+      late: counts.LATE,
+      absent: counts.ABSENT,
+      notYetArrived: counts.NOT_YET_ARRIVED,
+      onLeave: counts.LEAVE,
+      biometricExempt: counts.EXEMPT,
+      restDay: counts.REST,
+      noSchedule: counts.NO_SCHEDULE,
+      missingCheckout,
+      attendanceRate: attendanceRate(counts),
+      punctualityRate: punctualityRate(counts),
+    },
+    dataQuality: { missingRecords, missingToday, noScheduleEmployees: counts.NO_SCHEDULE },
     widgets: {
-      todaysStaff: createWidget('todays-staff', "Today's Staff", departmentEmployees.length, '/contract-employees'),
-      present: createWidget('present', 'Present', presentEmployeeIds.size, '/attendance-punches'),
-      absent: createWidget('absent', 'Absent', absentEmployees.length, '/attendance-punches'),
-      leave: createWidget('leave', 'Leave', leaveEmployeeIds.size, '/leave-request-approvals'),
-      late: createWidget('late', 'Late', lateEmployeeIds.size, '/attendance-punches'),
-      pendingAttendance: createWidget('pending-attendance', 'Pending Attendance', pendingAttendancePunches.length, '/attendance-punches'),
-      pendingLeave: createWidget('pending-leave', 'Pending Leave', pendingLeaveRequests.length, '/leave-request-approvals'),
+      todaysStaff: createWidget('todays-staff', "Today's Staff", staff.length, '/contract-employees'),
+      present: createWidget('present', 'Present', counts.ON_TIME + counts.LATE, '/attendance-punches'),
+      absent: createWidget('absent', 'Absent', counts.ABSENT, '/attendance-punches'),
+      leave: createWidget('leave', 'Leave', counts.LEAVE, '/leave-request-approvals'),
+      late: createWidget('late', 'Late', counts.LATE, '/attendance-punches'),
+      pendingAttendance: createWidget('pending-attendance', 'Pending Attendance', pendingAttendance.length, '/attendance-punches'),
+      pendingLeave: createWidget('pending-leave', 'Pending Leave', pendingLeave.length, '/leave-request-approvals'),
       pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', pendingCorrections.length, '/attendance-correction-approvals'),
     },
     details: {
-      todaysStaff: departmentEmployees,
-      presentEmployees: departmentEmployees.filter((employee) => presentEmployeeIds.has(employee.id)),
-      absentEmployees,
-      employeesOnLeave: approvedLeaves,
-      lateEmployees: departmentEmployees.filter((employee) => lateEmployeeIds.has(employee.id)),
-      pendingAttendance: pendingAttendancePunches,
-      pendingLeave: pendingLeaveRequests,
-      pendingCorrections,
-    },
-  };
-}
-
-function isUnpaidLeaveType(leaveType: any) {
-  return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
-}
-
-function createEmptySummary(input: { generatedAt: Date; selectedDate: string; supervisor: any }) {
-  return {
-    generatedAt: input.generatedAt,
-    date: input.selectedDate,
-    department: input.supervisor.department ?? null,
-    supervisor: input.supervisor,
-    currentAnnualLeaveBalance: null,
-    widgets: {
-      todaysStaff: createWidget('todays-staff', "Today's Staff", 0, '/contract-employees'),
-      present: createWidget('present', 'Present', 0, '/attendance-punches'),
-      absent: createWidget('absent', 'Absent', 0, '/attendance-punches'),
-      leave: createWidget('leave', 'Leave', 0, '/leave-request-approvals'),
-      late: createWidget('late', 'Late', 0, '/attendance-punches'),
-      pendingAttendance: createWidget('pending-attendance', 'Pending Attendance', 0, '/attendance-punches'),
-      pendingLeave: createWidget('pending-leave', 'Pending Leave', 0, '/leave-request-approvals'),
-      pendingCorrections: createWidget('pending-corrections', 'Pending Corrections', 0, '/attendance-correction-approvals'),
-    },
-    details: {
-      todaysStaff: [],
-      presentEmployees: [],
-      absentEmployees: [],
-      employeesOnLeave: [],
-      lateEmployees: [],
-      pendingAttendance: [],
-      pendingLeave: [],
-      pendingCorrections: [],
+      todaysStaff: staff,
+      presentEmployees: [...employeesWith('ON_TIME'), ...employeesWith('LATE')],
+      absentEmployees: employeesWith('ABSENT'),
+      notYetArrivedEmployees: employeesWith('NOT_YET_ARRIVED'),
+      employeesOnLeave: days
+        .filter((day) => day.status === 'LEAVE')
+        .map((day) => ({ employee: reportById.get(day.record.employeeId) ?? null, leaveType: day.leave?.typeLabel ?? null }))
+        .filter((item) => item.employee),
+      lateEmployees: employeesWith('LATE'),
+      pendingAttendance: pendingAttendance.slice(0, DETAIL_LIMIT),
+      pendingLeave: pendingLeave.slice(0, DETAIL_LIMIT),
+      pendingCorrections: pendingCorrections.slice(0, DETAIL_LIMIT),
     },
   };
 }
@@ -234,90 +151,12 @@ async function getCurrentAnnualLeaveBalance(employeeId: string) {
     where: eq(leaveFiscalYears.isActive, true),
     columns: { id: true },
   });
-
   if (!activeFiscalYear) return null;
 
   return db.query.leaveBalances.findFirst({
-    where: and(
-      eq(leaveBalances.employeeId, employeeId),
-      eq(leaveBalances.fiscalYearId, activeFiscalYear.id),
-    ),
-    with: {
-      employee: { with: { department: true, position: true } },
-      fiscalYear: true,
-    },
+    where: and(eq(leaveBalances.employeeId, employeeId), eq(leaveBalances.fiscalYearId, activeFiscalYear.id)),
+    with: { employee: { with: { department: true, position: true } }, fiscalYear: true },
   });
-}
-
-function normalizeDateParam(date?: string) {
-  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  return new Date().toISOString().slice(0, 10);
-}
-
-function getDayRange(date: string) {
-  return {
-    start: new Date(`${date}T00:00:00`),
-    end: new Date(`${date}T23:59:59.999`),
-  };
-}
-
-function groupPunchesByEmployee(punches: any[]) {
-  const grouped = new Map<string, Punch[]>();
-
-  for (const punch of punches) {
-    if (!punch.employeeId) continue;
-    grouped.set(punch.employeeId, [...(grouped.get(punch.employeeId) ?? []), punch]);
-  }
-
-  return grouped;
-}
-
-function getScheduleByEmployee(assignments: any[], date: string) {
-  const selected = new Map<string, any>();
-
-  for (const assignment of assignments) {
-    if (assignment.effectiveFrom > date) continue;
-    if (assignment.effectiveTo && assignment.effectiveTo < date) continue;
-    if (!selected.has(assignment.employeeId)) {
-      selected.set(assignment.employeeId, assignment);
-    }
-  }
-
-  return selected;
-}
-
-function getLateEmployeeIds(punchesByEmployee: Map<string, Punch[]>, scheduleByEmployee: Map<string, any>, date: string) {
-  const lateEmployeeIds = new Set<string>();
-  const dayOfWeek = getDayOfWeek(date);
-
-  for (const [employeeId, punches] of punchesByEmployee) {
-    const firstPunch = punches[0];
-    if (!firstPunch) continue;
-    const lateAfter = getLateAfterTime(scheduleByEmployee.get(employeeId), dayOfWeek, date);
-    if (firstPunch.punchTime > lateAfter) {
-      lateEmployeeIds.add(employeeId);
-    }
-  }
-
-  return lateEmployeeIds;
-}
-
-function getLateAfterTime(assignment: any, dayOfWeek: string, date: string) {
-  const day = assignment?.workSchedule?.days?.find((item: any) => item.dayOfWeek === dayOfWeek && item.isActive && !item.isOffDay);
-  const shift = day?.shift;
-  const segments = [...(shift?.segments ?? [])].sort((left: any, right: any) => {
-    const sortOrder = Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0);
-    return sortOrder || String(left.startTime).localeCompare(String(right.startTime));
-  });
-  const startTime = segments[0]?.startTime ?? DEFAULT_SHIFT_START;
-  const graceMinutes = Number(shift?.gracePeriodMinutes ?? 0) + Number(shift?.lateAfterMinutes ?? 0);
-  const lateAfter = new Date(`${date}T${startTime}`);
-  lateAfter.setMinutes(lateAfter.getMinutes() + graceMinutes);
-  return lateAfter;
-}
-
-function getDayOfWeek(date: string) {
-  return ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T00:00:00`).getDay()];
 }
 
 function createWidget(id: string, label: string, count: number, href: string) {

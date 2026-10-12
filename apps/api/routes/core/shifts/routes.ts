@@ -32,7 +32,7 @@ import {
   getShiftSegmentsHandler,
   updateShiftSegmentHandler,
 } from './handlers/shiftSegments';
-import { requirePermission } from '../../../middleware/rbac';
+import { requirePermission, requireHrSupervisorRole } from '../../../middleware/rbac';
 
 const shiftsApp = new Hono();
 
@@ -266,16 +266,16 @@ export const updateShiftBreakRoute = createRoute({
   },
 });
 
-shiftsApp.post('/shifts', requirePermission('shifts:read'), createShiftHandler);
+shiftsApp.post('/shifts', requirePermission('shifts:read'), requireHrSupervisorRole(), createShiftHandler);
 shiftsApp.get('/shifts', requirePermission('shifts:read'), getShiftsHandler);
 shiftsApp.get('/shifts/:id', requirePermission('shifts:read'), getShiftHandler);
-shiftsApp.put('/shifts/:id', requirePermission('shifts:read'), updateShiftHandler);
-shiftsApp.post('/shifts/:id/segments', requirePermission('shifts:read'), createShiftSegmentHandler);
+shiftsApp.put('/shifts/:id', requirePermission('shifts:read'), requireHrSupervisorRole(), updateShiftHandler);
+shiftsApp.post('/shifts/:id/segments', requirePermission('shifts:read'), requireHrSupervisorRole(), createShiftSegmentHandler);
 shiftsApp.get('/shifts/:id/segments', requirePermission('shifts:read'), getShiftSegmentsHandler);
-shiftsApp.put('/shift-segments/:id', requirePermission('shifts:read'), updateShiftSegmentHandler);
-shiftsApp.post('/shifts/:id/breaks', requirePermission('shifts:read'), createShiftBreakHandler);
+shiftsApp.put('/shift-segments/:id', requirePermission('shifts:read'), requireHrSupervisorRole(), updateShiftSegmentHandler);
+shiftsApp.post('/shifts/:id/breaks', requirePermission('shifts:read'), requireHrSupervisorRole(), createShiftBreakHandler);
 shiftsApp.get('/shifts/:id/breaks', requirePermission('shifts:read'), getShiftBreaksHandler);
-shiftsApp.put('/shift-breaks/:id', requirePermission('shifts:read'), updateShiftBreakHandler);
+shiftsApp.put('/shift-breaks/:id', requirePermission('shifts:read'), requireHrSupervisorRole(), updateShiftBreakHandler);
 
 openApiApp
   .openapi(createShiftRoute, createShiftHandler as any)
