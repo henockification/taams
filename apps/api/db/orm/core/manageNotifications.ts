@@ -1,3 +1,4 @@
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import { and, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import {
@@ -236,6 +237,31 @@ export async function getSupervisorNotificationRecipients(employeeId: string): P
   return uniqueRecipients(assignments.map((assignment) => mapEmployeeToRecipient(assignment.supervisor)).filter(Boolean));
 }
 
+/**
+ * People a supervisor currently supervises (effective assignments today), the same
+ * rule delegation uses, so a delegation notice reaches exactly the employees whose
+ * approvals move. Employees who are no longer working are left out.
+ */
+export async function getDirectReportNotificationRecipients(
+  supervisorEmployeeId: string,
+  excludeEmployeeIds: string[] = [],
+): Promise<NotificationRecipient[]> {
+  const today = addisTodayDateString();
+  const assignments = await db.query.employeeSupervisors.findMany({
+    where: and(
+      eq(employeeSupervisors.supervisorId, supervisorEmployeeId),
+      lte(employeeSupervisors.effectiveFrom, today),
+      or(sql`${employeeSupervisors.effectiveTo} IS NULL`, gte(employeeSupervisors.effectiveTo, today)),
+    ),
+    with: { employee: { with: { user: true } } },
+  });
+  const excluded = new Set(excludeEmployeeIds);
+  return uniqueRecipients(assignments
+    .map((assignment) => assignment.employee)
+    .filter((employee) => employee && !excluded.has(employee.id) && isWorkingEmployee(employee))
+    .map((employee) => mapEmployeeToRecipient(employee)));
+}
+
 export async function getHrNotificationRecipients(): Promise<NotificationRecipient[]> {
   const hrUsers = await db
     .select({
@@ -342,6 +368,10 @@ function isNotificationChannel(value: unknown): value is NotificationChannel {
 
 function isNotificationLogStatus(value: unknown): value is NotificationLogStatus {
   return value === 'PENDING' || value === 'SENT' || value === 'FAILED' || value === 'SKIPPED';
+}
+
+function addisTodayDateString() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
 
 function currentDateString() {

@@ -1,5 +1,6 @@
 import {
   createNotificationLog,
+  getDirectReportNotificationRecipients,
   getEmployeeNotificationRecipient,
   getHrNotificationRecipients,
   getNotificationRecipientByEmail,
@@ -39,6 +40,11 @@ export type WorkflowNotificationEvent =
   | 'BIOMETRIC_EXEMPTION_REJECTED'
   | 'SUPERVISOR_DELEGATION_ASSIGNED'
   | 'SUPERVISOR_DELEGATION_REVOKED'
+  // Same delegation, told to the supervisor's direct reports and to the supervisor's own supervisor.
+  | 'SUPERVISOR_DELEGATION_ASSIGNED_TEAM'
+  | 'SUPERVISOR_DELEGATION_REVOKED_TEAM'
+  | 'SUPERVISOR_DELEGATION_ASSIGNED_MANAGER'
+  | 'SUPERVISOR_DELEGATION_REVOKED_MANAGER'
   | 'ATTENDANCE_SUPERVISOR_APPROVED'
   | 'ATTENDANCE_HR_APPROVED'
   | 'ATTENDANCE_RETURNED';
@@ -62,6 +68,7 @@ export type WorkflowNotificationPayload = {
   endAt?: string | null;
   durationMinutes?: number | null;
   delegatingSupervisorName?: string | null;
+  delegateName?: string | null;
   metadata?: Record<string, unknown>;
 };
 
@@ -360,6 +367,15 @@ class NotificationService {
 
     if (!employeeId) return [];
 
+    // For team/manager delegation notices, employeeId is the delegating supervisor's employee.
+    if (eventType === 'SUPERVISOR_DELEGATION_ASSIGNED_TEAM' || eventType === 'SUPERVISOR_DELEGATION_REVOKED_TEAM') {
+      const delegateEmployeeId = typeof payload.metadata?.delegateEmployeeId === 'string' ? payload.metadata.delegateEmployeeId : null;
+      return getDirectReportNotificationRecipients(employeeId, delegateEmployeeId ? [delegateEmployeeId] : []);
+    }
+    if (eventType === 'SUPERVISOR_DELEGATION_ASSIGNED_MANAGER' || eventType === 'SUPERVISOR_DELEGATION_REVOKED_MANAGER') {
+      return getSupervisorNotificationRecipients(employeeId);
+    }
+
     if (eventType.endsWith('_SUBMITTED')) {
       if (eventType === 'ATTENDANCE_CORRECTION_SUBMITTED') return getHrNotificationRecipients();
       return getSupervisorNotificationRecipients(employeeId);
@@ -532,6 +548,22 @@ export function renderWorkflowNotification(eventType: WorkflowNotificationEvent,
     SUPERVISOR_DELEGATION_REVOKED: {
       subject: 'Supervisor delegation revoked',
       message: `Your supervisor delegation from ${payload.delegatingSupervisorName ?? payload.actorName ?? 'the supervisor'} for ${formatPeriod(payload.dateFrom, payload.dateTo)} has been revoked.`,
+    },
+    SUPERVISOR_DELEGATION_ASSIGNED_TEAM: {
+      subject: 'Your supervisor has delegated approvals',
+      message: `${payload.delegateName ?? 'A delegate'} will act as your supervisor on behalf of ${payload.delegatingSupervisorName ?? 'your supervisor'} for ${formatPeriod(payload.dateFrom, payload.dateTo)}. Your attendance, leave and correction requests will be approved by ${payload.delegateName ?? 'the delegate'} during this period.`,
+    },
+    SUPERVISOR_DELEGATION_REVOKED_TEAM: {
+      subject: 'Supervisor delegation ended',
+      message: `${payload.delegateName ?? 'The delegate'} no longer acts as your supervisor on behalf of ${payload.delegatingSupervisorName ?? 'your supervisor'}. Your approvals go back to ${payload.delegatingSupervisorName ?? 'your supervisor'}.`,
+    },
+    SUPERVISOR_DELEGATION_ASSIGNED_MANAGER: {
+      subject: 'Supervisor delegation in your team',
+      message: `${payload.delegatingSupervisorName ?? 'A supervisor who reports to you'} delegated supervisor responsibilities to ${payload.delegateName ?? 'a delegate'} for ${formatPeriod(payload.dateFrom, payload.dateTo)}.`,
+    },
+    SUPERVISOR_DELEGATION_REVOKED_MANAGER: {
+      subject: 'Supervisor delegation revoked in your team',
+      message: `The delegation from ${payload.delegatingSupervisorName ?? 'a supervisor who reports to you'} to ${payload.delegateName ?? 'a delegate'} for ${formatPeriod(payload.dateFrom, payload.dateTo)} has been revoked.`,
     },
     ATTENDANCE_SUPERVISOR_APPROVED: {
       subject: 'Attendance submitted for HR approval',

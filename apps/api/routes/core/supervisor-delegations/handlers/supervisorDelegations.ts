@@ -61,28 +61,11 @@ export async function createSupervisorDelegationHandler(c: Context) {
     });
     if (!supervisorDelegation) throw new Error('Failed to create supervisor delegation');
 
-    await Promise.all([
-      safeEnqueueWorkflowNotification('SUPERVISOR_DELEGATION_ASSIGNED', {
-        entityId: supervisorDelegation.id,
-        employeeId: supervisorDelegation.delegateEmployeeId,
-        actorUserId: session.user.id,
-        actorName: session.user.name,
-        delegatingSupervisorName: supervisorDelegation.supervisorUser?.name ?? session.user.name,
-        dateFrom: toIsoString(supervisorDelegation.startsAt),
-        dateTo: toIsoString(supervisorDelegation.endsAt),
-        metadata: { supervisorUserId: supervisorDelegation.supervisorUserId },
-      }, { channels: ['EMAIL'] }),
-      ...revokedDelegations.map((delegation: any) => safeEnqueueWorkflowNotification('SUPERVISOR_DELEGATION_REVOKED', {
-        entityId: delegation.id,
-        employeeId: delegation.delegateEmployeeId,
-        actorUserId: session.user.id,
-        actorName: session.user.name,
-        delegatingSupervisorName: delegation.supervisorUser?.name ?? session.user.name,
-        dateFrom: toIsoString(delegation.startsAt),
-        dateTo: toIsoString(delegation.endsAt),
-        metadata: { supervisorUserId: delegation.supervisorUserId, replacedByDelegationId: supervisorDelegation.id },
-      }, { channels: ['EMAIL'] })),
-    ]);
+    // A new delegation replaces any active one; announce the end of those first.
+    await Promise.all(revokedDelegations.map((delegation: any) => notifyDelegationChange(delegation, 'REVOKED', session.user, {
+      replacedByDelegationId: supervisorDelegation.id,
+    })));
+    await notifyDelegationChange(supervisorDelegation, 'ASSIGNED', session.user);
 
     return c.json({
       success: true,
@@ -99,16 +82,7 @@ export async function revokeSupervisorDelegationHandler(c: Context) {
     const { supervisorDelegation, didRevoke } = await revokeSupervisorDelegation(c.req.param('id'), session.user.id);
     if (!supervisorDelegation) throw new Error('Delegation not found');
     if (didRevoke) {
-      await safeEnqueueWorkflowNotification('SUPERVISOR_DELEGATION_REVOKED', {
-        entityId: supervisorDelegation.id,
-        employeeId: supervisorDelegation.delegateEmployeeId,
-        actorUserId: session.user.id,
-        actorName: session.user.name,
-        delegatingSupervisorName: supervisorDelegation.supervisorUser?.name ?? session.user.name,
-        dateFrom: toIsoString(supervisorDelegation.startsAt),
-        dateTo: toIsoString(supervisorDelegation.endsAt),
-        metadata: { supervisorUserId: supervisorDelegation.supervisorUserId },
-      }, { channels: ['EMAIL'] });
+      await notifyDelegationChange(supervisorDelegation, 'REVOKED', session.user);
     }
 
     return c.json({
@@ -118,6 +92,44 @@ export async function revokeSupervisorDelegationHandler(c: Context) {
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to revoke supervisor delegation');
   }
+}
+
+/**
+ * Tells everyone affected by a delegation starting or ending, by email and SMS:
+ * the delegate, the delegating supervisor's direct reports (whose approvals move),
+ * and the delegating supervisor's own supervisor.
+ */
+async function notifyDelegationChange(
+  delegation: any,
+  change: 'ASSIGNED' | 'REVOKED',
+  actor: { id: string; name?: string | null },
+  extraMetadata: Record<string, unknown> = {},
+) {
+  const base = {
+    entityId: delegation.id,
+    actorUserId: actor.id,
+    actorName: actor.name ?? null,
+    delegatingSupervisorName: delegation.supervisorUser?.name ?? employeeName(delegation.supervisorEmployee) ?? actor.name ?? null,
+    delegateName: employeeName(delegation.delegateEmployee) ?? delegation.delegateUser?.name ?? null,
+    dateFrom: toIsoString(delegation.startsAt),
+    dateTo: toIsoString(delegation.endsAt),
+    metadata: {
+      supervisorUserId: delegation.supervisorUserId,
+      supervisorEmployeeId: delegation.supervisorEmployeeId,
+      delegateEmployeeId: delegation.delegateEmployeeId,
+      ...extraMetadata,
+    },
+  };
+  await Promise.all([
+    safeEnqueueWorkflowNotification(`SUPERVISOR_DELEGATION_${change}`, { ...base, employeeId: delegation.delegateEmployeeId }),
+    safeEnqueueWorkflowNotification(`SUPERVISOR_DELEGATION_${change}_TEAM`, { ...base, employeeId: delegation.supervisorEmployeeId }),
+    safeEnqueueWorkflowNotification(`SUPERVISOR_DELEGATION_${change}_MANAGER`, { ...base, employeeId: delegation.supervisorEmployeeId }),
+  ]);
+}
+
+function employeeName(employee?: { firstNameEn?: string | null; middleNameEn?: string | null; lastNameEn?: string | null } | null) {
+  const name = [employee?.firstNameEn, employee?.middleNameEn, employee?.lastNameEn].filter(Boolean).join(' ');
+  return name || null;
 }
 
 function toIsoString(value: string | Date) {
