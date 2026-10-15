@@ -116,7 +116,7 @@ export const coreQueryKeys = {
   biometricExemptions: () => [...coreQueryKeys.all, 'biometric-exemptions'] as const,
   biometricExemption: (id: string) => [...coreQueryKeys.biometricExemptions(), id] as const,
   attendancePunches: () => [...coreQueryKeys.all, 'attendance-punches'] as const,
-  attendancePunchesPaginated: (params: { page: number; pageSize: number; employeeId: string; deviceId: string; status: string; dateFrom: string; dateTo: string; timeFrom: string; timeTo: string }) => [...coreQueryKeys.attendancePunches(), 'paginated', params] as const,
+  attendancePunchesPaginated: (params: { page: number; pageSize: number; employeeId: string; deviceId: string; status: string; dateFrom: string; dateTo: string; timeFrom: string; timeTo: string; search: string; mapping: string }) => [...coreQueryKeys.attendancePunches(), 'paginated', params] as const,
   employeeAttendancePunches: (id: string) => [...coreQueryKeys.attendancePunches(), 'employee', id] as const,
   unprocessedAttendancePunches: () => [...coreQueryKeys.attendancePunches(), 'unprocessed'] as const,
   myAttendanceDailyRecords: (range: { dateFrom: string; dateTo: string }) => (
@@ -149,6 +149,18 @@ export function useIfmisAttendancePreview(params: { payMonth: number; payYear: n
   return useQuery({
     queryKey: coreQueryKeys.ifmisAttendance(params.payMonth, params.payYear),
     queryFn: () => coreApi.getIfmisAttendancePreview(params),
+  });
+}
+
+export function useSetIfmisAbsenceAdjustment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (params: { payMonth: number; payYear: number; employeeId: string; absentDays: number | null; note?: string | null }) =>
+      coreApi.setIfmisAbsenceAdjustment(params),
+    onSuccess: (_data, params) =>
+      queryClient.invalidateQueries({
+        queryKey: coreQueryKeys.ifmisAttendance(params.payMonth, params.payYear),
+      }),
   });
 }
 
@@ -1240,7 +1252,7 @@ export function useAttendancePunches() {
   });
 }
 
-export function useAttendancePunchesPaginated(params: { page: number; pageSize: number; employeeId?: string; deviceId?: string; status?: 'processed' | 'unprocessed'; dateFrom?: string; dateTo?: string; timeFrom?: string; timeTo?: string }) {
+export function useAttendancePunchesPaginated(params: { page: number; pageSize: number; employeeId?: string; deviceId?: string; status?: 'processed' | 'unprocessed'; dateFrom?: string; dateTo?: string; timeFrom?: string; timeTo?: string; search?: string; mapping?: 'mapped' | 'unmapped' }) {
   const normalized = {
     page: params.page,
     pageSize: params.pageSize,
@@ -1251,6 +1263,8 @@ export function useAttendancePunchesPaginated(params: { page: number; pageSize: 
     dateTo: params.dateTo ?? '',
     timeFrom: params.timeFrom ?? '',
     timeTo: params.timeTo ?? '',
+    search: params.search ?? '',
+    mapping: params.mapping ?? '',
   };
 
   return useQuery({
@@ -1266,6 +1280,8 @@ export function useAttendancePunchesPaginated(params: { page: number; pageSize: 
         dateTo: params.dateTo,
         timeFrom: params.timeFrom,
         timeTo: params.timeTo,
+        search: params.search,
+        mapping: params.mapping,
       }),
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,

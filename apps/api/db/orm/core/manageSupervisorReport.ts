@@ -49,7 +49,7 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
   const temporaryAssignmentInRange = and(
     eq(temporaryDepartmentAssignments.isActive, true),
     toDate ? lte(temporaryDepartmentAssignments.effectiveFrom, toDate) : undefined,
-    fromDate ? gte(temporaryDepartmentAssignments.effectiveTo, fromDate) : undefined,
+    fromDate ? or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, fromDate)) : undefined,
   );
 
   const search = params.search?.trim();
@@ -152,7 +152,7 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
   }
   // When assignments overlap, the most recently started one wins (as in attendance approvals).
   const assignmentOn = (employeeId: string, date: string) => (assignmentsByEmployee.get(employeeId) ?? [])
-    .filter((assignment) => assignment.effectiveFrom <= date && assignment.effectiveTo >= date)
+    .filter((assignment) => assignment.effectiveFrom <= date && (!assignment.effectiveTo || assignment.effectiveTo >= date))
     .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
 
   return (records as any[])

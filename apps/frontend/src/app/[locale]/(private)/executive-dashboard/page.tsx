@@ -197,7 +197,7 @@ function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
   const multiDay = dashboard.dateFrom !== dashboard.dateTo
   const label = (key: string) => t(multiDay ? `${key}Days` : key)
   const items = [
-    { label: t("totalEmployees"), value: status.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white", hint: status.onEducationLeave ? t("onEducationLeaveHint", { count: status.onEducationLeave }) : null },
+    { label: t("totalEmployees"), value: status.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white", hint: status.indefinitelyAbsent ? t("indefinitelyAbsentHint", { count: status.indefinitelyAbsent }) : null },
     { label: label("present"), value: status.presentToday, icon: CheckCircle2, tone: "bg-emerald-600 text-white", hint: dashboard.isLive && status.notYetArrived ? t("notYetArrivedHint", { count: status.notYetArrived }) : null },
     { label: label("absent"), value: status.absentToday, icon: AlertTriangle, tone: "bg-rose-600 text-white", hint: null },
     { label: label("onLeave"), value: status.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white", hint: null },

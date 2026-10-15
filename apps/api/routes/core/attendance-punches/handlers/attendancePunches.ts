@@ -74,6 +74,9 @@ export async function getAttendancePunchesPaginatedHandler(c: Context) {
     const dateTo = c.req.query('dateTo') || null;
     const timeFrom = c.req.query('timeFrom') || null;
     const timeTo = c.req.query('timeTo') || null;
+    const search = c.req.query('search')?.trim() || null;
+    const mappingParam = c.req.query('mapping');
+    const mapping = mappingParam === 'mapped' || mappingParam === 'unmapped' ? mappingParam : null;
     const result = await getAttendancePunchesPaginated({
       page,
       pageSize,
@@ -84,6 +87,8 @@ export async function getAttendancePunchesPaginatedHandler(c: Context) {
       dateTo,
       timeFrom,
       timeTo,
+      search,
+      mapping,
       scope,
     });
 

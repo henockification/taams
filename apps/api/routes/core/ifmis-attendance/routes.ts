@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { createRoute } from '@hono/zod-openapi';
 import {
+  IfmisAbsenceAdjustmentRequestSchema,
   IfmisAttendancePeriodSchema,
   IfmisAttendancePreviewResponseSchema,
   IfmisAttendancePushResponseSchema,
@@ -10,7 +11,13 @@ import { openApiApp } from '../../../lib/openapi';
 import { requirePermission } from '../../../middleware/rbac';
 import { db } from '../../../db/db';
 import { writeAuditEvent } from '../../../lib/audit';
-import { getIfmisAttendancePreview, IfmisExportError, pushIfmisAttendance } from '../../../db/orm/core/manageIfmisAttendance';
+import {
+  getIfmisAttendancePreview,
+  IfmisAdjustmentError,
+  IfmisExportError,
+  pushIfmisAttendance,
+  setIfmisAbsenceAdjustment,
+} from '../../../db/orm/core/manageIfmisAttendance';
 
 const ifmisAttendanceApp = new Hono();
 
@@ -38,6 +45,33 @@ const pushRoute = createRoute({
     409: { content: { 'application/json': { schema: ErrorResponseSchema } }, description: 'Payroll period already exported' },
   },
 });
+
+const adjustmentRoute = createRoute({
+  method: 'put',
+  path: '/ifmis/attendance/adjustments',
+  tags: ['Core', 'IFMIS'],
+  summary: "Set or clear a biometric-exempt employee's absent days for a payroll month",
+  request: { body: { content: { 'application/json': { schema: IfmisAbsenceAdjustmentRequestSchema } } } },
+  responses: {
+    200: { content: { 'application/json': { schema: ErrorResponseSchema.pick({ success: true }) } }, description: 'Adjustment saved' },
+    400: { content: { 'application/json': { schema: ErrorResponseSchema } }, description: 'Invalid adjustment' },
+  },
+});
+
+export async function setIfmisAbsenceAdjustmentHandler(c: any) {
+  const parsed = IfmisAbsenceAdjustmentRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: 'Invalid absent days adjustment' }, 400);
+  try {
+    const user = c.get('user');
+    await setIfmisAbsenceAdjustment({ ...parsed.data, updatedBy: user.id });
+    return c.json({ success: true });
+  } catch (error) {
+    if (error instanceof IfmisAdjustmentError || (error instanceof Error && /pay (month|year)/i.test(error.message))) {
+      return c.json({ success: false, error: error.message }, 400);
+    }
+    return c.json({ success: false, error: 'Failed to save absent days adjustment' }, 500);
+  }
+}
 
 export async function previewIfmisAttendanceHandler(c: any) {
   const parsed = IfmisAttendancePeriodSchema.safeParse(c.req.query());
@@ -74,9 +108,11 @@ export async function pushIfmisAttendanceHandler(c: any) {
 
 ifmisAttendanceApp.get('/ifmis/attendance', requirePermission('ifmis-attendance:read'), previewIfmisAttendanceHandler);
 ifmisAttendanceApp.post('/ifmis/attendance/push', requirePermission('ifmis-attendance:push'), pushIfmisAttendanceHandler);
+ifmisAttendanceApp.put('/ifmis/attendance/adjustments', requirePermission('ifmis-attendance:push'), setIfmisAbsenceAdjustmentHandler);
 
 openApiApp
   .openapi(previewRoute, previewIfmisAttendanceHandler as any)
-  .openapi(pushRoute, pushIfmisAttendanceHandler as any);
+  .openapi(pushRoute, pushIfmisAttendanceHandler as any)
+  .openapi(adjustmentRoute, setIfmisAbsenceAdjustmentHandler as any);
 
 export default ifmisAttendanceApp;

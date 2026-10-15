@@ -361,6 +361,8 @@ export async function getAttendancePunchesPaginated({
   dateTo,
   timeFrom,
   timeTo,
+  search,
+  mapping,
   scope,
 }: {
   page?: number;
@@ -372,6 +374,8 @@ export async function getAttendancePunchesPaginated({
   dateTo?: string | null;
   timeFrom?: string | null;
   timeTo?: string | null;
+  search?: string | null;
+  mapping?: 'mapped' | 'unmapped' | null;
   scope?: EmployeeVisibilityScope;
 }) {
   const safePage = Math.max(1, page);
@@ -382,6 +386,9 @@ export async function getAttendancePunchesPaginated({
     deviceId ? eq(attendancePunches.deviceId, deviceId) : undefined,
     status === 'processed' ? eq(attendancePunches.isProcessed, true) : undefined,
     status === 'unprocessed' ? eq(attendancePunches.isProcessed, false) : undefined,
+    mapping === 'mapped' ? sql`NOT (${unmappedPunchCondition()})` : undefined,
+    mapping === 'unmapped' ? unmappedPunchCondition() : undefined,
+    buildPunchSearchCondition(search),
     ...buildPunchTimeConditions({ dateFrom, dateTo, timeFrom, timeTo }),
   ].filter(Boolean);
   const whereClause = conditions.length ? and(...(conditions as any)) : undefined;
@@ -615,6 +622,27 @@ function filterPunchesByScope<T extends { employee?: any | null; device?: any | 
     if (scope.type === 'hr-departments') return isDepartmentVisibleInScope(punch.device?.departmentId, scope);
     return false;
   });
+}
+
+// Mirrors hydratePunchEmployeesByBiometricId: a punch is mapped when it has an employee_id
+// or its biometric_id matches an employee's biometric_id.
+function unmappedPunchCondition() {
+  return sql`(${attendancePunches.employeeId} IS NULL AND NOT EXISTS (SELECT 1 FROM employees e WHERE e.biometric_id = ${attendancePunches.biometricId}))`;
+}
+
+function buildPunchSearchCondition(search?: string | null) {
+  const term = search?.trim();
+  if (!term) return undefined;
+  const pattern = `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+  return sql`(${attendancePunches.biometricId} ILIKE ${pattern} OR EXISTS (
+    SELECT 1 FROM employees e
+    WHERE (e.id = ${attendancePunches.employeeId} OR (${attendancePunches.employeeId} IS NULL AND e.biometric_id = ${attendancePunches.biometricId}))
+      AND (
+        concat_ws(' ', e.first_name_en, e.middle_name_en, e.last_name_en) ILIKE ${pattern}
+        OR concat_ws(' ', e.first_name_am, e.middle_name_am, e.last_name_am) ILIKE ${pattern}
+        OR e.employee_code ILIKE ${pattern}
+      )
+  ))`;
 }
 
 function buildPunchTimeConditions({

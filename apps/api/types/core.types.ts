@@ -159,10 +159,7 @@ export type CreateEmployeeInput = {
   salaryStep?: string | null;
   nationalId?: string | null;
   paidByIfmis?: boolean;
-  educationLeaveType?: 'ABROAD' | 'LOCAL' | null;
-  educationLeaveStart?: string | null;
-  educationLeaveExpectedReturn?: string | null;
-  educationLeaveReturnedOn?: string | null;
+  absenceReason?: 'EDUCATION' | 'WORK_ABROAD' | 'LEAVE_WITHOUT_PAY' | null;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;
@@ -320,10 +317,7 @@ export type Employee = {
   salaryStep: string | null;
   nationalId: string | null;
   paidByIfmis: boolean;
-  educationLeaveType: string | null;
-  educationLeaveStart: string | null;
-  educationLeaveExpectedReturn: string | null;
-  educationLeaveReturnedOn: string | null;
+  absenceReason: string | null;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;
@@ -339,7 +333,7 @@ export type TemporaryDepartmentAssignment = {
   sourceDepartmentId: string;
   targetDepartmentId: string;
   effectiveFrom: string;
-  effectiveTo: string;
+  effectiveTo: string | null;
   reason: string;
   isActive: boolean;
   createdBy: string;
@@ -355,7 +349,7 @@ export type CreateTemporaryDepartmentAssignmentInput = {
   employeeId: string;
   targetDepartmentId: string;
   effectiveFrom: string;
-  effectiveTo: string;
+  effectiveTo?: string | null;
   reason: string;
 };
 

@@ -1,5 +1,4 @@
-import { isOnEducationLeave } from '../../../lib/employees/education-leave';
-import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 
 export function formatDate(value: unknown) {
   if (!value) return null;
@@ -244,11 +243,8 @@ export function formatEmployee(employee: any, options?: { includeSensitive?: boo
     salaryStep: includeSensitive ? employee.salaryStep ?? null : null,
     nationalId: includeSensitive ? employee.nationalId ?? null : null,
     paidByIfmis: employee.paidByIfmis ?? true,
-    educationLeaveType: employee.educationLeaveType ?? null,
-    educationLeaveStart: employee.educationLeaveStart ?? null,
-    educationLeaveExpectedReturn: employee.educationLeaveExpectedReturn ?? null,
-    educationLeaveReturnedOn: employee.educationLeaveReturnedOn ?? null,
-    onEducationLeave: isOnEducationLeave(employee, addisToday()),
+    absenceReason: employee.absenceReason ?? null,
+    isIndefinitelyAbsent: isIndefinitelyAbsent(employee),
     sourceImportedAt: formatTimestamp(employee.sourceImportedAt),
     sourceRawPayload: includeSensitive ? employee.sourceRawPayload ?? null : null,
     isActive: employee.isActive,

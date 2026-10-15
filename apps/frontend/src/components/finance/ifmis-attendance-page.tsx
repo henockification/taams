@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, RefreshCw, Send } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Pencil, RefreshCw, Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -11,11 +11,14 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useCompleteIsmisLeave, useIfmisAttendancePreview, useIsmisLeaveImport, useLatestIsmisLeaveImport, usePushIfmisAttendance } from '@/data/hooks/core.hooks';
-import type { IfmisExportStatus } from '@/data/types/core.types';
+import { Textarea } from '@/components/ui/textarea';
+import { useCompleteIsmisLeave, useIfmisAttendancePreview, useIsmisLeaveImport, useLatestIsmisLeaveImport, usePushIfmisAttendance, useSetIfmisAbsenceAdjustment } from '@/data/hooks/core.hooks';
+import type { IfmisAttendanceRow, IfmisExportStatus } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { userHasPermission } from '@/config/app-navigation';
@@ -48,6 +51,9 @@ export function IfmisAttendancePage() {
   const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const monthStart = `${payYear}-${String(payMonth).padStart(2, '0')}-01`;
   const monthEnd = new Date(Date.UTC(payYear, payMonth, 0)).toISOString().slice(0, 10);
+  const [adjustingRow, setAdjustingRow] = useState<IfmisAttendanceRow | null>(null);
+  const canAdjust = canPush && !succeeded;
+  const exemptCount = data?.rows.filter((row) => row.isBiometricExempt).length ?? 0;
 
   async function handlePush() {
     try {
@@ -93,8 +99,9 @@ export function IfmisAttendancePage() {
         <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>{common('error')}</AlertTitle><AlertDescription>{preview.error.message}</AlertDescription></Alert>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Summary label={t('employees')} value={data?.rows.length ?? 0} />
+        <Summary label={t('ifmisExemptEmployees')} value={exemptCount} />
         <Summary label={t('readinessIssues')} value={data?.issues.length ?? 0} />
         <Summary label={t('exportStatus')} value={succeeded ? t('exported') : data?.ready ? t('ready') : t('notReady')} />
       </div>
@@ -154,14 +161,35 @@ export function IfmisAttendancePage() {
                   <TableHead>{t('absenteeismDays')}</TableHead><TableHead>{t('lateDays')}</TableHead>
                   <TableHead>{t('currentStatus')}</TableHead><TableHead>{t('approved')}</TableHead>
                   <TableHead>{t('payMonth')}</TableHead><TableHead>{t('payYear')}</TableHead>
+                  <TableHead className="text-right">{t('actions')}</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>{data?.rows.map((row) => (
                   <TableRow key={row.employeeId}>
-                    <TableCell className="font-medium">{[row.firstName, row.fatherName, row.grandName].filter(Boolean).join(' ')}</TableCell>
+                    <TableCell className="font-medium">
+                      {[row.firstName, row.fatherName, row.grandName].filter(Boolean).join(' ')}
+                      {row.isBiometricExempt ? (
+                        <Badge variant="outline" className="ml-2 border-emerald-500 text-emerald-700 dark:text-emerald-400">{t('biometricExempt')}</Badge>
+                      ) : null}
+                    </TableCell>
                     <TableCell>{[row.firstNameAmharic, row.fatherNameAmharic, row.grandNameAmharic].filter(Boolean).join(' ') || '-'}</TableCell>
-                    <TableCell>{row.absenteeism.toFixed(2)}</TableCell><TableCell>{row.late.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <span>{row.absenteeism.toFixed(2)}</span>
+                      {row.absenteeismAdjusted ? (
+                        <span className="block text-xs text-muted-foreground" title={row.adjustmentNote ?? undefined}>
+                          {t('absentDaysAdjusted', { value: row.calculatedAbsenteeism.toFixed(2) })}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{row.late.toFixed(2)}</TableCell>
                     <TableCell><Badge variant="outline">{row.currentStatus}</Badge></TableCell><TableCell>{row.approved}</TableCell>
                     <TableCell>{row.payMonth}</TableCell><TableCell>{row.payYear}</TableCell>
+                    <TableCell className="text-right">
+                      {row.isBiometricExempt && canAdjust ? (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setAdjustingRow(row)}>
+                          <Pencil className="size-4" />{t('adjustAbsentDays')}
+                        </Button>
+                      ) : null}
+                    </TableCell>
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -169,6 +197,13 @@ export function IfmisAttendancePage() {
           )}
         </CardContent>
       </Card>
+
+      <AbsenceAdjustmentDialog
+        row={adjustingRow}
+        payMonth={payMonth}
+        payYear={payYear}
+        onClose={() => setAdjustingRow(null)}
+      />
 
       <Card>
         <CardHeader><CardTitle>{t('exportHistory')}</CardTitle><CardDescription>{t('exportHistoryDescription')}</CardDescription></CardHeader>
@@ -184,6 +219,91 @@ export function IfmisAttendancePage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function AbsenceAdjustmentDialog({ row, payMonth, payYear, onClose }: {
+  row: IfmisAttendanceRow | null;
+  payMonth: number;
+  payYear: number;
+  onClose: () => void;
+}) {
+  const t = useTranslations('core');
+  const common = useTranslations('common');
+  const save = useSetIfmisAbsenceAdjustment();
+  const [absentDays, setAbsentDays] = useState('');
+  const [note, setNote] = useState('');
+  const [openedFor, setOpenedFor] = useState<string | null>(null);
+
+  // Reset the form whenever the dialog opens for a different row.
+  if (row && openedFor !== row.employeeId) {
+    setOpenedFor(row.employeeId);
+    setAbsentDays(String(row.absenteeism));
+    setNote(row.adjustmentNote ?? '');
+  }
+
+  const name = row ? [row.firstName, row.fatherName, row.grandName].filter(Boolean).join(' ') : '';
+
+  async function submit(value: number | null) {
+    if (!row) return;
+    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 31)) {
+      notifications.show({ title: common('error'), message: t('absentDaysInvalid'), color: 'red' });
+      return;
+    }
+    try {
+      await save.mutateAsync({ payMonth, payYear, employeeId: row.employeeId, absentDays: value, note: value === null ? null : note });
+      notifications.show({ title: common('success'), message: t('absentDaysSaved'), color: 'green' });
+      setOpenedFor(null);
+      onClose();
+    } catch (error) {
+      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : common('error'), color: 'red' });
+    }
+  }
+
+  return (
+    <Dialog open={Boolean(row)} onOpenChange={(open) => { if (!open) { setOpenedFor(null); onClose(); } }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('adjustAbsentDays')}</DialogTitle>
+          <DialogDescription>
+            {t('adjustAbsentDaysDescription', { name, value: (row?.calculatedAbsenteeism ?? 0).toFixed(2) })}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => { event.preventDefault(); void submit(Number(absentDays)); }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="ifmis-absent-days">{t('absentDays')}</Label>
+            <Input
+              id="ifmis-absent-days"
+              type="number"
+              min={0}
+              max={31}
+              step={0.5}
+              value={absentDays}
+              onChange={(event) => setAbsentDays(event.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="ifmis-absent-note">{t('note')}</Label>
+            <Textarea id="ifmis-absent-note" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
+          </div>
+          <DialogFooter className="gap-2 sm:justify-between">
+            {row?.absenteeismAdjusted ? (
+              <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => submit(null)}>
+                {t('useCalculatedValue')}
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => { setOpenedFor(null); onClose(); }}>{common('cancel')}</Button>
+              <Button type="submit" disabled={save.isPending || absentDays.trim() === ''}>{common('save')}</Button>
+            </div>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

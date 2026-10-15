@@ -218,11 +218,8 @@ export const EmployeeSchema = z.object({
   salaryStep: z.string().nullable().openapi({ example: 'III' }),
   nationalId: z.string().nullable().openapi({ example: '0045678901' }),
   paidByIfmis: z.boolean().openapi({ example: true }),
-  educationLeaveType: z.enum(['ABROAD', 'LOCAL']).nullable().optional().openapi({ example: 'ABROAD' }),
-  educationLeaveStart: z.string().nullable().optional().openapi({ example: '2026-09-01' }),
-  educationLeaveExpectedReturn: z.string().nullable().optional().openapi({ example: '2028-08-31' }),
-  educationLeaveReturnedOn: z.string().nullable().optional().openapi({ example: null }),
-  onEducationLeave: z.boolean().optional().openapi({ example: true }),
+  absenceReason: z.enum(['EDUCATION', 'WORK_ABROAD', 'LEAVE_WITHOUT_PAY']).nullable().optional().openapi({ example: 'EDUCATION' }),
+  isIndefinitelyAbsent: z.boolean().optional().openapi({ example: true }),
   sourceImportedAt: z.string().nullable().openapi({ example: '2026-07-06T09:30:00.000Z' }),
   sourceRawPayload: z
     .record(z.any())
@@ -241,7 +238,7 @@ export const TemporaryDepartmentAssignmentSchema = z.object({
   sourceDepartmentId: UuidSchema,
   targetDepartmentId: UuidSchema,
   effectiveFrom: z.string().openapi({ example: '2026-08-01' }),
-  effectiveTo: z.string().openapi({ example: '2026-08-31' }),
+  effectiveTo: z.string().nullable().openapi({ example: null }),
   reason: z.string().openapi({
     example: 'Temporary support for month-end attendance operations',
   }),
@@ -259,7 +256,7 @@ export const CreateTemporaryDepartmentAssignmentRequestSchema = z.object({
   employeeId: UuidSchema,
   targetDepartmentId: UuidSchema,
   effectiveFrom: RequiredDateSchema,
-  effectiveTo: RequiredDateSchema,
+  effectiveTo: OptionalDateSchema,
   reason: z.string().min(1),
 });
 
@@ -545,6 +542,17 @@ export const IfmisAttendanceRowSchema = z.object({
   approved: z.literal('YES'),
   payMonth: z.number().int(),
   payYear: z.number().int(),
+  isBiometricExempt: z.boolean(),
+  calculatedAbsenteeism: z.number(),
+  absenteeismAdjusted: z.boolean(),
+  adjustmentNote: z.string().nullable(),
+});
+
+export const IfmisAbsenceAdjustmentRequestSchema = IfmisAttendancePeriodSchema.extend({
+  employeeId: UuidSchema,
+  // null clears the adjustment and restores the calculated value.
+  absentDays: z.number().min(0).max(31).nullable(),
+  note: z.string().max(500).nullable().optional(),
 });
 
 export const IfmisReadinessIssueSchema = z.object({
@@ -790,10 +798,7 @@ export const CreateEmployeeRequestSchema = z.object({
   salaryStep: z.string().max(50).nullable().optional(),
   nationalId: z.string().max(50).nullable().optional(),
   paidByIfmis: z.boolean().optional(),
-  educationLeaveType: z.enum(['ABROAD', 'LOCAL']).nullable().optional(),
-  educationLeaveStart: OptionalDateSchema,
-  educationLeaveExpectedReturn: OptionalDateSchema,
-  educationLeaveReturnedOn: OptionalDateSchema,
+  absenceReason: z.enum(['EDUCATION', 'WORK_ABROAD', 'LEAVE_WITHOUT_PAY']).nullable().optional(),
   sourceImportedAt: z.string().datetime().nullable().optional(),
   sourceRawPayload: z.record(z.any()).nullable().optional(),
   isActive: z.boolean().optional(),
@@ -1717,7 +1722,7 @@ export const ExecutiveDashboardSummarySchema = z.object({
     biometricExempt: z.number().int().nonnegative(),
     restDays: z.number().int().nonnegative(),
     noSchedule: z.number().int().nonnegative(),
-    onEducationLeave: z.number().int().nonnegative(),
+    indefinitelyAbsent: z.number().int().nonnegative(),
     punctualityRate: z.number().nullable(),
     previousAttendanceRate: z.number().nullable(),
     attendanceTrend: z.enum(['UP', 'DOWN', 'FLAT']).nullable(),

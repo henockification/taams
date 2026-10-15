@@ -1,6 +1,7 @@
-import { and, eq, gte, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
-import { isOnEducationLeave } from '../../../lib/employees/education-leave';
+import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   categorizeLeaveType,
@@ -11,7 +12,7 @@ import {
   type MetricRecord,
 } from '../../../lib/dashboard/executive-metrics';
 import { db } from '../../db';
-import { attendanceDailyRecords, departments, employees, leaveRequests, temporaryDepartmentAssignments } from '../../schema';
+import { attendanceDailyRecords, biometricExemptions, departments, employees, leaveRequests, temporaryDepartmentAssignments } from '../../schema';
 import { expandDepartmentDescendants } from './manageEmployeeVisibility';
 
 /**
@@ -28,9 +29,8 @@ export type AttendanceEmployee = {
   employmentStatus: string | null;
   isActive: boolean;
   hireDate: string | null;
-  educationLeaveType: string | null;
-  educationLeaveStart: string | null;
-  educationLeaveReturnedOn: string | null;
+  absenceReason: string | null;
+  positionId: string | null;
 };
 
 export type AttendanceDay = ClassifiedDay & {
@@ -47,7 +47,7 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
   const employeeFilter = input.employeeIds;
   const noEmployees = Array.isArray(employeeFilter) && employeeFilter.length === 0;
 
-  const [allDepartments, employeeRows, temporaryAssignments, records, approvedLeaves] = await Promise.all([
+  const [allDepartments, employeeRows, temporaryAssignments, records, approvedLeaves, activeExemptions] = await Promise.all([
     db.select({ id: departments.id, nameEn: departments.nameEn, parentDepartmentId: departments.parentDepartmentId }).from(departments),
     db.select({
       id: employees.id,
@@ -57,9 +57,8 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       employmentStatus: employees.employmentStatus,
       isActive: employees.isActive,
       hireDate: employees.hireDate,
-      educationLeaveType: employees.educationLeaveType,
-      educationLeaveStart: employees.educationLeaveStart,
-      educationLeaveReturnedOn: employees.educationLeaveReturnedOn,
+      absenceReason: employees.absenceReason,
+      positionId: employees.positionId,
     }).from(employees) as Promise<AttendanceEmployee[]>,
     db.select({
       employeeId: temporaryDepartmentAssignments.employeeId,
@@ -69,7 +68,7 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
     }).from(temporaryDepartmentAssignments).where(and(
       eq(temporaryDepartmentAssignments.isActive, true),
       lte(temporaryDepartmentAssignments.effectiveFrom, input.to),
-      gte(temporaryDepartmentAssignments.effectiveTo, input.from),
+      or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, input.from)),
     )),
     noEmployees ? Promise.resolve([]) : db.select({
       id: attendanceDailyRecords.id,
@@ -103,6 +102,7 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       columns: { employeeId: true, startDate: true, endDate: true, leaveTypeId: true },
       with: { leaveType: true, annualLeaveDates: true },
     }),
+    db.query.biometricExemptions.findMany({ where: eq(biometricExemptions.isActive, true) }),
   ]);
 
   const departmentById = new Map(allDepartments.map((department) => [department.id, department]));
@@ -110,14 +110,14 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
   const assignmentsByEmployee = groupBy(temporaryAssignments, (assignment) => assignment.employeeId);
   const effectiveDepartment = (employeeId: string, date: string) => {
     const assignment = (assignmentsByEmployee.get(employeeId) ?? [])
-      .filter((item) => String(item.effectiveFrom) <= date && String(item.effectiveTo) >= date)
+      .filter((item) => String(item.effectiveFrom) <= date && (!item.effectiveTo || String(item.effectiveTo) >= date))
       .sort((left, right) => String(right.effectiveFrom).localeCompare(String(left.effectiveFrom)))[0];
     return assignment?.targetDepartmentId ?? employeeById.get(employeeId)?.departmentId ?? null;
   };
-  /** Should this employee have attendance on this date (working, hired, not on education leave)? */
+  /** Should this employee have attendance on this date (working, hired, not away indefinitely)? */
   const isCounted = (employee: AttendanceEmployee, date: string) => (
     isWorkingEmployee(employee)
-    && !isOnEducationLeave(employee, date)
+    && !isIndefinitelyAbsent(employee)
     && (!employee.hireDate || String(employee.hireDate) <= date)
   );
 
@@ -137,14 +137,51 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
   const coversByEmployee = groupBy(covers, (cover) => cover.employeeId);
 
   const days: AttendanceDay[] = [];
+  const isExemptOn = (employee: AttendanceEmployee, date: string) => isEmployeeBiometricExempt(employee, activeExemptions as any, date);
+  const pushDay = (row: Omit<AttendanceDay['record'], 'departmentId'>, date: string) => {
+    const departmentId = effectiveDepartment(row.employeeId, date);
+    const record = { ...row, attendanceDate: date, departmentId } as AttendanceDay['record'];
+    days.push({ ...classifyDay(record, coversByEmployee.get(row.employeeId) ?? [], now, today), record, date, departmentId });
+  };
+
   for (const row of records) {
     const date = String(row.attendanceDate).slice(0, 10);
     if (date > today) continue;
     const employee = employeeById.get(row.employeeId);
-    if (!employee || isOnEducationLeave(employee, date)) continue;
-    const departmentId = effectiveDepartment(row.employeeId, date);
-    const record = { ...row, attendanceDate: date, departmentId } as AttendanceDay['record'];
-    days.push({ ...classifyDay(record, coversByEmployee.get(row.employeeId) ?? [], now, today), record, date, departmentId });
+    if (!employee || isIndefinitelyAbsent(employee)) continue;
+    // Exempt days come from the exemption itself (below), not from older records.
+    if (isExemptOn(employee, date)) continue;
+    pushDay(row as any, date);
+  }
+
+  // Biometric-exempt employees get no daily records; count them as exempt on each day.
+  const exemptCandidates = employeeRows.filter((employee) => (!employeeFilter || employeeFilter.includes(employee.id))
+    && activeExemptions.some((exemption) => exemption.employeeId === employee.id || (exemption.positionId && exemption.positionId === employee.positionId)));
+  const lastDate = input.to < today ? input.to : today;
+  if (exemptCandidates.length && input.from <= lastDate) {
+    for (const date of datesBetween(input.from, lastDate)) {
+      for (const employee of exemptCandidates) {
+        if (!isCounted(employee, date) || !isExemptOn(employee, date)) continue;
+        pushDay({
+          id: `exempt:${employee.id}:${date}`,
+          employeeId: employee.id,
+          attendanceDate: date,
+          status: 'EXEMPT',
+          checkInAt: null,
+          checkOutAt: null,
+          lateMinutes: null,
+          earlyDepartureMinutes: null,
+          attendanceDays: 0,
+          leaveDays: 0,
+          holidayDays: 0,
+          isOffDay: false,
+          isBiometricExempt: true,
+          scheduledStartAt: null,
+          sessionEvaluations: [],
+          returnedAt: null,
+        }, date);
+      }
+    }
   }
 
   return {

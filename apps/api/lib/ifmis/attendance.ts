@@ -1,4 +1,5 @@
-import { isOnEducationLeave } from '../employees/education-leave';
+import { isEmployeeBiometricExempt } from '../biometric-exemptions';
+import { isIndefinitelyAbsent } from '../employees/absence';
 export type IfmisReadinessIssueCode =
   | 'MISSING_SCHEDULE'
   | 'INVALID_SCHEDULE'
@@ -34,10 +35,27 @@ export type IfmisAttendanceRow = {
   payYear: number;
 };
 
+/** A row as previewed: the IFMIS row plus how its absenteeism was reached. */
+export type IfmisAttendancePreviewRow = IfmisAttendanceRow & {
+  /** Biometric exempt on at least one day of the month (absences come from leave, not records). */
+  isBiometricExempt: boolean;
+  /** Absenteeism before finance's adjustment. */
+  calculatedAbsenteeism: number;
+  absenteeismAdjusted: boolean;
+  adjustmentNote: string | null;
+};
+
+export type IfmisAbsenceAdjustment = { absentDays: number; note: string | null };
+
 export type IfmisAttendanceSource = {
   employees: any[];
   attendanceRecords: any[];
   scheduleAssignments: any[];
+  biometricExemptions?: any[];
+  /** Unpaid leave day value per `${employeeId}:${date}`. */
+  unpaidLeaveDays?: Map<string, number>;
+  /** Finance's absent-days override per employee for this pay month. */
+  absenceAdjustments?: Map<string, IfmisAbsenceAdjustment>;
 };
 
 const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
@@ -61,7 +79,7 @@ export function buildIfmisAttendancePreview(
   );
   const schedulesByEmployee = groupBy(source.scheduleAssignments, (assignment) => assignment.employeeId);
   const issues: IfmisReadinessIssue[] = [];
-  const rows: IfmisAttendanceRow[] = [];
+  const rows: IfmisAttendancePreviewRow[] = [];
 
   for (const employee of source.employees) {
     // Employees not paid through IFMIS are never exported (nor checked for readiness).
@@ -71,14 +89,19 @@ export function buildIfmisAttendancePreview(
     const applicableDates: Array<{ date: string; window: ScheduleWindow }> = [];
     let absenteeism = 0;
     let late = 0;
+    let isBiometricExempt = false;
 
-    // Education-leave days are neither checked nor counted; an employee away for the
-    // whole month is not sent to IFMIS until they are back.
-    const monthDates = datesInclusive(start, end);
-    const workingDates = monthDates.filter((date) => !isOnEducationLeave(employee, date));
-    if (workingDates.length === 0) continue;
+    // Employees flagged as away indefinitely are not sent to IFMIS until the flag is cleared.
+    if (isIndefinitelyAbsent(employee)) continue;
 
-    for (const date of workingDates) {
+    for (const date of datesInclusive(start, end)) {
+      // Biometric-exempt days have no daily record: the employee counts as present, except
+      // for approved unpaid leave. Finance can override the month's total.
+      if (isEmployeeBiometricExempt(employee, source.biometricExemptions ?? [], date)) {
+        isBiometricExempt = true;
+        absenteeism += source.unpaidLeaveDays?.get(`${employee.id}:${date}`) ?? 0;
+        continue;
+      }
       const resolution = resolveScheduleWindow(date, assignments);
       if (resolution.kind === 'missing-assignment') {
         issues.push(issue('MISSING_SCHEDULE', employee, date, `No effective work schedule for ${date}`));
@@ -110,6 +133,8 @@ export function buildIfmisAttendancePreview(
       }
     }
 
+    // Adjustments apply only to exempt employees; a stale one is ignored once the exemption ends.
+    const adjustment = isBiometricExempt ? source.absenceAdjustments?.get(employee.id) : undefined;
     rows.push({
       employeeId: employee.id,
       ifmisNo: null,
@@ -121,12 +146,16 @@ export function buildIfmisAttendancePreview(
       firstNameAmharic: nullableText(employee.firstNameAm),
       fatherNameAmharic: nullableText(employee.middleNameAm),
       grandNameAmharic: nullableText(employee.lastNameAm),
-      absenteeism: roundTwo(absenteeism),
+      absenteeism: roundTwo(adjustment ? adjustment.absentDays : absenteeism),
       late: roundTwo(late),
       currentStatus: employee.employmentStatus,
       approved: 'YES',
       payMonth,
       payYear,
+      isBiometricExempt,
+      calculatedAbsenteeism: roundTwo(absenteeism),
+      absenteeismAdjusted: Boolean(adjustment),
+      adjustmentNote: adjustment?.note ?? null,
     });
   }
 

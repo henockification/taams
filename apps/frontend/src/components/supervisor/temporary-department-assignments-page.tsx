@@ -37,6 +37,7 @@ type FormState = {
   employeeId: string;
   targetDepartmentId: string;
   effectiveFrom: string;
+  /** '' when the assignment has no known end date. */
   effectiveTo: string;
   reason: string;
 };
@@ -45,7 +46,7 @@ const emptyForm = (): FormState => ({
   employeeId: '',
   targetDepartmentId: '',
   effectiveFrom: today(),
-  effectiveTo: today(),
+  effectiveTo: '',
   reason: '',
 });
 
@@ -73,8 +74,8 @@ export function TemporaryDepartmentAssignmentsPage() {
     return assignments.filter((assignment) => {
       const matchesStatus =
         filter === 'all' ||
-        (filter === 'active' && isCurrentOrFutureAssignment(assignment)) ||
-        (filter === 'history' && !isCurrentOrFutureAssignment(assignment));
+        (filter === 'active' && assignment.isActive) ||
+        (filter === 'history' && !assignment.isActive);
       const haystack = [
         employeeName(assignment.employee),
         assignment.employee?.employeeCode,
@@ -101,7 +102,7 @@ export function TemporaryDepartmentAssignmentsPage() {
       employeeId: assignment.employeeId,
       targetDepartmentId: assignment.targetDepartmentId,
       effectiveFrom: assignment.effectiveFrom,
-      effectiveTo: assignment.effectiveTo,
+      effectiveTo: assignment.effectiveTo ?? '',
       reason: assignment.reason,
     });
     setDialogOpen(true);
@@ -109,7 +110,7 @@ export function TemporaryDepartmentAssignmentsPage() {
 
   async function submitAssignment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.employeeId || !form.targetDepartmentId || !form.effectiveFrom || !form.effectiveTo || !form.reason.trim()) {
+    if (!form.employeeId || !form.targetDepartmentId || !form.effectiveFrom || !form.reason.trim()) {
       notifications.show({
         title: common('error'),
         message: t('temporaryAssignmentRequiredFields'),
@@ -124,7 +125,7 @@ export function TemporaryDepartmentAssignmentsPage() {
           temporaryDepartmentAssignmentId: editingAssignment.id,
           targetDepartmentId: form.targetDepartmentId,
           effectiveFrom: form.effectiveFrom,
-          effectiveTo: form.effectiveTo,
+          effectiveTo: form.effectiveTo || null,
           reason: form.reason.trim(),
         });
       } else {
@@ -132,7 +133,7 @@ export function TemporaryDepartmentAssignmentsPage() {
           employeeId: form.employeeId,
           targetDepartmentId: form.targetDepartmentId,
           effectiveFrom: form.effectiveFrom,
-          effectiveTo: form.effectiveTo,
+          effectiveTo: form.effectiveTo || null,
           reason: form.reason.trim(),
         });
       }
@@ -222,7 +223,6 @@ export function TemporaryDepartmentAssignmentsPage() {
                 </TableHeader>
                 <TableBody>
                   {filteredAssignments.map((assignment) => {
-                    const currentOrFuture = isCurrentOrFutureAssignment(assignment);
                     return (
                       <TableRow key={assignment.id}>
                         <TableCell className="min-w-56">
@@ -232,12 +232,12 @@ export function TemporaryDepartmentAssignmentsPage() {
                         <TableCell>{assignment.sourceDepartment?.nameEn ?? '-'}</TableCell>
                         <TableCell>{assignment.targetDepartment?.nameEn ?? '-'}</TableCell>
                         <TableCell className="whitespace-nowrap">
-                          {formatDate(assignment.effectiveFrom)} - {formatDate(assignment.effectiveTo)}
+                          {formatDate(assignment.effectiveFrom)} - {assignment.effectiveTo ? formatDate(assignment.effectiveTo) : t('openEnded')}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">{assignment.reason}</TableCell>
                         <TableCell>
-                          <Badge variant={assignment.isActive && currentOrFuture ? 'default' : 'secondary'}>
-                            {assignment.isActive && currentOrFuture ? t('active') : t('inactive')}
+                          <Badge variant={assignment.isActive ? 'default' : 'secondary'}>
+                            {assignment.isActive ? t('active') : t('inactive')}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -248,7 +248,7 @@ export function TemporaryDepartmentAssignmentsPage() {
                                 {common('edit')}
                               </Button>
                             ) : null}
-                            {assignment.isActive && currentOrFuture ? (
+                            {assignment.isActive ? (
                               <Button
                                 type="button"
                                 size="sm"
@@ -342,7 +342,20 @@ export function TemporaryDepartmentAssignmentsPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>{t('endDate')}</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>{t('endDateOptional')}</Label>
+                  {form.effectiveTo ? (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() => setForm((current) => ({ ...current, effectiveTo: '' }))}
+                    >
+                      {t('clearEndDate')}
+                    </Button>
+                  ) : null}
+                </div>
                 <CalendarDateField
                   value={form.effectiveTo}
                   onChange={(effectiveTo) =>
@@ -475,8 +488,4 @@ function employeeName(employee?: Employee | null) {
 
 function today() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function isCurrentOrFutureAssignment(assignment: TemporaryDepartmentAssignment) {
-  return assignment.isActive && assignment.effectiveTo >= today();
 }

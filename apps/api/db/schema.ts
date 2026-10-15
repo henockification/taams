@@ -320,12 +320,9 @@ export const employees = pgTable('employees', {
   salaryStep: varchar('salary_step', { length: 50 }),
   nationalId: varchar('national_id', { length: 50 }),
   paidByIfmis: boolean('paid_by_ifmis').notNull().default(true),
-  // Long-term education leave (ABROAD | LOCAL): no attendance or IFMIS export from the
-  // start date until the day before educationLeaveReturnedOn.
-  educationLeaveType: varchar('education_leave_type', { length: 20 }),
-  educationLeaveStart: date('education_leave_start'),
-  educationLeaveExpectedReturn: date('education_leave_expected_return'),
-  educationLeaveReturnedOn: date('education_leave_returned_on'),
+  // Indefinite absence (EDUCATION | WORK_ABROAD | LEAVE_WITHOUT_PAY): while set, no
+  // attendance or IFMIS export. Cleared when the employee comes back.
+  absenceReason: varchar('absence_reason', { length: 30 }),
   sourceImportedAt: timestamp('source_imported_at', { withTimezone: true, precision: 6 }),
   sourceRawPayload: jsonb('source_raw_payload'),
   isActive: boolean('is_active').notNull().default(true),
@@ -365,7 +362,8 @@ export const temporaryDepartmentAssignments = pgTable('temporary_department_assi
   sourceDepartmentId: uuid('source_department_id').notNull().references(() => departments.id),
   targetDepartmentId: uuid('target_department_id').notNull().references(() => departments.id),
   effectiveFrom: date('effective_from').notNull(),
-  effectiveTo: date('effective_to').notNull(),
+  // Null when the assignment has no known end date (open-ended until deactivated).
+  effectiveTo: date('effective_to'),
   reason: text('reason').notNull(),
   isActive: boolean('is_active').notNull().default(true),
   createdBy: text('created_by').notNull().references(() => user.id),
@@ -641,6 +639,25 @@ export const ifmisExportItems = pgTable('ifmis_export_items', {
 }, (table) => ({
   batchEmployeeUnique: unique('ux_ifmis_export_items_batch_employee').on(table.batchId, table.employeeId),
   batchIdx: index('idx_ifmis_export_items_batch').on(table.batchId),
+}));
+
+// Finance's override of a biometric-exempt employee's IFMIS absent days for one pay month.
+// Exempt employees have no daily records, so the export otherwise counts only unpaid leave.
+export const ifmisAbsenceAdjustments = pgTable('ifmis_absence_adjustments', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id),
+  payMonth: integer('pay_month').notNull(),
+  payYear: integer('pay_year').notNull(),
+  absentDays: numeric('absent_days', { precision: 5, scale: 2 }).notNull(),
+  note: text('note'),
+  updatedBy: text('updated_by').notNull().references(() => user.id),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
+}, (table) => ({
+  employeePeriodUnique: unique('ux_ifmis_absence_adjustments_employee_period').on(table.employeeId, table.payYear, table.payMonth),
+  periodIdx: index('idx_ifmis_absence_adjustments_period').on(table.payYear, table.payMonth),
+  monthCheck: check('chk_ifmis_absence_adjustments_month', sql`${table.payMonth} BETWEEN 1 AND 12`),
+  absentDaysCheck: check('chk_ifmis_absence_adjustments_days', sql`${table.absentDays} >= 0 AND ${table.absentDays} <= 31`),
 }));
 
 export const notificationLogs = pgTable('notification_logs', {

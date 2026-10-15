@@ -2,12 +2,22 @@ import { and, eq, gte, inArray, isNull, lt, lte, or } from 'drizzle-orm';
 import { db } from '../../db';
 import {
   attendanceDailyRecords,
+  biometricExemptions,
   employeeWorkSchedules,
   employees,
+  ifmisAbsenceAdjustments,
   ifmisExportBatches,
   ifmisExportItems,
+  leaveRequests,
 } from '../../schema';
-import { buildIfmisAttendancePreview, getGregorianMonthRange, type IfmisAttendanceRow } from '../../../lib/ifmis/attendance';
+import {
+  buildIfmisAttendancePreview,
+  getGregorianMonthRange,
+  type IfmisAbsenceAdjustment,
+  type IfmisAttendanceRow,
+} from '../../../lib/ifmis/attendance';
+import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
+import { getLeaveDaysForDate, isUnpaidLeaveType } from './manageAttendanceApprovals';
 import { pushIfmisAttendanceRows } from '../../../lib/ifmis/oracle';
 import { writeAuditEvent } from '../../../lib/audit';
 import { isPermanentLeaveVerified } from './manageIsmisLeave';
@@ -92,7 +102,7 @@ async function loadSource(payMonth: number, payYear: number) {
   const employeeIds = employeeRows.map((employee) => employee.id);
   if (employeeIds.length === 0) return { employees: [], attendanceRecords: [], scheduleAssignments: [] };
 
-  const [attendanceRecords, scheduleAssignments] = await Promise.all([
+  const [attendanceRecords, scheduleAssignments, exemptions, unpaidLeaves, adjustments] = await Promise.all([
     db.query.attendanceDailyRecords.findMany({
       where: and(
         inArray(attendanceDailyRecords.employeeId, employeeIds),
@@ -116,8 +126,136 @@ async function loadSource(payMonth: number, payYear: number) {
       },
       orderBy: (table, { desc }) => [desc(table.effectiveFrom)],
     }),
+    db.query.biometricExemptions.findMany({ where: eq(biometricExemptions.isActive, true) }),
+    db.query.leaveRequests.findMany({
+      where: and(
+        inArray(leaveRequests.employeeId, employeeIds),
+        eq(leaveRequests.status, 'AUTHORIZED'),
+        lte(leaveRequests.startDate, end),
+        gte(leaveRequests.endDate, start),
+      ),
+      with: { leaveType: true, annualLeaveDates: true },
+    }),
+    db.query.ifmisAbsenceAdjustments.findMany({
+      where: and(eq(ifmisAbsenceAdjustments.payMonth, payMonth), eq(ifmisAbsenceAdjustments.payYear, payYear)),
+    }),
   ]);
-  return { employees: employeeRows, attendanceRecords, scheduleAssignments };
+
+  // Unpaid leave day values, used for biometric-exempt days (which have no daily record).
+  const unpaidLeaveDays = new Map<string, number>();
+  for (const leave of unpaidLeaves as any[]) {
+    if (!isUnpaidLeaveType(leave.leaveType)) continue;
+    for (const date of datesBetween(maxDate(String(leave.startDate), start), minDate(String(leave.endDate), end))) {
+      const key = `${leave.employeeId}:${date}`;
+      unpaidLeaveDays.set(key, Math.min(1, (unpaidLeaveDays.get(key) ?? 0) + getLeaveDaysForDate(leave, date)));
+    }
+  }
+  const absenceAdjustments = new Map<string, IfmisAbsenceAdjustment>(
+    adjustments.map((adjustment) => [adjustment.employeeId, { absentDays: Number(adjustment.absentDays), note: adjustment.note ?? null }]),
+  );
+
+  return {
+    employees: employeeRows,
+    attendanceRecords,
+    scheduleAssignments,
+    biometricExemptions: exemptions,
+    unpaidLeaveDays,
+    absenceAdjustments,
+  };
+}
+
+/**
+ * Sets (or with absentDays null, clears) finance's absent-days override for a
+ * biometric-exempt employee in a pay month that has not been exported yet.
+ */
+export async function setIfmisAbsenceAdjustment(input: {
+  employeeId: string;
+  payMonth: number;
+  payYear: number;
+  absentDays: number | null;
+  note?: string | null;
+  updatedBy: string;
+}) {
+  const { start, end } = getGregorianMonthRange(input.payMonth, input.payYear);
+  const exported = await db.query.ifmisExportBatches.findFirst({
+    where: and(
+      eq(ifmisExportBatches.payMonth, input.payMonth),
+      eq(ifmisExportBatches.payYear, input.payYear),
+      inArray(ifmisExportBatches.status, ['SUCCEEDED', 'PROCESSING']),
+    ),
+    columns: { id: true },
+  });
+  if (exported) throw new IfmisAdjustmentError('This payroll month is already exported or being exported');
+
+  const employee = await db.query.employees.findFirst({
+    where: eq(employees.id, input.employeeId),
+    columns: { id: true, positionId: true, firstNameEn: true, middleNameEn: true, lastNameEn: true, departmentId: true },
+  });
+  if (!employee) throw new IfmisAdjustmentError('Employee not found');
+  const exemptions = await db.query.biometricExemptions.findMany({ where: eq(biometricExemptions.isActive, true) });
+  if (!datesBetween(start, end).some((date) => isEmployeeBiometricExempt(employee, exemptions, date))) {
+    throw new IfmisAdjustmentError('Absent days can only be adjusted for biometric-exempt employees');
+  }
+  if (input.absentDays !== null && (input.absentDays < 0 || input.absentDays > daysInMonth(start, end))) {
+    throw new IfmisAdjustmentError('Absent days must be between 0 and the number of days in the month');
+  }
+
+  const label = [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
+  await db.transaction(async (tx) => {
+    if (input.absentDays === null) {
+      await tx.delete(ifmisAbsenceAdjustments).where(and(
+        eq(ifmisAbsenceAdjustments.employeeId, input.employeeId),
+        eq(ifmisAbsenceAdjustments.payMonth, input.payMonth),
+        eq(ifmisAbsenceAdjustments.payYear, input.payYear),
+      ));
+    } else {
+      const now = new Date();
+      await tx.insert(ifmisAbsenceAdjustments).values({
+        employeeId: input.employeeId,
+        payMonth: input.payMonth,
+        payYear: input.payYear,
+        absentDays: String(input.absentDays),
+        note: input.note?.trim() || null,
+        updatedBy: input.updatedBy,
+      }).onConflictDoUpdate({
+        target: [ifmisAbsenceAdjustments.employeeId, ifmisAbsenceAdjustments.payYear, ifmisAbsenceAdjustments.payMonth],
+        set: { absentDays: String(input.absentDays), note: input.note?.trim() || null, updatedBy: input.updatedBy, updatedAt: now },
+      });
+    }
+    await writeAuditEvent(tx, {
+      action: input.absentDays === null ? 'IFMIS_ABSENCE_ADJUSTMENT_CLEARED' : 'IFMIS_ABSENCE_ADJUSTMENT_SET',
+      resourceType: 'ifmis_absence_adjustment',
+      resourceLabel: `${label} IFMIS ${input.payMonth}/${input.payYear}`,
+      employeeId: employee.id,
+      departmentId: employee.departmentId,
+      metadata: { payMonth: input.payMonth, payYear: input.payYear, absentDays: input.absentDays, note: input.note ?? null },
+    });
+  });
+}
+
+export class IfmisAdjustmentError extends Error {}
+
+function datesBetween(start: string, end: string) {
+  const dates: string[] = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  while (cursor <= last) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function daysInMonth(start: string, end: string) {
+  return datesBetween(start, end).length;
+}
+
+function minDate(left: string, right: string) {
+  return left < right ? left : right;
+}
+
+function maxDate(left: string, right: string) {
+  return left > right ? left : right;
 }
 
 async function createProcessingBatch(payMonth: number, payYear: number, pushedBy: string, rows: IfmisAttendanceRow[]) {

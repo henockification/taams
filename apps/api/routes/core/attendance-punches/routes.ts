@@ -77,6 +77,8 @@ export const getAttendancePunchesPaginatedRoute = createRoute({
       dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       timeFrom: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
       timeTo: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
+      search: z.string().max(100).optional(),
+      mapping: z.enum(['mapped', 'unmapped']).optional(),
     }),
   },
   responses: {

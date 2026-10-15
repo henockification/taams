@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
-import { isOnEducationLeave } from '../../../lib/employees/education-leave';
+import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   addDays,
@@ -54,9 +54,7 @@ type EmployeeRow = {
   employmentStatus: string | null;
   isActive: boolean;
   hireDate: string | null;
-  educationLeaveType: string | null;
-  educationLeaveStart: string | null;
-  educationLeaveReturnedOn: string | null;
+  absenceReason: string | null;
 };
 
 export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSummaryParams = {}) {
@@ -95,8 +93,8 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   // Headcount: working employees in scope on the last day of the period.
   const headcountEmployees = employeeRows.filter((employee) => isCounted(employee, focusDate) && inScope(effectiveDepartment(employee.id, focusDate)));
   const headcountIds = new Set(headcountEmployees.map((employee) => employee.id));
-  const educationLeaveCount = employeeRows.filter((employee) => (
-    isWorkingEmployee(employee) && isOnEducationLeave(employee, focusDate) && inScope(effectiveDepartment(employee.id, focusDate))
+  const indefinitelyAbsentCount = employeeRows.filter((employee) => (
+    isWorkingEmployee(employee) && isIndefinitelyAbsent(employee) && inScope(effectiveDepartment(employee.id, focusDate))
   )).length;
 
   const disciplineEmployees = employeeRows
@@ -207,7 +205,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     departments: visibleDepartments,
     workforceStatus: {
       ...status,
-      onEducationLeave: educationLeaveCount,
+      indefinitelyAbsent: indefinitelyAbsentCount,
       previousAttendanceRate: attendanceRate(previousCounts),
       attendanceTrend: trendDirection(attendanceRate(currentCounts), attendanceRate(previousCounts)),
     },

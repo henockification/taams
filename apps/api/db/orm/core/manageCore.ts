@@ -24,7 +24,7 @@ import type {
 import type { PermanentEmployeeImportInput } from '../../../lib/employees/excel-import';
 import { buildDepartmentImportCache, findOrCreateImportDepartment } from '../../../lib/employees/department-import';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
-import { assertValidEducationLeave } from '../../../lib/employees/education-leave';
+import { assertValidAbsenceReason } from '../../../lib/employees/absence';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
 import { revokeSeparatedEmployeeAccess } from '../users/revokeSeparatedEmployeeAccess';
@@ -313,7 +313,7 @@ export async function updatePosition(id: string, input: UpdatePositionInput) {
 
 export async function createEmployee(input: CreateEmployeeInput) {
   await assertEmployeeReferences(input);
-  assertValidEducationLeave(input);
+  assertValidAbsenceReason(input.absenceReason);
 
   const createdEmployee = await db.transaction(async (tx) => {
     const employeeInput = {
@@ -470,12 +470,7 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
   const updatedEmployee = await db.transaction(async (tx) => {
     const current = await getEmployeeById(id, tx);
     if (!current) throw new Error('Employee not found');
-    assertValidEducationLeave({
-      educationLeaveType: pick(updateData, 'educationLeaveType', current.educationLeaveType),
-      educationLeaveStart: pick(updateData, 'educationLeaveStart', current.educationLeaveStart),
-      educationLeaveExpectedReturn: pick(updateData, 'educationLeaveExpectedReturn', current.educationLeaveExpectedReturn),
-      educationLeaveReturnedOn: pick(updateData, 'educationLeaveReturnedOn', current.educationLeaveReturnedOn),
-    });
+    assertValidAbsenceReason(pick(updateData, 'absenceReason', current.absenceReason));
 
     await tx
       .update(employees)
@@ -1208,10 +1203,7 @@ function normalizeEmployeeInput(input: UpdateEmployeeInput) {
     salaryStep: input.salaryStep,
     nationalId: input.nationalId,
     paidByIfmis: input.paidByIfmis,
-    educationLeaveType: input.educationLeaveType,
-    educationLeaveStart: input.educationLeaveStart,
-    educationLeaveExpectedReturn: input.educationLeaveExpectedReturn,
-    educationLeaveReturnedOn: input.educationLeaveReturnedOn,
+    absenceReason: input.absenceReason,
     sourceImportedAt,
     sourceRawPayload: input.sourceRawPayload,
     isActive: input.isActive,

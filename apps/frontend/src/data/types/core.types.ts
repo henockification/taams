@@ -153,7 +153,7 @@ export type WorkScheduleWithDays = WorkSchedule & {
 
 export type EmploymentStatus = 'ACTIVE' | 'INACTIVE' | 'TERMINATED' | 'SUSPENDED';
 export type EmploymentType = 'PERMANENT' | 'CONTRACT' | 'TEMPORARY' | 'DAILY';
-export type EducationLeaveType = 'ABROAD' | 'LOCAL';
+export type AbsenceReason = 'EDUCATION' | 'WORK_ABROAD' | 'LEAVE_WITHOUT_PAY';
 
 export type Employee = {
   id: string;
@@ -189,12 +189,9 @@ export type Employee = {
   salaryStep: string | null;
   nationalId: string | null;
   paidByIfmis: boolean;
-  educationLeaveType?: EducationLeaveType | null;
-  educationLeaveStart?: string | null;
-  educationLeaveExpectedReturn?: string | null;
-  educationLeaveReturnedOn?: string | null;
-  /** True when the employee is away on education leave today. */
-  onEducationLeave?: boolean;
+  /** Set while the employee is away indefinitely; excluded from attendance and IFMIS. */
+  absenceReason?: AbsenceReason | null;
+  isIndefinitelyAbsent?: boolean;
   sourceImportedAt: string | null;
   sourceRawPayload: Record<string, unknown> | null;
   isActive: boolean;
@@ -210,7 +207,8 @@ export type TemporaryDepartmentAssignment = {
   sourceDepartmentId: string;
   targetDepartmentId: string;
   effectiveFrom: string;
-  effectiveTo: string;
+  /** Null when the assignment has no known end date. */
+  effectiveTo: string | null;
   reason: string;
   isActive: boolean;
   createdBy: string;
@@ -226,7 +224,7 @@ export type CreateTemporaryDepartmentAssignmentInput = {
   employeeId: string;
   targetDepartmentId: string;
   effectiveFrom: string;
-  effectiveTo: string;
+  effectiveTo?: string | null;
   reason: string;
 };
 
@@ -426,6 +424,11 @@ export type IfmisAttendanceRow = {
   approved: 'YES';
   payMonth: number;
   payYear: number;
+  /** Exempt employees have no daily records; absences come from unpaid leave or finance's adjustment. */
+  isBiometricExempt: boolean;
+  calculatedAbsenteeism: number;
+  absenteeismAdjusted: boolean;
+  adjustmentNote: string | null;
 };
 
 export type IfmisReadinessIssue = {
@@ -964,7 +967,7 @@ export type ExecutiveDashboardSummary = {
     biometricExempt: number;
     restDays: number;
     noSchedule: number;
-    onEducationLeave: number;
+    indefinitelyAbsent: number;
     punctualityRate: number | null;
     previousAttendanceRate: number | null;
     attendanceTrend: ExecutiveDashboardTrend;
@@ -1694,10 +1697,7 @@ export type CreateEmployeeInput = {
   salaryStep?: string | null;
   nationalId?: string | null;
   paidByIfmis?: boolean;
-  educationLeaveType?: EducationLeaveType | null;
-  educationLeaveStart?: string | null;
-  educationLeaveExpectedReturn?: string | null;
-  educationLeaveReturnedOn?: string | null;
+  absenceReason?: AbsenceReason | null;
   sourceImportedAt?: string | Date | null;
   sourceRawPayload?: Record<string, unknown> | null;
   isActive?: boolean;

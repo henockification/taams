@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte, ne, or } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, ne, or } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, employees, temporaryDepartmentAssignments } from '../../schema';
 import type {
@@ -51,8 +51,8 @@ export async function getTemporaryAssignmentEligibleEmployees(scope?: EmployeeVi
 
 export async function createTemporaryDepartmentAssignment(input: CreateTemporaryDepartmentAssignmentInput, context: AssignmentContext) {
   const effectiveFrom = parseDate(input.effectiveFrom, 'effectiveFrom');
-  const effectiveTo = parseDate(input.effectiveTo, 'effectiveTo');
-  if (effectiveFrom > effectiveTo) throw new Error('Assignment start date must be on or before end date');
+  const effectiveTo = input.effectiveTo ? parseDate(input.effectiveTo, 'effectiveTo') : null;
+  if (effectiveTo && effectiveFrom > effectiveTo) throw new Error('Assignment start date must be on or before end date');
 
   return db.transaction(async (tx) => {
     const employee = await tx.query.employees.findFirst({
@@ -112,8 +112,11 @@ export async function updateTemporaryDepartmentAssignment(
     if (!existing.isActive) throw new Error('Inactive assignments cannot be edited');
 
     const effectiveFrom = input.effectiveFrom ? parseDate(input.effectiveFrom, 'effectiveFrom') : existing.effectiveFrom;
-    const effectiveTo = input.effectiveTo ? parseDate(input.effectiveTo, 'effectiveTo') : existing.effectiveTo;
-    if (effectiveFrom > effectiveTo) throw new Error('Assignment start date must be on or before end date');
+    // undefined keeps the current end date; null or '' clears it (open-ended).
+    const effectiveTo = input.effectiveTo === undefined
+      ? existing.effectiveTo
+      : input.effectiveTo ? parseDate(input.effectiveTo, 'effectiveTo') : null;
+    if (effectiveTo && effectiveFrom > effectiveTo) throw new Error('Assignment start date must be on or before end date');
 
     const targetDepartmentId = input.targetDepartmentId ?? existing.targetDepartmentId;
     const targetDepartment = await tx.query.departments.findFirst({
@@ -179,7 +182,7 @@ export async function getActiveTemporaryDepartmentAssignments(referenceDate: str
     where: and(
       eq(temporaryDepartmentAssignments.isActive, true),
       lte(temporaryDepartmentAssignments.effectiveFrom, referenceDate),
-      gte(temporaryDepartmentAssignments.effectiveTo, referenceDate),
+      or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, referenceDate)),
     ),
     with: assignmentRelations,
   });
@@ -192,14 +195,14 @@ export async function getTemporaryDepartmentAssignmentById(id: string, tx: DbCli
   });
 }
 
-async function assertNoOverlap(employeeId: string, effectiveFrom: string, effectiveTo: string, excludeId: string | null, tx: DbClient) {
+async function assertNoOverlap(employeeId: string, effectiveFrom: string, effectiveTo: string | null, excludeId: string | null, tx: DbClient) {
   const overlapping = await tx.query.temporaryDepartmentAssignments.findFirst({
     where: and(
       eq(temporaryDepartmentAssignments.employeeId, employeeId),
       eq(temporaryDepartmentAssignments.isActive, true),
       excludeId ? ne(temporaryDepartmentAssignments.id, excludeId) : undefined,
-      lte(temporaryDepartmentAssignments.effectiveFrom, effectiveTo),
-      gte(temporaryDepartmentAssignments.effectiveTo, effectiveFrom),
+      effectiveTo ? lte(temporaryDepartmentAssignments.effectiveFrom, effectiveTo) : undefined,
+      or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, effectiveFrom)),
     ),
     columns: { id: true },
   });

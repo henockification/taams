@@ -513,7 +513,7 @@ async function getActiveTemporaryDepartmentMap(
     where: and(
       eq(temporaryDepartmentAssignments.isActive, true),
       lte(temporaryDepartmentAssignments.effectiveFrom, referenceDate),
-      gte(temporaryDepartmentAssignments.effectiveTo, referenceDate),
+      or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, referenceDate)),
       employeeIds ? inArray(temporaryDepartmentAssignments.employeeId, employeeIds) : undefined,
     ),
     columns: { employeeId: true, targetDepartmentId: true },

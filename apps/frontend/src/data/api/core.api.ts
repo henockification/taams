@@ -185,6 +185,11 @@ export const coreApi = {
     });
     return coreFetch<IfmisAttendancePreviewResponse>(`/ifmis/attendance?${query.toString()}`);
   },
+  setIfmisAbsenceAdjustment: (params: { payMonth: number; payYear: number; employeeId: string; absentDays: number | null; note?: string | null }) =>
+    coreFetch<{ success: true }>('/ifmis/attendance/adjustments', {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    }),
   pushIfmisAttendance: (params: { payMonth: number; payYear: number }) =>
     coreFetch<IfmisAttendancePushResponse>('/ifmis/attendance/push', {
       method: 'POST',
@@ -528,6 +533,8 @@ export const coreApi = {
       dateTo?: string;
       timeFrom?: string;
       timeTo?: string;
+      search?: string;
+      mapping?: 'mapped' | 'unmapped';
     } = {},
   ) => {
     const query = new URLSearchParams();
@@ -540,6 +547,8 @@ export const coreApi = {
     if (params.dateTo) query.set('dateTo', params.dateTo);
     if (params.timeFrom) query.set('timeFrom', params.timeFrom);
     if (params.timeTo) query.set('timeTo', params.timeTo);
+    if (params.search) query.set('search', params.search);
+    if (params.mapping) query.set('mapping', params.mapping);
     const suffix = query.toString() ? `?${query.toString()}` : '';
 
     return coreFetch<AttendancePunchesResponse>(`/attendance-punches/paginated${suffix}`);

@@ -274,10 +274,14 @@ export async function getHrNotificationRecipients(): Promise<NotificationRecipie
     .leftJoin(roles, eq(roles.id, userRoles.roleId))
     .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
     .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+    // Only HR approvers: the human_resource role, or another role granted HR approval.
+    // Administrative roles hold every permission, so they are not notified through it.
     .where(or(
-      sql`lower(${roles.name}) IN ('super_admin', 'superadmin', 'admin', 'executive', 'human_resource')`,
-      eq(permissions.name, 'hr-attendance-approvals:approve'),
-      sql`${permissions.name} LIKE 'hr-%'`,
+      sql`lower(${roles.name}) = 'human_resource'`,
+      and(
+        eq(permissions.name, 'hr-attendance-approvals:approve'),
+        sql`lower(${roles.name}) NOT IN ('super_admin', 'superadmin', 'admin', 'executive')`,
+      ),
     ));
 
   const employeesByUserId = await db.query.employees.findMany({

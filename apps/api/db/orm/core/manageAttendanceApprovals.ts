@@ -18,7 +18,7 @@ import {
 } from '../../schema';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee, SOURCE_EMPLOYMENT_STATUS } from '../../../lib/employees/employment-status';
-import { isOnEducationLeave } from '../../../lib/employees/education-leave';
+import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 import type { AttendanceDailyRecordStatus } from '../../../types/core.types';
 import { assertCanAccessEmployee, isDepartmentVisibleInScope, type EmployeeVisibilityScope } from './manageEmployeeVisibility';
 import { reconcileAnnualLeaveConsumption } from './manageLeave';
@@ -85,9 +85,7 @@ export async function generateAttendanceDailyRecords(
         sourceEmploymentStatus: true,
         employmentStatus: true,
         isActive: true,
-        educationLeaveType: true,
-        educationLeaveStart: true,
-        educationLeaveReturnedOn: true,
+        absenceReason: true,
       },
     }),
     db.query.attendancePunches.findMany({
@@ -149,8 +147,12 @@ export async function generateAttendanceDailyRecords(
     }),
   ]);
 
-  // Employees away on education leave have no attendance for the day.
-  const activeEmployees = allEmployees.filter((employee) => isWorkingEmployee(employee) && !isOnEducationLeave(employee, attendanceDate));
+  // Employees flagged as away indefinitely have no attendance. Biometric-exempt employees
+  // have no daily records either: the IFMIS export counts them as present except for
+  // unpaid leave, and finance adjusts their absent days there.
+  const activeEmployees = allEmployees.filter((employee) => isWorkingEmployee(employee)
+    && !isIndefinitelyAbsent(employee)
+    && !isEmployeeBiometricExempt(employee, activeExemptions, attendanceDate));
 
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
@@ -205,14 +207,12 @@ export async function generateAttendanceDailyRecords(
     const attendanceDays = evaluation.attendanceDays;
     const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
     const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
-    const isBiometricExempt = isEmployeeBiometricExempt(employee, activeExemptions, attendanceDate);
     const payroll = resolvePayrollDays({
       attendanceDays,
       leaveDays,
       unpaidLeaveDays,
       holidayDays: isOffDay ? 1 : holidayDays,
       holidayName: activeHoliday?.nameEn ?? (isOffDay ? 'Scheduled off day' : null),
-      isBiometricExempt,
     });
 
     return {
@@ -248,7 +248,7 @@ export async function generateAttendanceDailyRecords(
       calculationVersion: ATTENDANCE_CALCULATION_VERSION,
       payableDays: formatDayValue(payroll.payableDays),
       absenceDays: formatDayValue(payroll.absenceDays),
-      isBiometricExempt,
+      isBiometricExempt: false,
       payrollNote: payroll.note,
       status: 'PENDING_SUPERVISOR',
     };
@@ -487,7 +487,7 @@ export async function getHrAttendanceDailyRecords(
   });
 
   const enriched = await attachEffectiveDepartmentContext(records, rangeInput?.awaitingHr ? addisToday() : clipDateToToday(range.dateTo));
-  const working = keepWorkingEmployeeRecords(enriched);
+  const working = await keepWorkingEmployeeRecords(enriched);
   if (!scope || scope.type === 'unrestricted' || scope.type === 'hr') return working;
   if (scope.type === 'hr-departments') {
     return working.filter((record) => isDepartmentVisibleInScope(record.effectiveDepartment?.id ?? record.employee?.departmentId, scope));
@@ -1065,10 +1065,21 @@ function uniqueRecordIds(ids: string[]) {
   return recordIds;
 }
 
-/** Drops records of employees who left, or who were away on education leave that day. */
-function keepWorkingEmployeeRecords<T extends { attendanceDate?: string | null; employee?: (Parameters<typeof isWorkingEmployee>[0] & Parameters<typeof isOnEducationLeave>[0]) | null }>(records: T[]) {
-  return records.filter((record) => isWorkingEmployee(record.employee)
-    && !(record.attendanceDate && isOnEducationLeave(record.employee, String(record.attendanceDate))));
+/**
+ * Drops records of employees who left, who are flagged as away indefinitely, or who are
+ * biometric exempt on the record's date (their attendance is settled in the IFMIS export,
+ * not through approvals; this also hides records generated before the exemption).
+ */
+async function keepWorkingEmployeeRecords<T extends {
+  attendanceDate?: string | null;
+  isBiometricExempt?: boolean | null;
+  employee?: (Parameters<typeof isWorkingEmployee>[0] & Parameters<typeof isIndefinitelyAbsent>[0] & { id: string; positionId: string | null }) | null;
+}>(records: T[]) {
+  const working = records.filter((record) => isWorkingEmployee(record.employee) && !isIndefinitelyAbsent(record.employee));
+  if (working.length === 0) return working;
+  const exemptions = await db.query.biometricExemptions.findMany({ where: eq(biometricExemptions.isActive, true) });
+  return working.filter((record) => !record.isBiometricExempt
+    && !(record.employee && isEmployeeBiometricExempt(record.employee, exemptions, String(record.attendanceDate ?? '').slice(0, 10) || undefined)));
 }
 
 export function buildAttendanceApprovalBatch(records: any[]): AttendanceApprovalBatchResult {
@@ -1099,7 +1110,7 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate?:
         inArray(temporaryDepartmentAssignments.employeeId, employeeIds),
         eq(temporaryDepartmentAssignments.isActive, true),
         lte(temporaryDepartmentAssignments.effectiveFrom, dateTo),
-        gte(temporaryDepartmentAssignments.effectiveTo, dateFrom),
+        or(isNull(temporaryDepartmentAssignments.effectiveTo), gte(temporaryDepartmentAssignments.effectiveTo, dateFrom)),
       ),
       columns: {
         id: true,
@@ -1129,7 +1140,7 @@ async function attachEffectiveDepartmentContext(records: any[], attendanceDate?:
   const assignmentForRecord = (record: any) => {
     const matches = (assignmentsByEmployee.get(record.employeeId) ?? []).filter((assignment) => (
       assignment.effectiveFrom <= record.attendanceDate
-      && assignment.effectiveTo >= record.attendanceDate
+      && (!assignment.effectiveTo || assignment.effectiveTo >= record.attendanceDate)
     ));
     if (matches.length === 0) return null;
     return [...matches].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
@@ -1212,7 +1223,7 @@ function getDayRange(date: string) {
   return addisDayRange(date);
 }
 
-function getLeaveDaysForDate(leave: { startDate: string; endDate: string; requestedDays: string; leaveType?: any; annualLeaveDates?: any[] }, attendanceDate: string) {
+export function getLeaveDaysForDate(leave: { startDate: string; endDate: string; requestedDays: string; leaveType?: any; annualLeaveDates?: any[] }, attendanceDate: string) {
   if (isAnnualLeaveType(leave.leaveType) && leave.annualLeaveDates?.length) {
     const approvedDate = leave.annualLeaveDates.find((date) => (
       formatDateValue(date.leaveDate) === attendanceDate
@@ -1237,12 +1248,11 @@ function resolvePayrollDays(input: {
   unpaidLeaveDays: number;
   holidayDays: number;
   holidayName?: string | null;
-  isBiometricExempt: boolean;
 }) {
   const coveredByAttendanceOrLeave = Math.min(1, input.attendanceDays + input.leaveDays);
   const coveredByAttendanceLeaveOrHoliday = Math.min(1, coveredByAttendanceOrLeave + input.holidayDays);
   const coveredByHoliday = input.holidayDays > 0;
-  const payableDays = input.isBiometricExempt ? Math.max(coveredByAttendanceLeaveOrHoliday, 1) : coveredByAttendanceLeaveOrHoliday;
+  const payableDays = coveredByAttendanceLeaveOrHoliday;
   const absenceDays = Math.max(0, 1 - payableDays);
   const unpaidPayrollDays = Math.min(absenceDays, input.unpaidLeaveDays);
   const uncoveredAbsenceDays = Math.max(0, absenceDays - unpaidPayrollDays);
@@ -1252,7 +1262,6 @@ function resolvePayrollDays(input: {
   if (input.leaveDays > 0) notes.push(`Approved leave ${formatDayValue(input.leaveDays)} day(s)`);
   if (coveredByHoliday) notes.push(`Holiday/off day ${formatDayValue(input.holidayDays)} day(s): ${input.holidayName ?? 'Institution off day'}`);
   if (unpaidPayrollDays > 0) notes.push(`Approved unpaid leave ${formatDayValue(unpaidPayrollDays)} day(s) for payroll`);
-  if (input.isBiometricExempt) notes.push('Biometric exempt');
   if (uncoveredAbsenceDays > 0) notes.push(`Uncovered absence ${formatDayValue(uncoveredAbsenceDays)} day(s)`);
 
   return {
@@ -1262,7 +1271,7 @@ function resolvePayrollDays(input: {
   };
 }
 
-function isUnpaidLeaveType(leaveType: typeof leaveTypes.$inferSelect | null | undefined) {
+export function isUnpaidLeaveType(leaveType: typeof leaveTypes.$inferSelect | null | undefined) {
   return String(leaveType?.code ?? '').trim().toUpperCase() === 'UNPAID';
 }
 
@@ -1319,6 +1328,7 @@ const recordRelations = {
       middleNameAm: true,
       lastNameAm: true,
       departmentId: true,
+      positionId: true,
       positionName: true,
       employmentStatus: true,
       employmentType: true,
@@ -1327,9 +1337,7 @@ const recordRelations = {
       sourcePositionName: true,
       sourcePositionCode: true,
       isActive: true,
-      educationLeaveType: true,
-      educationLeaveStart: true,
-      educationLeaveReturnedOn: true,
+      absenceReason: true,
     },
     with: { department: true },
   },

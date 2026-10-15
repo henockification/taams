@@ -330,6 +330,27 @@
       "when": 1790812800000,
       "tag": "0050_employee_education_leave",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1790899200000,
+      "tag": "0051_employee_absence_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1790985600000,
+      "tag": "0052_open_ended_temporary_assignments",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1791072000000,
+      "tag": "0053_ifmis_absence_adjustments",
+      "breakpoints": true
     }
   ]
 }

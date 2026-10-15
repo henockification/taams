@@ -44,6 +44,7 @@ import {
   useEmployeeSupervisors,
   useUpdateEmployee,
 } from '@/data/hooks/core.hooks';
+import type { AbsenceReason } from '@/data/types/core.types';
 import { buildEmployeeProfileUpdate, toDraft, type ProfileDraft } from '@/lib/employee-profile-update';
 import {
   displayEmploymentStatus,
@@ -216,9 +217,9 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
               {t('biometricExempt')}
             </Badge>
           ) : null}
-          {employee.onEducationLeave ? (
+          {employee.absenceReason ? (
             <Badge variant="outline" className="border-sky-500 text-sky-700 dark:text-sky-400">
-              {t('onEducationLeave')}
+              {t(`absenceReason${employee.absenceReason}`)}
             </Badge>
           ) : null}
         </div>
@@ -355,42 +356,25 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
               </div>
             </Field>
             <Field
-              label={t('educationLeave')}
+              label={t('absenceReason')}
               editing={isEditing}
-              value={employee.educationLeaveType
-                ? t('educationLeaveSummary', {
-                  type: t(`educationLeave${employee.educationLeaveType}`),
-                  start: formatDate(employee.educationLeaveStart) ?? '-',
-                })
-                : t('educationLeaveNone')}
+              value={employee.absenceReason ? t(`absenceReason${employee.absenceReason}`) : t('absenceReasonNone')}
             >
               <Select
-                value={draft?.educationLeaveType || 'NONE'}
-                onValueChange={(value) => patchDraft({ educationLeaveType: value === 'NONE' ? '' : value as 'ABROAD' | 'LOCAL' })}
+                value={draft?.absenceReason || 'NONE'}
+                onValueChange={(value) => patchDraft({ absenceReason: value === 'NONE' ? '' : value as AbsenceReason })}
               >
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="NONE">{t('educationLeaveNone')}</SelectItem>
-                  <SelectItem value="ABROAD">{t('educationLeaveABROAD')}</SelectItem>
-                  <SelectItem value="LOCAL">{t('educationLeaveLOCAL')}</SelectItem>
+                  <SelectItem value="NONE">{t('absenceReasonNone')}</SelectItem>
+                  <SelectItem value="EDUCATION">{t('absenceReasonEDUCATION')}</SelectItem>
+                  <SelectItem value="WORK_ABROAD">{t('absenceReasonWORK_ABROAD')}</SelectItem>
+                  <SelectItem value="LEAVE_WITHOUT_PAY">{t('absenceReasonLEAVE_WITHOUT_PAY')}</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
-            {(isEditing ? draft?.educationLeaveType : employee.educationLeaveType) ? (
-              <>
-                <Field label={t('educationLeaveStart')} editing={isEditing} value={formatDate(employee.educationLeaveStart)}>
-                  <CalendarDateField value={draft?.educationLeaveStart ?? ''} onChange={(educationLeaveStart) => patchDraft({ educationLeaveStart })} />
-                </Field>
-                <Field label={t('educationLeaveExpectedReturn')} editing={isEditing} value={formatDate(employee.educationLeaveExpectedReturn)}>
-                  <CalendarDateField value={draft?.educationLeaveExpectedReturn ?? ''} onChange={(educationLeaveExpectedReturn) => patchDraft({ educationLeaveExpectedReturn })} />
-                </Field>
-                <Field label={t('educationLeaveReturnedOn')} editing={isEditing} value={formatDate(employee.educationLeaveReturnedOn)}>
-                  <CalendarDateField value={draft?.educationLeaveReturnedOn ?? ''} onChange={(educationLeaveReturnedOn) => patchDraft({ educationLeaveReturnedOn })} />
-                </Field>
-                {isEditing ? (
-                  <p className="text-xs text-muted-foreground sm:col-span-2">{t('educationLeaveHint')}</p>
-                ) : null}
-              </>
+            {isEditing ? (
+              <p className="text-xs text-muted-foreground sm:col-span-2">{t('absenceReasonHint')}</p>
             ) : null}
           </CardContent>
         </Card>

@@ -704,7 +704,7 @@ export function AttendanceApprovalsPage({
                             <div className="flex flex-wrap items-center gap-1.5">
                               <Badge variant="outline">{t('temporarilyAssigned')}</Badge>
                               <span className="whitespace-nowrap text-[11px] text-muted-foreground">
-                                {formatDate(record.temporaryDepartmentAssignment.effectiveFrom)}–{formatDate(record.temporaryDepartmentAssignment.effectiveTo)}
+                                {formatDate(record.temporaryDepartmentAssignment.effectiveFrom)}–{record.temporaryDepartmentAssignment.effectiveTo ? formatDate(record.temporaryDepartmentAssignment.effectiveTo) : t('openEnded')}
                               </span>
                             </div>
                           </div>
