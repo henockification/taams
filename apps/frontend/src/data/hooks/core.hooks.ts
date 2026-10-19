@@ -345,6 +345,15 @@ export function useSetDepartmentHead() {
   });
 }
 
+export function useUsersReportRoles(enabled = true) {
+  return useQuery({
+    queryKey: [...coreQueryKeys.all, 'reports', 'users-roles'] as const,
+    queryFn: () => coreApi.getUsersReportRoles(),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useSupervisorReportDepartments() {
   return useQuery({
     queryKey: [...coreQueryKeys.all, 'reports', 'supervisor-departments'] as const,

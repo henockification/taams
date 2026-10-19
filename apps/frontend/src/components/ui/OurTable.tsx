@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AlertCircle,
   RefreshCw,
@@ -136,6 +136,14 @@ export function OurTable<T extends Record<string, any>>({
   const [localSearch, setLocalSearch] = useState(searchValue);
   const [localFilters, setLocalFilters] = useState<TableFilter>(filters);
   const [localSort, setLocalSort] = useState<TableSort | null>(sort || null);
+
+  // Follow filter changes made outside the table (e.g. summary chips or a URL parameter).
+  // Keyed on the serialized value so the default `{}` prop doesn't reset state every render.
+  const filtersKey = JSON.stringify(filters);
+  useEffect(() => {
+    setLocalFilters(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtersKey]);
 
   // Handle search
   const handleSearchChange = (value: string) => {

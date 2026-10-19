@@ -314,6 +314,7 @@ export async function updatePosition(id: string, input: UpdatePositionInput) {
 export async function createEmployee(input: CreateEmployeeInput) {
   await assertEmployeeReferences(input);
   assertValidAbsenceReason(input.absenceReason);
+  await assertEmployeeIdentifiersAvailable(input);
 
   const createdEmployee = await db.transaction(async (tx) => {
     const employeeInput = {
@@ -1051,12 +1052,17 @@ async function linkOrCreateEmployeeUser(input: CreateEmployeeInput, tx: DbClient
     ...(phone ? [eq(user.phone, phone)] : []),
   ];
 
-  const existingUser = contactConditions.length
-    ? await tx.query.user.findFirst({
+  const matchingUsers = contactConditions.length
+    ? await tx.query.user.findMany({
       where: or(...contactConditions),
       columns: { id: true, email: true, phone: true },
     })
-    : null;
+    : [];
+  // Linking one account would move the other account's email or phone onto it.
+  if (matchingUsers.length > 1) {
+    throw new Error('This email and phone number are already used by two different user accounts');
+  }
+  const existingUser = matchingUsers[0] ?? null;
 
   if (existingUser) {
     const linkedEmployee = await tx.query.employees.findFirst({
@@ -1129,6 +1135,29 @@ async function ensureSupervisorRole(supervisorEmployeeId: string, tx: DbClient =
       updatedAt: new Date(),
     } as any)
     .where(and(eq(user.id, supervisor.userId), sql`NOT ('supervisor' = ANY(coalesce(${user.role}, '{}'::text[])))`));
+}
+
+// Employee code, payroll ID and biometric ID are each unique across all employees. The create
+// form fills all three with the employee code, so a code that matches another employee's payroll
+// or biometric ID (e.g. an imported permanent employee) would otherwise fail as a bare insert error.
+async function assertEmployeeIdentifiersAvailable(input: Pick<CreateEmployeeInput, 'employeeCode' | 'payrollId' | 'biometricId'>) {
+  const checks = [
+    { label: 'Employee code', column: employees.employeeCode, value: input.employeeCode },
+    { label: 'Payroll ID', column: employees.payrollId, value: input.payrollId },
+    { label: 'Biometric ID', column: employees.biometricId, value: input.biometricId },
+  ];
+  for (const { label, column, value } of checks) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    const existing = await db.query.employees.findFirst({
+      where: eq(column, trimmed),
+      columns: { employeeCode: true, firstNameEn: true, lastNameEn: true },
+    });
+    if (existing) {
+      const owner = [existing.firstNameEn, existing.lastNameEn].filter(Boolean).join(' ');
+      throw new Error(`${label} "${trimmed}" is already used by ${owner} (${existing.employeeCode})`);
+    }
+  }
 }
 
 async function assertEmployeeReferences(input: Partial<CreateEmployeeInput>) {

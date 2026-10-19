@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useDepartments } from '@/data/hooks/core.hooks';
 
 const RESOURCE_TYPES = [
   'employee',
@@ -34,6 +35,7 @@ type TimelineFilters = {
   dateTo: string;
   actorSearch: string;
   resourceType: string;
+  departmentId: string;
   outcome: string;
   delegatedOnly: string;
 };
@@ -43,6 +45,7 @@ const initialFilters: TimelineFilters = {
   dateTo: '',
   actorSearch: '',
   resourceType: 'all',
+  departmentId: 'all',
   outcome: 'all',
   delegatedOnly: 'all',
 };
@@ -51,6 +54,11 @@ export function AuditTimelinePage() {
   const t = useTranslations('audit');
   const common = useTranslations('common');
   const [filters, setFilters] = useState<TimelineFilters>(initialFilters);
+  const departmentsQuery = useDepartments();
+  const departments = useMemo(
+    () => [...(departmentsQuery.data?.departments ?? [])].sort((a, b) => a.nameEn.localeCompare(b.nameEn)),
+    [departmentsQuery.data],
+  );
   const params = useMemo(() => {
     const query: Record<string, string> = { limit: '250' };
 
@@ -58,6 +66,7 @@ export function AuditTimelinePage() {
     if (filters.dateTo) query.dateTo = filters.dateTo;
     if (filters.actorSearch.trim()) query.actorSearch = filters.actorSearch.trim();
     if (filters.resourceType !== 'all') query.resourceType = filters.resourceType;
+    if (filters.departmentId !== 'all') query.departmentId = filters.departmentId;
     if (filters.outcome !== 'all') query.outcome = filters.outcome;
     if (filters.delegatedOnly === 'delegated') query.delegatedOnly = 'true';
 
@@ -116,6 +125,22 @@ export function AuditTimelinePage() {
                 {RESOURCE_TYPES.map((resourceType) => (
                   <SelectItem key={resourceType} value={resourceType}>
                     {resourceType.replace(/_/g, ' ')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t('department')}</Label>
+            <Select value={filters.departmentId} onValueChange={(departmentId) => patchFilters({ departmentId })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('allDepartments')}</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.nameEn}
                   </SelectItem>
                 ))}
               </SelectContent>

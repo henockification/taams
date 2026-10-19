@@ -58,6 +58,7 @@ export interface UpdateUserInput {
   id: string;
   email?: string | null;
   phone?: string | null;
+  biometricId?: string | null;
 }
 
 export interface CreateUserResponse {

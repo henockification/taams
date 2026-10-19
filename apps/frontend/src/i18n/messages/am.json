@@ -91,6 +91,7 @@
     "employeeRosterReport": "የሰራተኞች ዝርዝር",
     "deviceSyncReport": "የመሳሪያ ማመሳሰል",
     "auditReport": "የኦዲት ዱካ",
+    "usersReport": "ተጠቃሚዎች",
     "auditTimeline": "የኦዲት ጊዜ-መስመር",
     "attendanceManagement": "ጊዜ እና መገኘት",
     "timeOperations": "የጊዜ ስራዎች",
@@ -303,7 +304,10 @@
     "shiftAssigned": "ፈረቃ ተመድቧል",
     "off": "እረፍት",
     "unableToLoad": "ዳሽቦርዱን መጫን አልተቻለም",
-    "tryAgain": "እባክዎ ትንሽ ቆይተው ይሞክሩ።"
+    "tryAgain": "እባክዎ ትንሽ ቆይተው ይሞክሩ።",
+    "usersByRole": "ተጠቃሚዎች በሚና",
+    "usersByRoleDescription": "{total} ተጠቃሚዎች በ{roles} ሚናዎች። ብዙ ሚና ያለው ተጠቃሚ በእያንዳንዱ ሚና ይቆጠራል።",
+    "usersWithoutRoles": "ሚና የለውም"
   },
   "executiveDashboard": {
     "date": "ቀን",
@@ -604,7 +608,13 @@
     "contactUpdatedTitle": "የመገናኛ መረጃ ተዘምኗል",
     "contactUpdatedMessage": "የተጠቃሚ መለያው እና የተገናኘው የሰራተኛ መዝገብ ተዘምነዋል።",
     "contactUpdateFailed": "የመገናኛ መረጃን ማዘመን አልተሳካም።",
-    "contactRequired": "የኢሜይል አድራሻ ወይም ስልክ ቁጥር ያስገቡ።"
+    "contactRequired": "የኢሜይል አድራሻ ወይም ስልክ ቁጥር ያስገቡ።",
+    "allUsers": "ሁሉም ተጠቃሚዎች",
+    "noRole": "ሚና የለውም",
+    "usersByRole": "ተጠቃሚዎች በሚና",
+    "biometricId": "የባዮሜትሪክ መለያ",
+    "biometricIdHint": "ይህ ሰው በባዮሜትሪክ መሳሪያዎች ላይ የሚጠቀምበት መለያ። በሠራተኛ መዝገቡ ላይ ይቀመጣል።",
+    "biometricIdNoEmployee": "የተገናኘ የሠራተኛ መዝገብ የለም"
   },
   "core": {
     "selectEmploymentTypeFirst": "መጀመሪያ የቅጥር አይነት ይምረጡ",
@@ -1798,7 +1808,9 @@
       "WORK_SCHEDULE_CREATED": "የሥራ መርሃ ግብር ተፈጥሯል",
       "WORK_SCHEDULE_UPDATED": "የሥራ መርሃ ግብር ተሻሽሏል",
       "ZKTECO_INGESTED": "የመሣሪያ ፓንቾች ገብተዋል"
-    }
+    },
+    "department": "መምሪያ",
+    "allDepartments": "ሁሉም መምሪያዎች"
   },
   "help": {
     "contents": "ማውጫ",

@@ -14,6 +14,8 @@ import {
   leaveRequests,
   leaveTypes,
   overtimeRequests,
+  roles,
+  user,
 } from '../../db/schema';
 import { listAuditEvents, auditActionLabel } from '../../db/orm/core/manageAuditEvents';
 import { summarizeChanges, type AuditChanges } from '../../lib/audit';
@@ -53,6 +55,7 @@ type ReportKey =
   | 'employees'
   | 'device-sync'
   | 'audit'
+  | 'users'
   | 'supervisor-attendance'
   | 'supervisor-attendance-summary';
 
@@ -307,6 +310,24 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
     ],
     buildRows: buildAuditRows,
   },
+  users: {
+    title: 'Users',
+    permission: 'reports-users:read',
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'roles', label: 'Roles' },
+      { key: 'loginStatus', label: 'Login status' },
+      { key: 'emailStatus', label: 'Email status' },
+      { key: 'failedLoginCount', label: 'Failed logins' },
+      { key: 'lockedUntil', label: 'Locked until' },
+      { key: 'accessRevokedAt', label: 'Access revoked at' },
+      { key: 'accessRevokedReason', label: 'Revoke reason' },
+      { key: 'createdAt', label: 'Created' },
+    ],
+    buildRows: buildUserRows,
+  },
   'supervisor-attendance': {
     title: 'Supervisor Attendance Report',
     permission: null,
@@ -374,6 +395,17 @@ reportsApp.get('/reports/supervisor/departments', async (c) => {
       headedDepartmentIds: supervisorScope?.type === 'departments' ? supervisorScope.headedDepartmentIds : [],
       departments: allDepartments.filter((department) => !visibleIds || visibleIds.has(department.id)),
     });
+  } catch (error) {
+    return reportError(c, error);
+  }
+});
+
+// Roles for the users report's role filter, so the report doesn't depend on role-management access.
+reportsApp.get('/reports/users/roles', async (c) => {
+  try {
+    await getReportContext(c, reportDefinitions.users);
+    const roleRows = await db.select({ id: roles.id, name: roles.name }).from(roles).orderBy(asc(roles.name));
+    return c.json({ success: true, roles: roleRows });
   } catch (error) {
     return reportError(c, error);
   }
@@ -947,6 +979,86 @@ async function buildEmployeeRows({ query, scope }: ReportInput) {
     phoneNumber: employee.phoneNumber ?? '',
     email: employee.email ?? '',
   }));
+}
+
+const NO_ROLE_FILTER = '__none';
+
+// Same filters as the users list: search (name, email, phone, role), role, login status and email status.
+async function buildUserRows({ query }: ReportInput): Promise<ReportResult> {
+  const search = query.get('search')?.trim().toLowerCase() ?? '';
+  const roleFilter = query.get('role') ?? '';
+  const loginStatus = query.get('loginStatus') ?? '';
+  const emailStatus = query.get('emailStatus') ?? '';
+  const now = Date.now();
+
+  const users = await db.query.user.findMany({
+    columns: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      emailVerified: true,
+      failedLoginCount: true,
+      lockedUntil: true,
+      accessRevokedAt: true,
+      accessRevokedReason: true,
+      createdAt: true,
+    },
+    with: { userRoles: { with: { role: { columns: { name: true } } } } },
+    orderBy: [asc(user.name)],
+  });
+
+  const rows = users
+    .map((record) => {
+      const roleNames = record.userRoles.map((userRole) => userRole.role.name).sort();
+      const locked = Boolean(record.lockedUntil && new Date(record.lockedUntil).getTime() > now);
+      const status = record.accessRevokedAt ? 'revoked' : locked ? 'locked' : 'active';
+      return { record, roleNames, locked, status };
+    })
+    .filter(({ record, roleNames, status }) => {
+      if (roleFilter === NO_ROLE_FILTER ? roleNames.length > 0 : roleFilter && !roleNames.includes(roleFilter)) return false;
+      if (loginStatus && status !== loginStatus) return false;
+      if (emailStatus && (emailStatus === 'verified') !== Boolean(record.emailVerified)) return false;
+      if (!search) return true;
+      return [record.name, record.email, record.phone, ...roleNames]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(search);
+    })
+    .map(({ record, roleNames, locked, status }) => ({
+      name: record.name ?? '',
+      email: record.email ?? '',
+      phone: record.phone ?? '',
+      roles: roleNames.join(', '),
+      loginStatus: status === 'revoked' ? 'Access revoked' : status === 'locked' ? 'Locked' : 'Active',
+      emailStatus: record.emailVerified ? 'Verified' : 'Unverified',
+      failedLoginCount: record.failedLoginCount ?? 0,
+      lockedUntil: locked ? formatDateTime(record.lockedUntil) : '',
+      accessRevokedAt: formatDateTime(record.accessRevokedAt),
+      accessRevokedReason: record.accessRevokedReason ?? '',
+      createdAt: formatDateTime(record.createdAt),
+      roleNames,
+    }));
+
+  // Headcount per role among the matching users; a user with several roles counts under each.
+  const roleCounts = new Map<string, number>();
+  for (const row of rows) {
+    for (const role of row.roleNames.length ? row.roleNames : ['No role']) {
+      roleCounts.set(role, (roleCounts.get(role) ?? 0) + 1);
+    }
+  }
+
+  return {
+    rows: rows.map(({ roleNames: _roleNames, ...row }) => row),
+    columns: reportDefinitions.users.columns,
+    highlights: [
+      { label: 'Users', value: rows.length },
+      ...[...roleCounts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([role, count]) => ({ label: role, value: count })),
+    ],
+  };
 }
 
 async function buildDeviceSyncRows({ query }: ReportInput) {

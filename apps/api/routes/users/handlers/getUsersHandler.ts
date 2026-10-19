@@ -23,6 +23,7 @@ export async function getUsersHandler(c: Context) {
       role: u.role || ['user'],
       createdAt: u.createdAt.toISOString(),
       ...formatUserLock(u),
+      accessRevoked: Boolean(u.accessRevokedAt),
     }));
     
     console.log('Users fetched successfully:', result.users.length);

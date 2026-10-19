@@ -11,8 +11,18 @@ const LEAVE_VALIDATION_PHRASES = [
   'does not include any scheduled working days',
 ];
 
+// Postgres unique violations reach us as "Failed query: ..." with the reason only in `cause`.
+function uniqueViolationMessage(error: unknown) {
+  const cause = (error as { cause?: { code?: string; detail?: string } } | null)?.cause;
+  if (cause?.code !== '23505') return null;
+  const match = cause.detail?.match(/^Key \((.+?)\)=\((.*)\) already exists/);
+  if (!match) return 'This record conflicts with an existing one (duplicate value)';
+  const field = match[1].replace(/_/g, ' ');
+  return `The ${field} "${match[2]}" is already used by another record (duplicate value)`;
+}
+
 export function coreErrorResponse(c: Context, error: unknown, fallback: string) {
-  const message = error instanceof Error ? error.message : 'Unknown error';
+  const message = uniqueViolationMessage(error) ?? (error instanceof Error ? error.message : 'Unknown error');
   const lowerMessage = message.toLowerCase();
   const status = LEAVE_VALIDATION_PHRASES.some((phrase) => lowerMessage.includes(phrase))
     ? 400

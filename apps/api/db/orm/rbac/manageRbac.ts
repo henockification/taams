@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, count, countDistinct, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '../../db';
 import { employees, permissions, rolePermissions, roles, user, userRoles } from '../../schema';
 import { getAuditContext, diffChanges, writeAuditEvent } from '../../../lib/audit';
@@ -51,6 +51,8 @@ export type UpdateUserInput = {
   emailVerified?: boolean;
   image?: string | null;
   roleIds?: string[];
+  /** Saved on the linked employee record, which is what device punches are matched against. */
+  biometricId?: string | null;
 };
 
 export async function getRoles() {
@@ -359,17 +361,47 @@ export async function updateUserWithRoles(userId: string, input: UpdateUserInput
       }
     }
 
+    let biometricChange: { biometricId: string | null } | null = null;
+    if (input.biometricId !== undefined) {
+      biometricChange = { biometricId: await updateLinkedEmployeeBiometricId(userId, input.biometricId, tx) };
+    }
+
     const updatedUser = await getUserWithRoles(userId, tx);
+    const changedFields = { ...updateData, ...biometricChange };
     await writeAuditEvent(tx, {
       action: input.roleIds !== undefined ? 'USER_ROLES_ASSIGNED' : 'USER_UPDATED',
       resourceType: 'user',
       resourceId: userId,
       resourceLabel: updatedUser?.email ?? userId,
-      changes: Object.keys(updateData).length ? diffChanges({}, updateData) : null,
+      changes: Object.keys(changedFields).length ? diffChanges({}, changedFields) : null,
       metadata: input.roleIds !== undefined ? { roleIds: input.roleIds } : null,
     });
     return updatedUser;
   });
+}
+
+async function updateLinkedEmployeeBiometricId(userId: string, value: string | null, tx: DbClient) {
+  const employee = await tx.query.employees.findFirst({
+    where: eq(employees.userId, userId),
+    columns: { id: true },
+  });
+  if (!employee) throw new Error('Linked employee not found for this user');
+
+  const biometricId = value?.trim() || null;
+  if (biometricId) {
+    const other = await tx.query.employees.findFirst({
+      where: and(eq(employees.biometricId, biometricId), ne(employees.id, employee.id)),
+      columns: { id: true },
+    });
+    if (other) throw new Error('That biometric ID is already used by another employee');
+  }
+
+  // Saved punches with this ID are linked to the employee on the next device sync, as for any employee edit.
+  await tx
+    .update(employees)
+    .set({ biometricId, updatedAt: new Date() })
+    .where(eq(employees.id, employee.id));
+  return biometricId;
 }
 
 export async function assignRolesToUser(userId: string, roleIds: string[]) {
@@ -386,6 +418,32 @@ export async function userHasPermission(userId: string, permissionName: string) 
     .limit(1);
 
   return rows.length > 0;
+}
+
+export type UserRoleCounts = {
+  totalUsers: number;
+  usersWithoutRoles: number;
+  roles: Array<{ roleId: string; roleName: string; userCount: number }>;
+};
+
+/** Number of users holding each role. A user with several roles is counted under each. */
+export async function getUserRoleCounts(): Promise<UserRoleCounts> {
+  const [roleRows, [{ value: totalUsers }], [{ value: usersWithRoles }]] = await Promise.all([
+    db
+      .select({ roleId: roles.id, roleName: roles.name, userCount: count(userRoles.userId) })
+      .from(roles)
+      .leftJoin(userRoles, eq(userRoles.roleId, roles.id))
+      .groupBy(roles.id, roles.name)
+      .orderBy(asc(roles.name)),
+    db.select({ value: count() }).from(user),
+    db.select({ value: countDistinct(userRoles.userId) }).from(userRoles),
+  ]);
+
+  return {
+    totalUsers: Number(totalUsers),
+    usersWithoutRoles: Math.max(0, Number(totalUsers) - Number(usersWithRoles)),
+    roles: roleRows.map((row) => ({ ...row, userCount: Number(row.userCount) })),
+  };
 }
 
 export async function getUserPermissionNames(userId: string) {

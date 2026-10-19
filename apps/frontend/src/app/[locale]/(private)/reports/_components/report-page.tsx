@@ -39,6 +39,7 @@ import {
   useLeaveFiscalYears,
   useLeaveTypes,
   useReport,
+  useUsersReportRoles,
 } from '@/data/hooks/core.hooks';
 import type { ReportHighlight, ReportKey } from '@/data/types/core.types';
 import { cn } from '@/lib/utils';
@@ -125,6 +126,12 @@ const reportConfigs: Record<ReportKey, Omit<ReportConfig, 'filters'> & { filterK
     description: 'Who did what, when, and with what change across TAAMS.',
     filterKeys: ['dateFrom', 'dateTo', 'actorSearch', 'action', 'resourceType', 'employeeId', 'departmentId', 'outcome', 'delegatedOnly'],
   },
+  users: {
+    key: 'users',
+    title: 'Users',
+    description: 'User accounts with their roles, login status and email status, and how many users hold each role.',
+    filterKeys: ['search', 'role', 'loginStatus', 'emailStatus'],
+  },
   'supervisor-attendance': {
     key: 'supervisor-attendance',
     title: 'Supervisor Attendance Report',
@@ -154,6 +161,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
   const devicesQuery = useBiometricDevices(usesFilter('deviceId'));
   const fiscalYearsQuery = useLeaveFiscalYears(usesFilter('fiscalYearId'));
   const leaveTypesQuery = useLeaveTypes(usesFilter('leaveTypeId'));
+  const rolesQuery = useUsersReportRoles(usesFilter('role'));
   const reportQuery = useReport(reportKey, filters);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -165,6 +173,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
     devices: devicesQuery.data?.biometricDevices ?? [],
     fiscalYears: fiscalYearsQuery.data?.leaveFiscalYears ?? [],
     leaveTypes: leaveTypesQuery.data?.leaveTypes ?? [],
+    roles: rolesQuery.data?.roles ?? [],
   }), [
     configBase.filterKeys,
     departmentsQuery.data,
@@ -173,6 +182,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
     devicesQuery.data,
     fiscalYearsQuery.data,
     leaveTypesQuery.data,
+    rolesQuery.data,
   ]);
 
   // Links (e.g. from dashboards) can preset filters through the URL query string.
@@ -560,6 +570,7 @@ function buildFilters(input: {
   devices: any[];
   fiscalYears: any[];
   leaveTypes: any[];
+  roles: Array<{ id: string; name: string }>;
 }) {
   const options = {
     departmentId: input.departmentOptions
@@ -568,6 +579,7 @@ function buildFilters(input: {
     deviceId: input.devices.map((device) => ({ value: device.id, label: device.deviceName })),
     fiscalYearId: input.fiscalYears.map((fiscalYear) => ({ value: fiscalYear.id, label: fiscalYear.name })),
     leaveTypeId: input.leaveTypes.map((leaveType) => ({ value: leaveType.id, label: leaveType.nameEn })),
+    role: [...input.roles.map((role) => ({ value: role.name, label: role.name })), { value: '__none', label: 'No role' }],
   };
   const definitions: Record<string, FilterConfig> = {
     view: { key: 'view', label: 'View', type: 'select', options: reportViews, required: true },
@@ -595,6 +607,9 @@ function buildFilters(input: {
     resourceType: { key: 'resourceType', label: 'Resource type', type: 'select', options: auditResourceTypes },
     outcome: { key: 'outcome', label: 'Outcome', type: 'select', options: auditOutcomes },
     delegatedOnly: { key: 'delegatedOnly', label: 'Delegated only', type: 'checkbox' },
+    role: { key: 'role', label: 'Role', type: 'select', options: options.role },
+    loginStatus: { key: 'loginStatus', label: 'Login status', type: 'select', options: loginStatuses },
+    emailStatus: { key: 'emailStatus', label: 'Email status', type: 'select', options: emailStatuses },
   };
 
   return input.keys.map((key) => definitions[key]);
@@ -634,6 +649,15 @@ const reportViews = [
 const punchStatuses = [{ value: 'processed', label: 'Processed' }, { value: 'unprocessed', label: 'Unprocessed' }];
 const leaveStatuses = ['PENDING', 'APPROVED', 'AUTHORIZED', 'REJECTED', 'AUTHORIZATION_REJECTED'].map((value) => ({ value, label: value }));
 const syncStatuses = ['STARTED', 'COMPLETED', 'FAILED', 'PARTIAL'].map((value) => ({ value, label: value }));
+const loginStatuses = [
+  { value: 'active', label: 'Active' },
+  { value: 'locked', label: 'Locked' },
+  { value: 'revoked', label: 'Access revoked' },
+];
+const emailStatuses = [
+  { value: 'verified', label: 'Verified' },
+  { value: 'unverified', label: 'Unverified' },
+];
 // Only contract and permanent employees are managed; other types are not applicable.
 const employmentTypes = [{ value: 'CONTRACT', label: 'Contract' }, { value: 'PERMANENT', label: 'Permanent' }];
 const employmentStatuses = ['ACTIVE', 'INACTIVE', 'TERMINATED', 'SUSPENDED'].map((value) => ({ value, label: value }));

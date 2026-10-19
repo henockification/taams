@@ -295,6 +295,12 @@ const PERMISSIONS = [
     description: 'View audit trail reports',
   },
   {
+    name: 'reports-users:read',
+    resource: 'reports-users',
+    action: 'read',
+    description: 'View users report',
+  },
+  {
     name: 'users:read',
     resource: 'users',
     action: 'read',
@@ -467,7 +473,6 @@ const SYSTEM_ROLES = [
       'schedule-assignments:read',
       'biometric-devices:read',
       'biometric-exemptions:read',
-      'attendance-punches:read',
       'hr-attendance-approvals:approve',
       'reports-attendance-daily:read',
       'reports-attendance-punches:read',

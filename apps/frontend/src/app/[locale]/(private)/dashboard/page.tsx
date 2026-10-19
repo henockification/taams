@@ -30,6 +30,7 @@ import type {
   DashboardMetric,
   DashboardPlaceholder,
   DashboardQuickAction,
+  DashboardRoleSummary,
   DashboardSummary,
   ManualPunchRequest,
   LeaveRequest,
@@ -88,6 +89,7 @@ export default function DashboardPage() {
       {dashboard.role === "MANAGER" ? <ManagerDashboard dashboard={dashboard} /> : null}
       {dashboard.role === "EMPLOYEE" ? <EmployeeDashboard dashboard={dashboard} canViewManualPunchRequests={canViewManualPunchRequests} /> : null}
       {dashboard.role === "SETUP_REQUIRED" ? <SetupRequiredDashboard dashboard={dashboard} /> : null}
+      {dashboard.sections.roleSummary ? <RoleSummaryCard summary={dashboard.sections.roleSummary} /> : null}
     </div>
   )
 }
@@ -439,6 +441,47 @@ function SetupRequiredDashboard({ dashboard }: { dashboard: DashboardSummary }) 
       </Card>
       <QuickActions actions={dashboard.quickActions} />
     </div>
+  )
+}
+
+/** Users per role, linking into the users page filtered by that role. */
+function RoleSummaryCard({ summary }: { summary: DashboardRoleSummary }) {
+  const t = useTranslations("dashboard")
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <UsersRoundIcon className="size-5 text-primary" />
+          {t("usersByRole")}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {t("usersByRoleDescription", { total: summary.totalUsers, roles: summary.roles.length })}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-6">
+          {summary.roles.map((role) => (
+            <Link
+              key={role.roleId}
+              href={{ pathname: "/users", query: { role: role.roleName } } as any}
+              className="min-w-0 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted sm:p-4"
+            >
+              <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground" title={role.roleName}>
+                {role.roleName}
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{role.userCount}</p>
+            </Link>
+          ))}
+          {summary.usersWithoutRoles > 0 ? (
+            <div className="min-w-0 rounded-xl border border-dashed border-border bg-background p-3 sm:p-4">
+              <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("usersWithoutRoles")}</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">{summary.usersWithoutRoles}</p>
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

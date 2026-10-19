@@ -8,6 +8,7 @@ export const UserSchema = z.object({
   emailVerified: z.boolean().nullable().openapi({ example: false }),
   locked: z.boolean().optional().openapi({ example: false }),
   lockedUntil: z.string().nullable().optional().openapi({ example: '2026-09-07T15:00:00.000Z' }),
+  accessRevoked: z.boolean().optional().openapi({ example: false }),
   failedLoginCount: z.number().optional().openapi({ example: 0 }),
   role: z.array(z.string()).openapi({ example: ['user'] }),
   roles: z.array(z.string()).optional().openapi({ example: ['admin'] }),
@@ -28,6 +29,11 @@ export const UserDetailSchema = z.object({
   createdAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2023-01-01T00:00:00.000Z' }),
   image: z.string().nullable().openapi({ example: 'https://example.com/avatar.jpg' }),
+  employee: z.object({
+    id: z.string(),
+    employeeCode: z.string().nullable(),
+    biometricId: z.string().nullable(),
+  }).nullable().optional(),
 });
 
 export const PaginationSchema = z.object({
@@ -70,6 +76,10 @@ export const UpdateUserRequestSchema = z.object({
   roleIds: z.array(z.string().uuid()).optional().openapi({
     example: ['a52da4a6-4b69-4aa0-865c-1a03fddb731f'],
     description: 'Replace all assigned roles for the user',
+  }),
+  biometricId: z.string().max(50).nullable().optional().openapi({
+    example: '1024',
+    description: "Biometric device ID saved on the user's linked employee record",
   }),
 });
 

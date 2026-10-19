@@ -284,7 +284,7 @@ async function buildEmployeeDashboard(user: DashboardUser, employee: any, genera
     attendanceRate: attendanceRate(monthCounts),
   };
   const todayAttendance = {
-    ...buildTodayAttendance(todayPunches, selectedDate),
+    ...await buildTodayAttendance(employee.id, todayPunches, todayDay?.record ?? null, selectedDate),
     status: todayDay?.status ?? null,
     lateMinutes: todayDay?.status === 'LATE' ? Number(todayDay.record.lateMinutes ?? 0) : 0,
     leaveType: todayDay?.leave?.typeLabel ?? null,
@@ -418,9 +418,27 @@ function getDayRange(date: string) {
   };
 }
 
-function buildTodayAttendance(punches: any[], date: string) {
-  const checkIn = punches[0] ?? null;
-  const checkOut = punches.length > 1 ? punches[punches.length - 1] : null;
+/**
+ * The dashboard shows the morning check-in and the afternoon checkout only, taken from
+ * the same schedule sessions as My Attendance: the first session's check-in and the
+ * last session's checkout. Middle punches (lunch out/in, repeated punches) are left to
+ * My Attendance. Without a schedule the record holds the first and last punch.
+ */
+async function buildTodayAttendance(
+  employeeId: string,
+  todayPunches: any[],
+  record: { checkInAt?: Date | string | null; checkOutAt?: Date | string | null; sessionEvaluations?: unknown } | null,
+  date: string,
+) {
+  const sessions = Array.isArray(record?.sessionEvaluations)
+    ? record.sessionEvaluations as Array<{ checkInAt?: Date | string | null; checkOutAt?: Date | string | null }>
+    : [];
+  const checkInAt = sessions.length > 0 ? sessions[0].checkInAt ?? null : record?.checkInAt ?? null;
+  const checkOutAt = sessions.length > 0 ? sessions[sessions.length - 1].checkOutAt ?? null : record?.checkOutAt ?? null;
+  const [checkIn, checkOut] = await Promise.all([
+    findPunchAt(employeeId, todayPunches, checkInAt),
+    findPunchAt(employeeId, todayPunches, checkOutAt),
+  ]);
   const workingMinutes = checkIn && checkOut
     ? Math.max(0, Math.round((new Date(checkOut.punchTime).getTime() - new Date(checkIn.punchTime).getTime()) / (1000 * 60)))
     : 0;
@@ -432,6 +450,18 @@ function buildTodayAttendance(punches: any[], date: string) {
     workingMinutes,
     workingHours: Math.round((workingMinutes / 60) * 10) / 10,
   };
+}
+
+/** The punch recorded at a session time; an overnight checkout may fall outside today's punches. */
+async function findPunchAt(employeeId: string, todayPunches: any[], at: Date | string | null) {
+  if (!at) return null;
+  const time = new Date(at).getTime();
+  const match = todayPunches.find((punch) => new Date(punch.punchTime).getTime() === time);
+  if (match) return match;
+  return await db.query.attendancePunches.findFirst({
+    where: and(eq(attendancePunches.employeeId, employeeId), eq(attendancePunches.punchTime, new Date(time))),
+    with: { device: true },
+  }) ?? null;
 }
 
 async function getCurrentAnnualLeaveBalance(employeeId: string) {

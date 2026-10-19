@@ -91,6 +91,7 @@
     "employeeRosterReport": "Employee roster",
     "deviceSyncReport": "Device sync",
     "auditReport": "Audit trail",
+    "usersReport": "Users",
     "auditTimeline": "Audit timeline",
     "attendanceManagement": "Time & attendance",
     "timeOperations": "Time operations",
@@ -303,7 +304,10 @@
     "shiftAssigned": "Shift assigned",
     "off": "Off",
     "unableToLoad": "Unable to load dashboard",
-    "tryAgain": "Please try again in a moment."
+    "tryAgain": "Please try again in a moment.",
+    "usersByRole": "Users by role",
+    "usersByRoleDescription": "{total} users across {roles} roles. A user with several roles is counted under each.",
+    "usersWithoutRoles": "No role"
   },
   "executiveDashboard": {
     "date": "Date",
@@ -604,7 +608,13 @@
     "contactUpdatedTitle": "Contact details updated",
     "contactUpdatedMessage": "The user account and linked employee record were updated.",
     "contactUpdateFailed": "Failed to update contact details.",
-    "contactRequired": "Enter an email address or phone number."
+    "contactRequired": "Enter an email address or phone number.",
+    "allUsers": "All users",
+    "noRole": "No role",
+    "usersByRole": "Users by role",
+    "biometricId": "Biometric ID",
+    "biometricIdHint": "The ID this person uses on the biometric devices. Saved on their employee record.",
+    "biometricIdNoEmployee": "No linked employee record"
   },
   "core": {
     "selectEmploymentTypeFirst": "Select employment type first",
@@ -1798,7 +1808,9 @@
       "WORK_SCHEDULE_CREATED": "Created work schedule",
       "WORK_SCHEDULE_UPDATED": "Updated work schedule",
       "ZKTECO_INGESTED": "Ingested device punches"
-    }
+    },
+    "department": "Department",
+    "allDepartments": "All departments"
   },
   "help": {
     "contents": "Contents",

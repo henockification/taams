@@ -80,6 +80,7 @@ export type AppNavItem = {
     | 'employeeRosterReport'
     | 'deviceSyncReport'
     | 'auditReport'
+    | 'usersReport'
     | 'supervisorReport'
     | 'auditTimeline';
   url: string;
@@ -500,6 +501,13 @@ export const appNavGroups: AppNavGroup[] = [
         requiredPermission: 'reports-audit:read',
         icon: History,
       },
+      {
+        titleKey: 'usersReport',
+        url: '/reports/users',
+        permissionResource: 'reports-users',
+        requiredPermission: 'reports-users:read',
+        icon: Users,
+      },
     ],
   },
   {
@@ -681,7 +689,6 @@ function isHrCapabilityPermission(permission: string) {
       'leave-request-approvals',
       'leave-authorizations',
       'biometric-exemptions',
-      'attendance-punches',
       'work-schedules',
       'holidays',
       'shifts',
@@ -791,7 +798,7 @@ export function getAccessibleNavGroups(user: AuthzUser): AccessibleNavGroup[] {
   const leaveItems = findGroup('leaveManagement')?.items ?? [];
   const scheduleItems = findGroup('workScheduleShift')?.items ?? [];
   const biometricGroup = findGroup('biometric');
-  const attendanceTitles = new Set<AppNavItem['titleKey']>(['attendancePunches', 'hrAttendanceApproval']);
+  const attendanceTitles = new Set<AppNavItem['titleKey']>(['hrAttendanceApproval']);
   const attendanceItems = biometricGroup?.items.filter((item) => attendanceTitles.has(item.titleKey)) ?? [];
   const isConfigurationItem = (item: AppNavItem) => isHrConfigurationPath(item.url);
   const biometricItems = biometricGroup?.items.filter((item) => !attendanceTitles.has(item.titleKey) && !isConfigurationItem(item)) ?? [];

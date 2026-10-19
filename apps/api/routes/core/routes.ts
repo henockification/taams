@@ -674,7 +674,7 @@ export const deleteEmployeeWorkScheduleRoute = createRoute({
 
 // Anyone who can add employees can create a missing department while doing so.
 coreApp.post('/departments', requirePermission('employees:update', 'employees:create', 'organization-structure:edit'), createDepartmentHandler);
-coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read', 'organization-structure:read', 'organization-structure:edit'), getDepartmentsHandler);
+coreApp.get('/departments', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read', 'temporary-assignment:read', 'organization-structure:read', 'organization-structure:edit', 'reports-audit:read'), getDepartmentsHandler);
 coreApp.put('/departments/:id', requirePermission('employees:update', 'organization-structure:edit'), requireHrSupervisorRole(), updateDepartmentHandler);
 coreApp.patch('/departments/:id/parent', requirePermission('organization-structure:edit'), requireHrSupervisorRole(), moveDepartmentHandler);
 coreApp.get('/departments/head-candidates', requirePermission('organization-structure:edit'), getDepartmentHeadCandidatesHandler);

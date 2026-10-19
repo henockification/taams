@@ -14,6 +14,7 @@ type UserModel = {
   image: string | null;
   failedLoginCount: number;
   lockedUntil: Date | null;
+  accessRevokedAt: Date | null;
 };
 
 export async function getAllUsersPaginated({

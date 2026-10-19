@@ -1,4 +1,7 @@
 import { Context } from 'hono';
+import { eq } from 'drizzle-orm';
+import { db } from '../../../db/db';
+import { employees } from '../../../db/schema';
 import { getUserById } from '../../../db/orm/users/getUserById';
 import { formatUserLock } from '../../rbac/handlers/formatters';
 
@@ -15,7 +18,13 @@ export async function getUserHandler(c: Context) {
 
     console.log('Fetching user by ID:', userId);
     
-    const user = await getUserById(userId);
+    const [user, employee] = await Promise.all([
+      getUserById(userId),
+      db.query.employees.findFirst({
+        where: eq(employees.userId, userId),
+        columns: { id: true, employeeCode: true, biometricId: true },
+      }),
+    ]);
     
     if (!user) {
       return c.json({
@@ -36,6 +45,9 @@ export async function getUserHandler(c: Context) {
       updatedAt: user.updatedAt.toISOString(),
       image: user.image,
       ...formatUserLock(user),
+      employee: employee
+        ? { id: employee.id, employeeCode: employee.employeeCode ?? null, biometricId: employee.biometricId ?? null }
+        : null,
     };
     
     console.log('User fetched successfully:', user.id);

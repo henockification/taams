@@ -779,7 +779,10 @@ export function formatDashboardSummary(summary: any) {
     currentAnnualLeaveBalance: summary.currentAnnualLeaveBalance ? formatLeaveBalance(summary.currentAnnualLeaveBalance) : null,
     metrics: summary.metrics,
     quickActions: summary.quickActions,
-    sections: formatDashboardSections(summary.sections),
+    sections: {
+      ...formatDashboardSections(summary.sections),
+      ...(summary.sections?.roleSummary ? { roleSummary: summary.sections.roleSummary } : {}),
+    },
     placeholders: summary.placeholders,
   };
 }

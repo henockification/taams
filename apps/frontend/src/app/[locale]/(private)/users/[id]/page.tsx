@@ -46,6 +46,8 @@ interface User {
   createdAt: string;
   updatedAt: string;
   image: string | null;
+  /** The employee record linked to this user, which holds the biometric device ID. */
+  employee?: { id: string; employeeCode: string | null; biometricId: string | null } | null;
 }
 
 interface UserResponse {
@@ -66,6 +68,7 @@ export default function UserDetailPage() {
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [biometricId, setBiometricId] = useState('');
   const { data: rolesResponse, isLoading: rolesLoading } = useRoles();
   const assignUserRoles = useAssignUserRoles();
   const unlockUser = useUnlockUser();
@@ -128,6 +131,7 @@ export default function UserDetailPage() {
   useEffect(() => {
     setEmail(user?.email ?? '');
     setPhone(user?.phone ?? '');
+    setBiometricId(user?.employee?.biometricId ?? '');
   }, [user]);
 
   useEffect(() => {
@@ -202,8 +206,10 @@ export default function UserDetailPage() {
   const isOwnAccount = session.data?.user?.id === user?.id;
   const accessPending = revokeAccess.isPending || restoreAccess.isPending;
 
+  const biometricIdChanged = Boolean(user?.employee)
+    && biometricId.trim() !== (user?.employee?.biometricId ?? '');
   const contactChanged = Boolean(user)
-    && (email.trim() !== (user?.email ?? '') || phone.trim() !== (user?.phone ?? ''));
+    && (email.trim() !== (user?.email ?? '') || phone.trim() !== (user?.phone ?? '') || biometricIdChanged);
 
   const handleSaveContact = async () => {
     if (!user) return;
@@ -217,6 +223,7 @@ export default function UserDetailPage() {
         id: user.id,
         email: email.trim() || null,
         phone: phone.trim() || null,
+        ...(biometricIdChanged ? { biometricId: biometricId.trim() || null } : {}),
       });
       notifications.show({
         title: t('contactUpdatedTitle'),
@@ -377,6 +384,20 @@ export default function UserDetailPage() {
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-biometric-id" className="text-sm font-normal text-muted-foreground">{t('biometricId')}</Label>
+                <Input
+                  id="user-biometric-id"
+                  value={biometricId}
+                  maxLength={50}
+                  disabled={!user.employee}
+                  placeholder={user.employee ? undefined : t('biometricIdNoEmployee')}
+                  onChange={(event) => setBiometricId(event.target.value)}
+                />
+                {user.employee ? (
+                  <p className="text-xs text-muted-foreground">{t('biometricIdHint')}</p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-muted-foreground">{t('contactHint')}</p>

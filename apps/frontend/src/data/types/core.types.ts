@@ -907,8 +907,16 @@ export type DashboardSummary = {
       title: string;
       description: string;
     };
+    /** Present for users who can manage users (system administrators). */
+    roleSummary?: DashboardRoleSummary | null;
   };
   placeholders: DashboardPlaceholder[];
+};
+
+export type DashboardRoleSummary = {
+  totalUsers: number;
+  usersWithoutRoles: number;
+  roles: Array<{ roleId: string; roleName: string; userCount: number }>;
 };
 
 export type ExecutiveDashboardSeverity = 'critical' | 'warning' | 'info';
@@ -1515,7 +1523,7 @@ export type DepartmentHeadDashboardSummaryResponse = {
   departmentHeadDashboard: DepartmentHeadDashboardSummary;
 };
 
-export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit' | 'supervisor-attendance' | 'supervisor-attendance-summary';
+export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit' | 'users' | 'supervisor-attendance' | 'supervisor-attendance-summary';
 
 export type ReportColumn = {
   key: string;

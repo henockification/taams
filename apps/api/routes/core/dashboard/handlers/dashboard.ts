@@ -3,7 +3,7 @@ import { getDashboardSummaryForUser } from '../../../../db/orm/core/manageDashbo
 import { getDepartmentHeadDashboardSummary } from '../../../../db/orm/core/manageDepartmentHeadDashboard';
 import { getExecutiveDashboardSummary } from '../../../../db/orm/core/manageExecutiveDashboard';
 import { getHrDashboardSummary } from '../../../../db/orm/core/manageHrDashboard';
-import { getUserPermissionNames, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
+import { getUserPermissionNames, getUserRoleCounts, userHasPermission } from '../../../../db/orm/rbac/manageRbac';
 import { resolveEmployeeVisibilityScope } from '../../../../db/orm/core/manageEmployeeVisibility';
 import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
@@ -25,16 +25,21 @@ export async function getDashboardSummaryHandler(c: Context) {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    const dashboard = await getDashboardSummaryForUser({
-      id: session.user.id,
-      name: session.user.name,
-      email: session.user.email,
-      role: session.user.role,
-    });
+    const [dashboard, canManageUsers] = await Promise.all([
+      getDashboardSummaryForUser({
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        role: session.user.role,
+      }),
+      userHasPermission(session.user.id, 'users:read'),
+    ]);
+    // System administrators get a headcount of users per role alongside their own dashboard.
+    const roleSummary = canManageUsers ? await getUserRoleCounts() : null;
 
     return c.json({
       success: true,
-      dashboard: formatDashboardSummary(dashboard),
+      dashboard: formatDashboardSummary({ ...dashboard, sections: { ...dashboard.sections, roleSummary } }),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch dashboard summary');

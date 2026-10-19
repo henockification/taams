@@ -148,6 +148,9 @@ async function resolveSession(c: Context) {
 async function resolveScope(session: Awaited<ReturnType<typeof getSessionByToken>>) {
   if (!session?.user?.id) throw new Error('Authentication required');
   const permissions = await getUserPermissionNames(session.user.id);
+  // The Attendance Punches page is a system-admin view of raw device data, so it is not
+  // limited to an employee scope. Report-only access still goes through the usual scope.
+  if (permissions.includes('attendance-punches:read')) return { type: 'unrestricted' } as const;
   return resolveEmployeeVisibilityScope({
     userId: session.user.id,
     roles: session.user.role ?? [],

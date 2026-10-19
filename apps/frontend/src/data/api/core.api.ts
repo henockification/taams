@@ -270,6 +270,8 @@ export const coreApi = {
       method: 'PUT',
       body: JSON.stringify({ headEmployeeId }),
     }),
+  getUsersReportRoles: () =>
+    coreFetch<{ success: boolean; roles: Array<{ id: string; name: string }> }>('/reports/users/roles'),
   getSupervisorReportDepartments: () =>
     coreFetch<SupervisorReportDepartmentsResponse>('/reports/supervisor/departments'),
   moveDepartment: ({ departmentId, parentDepartmentId }: MoveDepartmentInput) =>

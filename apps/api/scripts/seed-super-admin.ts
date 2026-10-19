@@ -41,6 +41,7 @@ const DEFAULT_PERMISSIONS = [
   { name: 'reports-employees:read', resource: 'reports-employees', action: 'read', description: 'View employee roster report' },
   { name: 'reports-device-sync:read', resource: 'reports-device-sync', action: 'read', description: 'View device sync report' },
   { name: 'reports-audit:read', resource: 'reports-audit', action: 'read', description: 'View audit trail reports' },
+  { name: 'reports-users:read', resource: 'reports-users', action: 'read', description: 'View users report' },
   { name: 'holidays:read', resource: 'holidays', action: 'read', description: 'View holidays and institution off days' },
   { name: 'holidays:create', resource: 'holidays', action: 'create', description: 'Create holidays and institution off days' },
   { name: 'holidays:update', resource: 'holidays', action: 'update', description: 'Update holidays and institution off days' },
