@@ -105,7 +105,9 @@
     "saveFailed": "መገለጫን ማዘመን አልተቻለም",
     "loadFailed": "መገለጫን መጫን አልተቻለም",
     "employeeProfileRequired": "የሰራተኛ መገለጫ ያስፈልጋል",
-    "employeeProfileRequiredDescription": "የተጠቃሚ መለያዎ ከሰራተኛ መገለጫ ጋር አልተገናኘም። እነዚህን መስኮች ከማዘመንዎ በፊት HR መለያዎን እንዲያገናኝ ይጠይቁ።"
+    "employeeProfileRequiredDescription": "የተጠቃሚ መለያዎ ከሰራተኛ መገለጫ ጋር አልተገናኘም። እነዚህን መስኮች ከማዘመንዎ በፊት HR መለያዎን እንዲያገናኝ ይጠይቁ።",
+    "biometricIdHint": "ይህን መለያ በባዮሜትሪክ መሳሪያዎች ላይ ይጠቀሙ። ትክክል ካልሆነ አስተዳዳሪዎን ያነጋግሩ።",
+    "biometricIdNotSet": "ገና አልተመደበም"
   },
   "calendar": {
     "calendarSystem": "የቀን መቁጠሪያ ስርዓት",

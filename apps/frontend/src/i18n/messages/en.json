@@ -105,7 +105,9 @@
     "saveFailed": "Failed to update profile",
     "loadFailed": "Failed to load profile",
     "employeeProfileRequired": "Employee profile required",
-    "employeeProfileRequiredDescription": "Your user account is not linked to an employee profile yet. Ask HR to link your account before updating these fields."
+    "employeeProfileRequiredDescription": "Your user account is not linked to an employee profile yet. Ask HR to link your account before updating these fields.",
+    "biometricIdHint": "Use this ID on the biometric devices. Contact your administrator if it is wrong.",
+    "biometricIdNotSet": "Not assigned yet"
   },
   "calendar": {
     "calendarSystem": "Calendar system",

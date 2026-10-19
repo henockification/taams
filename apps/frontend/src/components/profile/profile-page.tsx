@@ -198,17 +198,29 @@ export function ProfilePage() {
               </Field>
             </div>
 
-            <Field id="profile-phone-number" label={core('phoneNumber')}>
-              <Input
-                id="profile-phone-number"
-                type="tel"
-                value={form.phoneNumber}
-                onChange={(event) => patchForm({ phoneNumber: event.target.value })}
-                required
-                maxLength={50}
-                className="md:max-w-sm"
-              />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field id="profile-phone-number" label={core('phoneNumber')}>
+                <Input
+                  id="profile-phone-number"
+                  type="tel"
+                  value={form.phoneNumber}
+                  onChange={(event) => patchForm({ phoneNumber: event.target.value })}
+                  required
+                  maxLength={50}
+                />
+              </Field>
+              {/* Shown so employees know the ID to use on the devices; only administrators can change it. */}
+              <Field id="profile-biometric-id" label={core('biometricId')}>
+                <Input
+                  id="profile-biometric-id"
+                  value={profileQuery.data.employee.biometricId ?? t('biometricIdNotSet')}
+                  readOnly
+                  aria-readonly="true"
+                  className="bg-muted"
+                />
+                <p className="text-xs text-muted-foreground">{t('biometricIdHint')}</p>
+              </Field>
+            </div>
 
             <div className="flex justify-end">
               <Button
