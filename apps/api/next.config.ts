@@ -11,12 +11,8 @@ const nextConfig = {
   async rewrites() {
     return [
       {
-        source: '/iclock/cdata',
-        destination: '/api/zkteco/cdata',
-      },
-      {
-        source: '/iclock/getrequest',
-        destination: '/api/zkteco/getrequest',
+        source: '/iclock/:path*',
+        destination: '/api/zkteco/:path*',
       },
     ];
   },

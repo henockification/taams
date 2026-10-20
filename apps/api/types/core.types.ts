@@ -714,6 +714,8 @@ export type CreateBiometricDeviceInput = {
   autoSyncEnabled?: boolean;
   healthStatus?: DeviceHealthStatus;
   fallbackToPull?: boolean;
+  isEnrollmentMaster?: boolean;
+  enrollmentSyncEnabled?: boolean;
   isActive?: boolean;
 };
 

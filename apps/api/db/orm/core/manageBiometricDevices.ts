@@ -17,10 +17,14 @@ export async function createBiometricDevice(input: CreateBiometricDeviceInput) {
     await assertDepartmentExists(input.departmentId);
   }
 
-  const [device] = await db
-    .insert(biometricDevices)
-    .values(normalizeBiometricDeviceInput(input) as any)
-    .returning();
+  const device = await db.transaction(async (tx) => {
+    if (input.isEnrollmentMaster) await clearOtherEnrollmentMasters(null, tx);
+    const [inserted] = await tx
+      .insert(biometricDevices)
+      .values(normalizeBiometricDeviceInput(input) as any)
+      .returning();
+    return inserted;
+  });
 
   const created = await getBiometricDeviceById(device.id);
   await writeAuditEvent(db, {
@@ -73,10 +77,13 @@ export async function updateBiometricDevice(id: string, input: UpdateBiometricDe
     return getBiometricDeviceById(id);
   }
 
-  await db
-    .update(biometricDevices)
-    .set({ ...updateData, updatedAt: new Date() })
-    .where(eq(biometricDevices.id, id));
+  await db.transaction(async (tx) => {
+    if (updateData.isEnrollmentMaster) await clearOtherEnrollmentMasters(id, tx);
+    await tx
+      .update(biometricDevices)
+      .set({ ...updateData, updatedAt: new Date() })
+      .where(eq(biometricDevices.id, id));
+  });
 
   const updated = await getBiometricDeviceById(id);
   await writeAuditEvent(db, {
@@ -771,8 +778,20 @@ function normalizeBiometricDeviceInput(input: Partial<CreateBiometricDeviceInput
     autoSyncEnabled: input.autoSyncEnabled,
     healthStatus: input.healthStatus,
     fallbackToPull: input.fallbackToPull,
+    isEnrollmentMaster: input.isEnrollmentMaster,
+    enrollmentSyncEnabled: input.enrollmentSyncEnabled,
     isActive: input.isActive,
   });
+}
+
+// Only one device can be the enrollment master; choosing a new one demotes the old one.
+async function clearOtherEnrollmentMasters(exceptId: string | null, tx: DbClient = db) {
+  await tx
+    .update(biometricDevices)
+    .set({ isEnrollmentMaster: false, updatedAt: new Date() })
+    .where(exceptId
+      ? and(eq(biometricDevices.isEnrollmentMaster, true), sql`${biometricDevices.id} <> ${exceptId}`)
+      : eq(biometricDevices.isEnrollmentMaster, true));
 }
 
 async function getBiometricDeviceIdentity(id: string, tx: DbClient = db) {

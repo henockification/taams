@@ -143,6 +143,8 @@ const initialForm = {
   healthStatus: 'UNKNOWN' as DeviceHealthStatus,
   fallbackToPull: true,
   isActive: true,
+  isEnrollmentMaster: false,
+  enrollmentSyncEnabled: false,
 };
 
 function statusVariant(status: string) {
@@ -154,6 +156,7 @@ function statusVariant(status: string) {
 export default function BiometricDevicesPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const enrollmentT = useTranslations('biometricEnrollment');
   const { formatDateTime } = useCalendarPreference();
   const { data: devicesResponse, isLoading } = useBiometricDevices();
   const { data: departmentsResponse } = useDepartments();
@@ -214,6 +217,8 @@ export default function BiometricDevicesPage() {
       healthStatus: device.healthStatus,
       fallbackToPull: device.fallbackToPull,
       isActive: device.isActive,
+      isEnrollmentMaster: device.isEnrollmentMaster,
+      enrollmentSyncEnabled: device.enrollmentSyncEnabled,
     });
     setDialogOpen(true);
   };
@@ -251,6 +256,8 @@ export default function BiometricDevicesPage() {
         healthStatus: editingDevice?.healthStatus ?? form.healthStatus,
         fallbackToPull: fieldVisibility.fallbackToPull ? form.fallbackToPull : false,
         isActive: form.isActive,
+        isEnrollmentMaster: form.isEnrollmentMaster,
+        enrollmentSyncEnabled: form.enrollmentSyncEnabled,
       };
 
       const response = editingDevice
@@ -384,11 +391,16 @@ export default function BiometricDevicesPage() {
                         <p className="font-medium">{device.deviceName}</p>
                         <Badge variant={device.isActive ? 'default' : 'secondary'}>{device.isActive ? t('active') : t('inactive')}</Badge>
                         <Badge variant={device.healthStatus === 'ERROR' ? 'destructive' : 'outline'}>{device.healthStatus}</Badge>
+                        {device.isEnrollmentMaster ? <Badge>{enrollmentT('master')}</Badge> : null}
+                        {device.enrollmentSyncEnabled ? <Badge variant="outline">{enrollmentT('enrollmentSync')}</Badge> : null}
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {device.deviceCode} · {device.deviceType} · {device.integrationMode}
                       </p>
                       <p className="text-xs text-muted-foreground">{[device.ipAddress, device.port, device.locationName, device.department?.nameEn].filter(Boolean).join(' · ') || t('noDescription')}</p>
+                      {device.lastCommandPollAt ? (
+                        <p className="text-xs text-muted-foreground">{enrollmentT('lastAdmsPoll', { time: formatDateTime(device.lastCommandPollAt) })}</p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <Button
@@ -867,6 +879,28 @@ export default function BiometricDevicesPage() {
                         }
                       />
                     ) : null}
+                    <ToggleRow
+                      label={enrollmentT('enrollmentMaster')}
+                      description={enrollmentT('enrollmentMasterHelp')}
+                      checked={form.isEnrollmentMaster}
+                      onCheckedChange={(checked) =>
+                        setForm((current) => ({
+                          ...current,
+                          isEnrollmentMaster: checked,
+                        }))
+                      }
+                    />
+                    <ToggleRow
+                      label={enrollmentT('enrollmentSyncAdms')}
+                      description={enrollmentT('enrollmentSyncAdmsHelp')}
+                      checked={form.enrollmentSyncEnabled}
+                      onCheckedChange={(checked) =>
+                        setForm((current) => ({
+                          ...current,
+                          enrollmentSyncEnabled: checked,
+                        }))
+                      }
+                    />
                     {visibleFields.lastPushAt ? <ReadOnlyField label={t('lastPushAt')} value={formatDateTime(editingDevice?.lastPushAt ?? null)} /> : null}
                     {visibleFields.lastPullAt ? <ReadOnlyField label={t('lastPullAt')} value={formatDateTime(editingDevice?.lastPullAt ?? null)} /> : null}
                     {visibleFields.lastSeenAt ? <ReadOnlyField label={t('lastSeenAt')} value={formatDateTime(editingDevice?.lastSeenAt ?? null)} /> : null}
@@ -918,10 +952,13 @@ function ReadOnlyField({ label, value }: { label: string; value: string | null }
   );
 }
 
-function ToggleRow({ label, checked, onCheckedChange }: { label: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+function ToggleRow({ label, description, checked, onCheckedChange }: { label: string; description?: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-border p-3">
-      <Label>{label}</Label>
+    <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+      <div className="space-y-1">
+        <Label>{label}</Label>
+        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
+      </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
   );

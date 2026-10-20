@@ -28,7 +28,7 @@ import { includesPrivilegedRole } from '../../../lib/privileged-roles';
 
 // Registering and reconfiguring devices is a system administration task. HR keeps
 // device monitoring, connection tests, and attendance sync.
-const requireDeviceAdministrator = createMiddleware(async (c, next) => {
+export const requireDeviceAdministrator = createMiddleware(async (c, next) => {
   const session = c.get('session') as { user?: { role?: string[] | null } } | undefined;
   if (!includesPrivilegedRole(session?.user?.role)) {
     return c.json({ success: false, error: 'Only system administrators can register or change biometric devices' }, 403);

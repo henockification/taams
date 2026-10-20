@@ -34,6 +34,7 @@ import {
   formatEmployeeLabel,
   writeAuditEvent,
 } from '../../../lib/audit';
+import { queueEnrollmentRemovalForDeactivatedEmployee } from './manageBiometricEnrollment';
 
 type DbClient = typeof db | any;
 
@@ -468,9 +469,11 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
     return getEmployeeById(id);
   }
 
+  let wasActive = false;
   const updatedEmployee = await db.transaction(async (tx) => {
     const current = await getEmployeeById(id, tx);
     if (!current) throw new Error('Employee not found');
+    wasActive = isWorkingEmployee(current);
     assertValidAbsenceReason(pick(updateData, 'absenceReason', current.absenceReason));
 
     await tx
@@ -511,6 +514,9 @@ export async function updateEmployee(id: string, input: UpdateEmployeeInput) {
     ...employeeAuditFields(updatedEmployee),
     changes: diffChanges({}, updateData as Record<string, unknown>),
   });
+  if (wasActive && !isWorkingEmployee(updatedEmployee)) {
+    await queueEnrollmentRemovalForDeactivatedEmployee(id);
+  }
   return updatedEmployee;
 }
 

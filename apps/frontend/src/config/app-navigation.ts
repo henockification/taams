@@ -23,6 +23,7 @@ import {
   Scale,
   Sheet,
   ShieldCheck,
+  ScanFace,
   ScanLine,
   SlidersHorizontal,
   Timer,
@@ -59,6 +60,7 @@ export type AppNavItem = {
     | 'shifts'
     | 'scheduleAssignments'
     | 'biometricDevices'
+    | 'biometricEnrollment'
     | 'biometricExemptions'
     | 'attendancePunches'
     | 'attendanceApprovals'
@@ -389,6 +391,13 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'biometric-devices',
         requiredPermission: 'biometric-devices:read',
         icon: Fingerprint,
+      },
+      {
+        titleKey: 'biometricEnrollment',
+        url: '/biometric-enrollment',
+        permissionResource: 'biometric-devices',
+        requiredPermission: 'biometric-devices:read',
+        icon: ScanFace,
       },
       {
         titleKey: 'biometricExemptions',

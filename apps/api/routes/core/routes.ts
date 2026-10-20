@@ -34,6 +34,7 @@ import {
 import { openApiApp } from '../../lib/openapi';
 import biometricDevicesApp from './biometric-devices/routes';
 import biometricExemptionsApp from './biometric-exemptions/routes';
+import biometricEnrollmentApp from './biometric-enrollment/routes';
 import holidaysApp from './holidays/routes';
 import attendancePunchesApp from './attendance-punches/routes';
 import attendanceApprovalsApp from './attendance-approvals/routes';
@@ -703,6 +704,7 @@ coreApp.get('/employees/:id/work-schedules', requirePermission('schedule-assignm
 coreApp.route('/', dashboardApp);
 coreApp.route('/', biometricDevicesApp);
 coreApp.route('/', biometricExemptionsApp);
+coreApp.route('/', biometricEnrollmentApp);
 coreApp.route('/', holidaysApp);
 coreApp.route('/', attendancePunchesApp);
 coreApp.route('/', attendanceApprovalsApp);

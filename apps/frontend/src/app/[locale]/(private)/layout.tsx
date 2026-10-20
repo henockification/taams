@@ -155,6 +155,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('assignWorkScheduleDescription');
       case 'biometricDevices':
         return coreT('biometricDevicesDescription');
+      case 'biometricEnrollment':
+        return coreT('biometricEnrollmentDescription');
       case 'biometricExemptions':
         return coreT('biometricExemptionsDescription');
       case 'attendancePunches':

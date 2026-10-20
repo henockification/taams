@@ -507,6 +507,10 @@ export type BiometricDevice = {
   autoSyncEnabled: boolean;
   healthStatus: DeviceHealthStatus;
   fallbackToPull: boolean;
+  isEnrollmentMaster: boolean;
+  enrollmentSyncEnabled: boolean;
+  pushProtocolVersion: string | null;
+  lastCommandPollAt: string | null;
   createdAt: string;
   updatedAt: string;
   department?: Department | null;
@@ -1249,6 +1253,91 @@ export type BiometricDeviceResponse = {
   success: boolean;
   biometricDevice: BiometricDevice;
 };
+// Biometric enrollment sync: the master device's users/templates pushed to other devices over ADMS.
+export type EnrollmentSyncScope = 'ALL' | 'DEVICE' | 'EMPLOYEE' | 'MASTER_REFRESH' | 'ROSTER_REFRESH' | 'AUTO_REMOVE';
+export type EmployeeDeviceEnrollmentStatus = 'IN_SYNC' | 'PRESENT' | 'PROVISIONING' | 'REMOVING' | 'FAILED' | 'ABSENT';
+export type EnrollmentOverviewDevice = {
+  id: string;
+  deviceName: string;
+  serialNumber: string | null;
+  ipAddress: string | null;
+  isEnrollmentMaster: boolean;
+  enrollmentSyncEnabled: boolean;
+  pushProtocolVersion: string | null;
+  lastCommandPollAt: string | null;
+  rosterSize: number;
+  pendingCommands: number;
+  failedCommands: number;
+};
+export type EnrollmentOverview = {
+  commandsEnabled: boolean;
+  autoRemoveOnDeactivate: boolean;
+  users: number;
+  linkedUsers: number;
+  templatesByType: { bioType: number; templates: number; users: number }[];
+  unmatchedUsers: { pin: string; name: string | null }[];
+  devices: EnrollmentOverviewDevice[];
+};
+export type EnrollmentOverviewResponse = { success: boolean; overview: EnrollmentOverview };
+export type EnrollmentSyncRunDeviceProgress = {
+  deviceId: string;
+  PENDING: number;
+  SENT: number;
+  SUCCEEDED: number;
+  FAILED: number;
+  CANCELLED: number;
+};
+export type EnrollmentSyncRun = {
+  id: string;
+  triggeredBy: string | null;
+  scope: EnrollmentSyncScope;
+  deviceId: string | null;
+  employeeId: string | null;
+  allowRemovals: boolean;
+  usersAdded: number;
+  usersUpdated: number;
+  usersRemoved: number;
+  createdAt: string;
+  devices: EnrollmentSyncRunDeviceProgress[];
+};
+export type EnrollmentSyncRunsResponse = { success: boolean; syncRuns: EnrollmentSyncRun[] };
+export type EnrollmentUsbImportResponse = {
+  success: boolean;
+  result: { users: number; templates: number; linkedUsers: number; unmatchedPins: string[] };
+};
+export type EnrollmentCommandRunResponse = { success: boolean; syncRunId: string; deviceId: string };
+export type EnrollmentSyncPreview = {
+  deviceId: string;
+  deviceName: string;
+  isEnrollmentMaster: boolean;
+  rosterSize: number;
+  add: number;
+  update: number;
+  remove: number;
+  heldRemovals: number;
+  unknownOnDevice: number;
+  removePins: string[];
+  heldRemovalPins: string[];
+};
+export type EnrollmentSyncInput = { deviceId?: string | null; allowRemovals: boolean };
+export type EnrollmentSyncPreviewResponse = { success: boolean; devices: EnrollmentSyncPreview[] };
+export type EnrollmentSyncResponse = { success: boolean; syncRunId: string; devices: EnrollmentSyncPreview[] };
+export type EmployeeEnrollment = {
+  pin: string | null;
+  enrolled: boolean;
+  capturedAt: string | null;
+  templatesByType: { bioType: number; count: number }[];
+  devices: {
+    deviceId: string;
+    deviceName: string;
+    isEnrollmentMaster: boolean;
+    excluded: boolean;
+    status: EmployeeDeviceEnrollmentStatus;
+  }[];
+};
+export type EmployeeEnrollmentResponse = { success: boolean; enrollment: EmployeeEnrollment };
+export type EmployeeEnrollmentActionInput = { employeeId: string; deviceIds?: string[] };
+export type EmployeeEnrollmentActionResponse = { success: boolean; syncRunId: string; devices: number };
 export type BiometricExemptionsResponse = {
   success: boolean;
   biometricExemptions: BiometricExemption[];
@@ -1780,6 +1869,8 @@ export type CreateBiometricDeviceInput = {
   healthStatus?: DeviceHealthStatus;
   fallbackToPull?: boolean;
   isActive?: boolean;
+  isEnrollmentMaster?: boolean;
+  enrollmentSyncEnabled?: boolean;
 };
 
 export type UpdateBiometricDeviceInput = Partial<CreateBiometricDeviceInput> & {

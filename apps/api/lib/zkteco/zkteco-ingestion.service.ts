@@ -4,6 +4,11 @@ import { biometricDevices } from '../../db/schema';
 import { writeAuditEvent } from '../audit';
 import { parseZktecoAttLog } from './parse-zkteco-attlog';
 import { IngestZktecoPushInput } from "../../types/zkteco";
+import { parseAdmsEnrollmentUpload } from './enrollment/parse-records';
+import { handleDeviceEnrollmentUpload } from '../../db/orm/core/manageBiometricEnrollment';
+
+// Tables that carry users/templates (push 2.x OPERLOG, or table/tablename uploads).
+const ENROLLMENT_TABLES = new Set(['OPERLOG', 'USERINFO', 'USER', 'BIODATA']);
 
 export async function ingestZktecoPush(input: IngestZktecoPushInput) {
   const { serialNumber, table, rawBody, query } = input;
@@ -16,7 +21,14 @@ export async function ingestZktecoPush(input: IngestZktecoPushInput) {
     throw new Error('Unknown ZKTeco device');
   }
 
-  if (table?.toUpperCase() !== 'ATTLOG') {
+  const tableName = table?.toUpperCase() ?? '';
+  if (ENROLLMENT_TABLES.has(tableName)) {
+    await handleDeviceEnrollmentUpload(device, parseAdmsEnrollmentUpload(rawBody, tableName));
+    return;
+  }
+
+  // Punches are recorded by the TCP pull only; ATTLOG pushes are acknowledged, not stored.
+  if (tableName !== 'ATTLOG') {
     return;
   }
 

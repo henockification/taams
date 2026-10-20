@@ -27,6 +27,8 @@
     "ifmis:setup": "tsx scripts/setup-ifmis-oracle.ts",
     "test:ifmis": "tsx --test lib/ifmis/*.test.ts",
     "test:sms": "tsx --test lib/sms/*.test.ts",
+    "test:zkteco": "tsx --test lib/zkteco/enrollment/*.test.ts",
+    "biometric:import-usb": "tsx scripts/import-biometric-usb.ts",
     "drizzle:pull": "drizzle-kit introspect",
     "drizzle:studio": "drizzle-kit studio"
   },

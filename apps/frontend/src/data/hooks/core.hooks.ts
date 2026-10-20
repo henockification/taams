@@ -15,6 +15,8 @@ import type {
   CreateBiometricDeviceInput,
   CreateBiometricExemptionInput,
   CreateBiometricDeviceSyncInput,
+  EmployeeEnrollmentActionInput,
+  EnrollmentSyncInput,
   BulkCreateEmployeeSupervisorInput,
   CreateDepartmentInput,
   CreateEmployeeInput,
@@ -113,6 +115,10 @@ export const coreQueryKeys = {
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
   biometricDevice: (id: string) => [...coreQueryKeys.biometricDevices(), id] as const,
   biometricDeviceSyncHistory: (id: string) => [...coreQueryKeys.biometricDevice(id), 'sync-history'] as const,
+  biometricEnrollment: () => [...coreQueryKeys.all, 'biometric-enrollment'] as const,
+  biometricEnrollmentOverview: () => [...coreQueryKeys.biometricEnrollment(), 'overview'] as const,
+  biometricEnrollmentSyncRuns: () => [...coreQueryKeys.biometricEnrollment(), 'sync-runs'] as const,
+  employeeBiometricEnrollment: (employeeId: string) => [...coreQueryKeys.biometricEnrollment(), 'employee', employeeId] as const,
   biometricExemptions: () => [...coreQueryKeys.all, 'biometric-exemptions'] as const,
   biometricExemption: (id: string) => [...coreQueryKeys.biometricExemptions(), id] as const,
   attendancePunches: () => [...coreQueryKeys.all, 'attendance-punches'] as const,
@@ -1151,6 +1157,124 @@ export function useBiometricDeviceSyncHistory(biometricDeviceId: string) {
     queryFn: () => coreApi.getBiometricDeviceSyncHistory(biometricDeviceId),
     enabled: Boolean(biometricDeviceId),
     staleTime: 60 * 1000,
+  });
+}
+
+const ENROLLMENT_POLL_INTERVAL_MS = 10 * 1000;
+
+// The overview polls itself while any device still has queued commands to pick up.
+export function useBiometricEnrollmentOverview() {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricEnrollmentOverview(),
+    queryFn: () => coreApi.getEnrollmentOverview(),
+    staleTime: 30 * 1000,
+    refetchInterval: (query) =>
+      query.state.data?.overview.devices.some((device) => device.pendingCommands > 0) ? ENROLLMENT_POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useBiometricEnrollmentSyncRuns(poll = false) {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricEnrollmentSyncRuns(),
+    queryFn: () => coreApi.getEnrollmentSyncRuns(),
+    staleTime: 30 * 1000,
+    refetchInterval: poll ? ENROLLMENT_POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useEmployeeBiometricEnrollment(employeeId: string, enabled = true) {
+  return useQuery({
+    queryKey: coreQueryKeys.employeeBiometricEnrollment(employeeId),
+    queryFn: () => coreApi.getEmployeeEnrollment(employeeId),
+    enabled: enabled && Boolean(employeeId),
+    staleTime: 30 * 1000,
+  });
+}
+
+function useInvalidateBiometricEnrollment() {
+  const queryClient = useQueryClient();
+
+  return () => {
+    queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricEnrollment() });
+    queryClient.invalidateQueries({ queryKey: coreQueryKeys.biometricDevices() });
+  };
+}
+
+export function useImportEnrollmentUsb() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (input: { userFile: File; biodataFile: File }) => coreApi.importEnrollmentUsb(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRefreshEnrollmentFromMaster() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: () => coreApi.refreshEnrollmentFromMaster(),
+    onSuccess: invalidate,
+  });
+}
+
+export function usePreviewEnrollmentSync() {
+  return useMutation({
+    mutationFn: (input: EnrollmentSyncInput) => coreApi.previewEnrollmentSync(input),
+  });
+}
+
+export function useApplyEnrollmentSync() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (input: EnrollmentSyncInput) => coreApi.applyEnrollmentSync(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRefreshEnrollmentDeviceRoster() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (biometricDeviceId: string) => coreApi.refreshEnrollmentDeviceRoster(biometricDeviceId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCancelPendingEnrollmentCommands() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (biometricDeviceId: string) => coreApi.cancelPendingEnrollmentCommands(biometricDeviceId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRetryFailedEnrollmentCommands() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (biometricDeviceId: string) => coreApi.retryFailedEnrollmentCommands(biometricDeviceId),
+    onSuccess: invalidate,
+  });
+}
+
+export function useProvisionEmployeeEnrollment() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (input: EmployeeEnrollmentActionInput) => coreApi.provisionEmployeeEnrollment(input),
+    onSuccess: invalidate,
+  });
+}
+
+export function useDeprovisionEmployeeEnrollment() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (input: EmployeeEnrollmentActionInput) => coreApi.deprovisionEmployeeEnrollment(input),
+    onSuccess: invalidate,
   });
 }
 

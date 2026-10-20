@@ -403,6 +403,10 @@ export const BiometricDeviceSchema = z.object({
   autoSyncEnabled: z.boolean().openapi({ example: true }),
   healthStatus: DeviceHealthStatusSchema.openapi({ example: 'UNKNOWN' }),
   fallbackToPull: z.boolean().openapi({ example: true }),
+  isEnrollmentMaster: z.boolean().openapi({ example: false }),
+  enrollmentSyncEnabled: z.boolean().openapi({ example: false }),
+  pushProtocolVersion: z.string().nullable(),
+  lastCommandPollAt: z.string().nullable(),
   createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
   department: DepartmentSchema.nullable().optional(),
@@ -861,6 +865,8 @@ export const CreateBiometricDeviceRequestSchema = z.object({
   autoSyncEnabled: z.boolean().optional(),
   healthStatus: DeviceHealthStatusSchema.optional(),
   fallbackToPull: z.boolean().optional(),
+  isEnrollmentMaster: z.boolean().optional(),
+  enrollmentSyncEnabled: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 

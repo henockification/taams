@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { ingestZktecoPush } from '../../../lib/zkteco/zkteco-ingestion.service';
 import { requireRegisteredZktecoDevice, ZktecoDeviceAuthError } from '../../../lib/zkteco/device-auth';
+import { buildHandshakeOptions } from '../../../lib/zkteco/enrollment/commands';
+import { admsCommandsEnabled, markDeviceCommandPoll } from '../../../db/orm/core/manageBiometricEnrollment';
 
 const zktecoCdataApp = new Hono();
 
@@ -16,9 +18,15 @@ function deviceAuthError(c: any, error: unknown) {
   return c.text('ERROR', 500);
 }
 
+// Handshake ("?options=all"). Devices in enrollment sync get the push options (no AttLog,
+// so punches stay on TCP pull); every other device keeps the plain "OK".
 zktecoCdataApp.get('/', async (c) => {
   try {
-    await requireRegisteredZktecoDevice(c);
+    const device = await requireRegisteredZktecoDevice(c);
+    if (c.req.query('options') && admsCommandsEnabled() && device.enrollmentSyncEnabled) {
+      await markDeviceCommandPoll(device.id, c.req.query('pushver') ?? null);
+      return c.text(buildHandshakeOptions(device.serialNumber ?? ''), 200);
+    }
     return c.text('OK', 200);
   } catch (error) {
     return deviceAuthError(c, error);

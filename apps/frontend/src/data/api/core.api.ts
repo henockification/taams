@@ -9,6 +9,16 @@ import type {
   BiometricDeviceConnectionTestResponse,
   BiometricDeviceResponse,
   BiometricDevicesResponse,
+  EmployeeEnrollmentActionInput,
+  EmployeeEnrollmentActionResponse,
+  EmployeeEnrollmentResponse,
+  EnrollmentCommandRunResponse,
+  EnrollmentOverviewResponse,
+  EnrollmentSyncInput,
+  EnrollmentSyncPreviewResponse,
+  EnrollmentSyncResponse,
+  EnrollmentSyncRunsResponse,
+  EnrollmentUsbImportResponse,
   BiometricExemptionResponse,
   BiometricExemptionsResponse,
   BulkCreateEmployeeSupervisorInput,
@@ -518,6 +528,55 @@ export const coreApi = {
       method: 'POST',
     }),
   getBiometricDeviceSyncHistory: (biometricDeviceId: string) => coreFetch<AttendanceSyncBatchesResponse>(`/biometric-devices/${biometricDeviceId}/sync-history`),
+  getEnrollmentOverview: () => coreFetch<EnrollmentOverviewResponse>('/biometric-enrollment/overview'),
+  getEnrollmentSyncRuns: () => coreFetch<EnrollmentSyncRunsResponse>('/biometric-enrollment/sync-runs'),
+  importEnrollmentUsb: ({ userFile, biodataFile }: { userFile: File; biodataFile: File }) => {
+    const formData = new FormData();
+    formData.append('userFile', userFile);
+    formData.append('biodataFile', biodataFile);
+
+    return coreFetch<EnrollmentUsbImportResponse>('/biometric-enrollment/import-usb', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  refreshEnrollmentFromMaster: () =>
+    coreFetch<EnrollmentCommandRunResponse>('/biometric-enrollment/refresh-from-master', {
+      method: 'POST',
+    }),
+  previewEnrollmentSync: (input: EnrollmentSyncInput) =>
+    coreFetch<EnrollmentSyncPreviewResponse>('/biometric-enrollment/sync/preview', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  applyEnrollmentSync: (input: EnrollmentSyncInput) =>
+    coreFetch<EnrollmentSyncResponse>('/biometric-enrollment/sync', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  refreshEnrollmentDeviceRoster: (biometricDeviceId: string) =>
+    coreFetch<EnrollmentCommandRunResponse>(`/biometric-enrollment/devices/${biometricDeviceId}/refresh-roster`, {
+      method: 'POST',
+    }),
+  cancelPendingEnrollmentCommands: (biometricDeviceId: string) =>
+    coreFetch<{ success: boolean; cancelled: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/cancel-pending`, {
+      method: 'POST',
+    }),
+  retryFailedEnrollmentCommands: (biometricDeviceId: string) =>
+    coreFetch<{ success: boolean; retried: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/retry-failed`, {
+      method: 'POST',
+    }),
+  getEmployeeEnrollment: (employeeId: string) => coreFetch<EmployeeEnrollmentResponse>(`/biometric-enrollment/employees/${employeeId}`),
+  provisionEmployeeEnrollment: ({ employeeId, ...input }: EmployeeEnrollmentActionInput) =>
+    coreFetch<EmployeeEnrollmentActionResponse>(`/biometric-enrollment/employees/${employeeId}/provision`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  deprovisionEmployeeEnrollment: ({ employeeId, ...input }: EmployeeEnrollmentActionInput) =>
+    coreFetch<EmployeeEnrollmentActionResponse>(`/biometric-enrollment/employees/${employeeId}/deprovision`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
   createAttendancePunch: (input: CreateAttendancePunchInput) =>
     coreFetch<AttendancePunchResponse>('/attendance-punches', {
       method: 'POST',

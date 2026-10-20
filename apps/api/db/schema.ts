@@ -18,6 +18,7 @@ import {
   vector,
   numeric,
   check,
+  bigserial,
 } from 'drizzle-orm/pg-core';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core/columns/common';
 import { relations } from 'drizzle-orm';
@@ -434,9 +435,16 @@ export const biometricDevices = pgTable('biometric_devices', {
   autoSyncEnabled: boolean('auto_sync_enabled').notNull().default(true),
   healthStatus: varchar('health_status', { length: 30 }).notNull().default('UNKNOWN'),
   fallbackToPull: boolean('fallback_to_pull').notNull().default(true),
+  // Enrollment sync over ADMS: the master is where people enroll; other devices only
+  // receive users/templates once enrollment sync is enabled for them.
+  isEnrollmentMaster: boolean('is_enrollment_master').notNull().default(false),
+  enrollmentSyncEnabled: boolean('enrollment_sync_enabled').notNull().default(false),
+  pushProtocolVersion: varchar('push_protocol_version', { length: 50 }),
+  lastCommandPollAt: timestamp('last_command_poll_at', { withTimezone: false }),
   createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
 }, (table) => ({
+  enrollmentMasterIdx: uniqueIndex('ux_biometric_devices_enrollment_master').on(table.isEnrollmentMaster).where(sql`${table.isEnrollmentMaster} = true`),
   deviceTypeCheck: check('chk_device_type', sql`${table.deviceType} IN ('BIOMETRIC', 'RFID', 'FACE_RECOGNITION', 'MOBILE', 'WEB')`),
   connectionTypeCheck: check('chk_connection_type', sql`${table.connectionType} IN ('TCP_IP', 'USB', 'WIFI', 'API')`),
   integrationModeCheck: check('chk_device_integration_mode', sql`${table.integrationMode} IN ('PUSH_ADMS', 'TCP_PULL', 'HYBRID', 'MANUAL_ONLY', 'DISABLED')`),
@@ -452,6 +460,101 @@ export const biometricDeviceLocks = pgTable('biometric_device_locks', {
 }, (table) => ({
   ownerTypeCheck: check('chk_biometric_device_lock_owner_type', sql`${table.ownerType} IN ('ATTENDANCE')`),
   expiresIdx: index('idx_biometric_device_locks_expires').on(table.expiresAt),
+}));
+
+// Users and face/palm templates captured from the enrollment master (USB export or ADMS
+// upload). Templates are AES-256-GCM encrypted and never returned by the API.
+export const biometricDeviceUsers = pgTable('biometric_device_users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pin: varchar('pin', { length: 50 }).notNull().unique('ux_biometric_device_users_pin'),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  name: varchar('name', { length: 100 }),
+  privilege: integer('privilege').notNull().default(0),
+  password: varchar('password', { length: 50 }),
+  card: varchar('card', { length: 50 }),
+  sourceDeviceId: uuid('source_device_id').references(() => biometricDevices.id, { onDelete: 'set null' }),
+  lastCapturedAt: timestamp('last_captured_at', { withTimezone: false }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  employeeIdx: index('idx_biometric_device_users_employee').on(table.employeeId),
+}));
+
+export const biometricTemplates = pgTable('biometric_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  deviceUserId: uuid('device_user_id').notNull().references(() => biometricDeviceUsers.id, { onDelete: 'cascade' }),
+  bioType: integer('bio_type').notNull(),
+  bioNo: integer('bio_no').notNull().default(0),
+  bioIndex: integer('bio_index').notNull().default(0),
+  valid: integer('valid').notNull().default(1),
+  duress: integer('duress').notNull().default(0),
+  majorVer: integer('major_ver').notNull().default(0),
+  minorVer: integer('minor_ver').notNull().default(0),
+  format: integer('format').notNull().default(0),
+  templateEnc: text('template_enc').notNull(),
+  templateSha256: varchar('template_sha256', { length: 64 }).notNull(),
+  capturedAt: timestamp('captured_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  slotUnique: unique('ux_biometric_templates_slot').on(table.deviceUserId, table.bioType, table.bioNo, table.bioIndex),
+}));
+
+export const biometricSyncRuns = pgTable('biometric_sync_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  triggeredBy: text('triggered_by').references(() => user.id, { onDelete: 'set null' }),
+  scope: varchar('scope', { length: 20 }).notNull(),
+  deviceId: uuid('device_id').references(() => biometricDevices.id, { onDelete: 'set null' }),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  allowRemovals: boolean('allow_removals').notNull().default(false),
+  usersAdded: integer('users_added').notNull().default(0),
+  usersUpdated: integer('users_updated').notNull().default(0),
+  usersRemoved: integer('users_removed').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  scopeCheck: check('chk_biometric_sync_runs_scope', sql`${table.scope} IN ('ALL', 'DEVICE', 'EMPLOYEE', 'MASTER_REFRESH', 'ROSTER_REFRESH', 'AUTO_REMOVE')`),
+  createdIdx: index('idx_biometric_sync_runs_created').on(table.createdAt),
+}));
+
+// Outbound ADMS queue. The serial id is the C:<id> the device echoes back on devicecmd.
+export const biometricDeviceCommands = pgTable('biometric_device_commands', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  deviceId: uuid('device_id').notNull().references(() => biometricDevices.id, { onDelete: 'cascade' }),
+  syncRunId: uuid('sync_run_id').references(() => biometricSyncRuns.id, { onDelete: 'set null' }),
+  kind: varchar('kind', { length: 30 }).notNull(),
+  pin: varchar('pin', { length: 50 }),
+  templateId: uuid('template_id').references(() => biometricTemplates.id, { onDelete: 'cascade' }),
+  templatesHash: varchar('templates_hash', { length: 64 }),
+  commandText: text('command_text'),
+  status: varchar('status', { length: 20 }).notNull().default('PENDING'),
+  attempts: integer('attempts').notNull().default(0),
+  returnCode: integer('return_code'),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: false }),
+  completedAt: timestamp('completed_at', { withTimezone: false }),
+}, (table) => ({
+  kindCheck: check('chk_biometric_device_commands_kind', sql`${table.kind} IN ('USER_UPSERT', 'BIODATA_UPSERT', 'USER_DELETE', 'QUERY')`),
+  statusCheck: check('chk_biometric_device_commands_status', sql`${table.status} IN ('PENDING', 'SENT', 'SUCCEEDED', 'FAILED', 'CANCELLED')`),
+  queueIdx: index('idx_biometric_device_commands_queue').on(table.deviceId, table.status, table.id),
+  runIdx: index('idx_biometric_device_commands_run').on(table.syncRunId, table.status),
+}));
+
+// What each device is known to hold. templates_hash is null when the user was reported
+// by the device but TAAMS has not written its templates there.
+export const biometricDeviceRoster = pgTable('biometric_device_roster', {
+  deviceId: uuid('device_id').notNull().references(() => biometricDevices.id, { onDelete: 'cascade' }),
+  pin: varchar('pin', { length: 50 }).notNull(),
+  templatesHash: varchar('templates_hash', { length: 64 }),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ name: 'biometric_device_roster_pk', columns: [table.deviceId, table.pin] }),
+}));
+
+export const biometricDeviceExclusions = pgTable('biometric_device_exclusions', {
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  deviceId: uuid('device_id').notNull().references(() => biometricDevices.id, { onDelete: 'cascade' }),
+  createdBy: text('created_by').references(() => user.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: false }).notNull().defaultNow(),
+}, (table) => ({
+  pk: primaryKey({ name: 'biometric_device_exclusions_pk', columns: [table.employeeId, table.deviceId] }),
 }));
 
 export const attendanceSyncBatches = pgTable('attendance_sync_batches', {

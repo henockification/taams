@@ -24,6 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
+import { EmployeeBiometricEnrollmentCard } from '@/components/biometric/employee-biometric-enrollment-card';
 import {
   Select,
   SelectContent,
@@ -420,6 +421,8 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
           </CardContent>
         </Card>
       </div>
+
+      <EmployeeBiometricEnrollmentCard employeeId={employee.id} />
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
