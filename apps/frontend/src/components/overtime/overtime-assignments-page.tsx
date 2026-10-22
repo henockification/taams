@@ -26,11 +26,11 @@ import {
   useUpdateOvertimeRequest,
 } from '@/data/hooks/core.hooks';
 import type {
-  Employee,
   OvertimeAttendanceCoverage,
   OvertimeRequest,
   OvertimeRequestStatus,
 } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -49,6 +49,7 @@ const initialForm = {
 export function OvertimeAssignmentsPage({ mode }: { mode: 'employee' | 'supervisor' }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate, formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
   const [assignOpen, setAssignOpen] = useState(false);
@@ -466,11 +467,6 @@ function normalizeTime(value: string) {
 function formatTime(value: string | null) {
   if (!value) return '-';
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
 function requestStatusVariant(status: OvertimeRequestStatus) {

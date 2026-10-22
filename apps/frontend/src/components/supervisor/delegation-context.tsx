@@ -4,6 +4,7 @@ import { ShieldCheck } from 'lucide-react';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { useEmployeeName } from '@/lib/employee-name';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type DelegatedCapability = {
@@ -12,6 +13,10 @@ type DelegatedCapability = {
     firstNameEn?: string | null;
     middleNameEn?: string | null;
     lastNameEn?: string | null;
+    firstNameAm?: string | null;
+    middleNameAm?: string | null;
+    lastNameAm?: string | null;
+    sourceFullNameAm?: string | null;
   } | null;
   endsAt?: string | null;
 };
@@ -30,6 +35,7 @@ export function getActiveDelegatedCapability(user: SessionUserWithDelegation) {
 
 export function DelegationBanner({ user }: { user: SessionUserWithDelegation }) {
   const { formatDateTime } = useCalendarPreference();
+  const employeeName = useEmployeeName();
   const delegation = getActiveDelegatedCapability(user);
   if (!delegation) return null;
 
@@ -38,7 +44,7 @@ export function DelegationBanner({ user }: { user: SessionUserWithDelegation }) 
       <ShieldCheck className="h-4 w-4" />
       <AlertTitle>Delegated supervisor access</AlertTitle>
       <AlertDescription>
-        Acting as delegate for {employeeName(delegation.supervisorEmployee)}
+        Acting as delegate for {employeeName(delegation.supervisorEmployee) || 'supervisor'}
         {delegation.endsAt ? ` until ${formatDateTime(delegation.endsAt)}` : ''}.
       </AlertDescription>
     </Alert>
@@ -52,9 +58,4 @@ export function DelegationAuditBadge({ delegationId }: { delegationId?: string |
 
 export function delegatedActionLabel(label: string, user: SessionUserWithDelegation) {
   return getActiveDelegatedCapability(user) ? `${label} as delegate` : label;
-}
-
-function employeeName(employee?: DelegatedCapability['supervisorEmployee']) {
-  if (!employee) return 'supervisor';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ') || 'supervisor';
 }

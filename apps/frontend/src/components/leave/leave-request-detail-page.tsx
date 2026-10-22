@@ -20,6 +20,7 @@ import { useChangeLeaveRequestStatus, useLeaveBalances, useLeaveRequests, useRev
 import type { LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -28,11 +29,6 @@ type LeaveRequestDetailPageProps = {
   backHref: string;
   approvalMode?: boolean;
 };
-
-function employeeName(employee?: LeaveRequest['employee'] | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
 
 function statusVariant(status: LeaveRequest['status']) {
   if (status === 'AUTHORIZED') return 'default';
@@ -43,6 +39,7 @@ function statusVariant(status: LeaveRequest['status']) {
 export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = false }: LeaveRequestDetailPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate } = useCalendarPreference();
   const session = useSession();
   const leaveRequestsQuery = useLeaveRequests(approvalMode ? undefined : 'annual', approvalMode ? 'approvals' : 'self');
@@ -182,7 +179,7 @@ export function LeaveRequestDetailPage({ requestId, backHref, approvalMode = fal
         <div className="flex flex-wrap gap-2">
           <Badge variant={statusVariant(request.status) as any}>{leaveStatusLabel(request.status, t)}</Badge>
           <DelegationAuditBadge delegationId={request.supervisorDelegationId} />
-          {canEdit ? (
+          {canEdit && isAnnualLeaveRequest ? (
             <Button type="button" variant="outline" asChild>
               <Link href={`/annual-leave-requests/${request.id}/edit` as any}><Pencil className="size-4" />{common('edit')}</Link>
             </Button>

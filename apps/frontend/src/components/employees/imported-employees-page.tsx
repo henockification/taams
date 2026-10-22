@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Plus, UploadCloud } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { formatEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import {
   useEmployees,
@@ -88,6 +89,7 @@ export function ImportedEmployeesPage({
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const locale = useLocale();
   const router = useRouter();
   const copy = directoryCopy[kind];
   const { data: employeesResponse, isLoading } = useEmployees();
@@ -135,6 +137,10 @@ export function ImportedEmployeesPage({
         employee.firstNameEn,
         employee.middleNameEn,
         employee.lastNameEn,
+        employee.firstNameAm,
+        employee.middleNameAm,
+        employee.lastNameAm,
+        employee.sourceFullNameAm,
         employee.employeeCode,
         employee.sourceIdNo,
         employee.phoneNumber,
@@ -145,8 +151,8 @@ export function ImportedEmployeesPage({
       ].filter(Boolean).join(' ').toLowerCase();
 
       return haystack.includes(query);
-    }).sort((left, right) => employeeDirectoryName(left).localeCompare(employeeDirectoryName(right), undefined, { sensitivity: 'base' }));
-  }, [departmentFilter, directoryEmployees, employmentStatusFilter, search]);
+    }).sort((left, right) => formatEmployeeName(left, locale).localeCompare(formatEmployeeName(right, locale), undefined, { sensitivity: 'base' }));
+  }, [departmentFilter, directoryEmployees, employmentStatusFilter, locale, search]);
 
   const totalRecords = filteredEmployees.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
@@ -317,6 +323,8 @@ export function ImportedEmployeesPage({
                 const amharicName = [employee.firstNameAm, employee.middleNameAm, employee.lastNameAm]
                   .filter(Boolean)
                   .join(' ');
+                // The secondary line shows the name in the other language.
+                const secondaryName = locale === 'am' ? formatEmployeeName(employee, 'en') : amharicName;
                 const sourceStatus = employee.sourceEmploymentStatus ?? employee.employmentStatus;
 
                 return (
@@ -334,8 +342,8 @@ export function ImportedEmployeesPage({
                     className="grid cursor-pointer grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{employee.firstNameEn} {employee.middleNameEn} {employee.lastNameEn}</p>
-                      <p className="truncate text-xs text-muted-foreground">{amharicName || '-'}</p>
+                      <p className="truncate font-medium">{formatEmployeeName(employee, locale)}</p>
+                      <p className="truncate text-xs text-muted-foreground">{secondaryName || '-'}</p>
                     </div>
                     <div className="flex items-center">
                       <Badge variant="secondary">{employee.sourceIdNo ?? employee.employeeCode}</Badge>
@@ -432,10 +440,6 @@ export function ImportedEmployeesPage({
       </Dialog>
     </div>
   );
-}
-
-function employeeDirectoryName(employee: Employee) {
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
 function employeeDepartmentOption(employee: Employee) {

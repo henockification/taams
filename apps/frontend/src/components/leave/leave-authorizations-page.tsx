@@ -16,6 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { useAuthorizeLeaveInterruption, useAuthorizeLeaveRequest, useLeaveBalances, useLeaveRequests } from '@/data/hooks/core.hooks';
 import type { LeaveBalance, LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText } from '@/lib/employee-picker-search';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -25,6 +27,7 @@ type QueueFilter = 'PENDING' | 'AUTHORIZED' | 'REJECTED' | 'ALL';
 export function LeaveAuthorizationsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate, formatDateTime } = useCalendarPreference();
   const requestsQuery = useLeaveRequests(undefined, 'authorizations');
   const balancesQuery = useLeaveBalances(undefined, { view: 'authorizations' });
@@ -62,7 +65,7 @@ export function LeaveAuthorizationsPage() {
       if (requestDateFilters.fromDate && requestDate < requestDateFilters.fromDate) return false;
       if (requestDateFilters.toDate && requestDate > requestDateFilters.toDate) return false;
       if (!needle) return true;
-      return `${employeeName(item.request)} ${item.request.employee?.employeeCode ?? ''}`.toLowerCase().includes(needle);
+      return `${employeeNameSearchText(item.request.employee)} ${item.request.employee?.employeeCode ?? ''}`.toLowerCase().includes(needle);
     });
   }, [filter, items, leaveType, requestDateFilters.fromDate, requestDateFilters.toDate, search]);
   const pendingCount = items.filter((item) => (item.kind === 'request' ? item.request.status : item.interruption.status) === 'APPROVED').length;
@@ -123,7 +126,7 @@ export function LeaveAuthorizationsPage() {
                   const status = item.kind === 'request' ? request.status : item.interruption.status;
                   const balance = request.fiscalYearId ? balanceByEmployeeYear.get(`${request.employeeId}:${request.fiscalYearId}`) : null;
                   return <TableRow key={item.kind === 'request' ? request.id : item.interruption.id}>
-                    <TableCell><p className="font-medium">{employeeName(request)}</p><p className="text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p></TableCell>
+                    <TableCell><p className="font-medium">{employeeName(request.employee) || '-'}</p><p className="text-xs text-muted-foreground">{request.employee?.employeeCode ?? '-'}</p></TableCell>
                     <TableCell>{item.kind === 'request' ? t('leaveRequest') : t('interruption')}</TableCell>
                     <TableCell>{request.leaveType?.nameEn ?? '-'}</TableCell>
                     <TableCell>{formatDate(request.startDate)} – {formatDate(request.endDate)}</TableCell>
@@ -157,12 +160,13 @@ export function LeaveAuthorizationsPage() {
 
 function AuthorizationDetails({ item, balance, formatDate, formatDateTime }: { item: WorkItem; balance: LeaveBalance | null; formatDate: (value?: string | Date | null) => string; formatDateTime: (value?: string | Date | null) => string }) {
   const t = useTranslations('core');
+  const employeeName = useEmployeeName();
   const request = item.request;
   const approvedDates = request.annualLeaveDates?.filter((date) => date.status === 'APPROVED' && date.source === 'ORIGINAL') ?? [];
   const interruptionDates = item.kind === 'interruption' ? item.interruption.dates.filter((date) => date.kind === 'INTERRUPTED_APPROVED') : [];
   const continuationDates = item.kind === 'interruption' ? item.interruption.dates.filter((date) => date.kind === 'CONTINUATION_APPROVED') : [];
   return <div className="space-y-4 text-sm">
-    <div className="grid gap-3 rounded-md border p-4 sm:grid-cols-2"><Detail label={t('employee')} value={employeeName(request)} /><Detail label={t('leaveType')} value={request.leaveType?.nameEn ?? '-'} /><Detail label={t('requestedDays')} value={request.requestedDays} /><Detail label={t('approvedDays')} value={request.approvedDays} /><Detail label={t('approvedAt')} value={formatDateTime(item.kind === 'request' ? request.approvedAt : item.interruption.reviewedAt)} /><Detail label={t('reason')} value={item.kind === 'request' ? request.reason : item.interruption.reason} /></div>
+    <div className="grid gap-3 rounded-md border p-4 sm:grid-cols-2"><Detail label={t('employee')} value={employeeName(request.employee) || '-'} /><Detail label={t('leaveType')} value={request.leaveType?.nameEn ?? '-'} /><Detail label={t('requestedDays')} value={request.requestedDays} /><Detail label={t('approvedDays')} value={request.approvedDays} /><Detail label={t('approvedAt')} value={formatDateTime(item.kind === 'request' ? request.approvedAt : item.interruption.reviewedAt)} /><Detail label={t('reason')} value={item.kind === 'request' ? request.reason : item.interruption.reason} /></div>
     {balance ? <div className="grid grid-cols-2 gap-3 rounded-md border p-4 sm:grid-cols-4"><Detail label={t('openingBalance')} value={balance.opening} /><Detail label={t('reservedBalance')} value={balance.reserved} /><Detail label={t('usedBalance')} value={balance.used} /><Detail label={t('availableBalance')} value={balance.available} /></div> : null}
     {item.kind === 'request' && approvedDates.length > 0 ? <DateList title={t('supervisorApprovedDates')} dates={approvedDates.map((date) => ({ date: date.date, value: date.approvedDayValue ?? date.requestedDayValue }))} formatDate={formatDate} /> : null}
     {item.kind === 'interruption' ? <><DateList title={t('interruptedDays')} dates={interruptionDates.map((date) => ({ date: date.date, value: date.dayValue }))} formatDate={formatDate} /><DateList title={t('continuationPattern')} dates={continuationDates.map((date) => ({ date: date.date, value: date.dayValue }))} formatDate={formatDate} /></> : null}
@@ -175,5 +179,4 @@ function DateList({ title, dates, formatDate }: { title: string; dates: Array<{ 
 
 function Detail({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 break-words font-medium">{value}</p></div>; }
 function Summary({ label, value }: { label: string; value: number }) { return <Card className="gap-2 py-3 sm:py-4"><CardContent className="px-3 sm:px-4"><p className="text-xs leading-tight text-muted-foreground sm:text-sm">{label}</p><p className="mt-1 text-xl font-semibold sm:text-2xl">{value}</p></CardContent></Card>; }
-function employeeName(request: LeaveRequest) { return [request.employee?.firstNameEn, request.employee?.middleNameEn, request.employee?.lastNameEn].filter(Boolean).join(' ') || '-'; }
 function authorizationStatusLabel(status: string, t: (key: any) => string) { if (status === 'AUTHORIZED') return t('authorized'); if (status === 'AUTHORIZATION_REJECTED') return t('rejectedByHr'); return t('awaitingHrAuthorization'); }

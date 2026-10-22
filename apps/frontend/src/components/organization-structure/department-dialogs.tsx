@@ -2,7 +2,7 @@
 
 import { FormEvent, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Check, Loader2, UserRound } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,7 @@ import {
   useUpdateDepartment,
 } from '@/data/hooks/core.hooks';
 import type { Department } from '@/data/types/core.types';
+import { localizedFullName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 
 import { collectSelfAndDescendantIds } from './department-tree';
@@ -329,6 +330,7 @@ export function DepartmentHeadDialog({
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const locale = useLocale();
   const setDepartmentHead = useSetDepartmentHead();
   const [search, setSearch] = useState('');
   const deferredSearch = useDeferredValue(search.trim());
@@ -369,7 +371,7 @@ export function DepartmentHeadDialog({
           <span className="min-w-0 flex-1">
             <span className="block text-xs text-muted-foreground">{t('departmentHead')}</span>
             <span className="block truncate font-medium">
-              {currentHead ? `${currentHead.fullName} · ${currentHead.employeeCode}` : t('noHead')}
+              {currentHead ? `${localizedFullName(currentHead, locale)} · ${currentHead.employeeCode}` : t('noHead')}
             </span>
           </span>
           {currentHead ? (
@@ -404,7 +406,7 @@ export function DepartmentHeadDialog({
                     onSelect={() => save(employee.id)}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate">{employee.fullName}</span>
+                      <span className="block truncate">{localizedFullName(employee, locale)}</span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {[employee.employeeCode, employee.departmentName].filter(Boolean).join(' · ')}
                       </span>

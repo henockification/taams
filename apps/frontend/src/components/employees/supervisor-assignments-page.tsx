@@ -47,6 +47,7 @@ import {
   useWorkingEmployees,
 } from '@/data/hooks/core.hooks';
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
 import { cn } from '@/lib/utils';
@@ -67,6 +68,7 @@ function todayInput() {
 export function SupervisorAssignmentsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate } = useCalendarPreference();
   const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useAllEmployeeSupervisors();
@@ -125,6 +127,10 @@ export function SupervisorAssignmentsPage() {
         employee.firstNameEn,
         employee.middleNameEn,
         employee.lastNameEn,
+        employee.firstNameAm,
+        employee.middleNameAm,
+        employee.lastNameAm,
+        employee.sourceFullNameAm,
         employee.employeeCode,
         employee.email,
         employee.phoneNumber,
@@ -137,7 +143,7 @@ export function SupervisorAssignmentsPage() {
 
       return haystack.includes(query);
     }).sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }));
-  }, [departmentFilter, employees, search, statusFilter, typeFilter]);
+  }, [departmentFilter, employeeName, employees, search, statusFilter, typeFilter]);
 
   const filteredEmployeeIds = useMemo(() => filteredEmployees.map((employee) => employee.id), [filteredEmployees]);
   const selectedFilteredCount = filteredEmployeeIds.filter((id) => selectedEmployeeIds.has(id)).length;
@@ -151,14 +157,14 @@ export function SupervisorAssignmentsPage() {
     () => employees
       .filter((employee) => selectedEmployeeIds.has(employee.id))
       .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' })),
-    [employees, selectedEmployeeIds],
+    [employeeName, employees, selectedEmployeeIds],
   );
   const selectedEmployeeSet = useMemo(() => new Set(selectedEmployeeIds), [selectedEmployeeIds]);
   const supervisorOptions = useMemo(() => (
     (supervisorCandidatesResponse?.employees ?? [])
       .filter((employee) => !selectedEmployeeSet.has(employee.id))
       .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }))
-  ), [supervisorCandidatesResponse, selectedEmployeeSet]);
+  ), [employeeName, supervisorCandidatesResponse, selectedEmployeeSet]);
 
   useEffect(() => {
     if (currentPage !== page) setPage(currentPage);
@@ -447,10 +453,6 @@ export function SupervisorAssignmentsPage() {
   );
 }
 
-function employeeName(employee: Employee) {
-  return `${employee.firstNameEn} ${employee.middleNameEn ?? ''} ${employee.lastNameEn}`.replace(/\s+/g, ' ').trim();
-}
-
 function Field({ label, id, children }: { label: ReactNode; id: string; children: ReactNode }) {
   return (
     <div className="space-y-2">
@@ -488,6 +490,7 @@ function SearchableEmployeeSelect({
   searchPlaceholder: string;
   emptyMessage: string;
 }) {
+  const employeeName = useEmployeeName();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const selectedEmployee = employees.find((employee) => employee.id === value);

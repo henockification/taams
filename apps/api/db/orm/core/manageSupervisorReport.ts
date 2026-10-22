@@ -106,6 +106,9 @@ export async function getSupervisorAttendanceRecords(params: SupervisorAttendanc
           ilike(employees.firstNameEn, `%${search}%`),
           ilike(employees.middleNameEn, `%${search}%`),
           ilike(employees.lastNameEn, `%${search}%`),
+          ilike(employees.firstNameAm, `%${search}%`),
+          ilike(employees.middleNameAm, `%${search}%`),
+          ilike(employees.lastNameAm, `%${search}%`),
         )
         : undefined,
     ));

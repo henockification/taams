@@ -27,7 +27,8 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, TemporaryDepartmentAssignment } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
-import { matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText, matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -54,6 +55,7 @@ export function TemporaryDepartmentAssignmentsPage() {
   const { formatDate } = useCalendarPreference();
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const [dialogOpen, setDialogOpen] = useState(false);
   const assignmentsQuery = useTemporaryDepartmentAssignments();
   const employeesQuery = useTemporaryAssignmentEligibleEmployees(dialogOpen);
@@ -77,7 +79,7 @@ export function TemporaryDepartmentAssignmentsPage() {
         (filter === 'active' && assignment.isActive) ||
         (filter === 'history' && !assignment.isActive);
       const haystack = [
-        employeeName(assignment.employee),
+        employeeNameSearchText(assignment.employee),
         assignment.employee?.employeeCode,
         assignment.sourceDepartment?.nameEn,
         assignment.targetDepartment?.nameEn,
@@ -479,11 +481,6 @@ function SearchableSelect({
       </PopoverContent>
     </Popover>
   );
-}
-
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
 function today() {

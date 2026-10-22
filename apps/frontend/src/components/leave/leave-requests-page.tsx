@@ -48,10 +48,12 @@ import {
   useLeaveRequests,
   useLeaveTypes,
   useLeaveWorkingCalendar,
+  useUpdateLeaveRequest,
 } from '@/data/hooks/core.hooks';
-import type { Employee, LeaveBalance, LeaveRequest } from '@/data/types/core.types';
+import type { LeaveBalance, LeaveRequest } from '@/data/types/core.types';
 import { Link } from '@/i18n';
 import { useSession } from '@/lib/auth-client';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { DualCalendarDateField } from '@/components/calendar/dual-calendar-date-field';
 import {
@@ -79,11 +81,6 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
 function statusVariant(status: LeaveRequest['status']) {
   if (status === 'AUTHORIZED') return 'default';
   if (status === 'REJECTED' || status === 'AUTHORIZATION_REJECTED') return 'destructive';
@@ -93,9 +90,12 @@ function statusVariant(status: LeaveRequest['status']) {
 export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate } = useCalendarPreference();
   const session = useSession();
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Other leave being corrected before supervisor action; null when requesting new leave.
+  const [editingRequest, setEditingRequest] = useState<LeaveRequest | null>(null);
   const [interruptionTarget, setInterruptionTarget] = useState<LeaveRequest | null>(null);
   const [annualDates, setAnnualDates] = useState<AnnualDateSelection[]>([]);
   const [annualDateInput, setAnnualDateInput] = useState(today());
@@ -115,6 +115,8 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
   const fiscalYearsQuery = useLeaveFiscalYears();
   const leaveTypesQuery = useLeaveTypes();
   const createRequest = useCreateLeaveRequest(kind);
+  const updateRequest = useUpdateLeaveRequest(kind);
+  const isSaving = createRequest.isPending || updateRequest.isPending;
   const createInterruption = useCreateLeaveInterruption();
 
   const fiscalYears = fiscalYearsQuery.data?.leaveFiscalYears ?? [];
@@ -195,6 +197,19 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     setAnnualDates([]);
     setAnnualDateInput(today());
     setAnnualRange({ startDate: today(), endDate: today() });
+    setEditingRequest(null);
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (request: LeaveRequest) => {
+    setForm({
+      leaveTypeId: request.leaveTypeId,
+      fiscalYearId: request.fiscalYearId ?? '',
+      startDate: request.startDate.slice(0, 10),
+      endDate: request.endDate.slice(0, 10),
+      reason: request.reason ?? '',
+    });
+    setEditingRequest(request);
     setDialogOpen(true);
   };
 
@@ -226,6 +241,21 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
     }
 
     try {
+      if (editingRequest) {
+        await updateRequest.mutateAsync({
+          leaveRequestId: editingRequest.id,
+          leaveTypeId: form.leaveTypeId,
+          startDate: form.startDate,
+          endDate: form.endDate,
+          reason: form.reason.trim(),
+          updatedBy: session.data?.user?.id ?? null,
+        });
+        setDialogOpen(false);
+        setEditingRequest(null);
+        notifications.show({ title: common('success'), message: t('leaveRequestUpdated'), color: 'green' });
+        return;
+      }
+
       const sortedAnnualDates = [...annualDates].sort((a, b) => a.date.localeCompare(b.date));
       await createRequest.mutateAsync({
         employeeId: currentEmployee.id,
@@ -441,6 +471,13 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                                     </Button>
                                   ) : null}
                                 </div>
+                              ) : request.status === 'PENDING' && isOwnRequest ? (
+                                <div className="flex justify-end">
+                                  <Button type="button" size="sm" variant="outline" onClick={() => openEditDialog(request)}>
+                                    <Pencil className="size-4" />
+                                    {common('edit')}
+                                  </Button>
+                                </div>
                               ) : (
                                 <span className="block text-right text-xs text-muted-foreground">
                                   {request.status === 'AUTHORIZED' ? formatDate(request.authorizedAt) : request.status === 'APPROVED' ? t('awaitingHrAuthorization') : request.status === 'AUTHORIZATION_REJECTED' ? formatDate(request.authorizationRejectedAt) : request.status === 'REJECTED' ? formatDate(request.rejectedAt) : '-'}
@@ -460,7 +497,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t('requestLeave')}</DialogTitle>
+            <DialogTitle>{editingRequest ? t('editLeaveRequest') : t('requestLeave')}</DialogTitle>
             <DialogDescription>{t('leaveRequestFormDescription')}</DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveRequest}>
@@ -662,7 +699,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
               <Button
                 type="submit"
                 disabled={
-                  createRequest.isPending
+                  isSaving
                   || !isContractEmployee
                   || !currentEmployee?.id
                   || !selectedLeaveTypeId
@@ -671,7 +708,7 @@ export function LeaveRequestsPage({ kind }: LeaveRequestsPageProps) {
                   || !form.reason.trim()
                 }
               >
-                {createRequest.isPending ? t('saving') : common('save')}
+                {isSaving ? t('saving') : common('save')}
               </Button>
             </DialogFooter>
           </form>

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
-import { attendanceRate, countStatuses, punctualityRate } from '../../../lib/dashboard/executive-metrics';
+import { absentUntilArrived, attendanceRate, countStatuses, punctualityRate } from '../../../lib/dashboard/executive-metrics';
 import { db } from '../../db';
 import { employees, leaveBalances, leaveFiscalYears, leaveRequests, manualPunchRequests } from '../../schema';
 import { countMissingRecords, hasMissingCheckout, loadAttendanceDays } from './attendanceDays';
@@ -66,7 +66,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     return row ? context.isCounted(row, selectedDate) : false;
   });
   const reportIdSet = new Set(reportIds);
-  const days = context.days.filter((day) => day.date === selectedDate && reportIdSet.has(day.record.employeeId));
+  const days = absentUntilArrived(context.days.filter((day) => day.date === selectedDate && reportIdSet.has(day.record.employeeId)));
   const counts = countStatuses(days);
   const { missingRecords, missingToday } = countMissingRecords({
     from: selectedDate,
@@ -79,8 +79,8 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
     days,
   });
 
-  const employeesWith = (status: string) => days
-    .filter((day) => day.status === status)
+  const employeesWith = (status: string, notYetArrived = false) => days
+    .filter((day) => day.status === status && day.notYetArrived === notYetArrived)
     .map((day) => reportById.get(day.record.employeeId))
     .filter((employee): employee is NonNullable<typeof employee> => Boolean(employee));
   // Daily records the supervisor still has to approve for this date.
@@ -109,7 +109,7 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
       onTime: counts.ON_TIME,
       late: counts.LATE,
       absent: counts.ABSENT,
-      notYetArrived: counts.NOT_YET_ARRIVED,
+      notYetArrived: days.filter((day) => day.notYetArrived).length,
       onLeave: counts.LEAVE,
       biometricExempt: counts.EXEMPT,
       restDay: counts.REST,
@@ -133,7 +133,8 @@ export async function getDepartmentHeadDashboardSummary(params: DepartmentHeadDa
       todaysStaff: staff,
       presentEmployees: [...employeesWith('ON_TIME'), ...employeesWith('LATE')],
       absentEmployees: employeesWith('ABSENT'),
-      notYetArrivedEmployees: employeesWith('NOT_YET_ARRIVED'),
+      // Absent count includes these; the lists stay apart so the snapshot can label them.
+      notYetArrivedEmployees: employeesWith('ABSENT', true),
       employeesOnLeave: days
         .filter((day) => day.status === 'LEAVE')
         .map((day) => ({ employee: reportById.get(day.record.employeeId) ?? null, leaveType: day.leave?.typeLabel ?? null }))

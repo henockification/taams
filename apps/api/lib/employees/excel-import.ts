@@ -19,6 +19,7 @@ export type MappedEmployeeRow = {
 type FieldKey =
   | 'department'
   | 'fullNameEn'
+  | 'fullNameAm'
   | 'idNo'
   | 'serialNo'
   | 'employeeStatus'
@@ -34,6 +35,8 @@ type FieldKey =
 export const EMPLOYEE_EXCEL_HEADER_ALIASES: Record<FieldKey, string[]> = {
   department: ['department', 'dept', 'department name'],
   fullNameEn: ['full name < english', 'full name english', 'full name', 'fullname', 'fullName', 'full_name', 'name english', 'employee name', 'name of employee'],
+  // ISMIS exports put the Amharic name under plain "Full Name"; it is used only when it is in Ethiopic script.
+  fullNameAm: ['full name < amharic', 'full name amharic', 'name amharic', 'full name'],
   idNo: ['employee id no', 'employee id no.', 'employee id number', 'employee id', 'id no', 'id no.', 'id number', 'employee no'],
   serialNo: ['no.', 'no', 'serial no.', 'serial no', 'serial number'],
   employeeStatus: ['employee status', 'employment status', 'status'],
@@ -104,6 +107,7 @@ export function mapExcelRowToEmployeeInput(
   const hireDate = readDate(row, errors);
   const employment = resolveEmploymentFields(sourceStatus);
   const nameParts = splitFullName(fullName, errors);
+  const amharicNameParts = splitAmharicName(readString(row, 'fullNameAm'));
 
   if (!employeeCode) errors.push(employmentType === 'CONTRACT' ? 'No. or Employee Id No is required' : 'Employee Id No is required');
   if (employeeCode.length > 50) errors.push('Employee code must be 50 characters or fewer');
@@ -123,6 +127,9 @@ export function mapExcelRowToEmployeeInput(
       firstNameEn: nameParts.firstNameEn,
       middleNameEn: nameParts.middleNameEn,
       lastNameEn: nameParts.lastNameEn,
+      firstNameAm: amharicNameParts?.firstName ?? null,
+      middleNameAm: amharicNameParts?.middleName ?? null,
+      lastNameAm: amharicNameParts?.lastName ?? null,
       gender: readString(row, 'gender') || null,
       phoneNumber: readString(row, 'mobile') || null,
       email: readString(row, 'email') || null,
@@ -242,6 +249,18 @@ function splitFullName(fullName: string, errors: string[]) {
     firstNameEn: parts[0],
     middleNameEn: parts.slice(1, -1).join(' '),
     lastNameEn: parts[parts.length - 1],
+  };
+}
+
+/** Given, father's and grandfather's name, split like the English name; null unless Ethiopic. */
+function splitAmharicName(fullName: string) {
+  if (!/[\u1200-\u137F]/.test(fullName)) return null;
+  const parts = fullName.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+  return {
+    firstName: parts[0],
+    middleName: parts.length >= 3 ? parts.slice(1, -1).join(' ') : null,
+    lastName: parts[parts.length - 1],
   };
 }
 

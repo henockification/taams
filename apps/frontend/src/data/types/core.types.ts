@@ -17,6 +17,8 @@ export type DepartmentHead = {
   id: string;
   employeeCode: string;
   fullName: string;
+  /** Amharic name, or the English one when none is on file. */
+  fullNameAm?: string | null;
 };
 
 export type DepartmentHeadCandidate = DepartmentHead & {
@@ -2016,6 +2018,7 @@ export type CreateLeaveRequestInput = {
 
 export type UpdateLeaveRequestInput = {
   leaveRequestId: string;
+  leaveTypeId?: string;
   fiscalYearId?: string | null;
   startDate?: string;
   endDate?: string;

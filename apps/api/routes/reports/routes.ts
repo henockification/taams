@@ -44,6 +44,7 @@ import {
   type AttendanceSession,
 } from '../../lib/attendance/session-slots';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
+import { employeeDisplayName, parseNameLocale, withNameLocale } from '../../lib/employees/display-name';
 
 type ReportKey =
   | 'attendance-daily'
@@ -472,7 +473,8 @@ reportsApp.get('/reports/:key/excel', async (c) => {
 });
 
 async function runReport(definition: ReportDefinition, input: ReportInput): Promise<ReportResult> {
-  const result = await definition.buildRows(input);
+  // Employee names follow the language the report was requested in (`locale`, default English).
+  const result = await withNameLocale(parseNameLocale(input.query.get('locale')), () => definition.buildRows(input));
   return Array.isArray(result) ? { rows: result, columns: definition.columns } : result;
 }
 
@@ -962,6 +964,8 @@ async function buildEmployeeRows({ query, scope }: ReportInput) {
         ilike(employees.employeeCode, `%${query.get('search')}%`),
         ilike(employees.firstNameEn, `%${query.get('search')}%`),
         ilike(employees.lastNameEn, `%${query.get('search')}%`),
+        ilike(employees.firstNameAm, `%${query.get('search')}%`),
+        ilike(employees.lastNameAm, `%${query.get('search')}%`),
       ) : undefined,
     ),
     with: { department: true, position: true },
@@ -1180,9 +1184,7 @@ async function buildAuditRows({ query, scope }: ReportInput) {
     outcome: event.outcome,
     resourceType: event.resourceType,
     resourceLabel: event.resourceLabel ?? '',
-    employeeName: event.employee
-      ? [event.employee.firstNameEn, event.employee.lastNameEn].filter(Boolean).join(' ')
-      : '',
+    employeeName: employeeName(event.employee),
     department: event.department?.nameEn ?? '',
     delegated: event.supervisorDelegationId ? 'Yes' : 'No',
     changesSummary: summarizeChanges(event.changes as AuditChanges | null),
@@ -1190,8 +1192,7 @@ async function buildAuditRows({ query, scope }: ReportInput) {
 }
 
 function employeeName(employee: any) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
+  return employeeDisplayName(employee);
 }
 
 function dateFrom(query: URLSearchParams) {

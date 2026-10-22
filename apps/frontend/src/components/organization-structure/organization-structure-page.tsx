@@ -28,7 +28,7 @@ import {
   Search,
   UserRound,
 } from 'lucide-react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { userHasPermission } from '@/config/app-navigation';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDepartments, useMoveDepartment } from '@/data/hooks/core.hooks';
 import type { Department } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
+import { localizedFullName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 
@@ -141,6 +142,7 @@ function DepartmentActionsMenu({ department }: { department: Department }) {
 
 function StructureNode({ node }: { node: DepartmentNode }) {
   const t = useTranslations('core');
+  const locale = useLocale();
   const context = useStructure();
   const { canEdit, draggingDepartment, blockedIds, collapsedIds, toggleCollapsed } = context;
   const hasChildren = node.children.length > 0;
@@ -205,7 +207,7 @@ function StructureNode({ node }: { node: DepartmentNode }) {
           {node.headEmployee ? (
             <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
               <UserRound className="size-3 shrink-0" />
-              {t('headLabel', { name: node.headEmployee.fullName })}
+              {t('headLabel', { name: localizedFullName(node.headEmployee, locale) })}
             </span>
           ) : null}
         </span>

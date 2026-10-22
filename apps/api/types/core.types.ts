@@ -1095,6 +1095,7 @@ export type CreateLeaveRequestInput = {
 };
 
 export type UpdateLeaveRequestInput = {
+  leaveTypeId?: string;
   fiscalYearId?: string | null;
   startDate?: string;
   endDate?: string;

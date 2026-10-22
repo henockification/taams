@@ -14,6 +14,7 @@ import {
   updateDepartment,
 } from '../../../db/orm/core/manageCore';
 import { coreErrorResponse, validationErrorResponse } from '../helpers/errors';
+import { employeeDisplayName } from '../../../lib/employees/display-name';
 import { formatDepartment } from '../helpers/formatters';
 
 export async function createDepartmentHandler(c: Context) {
@@ -121,7 +122,8 @@ export async function getDepartmentHeadCandidatesHandler(c: Context) {
       employees: candidates.map((employee) => ({
         id: employee.id,
         employeeCode: employee.employeeCode,
-        fullName: [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' '),
+        fullName: employeeDisplayName(employee, 'en'),
+        fullNameAm: employeeDisplayName(employee, 'am'),
         departmentName: employee.department?.nameEn ?? null,
       })),
     });

@@ -86,7 +86,17 @@ export function classifyDay(record: MetricRecord, covers: LeaveCover[], now: Dat
   return { record, status: 'ABSENT', leave: null };
 }
 
-export type StatusCounts = Record<DayStatus, number> & { officialDuty: number; remote: number; unpaid: number };
+/**
+ * Dashboards count anyone due who is not present as absent, so people who have not
+ * arrived yet today are absent until they check in. `notYetArrived` keeps them visible.
+ */
+export function absentUntilArrived<T extends ClassifiedDay>(days: T[]): Array<T & { notYetArrived: boolean }> {
+  return days.map((day) => (day.status === 'NOT_YET_ARRIVED'
+    ? { ...day, status: 'ABSENT', notYetArrived: true }
+    : { ...day, notYetArrived: false }));
+}
+
+export type StatusCounts =Record<DayStatus, number> & { officialDuty: number; remote: number; unpaid: number };
 
 export function countStatuses(days: ClassifiedDay[]): StatusCounts {
   const counts: StatusCounts = {
@@ -121,7 +131,8 @@ export function leaveRate(counts: StatusCounts) {
   return rate(counts.LEAVE, scheduled);
 }
 
-export function workforceStatus(counts: StatusCounts, totalEmployees: number) {
+/** Headline cards. `notYetArrived` is the part of absent still inside today's check-in window. */
+export function workforceStatus(counts: StatusCounts, totalEmployees: number, notYetArrived: number) {
   return {
     totalEmployees,
     presentToday: counts.ON_TIME + counts.LATE,
@@ -131,7 +142,7 @@ export function workforceStatus(counts: StatusCounts, totalEmployees: number) {
     workingRemotely: counts.remote,
     officialAssignment: counts.officialDuty,
     attendanceRate: attendanceRate(counts) ?? 0,
-    notYetArrived: counts.NOT_YET_ARRIVED,
+    notYetArrived,
     biometricExempt: counts.EXEMPT,
     restDays: counts.REST,
     noSchedule: counts.NO_SCHEDULE,

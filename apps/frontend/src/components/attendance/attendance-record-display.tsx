@@ -54,13 +54,21 @@ export function summarizeAttendanceExceptions(records: AttendanceDailyRecord[]) 
       summary.earlyOut.minutes += earlyOutMinutes;
     }
     summary.absentSessions += sessions.filter((session) => session.attendanceStatus === 'ABSENT').length;
+    if (isFullDayAbsence(record, sessions)) summary.absentDays += 1;
     return summary;
   }, {
     late: { records: 0, minutes: 0 },
     earlyBreak: { records: 0, minutes: 0 },
     earlyOut: { records: 0, minutes: 0 },
     absentSessions: 0,
+    absentDays: 0,
   });
+}
+
+/** A duty day on which every session was missed; leave and biometric-exempt days are not absences. */
+function isFullDayAbsence(record: AttendanceDailyRecord, sessions: AttendanceSessionEvaluation[]) {
+  if (isNoDutyDay(record) || record.isBiometricExempt || Number(record.leaveDays ?? 0) > 0) return false;
+  return sessions.length > 0 && sessions.every((session) => session.attendanceStatus === 'ABSENT');
 }
 
 export function AttendanceSessions({

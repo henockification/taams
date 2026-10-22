@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { Check, ChevronsUpDown, Download, FileText, Printer, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ import {
   useUsersReportRoles,
 } from '@/data/hooks/core.hooks';
 import type { ReportHighlight, ReportKey } from '@/data/types/core.types';
+import { formatEmployeeName } from '@/lib/employee-name';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -162,11 +163,15 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
   const fiscalYearsQuery = useLeaveFiscalYears(usesFilter('fiscalYearId'));
   const leaveTypesQuery = useLeaveTypes(usesFilter('leaveTypeId'));
   const rolesQuery = useUsersReportRoles(usesFilter('role'));
-  const reportQuery = useReport(reportKey, filters);
+  const locale = useLocale();
+  // The API formats employee names in the requested language, for the table and the Excel file alike.
+  const requestParams = useMemo(() => ({ ...filters, locale }), [filters, locale]);
+  const reportQuery = useReport(reportKey, requestParams);
   const [isExporting, setIsExporting] = useState(false);
 
   const reportFilters = useMemo(() => buildFilters({
     keys: configBase.filterKeys,
+    locale,
     departments: departmentsQuery.data?.departments ?? [],
     departmentOptions,
     employees: employeesQuery.data?.employees ?? [],
@@ -183,6 +188,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
     fiscalYearsQuery.data,
     leaveTypesQuery.data,
     rolesQuery.data,
+    locale,
   ]);
 
   // Links (e.g. from dashboards) can preset filters through the URL query string.
@@ -215,7 +221,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
   const exportExcel = async () => {
     try {
       setIsExporting(true);
-      const blob = await coreApi.downloadReportExcel(reportKey, filters);
+      const blob = await coreApi.downloadReportExcel(reportKey, requestParams);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -564,6 +570,7 @@ function filterWidthClass(filter: FilterConfig) {
 
 function buildFilters(input: {
   keys: string[];
+  locale: string;
   departments: any[];
   departmentOptions?: { value: string; label: string }[];
   employees: any[];
@@ -575,7 +582,7 @@ function buildFilters(input: {
   const options = {
     departmentId: input.departmentOptions
       ?? input.departments.map((department) => ({ value: department.id, label: department.nameEn })),
-    employeeId: input.employees.map((employee) => ({ value: employee.id, label: `${employee.employeeCode} - ${employee.firstNameEn} ${employee.lastNameEn}` })),
+    employeeId: input.employees.map((employee) => ({ value: employee.id, label: `${employee.employeeCode} - ${formatEmployeeName(employee, input.locale)}` })),
     deviceId: input.devices.map((device) => ({ value: device.id, label: device.deviceName })),
     fiscalYearId: input.fiscalYears.map((fiscalYear) => ({ value: fiscalYear.id, label: fiscalYear.name })),
     leaveTypeId: input.leaveTypes.map((leaveType) => ({ value: leaveType.id, label: leaveType.nameEn })),

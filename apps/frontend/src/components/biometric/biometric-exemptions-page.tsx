@@ -42,6 +42,8 @@ import type {
   BiometricExemptionTargetType,
   Employee,
 } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText } from '@/lib/employee-picker-search';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -77,10 +79,6 @@ const initialForm: FormState = {
   responsibleAuthority: '',
 };
 
-function fullName(employee: Pick<Employee, 'firstNameEn' | 'middleNameEn' | 'lastNameEn'>) {
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
 function targetLabel(targetType: BiometricExemptionTargetType) {
   return targetType === 'EMPLOYEE' ? 'employee' : 'position';
 }
@@ -95,6 +93,7 @@ function statusLabel(status: BiometricExemption['status'], t: (key: string) => s
 export default function BiometricExemptionsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDateTime } = useCalendarPreference();
   const { data: exemptionsResponse, isLoading } = useBiometricExemptions();
   const { data: employeesResponse } = useEmployees();
@@ -128,7 +127,7 @@ export default function BiometricExemptionsPage() {
       const haystack = [
         exemption.reason,
         exemption.employee?.employeeCode,
-        exemption.employee ? fullName(exemption.employee) : null,
+        exemption.employee ? employeeNameSearchText(exemption.employee) : null,
         exemption.position?.nameEn,
         exemption.position?.code,
       ].filter(Boolean).join(' ').toLowerCase();
@@ -314,11 +313,7 @@ export default function BiometricExemptionsPage() {
             <TableBody>
               {filteredExemptions.map((exemption) => {
                 const targetTitle = exemption.targetType === 'EMPLOYEE'
-                  ? fullName(exemption.employee ?? {
-                      firstNameEn: '',
-                      middleNameEn: null,
-                      lastNameEn: '',
-                    })
+                  ? employeeName(exemption.employee)
                   : exemption.position?.nameEn ?? '-';
                 const targetSubtitle = exemption.targetType === 'EMPLOYEE'
                   ? exemption.employee?.employeeCode ?? exemption.employeeId ?? '-'
@@ -473,17 +468,20 @@ function TargetCombobox({
   placeholder: string;
   searchPlaceholder: string;
 }) {
+  const employeeName = useEmployeeName();
   const [open, setOpen] = useState(false);
 
   const options = targetType === 'EMPLOYEE'
     ? employees.map((employee) => ({
         value: employee.id,
-        label: fullName(employee),
+        label: employeeName(employee),
+        searchText: employeeNameSearchText(employee),
         description: employee.employeeCode,
       }))
     : positions.map((position) => ({
         value: position.id,
         label: position.nameEn,
+        searchText: position.nameEn,
         description: position.code ?? undefined,
       }));
 
@@ -520,7 +518,7 @@ function TargetCombobox({
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
-                  value={`${option.label} ${option.description ?? ''}`}
+                  value={`${option.searchText} ${option.description ?? ''}`}
                   onSelect={() => {
                     onValueChange(option.value);
                     setOpen(false);

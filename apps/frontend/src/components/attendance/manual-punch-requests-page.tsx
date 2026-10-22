@@ -41,7 +41,8 @@ import {
   useManualPunchRequests,
   useUpdateManualPunchRequest,
 } from '@/data/hooks/core.hooks';
-import type { Employee, ManualPunchRequest, PunchType } from '@/data/types/core.types';
+import type { ManualPunchRequest, PunchType } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -65,6 +66,7 @@ export function ManualPunchRequestsPage({
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDateTime } = useCalendarPreference();
   const isSupervisor = mode === 'supervisor';
   const [dialogOpen, setDialogOpen] = useState(Boolean(!isSupervisor && initialCorrection?.open));
@@ -366,11 +368,6 @@ function toDateTimeLocal(date = new Date()) {
 
 function toIso(value: string) {
   return new Date(value).toISOString();
-}
-
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
 }
 
 function requestStatusVariant(status: ManualPunchRequest['status']) {

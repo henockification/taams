@@ -1,3 +1,4 @@
+import { employeeDisplayName } from '../../../lib/employees/display-name';
 import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 
 export function formatDate(value: unknown) {
@@ -28,9 +29,8 @@ export function formatDepartment(department: any) {
         ? {
           id: department.headEmployee.id,
           employeeCode: department.headEmployee.employeeCode,
-          fullName: [department.headEmployee.firstNameEn, department.headEmployee.middleNameEn, department.headEmployee.lastNameEn]
-            .filter(Boolean)
-            .join(' '),
+          fullName: employeeDisplayName(department.headEmployee, 'en'),
+          fullNameAm: employeeDisplayName(department.headEmployee, 'am'),
         }
         : null,
     isActive: department.isActive,

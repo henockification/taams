@@ -27,14 +27,12 @@ import { DashboardAttendanceStrip, DashboardDataQualityNotice, addisTodayInput }
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
 import { Link, useRouter } from "@/i18n"
 import { useSession } from "@/lib/auth-client"
+import { useEmployeeName } from "@/lib/employee-name"
 import type {
-  AttendancePunch,
   DepartmentHeadDashboardSummary,
   DepartmentHeadDashboardWidget,
   Employee,
   LeaveBalance,
-  LeaveRequest,
-  ManualPunchRequest,
 } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
@@ -233,6 +231,7 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
 
 function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardSummary }) {
   const t = useTranslations("departmentHeadDashboard")
+  const employeeName = useEmployeeName()
   const shared = useTranslations("dashboardShared")
   // Who needs attention first: absent, then not yet arrived, then present.
   const rows = [
@@ -250,7 +249,7 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
         <SimpleTable headers={[t("employee"), t("department"), t("status")]} emptyLabel={t("noRows")}>
           {rows.map((row) => (
             <TableRow key={row.id}>
-              <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
+              <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
               <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(row.employee)}</TableCell>
               <TableCell><StatusBadge status={row.status} /></TableCell>
             </TableRow>
@@ -263,6 +262,7 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
 
 function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashboardSummary; showLeave: boolean }) {
   const t = useTranslations("departmentHeadDashboard")
+  const employeeName = useEmployeeName()
   const shared = useTranslations("dashboardShared")
   const router = useRouter()
   const { formatDate, formatDateTime } = useCalendarPreference()
@@ -302,7 +302,7 @@ function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashbo
         <SimpleTable headers={[t("employee"), t("status"), t("requestedAt"), t("reason"), ""]} emptyLabel={t("noRows")}>
           {rows.map((row) => (
             <TableRow key={row.id} className="cursor-pointer" onClick={() => router.push(row.href)}>
-              <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
+              <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
               <TableCell className="min-w-44"><StatusBadge status={row.type} /></TableCell>
               <TableCell className="min-w-36 text-muted-foreground">{formatDateTime(row.date)}</TableCell>
               <TableCell className="min-w-56 text-muted-foreground">{row.note}</TableCell>
@@ -324,6 +324,7 @@ function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashbo
 
 function StaffStatus({ title, employees }: { title: string; employees: Employee[] }) {
   const t = useTranslations("departmentHeadDashboard")
+  const employeeName = useEmployeeName()
 
   return (
     <Card>
@@ -334,7 +335,7 @@ function StaffStatus({ title, employees }: { title: string; employees: Employee[
         <SimpleTable headers={[t("employee"), t("department"), t("status")]} emptyLabel={t("noRows")}>
           {employees.slice(0, 12).map((employee) => (
             <TableRow key={employee.id}>
-              <TableCell className="min-w-52 font-medium">{formatEmployeeName(employee)}</TableCell>
+              <TableCell className="min-w-52 font-medium">{employeeName(employee) || "-"}</TableCell>
               <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(employee)}</TableCell>
               <TableCell><StatusBadge status={title} /></TableCell>
             </TableRow>
@@ -405,11 +406,6 @@ function DepartmentHeadDashboardSkeleton() {
 
 function todayInput() {
   return addisTodayInput()
-}
-
-function formatEmployeeName(employee: Employee | AttendancePunch["employee"] | ManualPunchRequest["employee"] | LeaveRequest["employee"] | null | undefined) {
-  if (!employee) return "-"
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(" ")
 }
 
 function formatDepartment(employee: Employee | null | undefined) {

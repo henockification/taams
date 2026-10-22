@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import {
+  absentUntilArrived,
   addDays,
   attendanceRate,
   countStatuses,
@@ -58,8 +59,9 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const scopedEmployees = context.employees.filter((employee) => (
     context.isCounted(employee, selectedDate) && inScope(context.effectiveDepartment(employee.id, selectedDate))
   ));
-  const days = context.days.filter((day) => day.date === selectedDate && inScope(day.departmentId));
+  const days = absentUntilArrived(context.days.filter((day) => day.date === selectedDate && inScope(day.departmentId)));
   const counts = countStatuses(days);
+  const notYetArrived = days.filter((day) => day.notYetArrived).length;
   const { missingRecords, missingToday } = countMissingRecords({
     from: selectedDate,
     to: selectedDate,
@@ -152,8 +154,9 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   // One row per person needing attention today; a person can appear for more than one reason.
   const people: Array<{ employeeId: string; status: PersonStatus; minutes: number | null }> = [];
   for (const day of days) {
-    if (day.status === 'ABSENT') people.push({ employeeId: day.record.employeeId, status: 'ABSENT', minutes: null });
-    if (day.status === 'NOT_YET_ARRIVED') people.push({ employeeId: day.record.employeeId, status: 'NOT_YET_ARRIVED', minutes: null });
+    if (day.status === 'ABSENT') {
+      people.push({ employeeId: day.record.employeeId, status: day.notYetArrived ? 'NOT_YET_ARRIVED' : 'ABSENT', minutes: null });
+    }
     if (day.status === 'LATE') people.push({ employeeId: day.record.employeeId, status: 'LATE', minutes: Number(day.record.lateMinutes ?? 0) });
     if (hasMissingCheckout(day, generatedAt, today)) people.push({ employeeId: day.record.employeeId, status: 'MISSING_CHECKOUT', minutes: null });
     if (isPresent(day) && Number(day.record.earlyDepartureMinutes ?? 0) > 0) {
@@ -174,11 +177,12 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
 
   const missingCheckoutCount = people.filter((person) => person.status === 'MISSING_CHECKOUT').length;
   const earlyDepartureCount = people.filter((person) => person.status === 'EARLY_DEPARTURE').length;
-  const withoutPunchCount = counts.ABSENT + counts.NOT_YET_ARRIVED;
+  const withoutPunchCount = counts.ABSENT;
   const offlineDevices = activeDevices.filter((device) => device.healthStatus === 'OFFLINE');
   const syncStatus = buildSyncStatus(recentSyncBatches);
   const attendanceExceptions = buildAttendanceExceptions({
     absent: counts.ABSENT,
+    notYetArrived,
     missingCheckout: missingCheckoutCount,
     late: counts.LATE,
     earlyDeparture: earlyDepartureCount,
@@ -214,7 +218,7 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       onTime: counts.ON_TIME,
       late: counts.LATE,
       absent: counts.ABSENT,
-      notYetArrived: counts.NOT_YET_ARRIVED,
+      notYetArrived,
       onLeave: counts.LEAVE,
       biometricExempt: counts.EXEMPT,
       restDay: counts.REST,
@@ -277,6 +281,7 @@ function attendanceApprovalsHref(date: string) {
 
 function buildAttendanceExceptions(input: {
   absent: number;
+  notYetArrived: number;
   missingCheckout: number;
   late: number;
   earlyDeparture: number;
@@ -287,7 +292,7 @@ function buildAttendanceExceptions(input: {
 }) {
   const severity = (count: number) => (count > 0 ? 'warning' : 'info') as 'warning' | 'info';
   const items = [
-    { id: 'absent', severity: severity(input.absent), title: 'Absent', count: input.absent, description: 'Due to work with no check-in. Rest days, approved leave and biometric-exempt staff are excluded.' },
+    { id: 'absent', severity: severity(input.absent), title: 'Absent', count: input.absent, description: `Due to work with no check-in${input.notYetArrived > 0 ? `, including ${input.notYetArrived} not yet arrived today` : ''}. Rest days, approved leave and biometric-exempt staff are excluded.` },
     { id: 'missing-check-out', severity: severity(input.missingCheckout), title: 'Missing check-out', count: input.missingCheckout, description: 'Checked in for a session but did not check out before its window closed.' },
     { id: 'late-employees', severity: severity(input.late), title: 'Late arrivals', count: input.late, description: "Checked in after the shift's allowed start." },
     { id: 'early-departure', severity: severity(input.earlyDeparture), title: 'Early departure', count: input.earlyDeparture, description: 'Left before the end of the last session.' },

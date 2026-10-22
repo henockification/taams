@@ -104,7 +104,7 @@ export function MyAttendancePage() {
         <Summary label={t('lateAttendance')} value={exceptions.late.records} detail={t('totalMinutes', { count: exceptions.late.minutes })} />
         <Summary label={t('earlyBreak')} value={exceptions.earlyBreak.records} detail={t('totalMinutes', { count: exceptions.earlyBreak.minutes })} />
         <Summary label={t('earlyOut')} value={exceptions.earlyOut.records} detail={t('totalMinutes', { count: exceptions.earlyOut.minutes })} />
-        <Summary label={t('absentSessions')} value={exceptions.absentSessions} />
+        <Summary label={t('absentDays')} value={exceptions.absentDays} />
       </div>
 
       {attendance.error ? (

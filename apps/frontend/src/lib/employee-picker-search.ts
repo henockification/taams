@@ -1,4 +1,10 @@
 import type { Employee } from '@/data/types/core.types';
+import { formatEmployeeName, type NamedEmployee } from '@/lib/employee-name';
+
+/** English and Amharic names joined, so name searches match in either language. */
+export function employeeNameSearchText(employee: NamedEmployee) {
+  return [formatEmployeeName(employee, 'en'), formatEmployeeName(employee, 'am')].filter(Boolean).join(' ');
+}
 
 export function matchesEmployeePickerSearch(employee: Employee, search: string) {
   const terms = search.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean);

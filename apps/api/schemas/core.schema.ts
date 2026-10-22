@@ -1221,6 +1221,7 @@ export const CreateLeaveRequestRequestSchema = z.object({
 });
 
 export const UpdateLeaveRequestRequestSchema = z.object({
+  leaveTypeId: UuidSchema.optional(),
   fiscalYearId: UuidSchema.nullable().optional(),
   startDate: RequiredDateSchema.optional(),
   endDate: RequiredDateSchema.optional(),

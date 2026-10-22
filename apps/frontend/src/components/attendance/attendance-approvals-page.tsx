@@ -54,7 +54,9 @@ import {
   useIsmisLeaveImport,
   useLatestIsmisLeaveImport,
 } from '@/data/hooks/core.hooks';
-import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType, Employee } from '@/data/types/core.types';
+import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText } from '@/lib/employee-picker-search';
 import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { userHasPermission } from '@/config/app-navigation';
@@ -131,11 +133,6 @@ function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string;
   return { fromDate: dateToYmd(start), toDate: dateToYmd(end) };
 }
 
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
 export function AttendanceApprovalsPage({
   mode,
   initialFilters,
@@ -145,6 +142,7 @@ export function AttendanceApprovalsPage({
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate, formatDateTime } = useCalendarPreference();
   const initialDate = initialFilters?.date && initialFilters.date !== today() ? initialFilters.date : null;
   const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : mode === 'hr' ? 'AWAITING_HR' : 'TODAY');
@@ -220,7 +218,7 @@ export function AttendanceApprovalsPage({
     return records.filter((record) => {
       const employee = record.employee;
       const haystack = [
-        employeeName(employee),
+        employeeNameSearchText(employee),
         employee?.employeeCode,
         employee?.payrollId,
         employee?.biometricId,

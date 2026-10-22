@@ -39,6 +39,7 @@ import type {
 } from "@/data/types/core.types"
 import { cn } from "@/lib/utils"
 import { useSession } from "@/lib/auth-client"
+import { useEmployeeName } from "@/lib/employee-name"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
 type WidgetKey = keyof HrDashboardSummary["widgets"]
@@ -225,6 +226,7 @@ function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
 
 function OperationalQueue({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const employeeName = useEmployeeName()
   const { formatDateTime } = useCalendarPreference()
   const rows = [
     ...dashboard.details.pendingManualRequests.map((request) => ({
@@ -259,7 +261,7 @@ function OperationalQueue({ dashboard }: { dashboard: HrDashboardSummary }) {
         <DataTable emptyLabel={t("noRows")}>
           {rows.map((row) => (
             <TableRow key={row.id}>
-              <TableCell className="min-w-48 font-medium">{formatEmployeeName(row.employee)}</TableCell>
+              <TableCell className="min-w-48 font-medium">{employeeName(row.employee) || "-"}</TableCell>
               <TableCell className="min-w-44">{row.type}</TableCell>
               <TableCell className="min-w-36 text-muted-foreground">{formatDateTime(row.date)}</TableCell>
               <TableCell className="min-w-64 text-muted-foreground">{row.note}</TableCell>
@@ -339,6 +341,7 @@ function AttendanceReportingDiscipline({ dashboard }: { dashboard: HrDashboardSu
 
 function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const employeeName = useEmployeeName()
   const shared = useTranslations("dashboardShared")
   const rows = dashboard.details.people.slice(0, 50)
 
@@ -351,7 +354,7 @@ function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
         <SimpleTable headers={[t("employee"), t("department"), t("status")]} emptyLabel={t("noRows")}>
           {rows.map((row) => (
             <TableRow key={`${row.status}-${row.employeeId}`}>
-              <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
+              <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
               <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(row.employee)}</TableCell>
               <TableCell className="min-w-44">
                 <Badge variant={row.status === "ABSENT" ? "destructive" : "secondary"}>{shared(`status_${row.status}`)}</Badge>
@@ -367,6 +370,7 @@ function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
 
 function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   const t = useTranslations("hrDashboard")
+  const employeeName = useEmployeeName()
   const { formatDate } = useCalendarPreference()
   const leaveRows = [
     ...dashboard.details.upcomingLeave.map((request) => ({
@@ -395,7 +399,7 @@ function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
         <SimpleTable headers={[t("employee"), t("leaveDates"), t("status")]} emptyLabel={t("noRows")}>
           {filteredRows.map((row) => (
             <TableRow key={row.id}>
-              <TableCell className="min-w-52 font-medium">{formatEmployeeName(row.employee)}</TableCell>
+              <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
               <TableCell className="min-w-44 text-muted-foreground">{row.dates}</TableCell>
               <TableCell className="min-w-36"><Badge variant={row.variant}>{row.status}</Badge></TableCell>
             </TableRow>
@@ -552,11 +556,6 @@ function HrDashboardSkeleton() {
 
 function todayInput() {
   return addisTodayInput()
-}
-
-function formatEmployeeName(employee: Employee | null | undefined) {
-  if (!employee) return "-"
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(" ")
 }
 
 function formatDepartment(employee: Employee | null | undefined) {

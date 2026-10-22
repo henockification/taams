@@ -594,6 +594,7 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
 
     const leaveType = request.leaveType ?? await getLeaveTypeById(request.leaveTypeId, tx);
     if (isAnnualLeaveType(leaveType)) {
+      if (input.leaveTypeId && input.leaveTypeId !== request.leaveTypeId) throw new Error('The leave type of an annual leave request cannot be changed');
       if (!input.fiscalYearId) throw new Error('Fiscal year is required for annual leave');
       const fiscalYear = await getLeaveFiscalYearById(input.fiscalYearId, tx);
       if (!fiscalYear) throw new Error('Leave fiscal year not found');
@@ -645,10 +646,19 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
     }
 
     if (!input.startDate || !input.endDate) throw new Error('Start date and end date are required');
+    // A mistakenly picked type can be corrected before supervisor action, but only to
+    // another non-annual type: annual leave has its own dates and balance.
+    let nextLeaveType = leaveType;
+    if (input.leaveTypeId && input.leaveTypeId !== request.leaveTypeId) {
+      nextLeaveType = await getLeaveTypeById(input.leaveTypeId, tx);
+      if (!nextLeaveType) throw new Error('Leave type not found');
+      if (isAnnualLeaveType(nextLeaveType)) throw new Error('Annual leave must be requested from the annual leave page');
+    }
     const requestedDays = await calculateWorkingDays(request.employeeId, input.startDate, input.endDate, tx);
-    assertWithinAllowedDays(leaveType, requestedDays);
+    assertWithinAllowedDays(nextLeaveType, requestedDays);
 
     const [updated] = await tx.update(leaveRequests).set({
+      leaveTypeId: nextLeaveType?.id ?? request.leaveTypeId,
       startDate: input.startDate,
       endDate: input.endDate,
       requestedDays: fixed(requestedDays),
@@ -660,8 +670,8 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
     const updatedRequest = await getLeaveRequestById(id, tx);
     await auditLeaveRequest(tx, 'LEAVE_REQUEST_UPDATED', updatedRequest, {
       changes: diffChanges(
-        { startDate: request.startDate, endDate: request.endDate, requestedDays: request.requestedDays, reason: request.reason },
-        { startDate: updatedRequest?.startDate, endDate: updatedRequest?.endDate, requestedDays: updatedRequest?.requestedDays, reason: updatedRequest?.reason },
+        { leaveTypeId: request.leaveTypeId, startDate: request.startDate, endDate: request.endDate, requestedDays: request.requestedDays, reason: request.reason },
+        { leaveTypeId: updatedRequest?.leaveTypeId, startDate: updatedRequest?.startDate, endDate: updatedRequest?.endDate, requestedDays: updatedRequest?.requestedDays, reason: updatedRequest?.reason },
       ),
     });
     return updatedRequest;

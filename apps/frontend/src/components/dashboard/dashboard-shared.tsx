@@ -106,7 +106,7 @@ export function DashboardAttendanceStrip({ summary, isLive }: { summary: Dashboa
     { label: t("present"), value: summary.present, tone: "text-emerald-700 dark:text-emerald-400" },
     { label: t("late"), value: summary.late, tone: "text-amber-700 dark:text-amber-400" },
     { label: t("absent"), value: summary.absent, tone: "text-rose-700 dark:text-rose-400" },
-    { label: t("notYetArrived"), value: summary.notYetArrived, hidden: !isLive },
+    { label: t("absentNotYetArrived"), value: summary.notYetArrived, hidden: !isLive },
     { label: t("onLeave"), value: summary.onLeave, tone: "text-indigo-700 dark:text-indigo-400" },
     { label: t("attendanceRate"), value: summary.attendanceRate === null ? "—" : `${summary.attendanceRate}%` },
     { label: t("onTimeRate"), value: summary.punctualityRate === null ? "—" : `${summary.punctualityRate}%` },

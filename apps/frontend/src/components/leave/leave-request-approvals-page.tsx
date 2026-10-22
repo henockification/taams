@@ -45,16 +45,13 @@ import { hasSupervisorApprovalAccess } from '@/config/app-navigation';
 import { Link } from '@/i18n';
 import type { LeaveBalance, LeaveInterruption, LeaveRequest } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText } from '@/lib/employee-picker-search';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 type StatusFilter = 'ALL' | 'PENDING' | 'APPROVED' | 'AUTHORIZED' | 'REJECTED' | 'AUTHORIZATION_REJECTED';
 type DateFilter = 'ALL' | 'TODAY' | 'THIS_WEEK' | 'THIS_MONTH' | 'THIS_YEAR' | 'CUSTOM';
-
-function employeeName(employee?: LeaveRequest['employee'] | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
 
 function statusVariant(status: LeaveRequest['status']) {
   if (status === 'AUTHORIZED') return 'default';
@@ -104,6 +101,7 @@ function getDateFilterBounds(dateFilter: DateFilter, custom: { fromDate: string;
 export function LeaveRequestApprovalsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDate } = useCalendarPreference();
   const session = useSession();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('PENDING');
@@ -143,7 +141,7 @@ export function LeaveRequestApprovalsPage() {
 
       if (search) {
         const haystack = [
-          employeeName(request.employee),
+          employeeNameSearchText(request.employee),
           request.employee?.employeeCode,
           request.employee?.firstNameEn,
           request.employee?.middleNameEn,
@@ -151,6 +149,7 @@ export function LeaveRequestApprovalsPage() {
           request.employee?.firstNameAm,
           request.employee?.middleNameAm,
           request.employee?.lastNameAm,
+          request.employee?.sourceFullNameAm,
         ].filter(Boolean).join(' ').toLowerCase();
         if (!haystack.includes(search)) return false;
       }

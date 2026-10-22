@@ -4,6 +4,7 @@ import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
+  absentUntilArrived,
   addDays,
   attendanceRate,
   countStatuses,
@@ -111,7 +112,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   const attendanceReportingDiscipline = await disciplineQuery;
 
   // Every classified day in scope, attributed to the department the employee worked in that day.
-  const classified = context.days.filter((day) => inScope(day.departmentId));
+  const classified = absentUntilArrived(context.days.filter((day) => inScope(day.departmentId)));
   const inRange = (start: string, end: string) => classified.filter((day) => day.date >= start && day.date <= end);
   const current = rangeDates.length ? inRange(range.start, rangeEnd) : [];
   const previous = inRange(previousStart, previousEnd);
@@ -131,7 +132,8 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     })
     : { missingRecords: 0, missingToday: 0 };
 
-  const status = workforceStatus(currentCounts, headcountEmployees.length);
+  const notYetArrived = current.filter((day) => day.notYetArrived).length;
+  const status = workforceStatus(currentCounts, headcountEmployees.length, notYetArrived);
   const departmentPerformance = buildDepartmentPerformance({
     current,
     previous,
@@ -186,6 +188,7 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     missingToday,
     isLive,
     noScheduleEmployees,
+    notYetArrived,
   });
 
   return {
@@ -337,7 +340,7 @@ function buildDepartmentPerformance(input: {
 }
 
 /** Where people are on the focus day, from their attendance sessions. */
-function buildCompoundStatus(days: ClassifiedDay[]) {
+function buildCompoundStatus(days: Array<ClassifiedDay & { notYetArrived: boolean }>) {
   let currentlyInside = 0;
   let checkedOut = 0;
   for (const day of days) {
@@ -353,7 +356,7 @@ function buildCompoundStatus(days: ClassifiedDay[]) {
   return {
     currentlyInside,
     checkedOut,
-    notYetArrived: days.filter((day) => day.status === 'NOT_YET_ARRIVED').length,
+    notYetArrived: days.filter((day) => day.notYetArrived).length,
   };
 }
 
@@ -399,6 +402,7 @@ function buildExceptions(input: {
   missingToday: number;
   isLive: boolean;
   noScheduleEmployees: number;
+  notYetArrived: number;
 }) {
   const unit = input.period === 'day' ? 'employee(s)' : 'employee-day(s)';
   const attendance: Array<{ id: string; severity: Severity; title: string; count: number; description: string }> = [];
@@ -410,7 +414,7 @@ function buildExceptions(input: {
   ));
 
   if (input.counts.ABSENT > 0) {
-    attendance.push({ id: 'absent-employees', severity: 'warning', title: 'Absent', count: input.counts.ABSENT, description: `${unit} due to work with no check-in. Rest days, approved leave and biometric-exempt staff are excluded.` });
+    attendance.push({ id: 'absent-employees', severity: 'warning', title: 'Absent', count: input.counts.ABSENT, description: `${unit} due to work with no check-in${input.notYetArrived > 0 ? `, including ${input.notYetArrived} not yet arrived today` : ''}. Rest days, approved leave and biometric-exempt staff are excluded.` });
   }
   if (input.counts.LATE > 0) {
     attendance.push({ id: 'late-arrivals', severity: 'warning', title: 'Late arrivals', count: input.counts.LATE, description: `${unit} that checked in after the shift's allowed start.` });

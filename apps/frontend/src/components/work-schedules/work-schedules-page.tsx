@@ -66,6 +66,7 @@ import {
   useWorkSchedules,
 } from '@/data/hooks/core.hooks';
 import type { DayOfWeek, EmploymentType, Employee, EmployeeWorkSchedule, Shift, ShiftSegment, WorkSchedule, WorkScheduleDay } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -150,6 +151,7 @@ export function WorkSchedulesPage({
 }: WorkSchedulesPageProps = {}) {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeDisplayName = useEmployeeName();
   const { formatDate } = useCalendarPreference();
   const { data: shiftsResponse, isLoading: shiftsLoading } = useShifts();
   const { data: workSchedulesResponse, isLoading: workSchedulesLoading } = useWorkSchedules();
@@ -238,6 +240,10 @@ export function WorkSchedulesPage({
         employee.firstNameEn,
         employee.middleNameEn,
         employee.lastNameEn,
+        employee.firstNameAm,
+        employee.middleNameAm,
+        employee.lastNameAm,
+        employee.sourceFullNameAm,
         employee.employeeCode,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
@@ -816,7 +822,7 @@ export function WorkSchedulesPage({
                       <TableBody>
                         {paginatedEmployees.map((employee) => {
                           const assignment = assignmentByEmployeeId.get(employee.id) ?? null;
-                          const employeeName = `${employee.firstNameEn} ${employee.middleNameEn ?? ''} ${employee.lastNameEn}`.replace(/\s+/g, ' ').trim();
+                          const employeeName = employeeDisplayName(employee);
 
                           return (
                             <TableRow key={employee.id}>
@@ -921,7 +927,7 @@ export function WorkSchedulesPage({
                   <Input
                     id="assignment-employee"
                     value={editingAssignmentEmployee
-                      ? `${editingAssignmentEmployee.firstNameEn} ${editingAssignmentEmployee.middleNameEn ?? ''} ${editingAssignmentEmployee.lastNameEn}`.replace(/\s+/g, ' ').trim()
+                      ? employeeDisplayName(editingAssignmentEmployee)
                       : editingEmployeeWorkSchedule.employeeId}
                     disabled
                   />

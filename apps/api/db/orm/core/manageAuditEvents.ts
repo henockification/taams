@@ -54,6 +54,8 @@ export async function listAuditEvents(input: ListAuditEventsInput = {}) {
           employeeCode: true,
           firstNameEn: true,
           lastNameEn: true,
+          firstNameAm: true,
+          lastNameAm: true,
         },
       },
       department: {

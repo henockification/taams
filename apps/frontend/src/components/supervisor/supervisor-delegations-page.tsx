@@ -42,6 +42,8 @@ import {
 } from '@/data/hooks/core.hooks';
 import type { Employee, SupervisorDelegation } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
+import { useEmployeeName } from '@/lib/employee-name';
+import { employeeNameSearchText } from '@/lib/employee-picker-search';
 import { notifications } from '@/lib/notifications';
 import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -67,6 +69,7 @@ const initialForm = (): DelegationFormState => {
 export function SupervisorDelegationsPage() {
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
+  const employeeName = useEmployeeName();
   const session = useSession();
   const delegations = useSupervisorDelegations();
   const createDelegation = useCreateSupervisorDelegation();
@@ -80,7 +83,7 @@ export function SupervisorDelegationsPage() {
   const delegateOptions = useMemo(() => {
     return (eligibleDelegates.data?.employees ?? [])
       .sort((a, b) => employeeName(a).localeCompare(employeeName(b)));
-  }, [eligibleDelegates.data?.employees]);
+  }, [eligibleDelegates.data?.employees, employeeName]);
   const activeDelegation = supervisorDelegations.find(isCurrentOrFutureDelegation);
   const now = Date.now();
 
@@ -145,7 +148,7 @@ export function SupervisorDelegationsPage() {
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {employeeName(activeDelegation.delegateEmployee)} can act for you from{' '}
+                    {employeeName(activeDelegation.delegateEmployee) || '—'} can act for you from{' '}
                     {formatDateTime(activeDelegation.startsAt)} until {formatDateTime(activeDelegation.endsAt)}.
                   </p>
                 </div>
@@ -198,8 +201,8 @@ export function SupervisorDelegationsPage() {
                     const canRevoke = delegation.supervisorUserId === currentUserId && isCurrentOrFutureDelegation(delegation);
                     return (
                       <TableRow key={delegation.id}>
-                        <TableCell>{employeeName(delegation.supervisorEmployee)}</TableCell>
-                        <TableCell>{employeeName(delegation.delegateEmployee)}</TableCell>
+                        <TableCell>{employeeName(delegation.supervisorEmployee) || '—'}</TableCell>
+                        <TableCell>{employeeName(delegation.delegateEmployee) || '—'}</TableCell>
                         <TableCell>
                           {formatDateTime(delegation.startsAt)} — {formatDateTime(delegation.endsAt)}
                         </TableCell>
@@ -306,11 +309,6 @@ function isCurrentOrFutureDelegation(delegation: SupervisorDelegation) {
   return !delegation.revokedAt && new Date(delegation.endsAt).getTime() > Date.now();
 }
 
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '—';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
 function toDateTimeLocal(value: Date) {
   const offsetMs = value.getTimezoneOffset() * 60 * 1000;
   return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
@@ -335,6 +333,7 @@ function SearchableEmployeeSelect({
   emptyMessage: string;
   disabled?: boolean;
 }) {
+  const employeeName = useEmployeeName();
   const [open, setOpen] = useState(false);
   const selectedEmployee = employees.find((employee) => employee.id === value);
 
@@ -374,7 +373,7 @@ function SearchableEmployeeSelect({
                 return (
                   <CommandItem
                     key={employee.id}
-                    value={`${name} ${description}`}
+                    value={`${employeeNameSearchText(employee)} ${description}`}
                     onSelect={() => {
                       onValueChange(employee.id);
                       setOpen(false);

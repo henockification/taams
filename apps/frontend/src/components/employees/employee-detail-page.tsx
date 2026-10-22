@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Link } from '@/i18n';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import {
@@ -62,6 +63,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
   const { formatDate } = useCalendarPreference();
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { data: employeeResponse, isLoading } = useEmployee(employeeId);
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useEmployeeSupervisors(employeeId);
   const { data: employeesResponse } = useEmployees();
@@ -203,7 +205,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
         </Button>
         <div className="min-w-0 flex-1 lg:text-right">
           <p className="truncate text-sm font-medium text-foreground">
-            {employee.firstNameEn} {employee.middleNameEn} {employee.lastNameEn}
+            {employeeName(employee)}
           </p>
           <p className="truncate text-xs text-muted-foreground">
             {employee.employeeCode} · {employee.email || employee.phoneNumber || t('noContact')}
@@ -405,7 +407,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
                     </div>
                     <div className="min-w-0">
                       <p className="truncate font-medium">
-                        {assignment.supervisor?.firstNameEn} {assignment.supervisor?.lastNameEn}
+                        {employeeName(assignment.supervisor)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {formatDate(assignment.effectiveFrom)} {assignment.effectiveTo ? `- ${formatDate(assignment.effectiveTo)}` : ''}
@@ -438,7 +440,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
                 <SelectContent>
                   {employeeOptions.map((option) => (
                     <SelectItem key={option.id} value={option.id}>
-                      {option.firstNameEn} {option.lastNameEn} - {option.employeeCode}
+                      {employeeName(option)} - {option.employeeCode}
                     </SelectItem>
                   ))}
                 </SelectContent>

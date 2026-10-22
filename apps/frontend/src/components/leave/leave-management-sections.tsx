@@ -47,6 +47,7 @@ import {
   useEmployeesPaginated,
 } from '@/data/hooks/core.hooks';
 import type { Employee, LeaveBalance, LeaveFiscalYear, LeaveType } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
@@ -73,10 +74,6 @@ const initialBalanceForm = {
   fiscalYearId: '',
   opening: '',
 };
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
 
 function normalize(value: string) {
   return value.trim().toLowerCase();
@@ -478,6 +475,7 @@ export function LeaveBalancesSection() {
   const view = 'management' as const;
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const fiscalYearsQuery = useLeaveFiscalYears();
   const departmentsQuery = useDepartments();
   const saveBalance = useUpsertLeaveBalance({ view });

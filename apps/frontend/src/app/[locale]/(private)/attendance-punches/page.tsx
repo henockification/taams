@@ -33,6 +33,7 @@ import {
   useBiometricDevices,
 } from '@/data/hooks/core.hooks';
 import type { Employee } from '@/data/types/core.types';
+import { useEmployeeName } from '@/lib/employee-name';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allDevicesValue = '__all';
@@ -49,14 +50,10 @@ function presetDates(preset: DatePreset) {
   return { from: ymd(end), to: ymd(end) };
 }
 
-function employeeName(employee?: Employee | null) {
-  if (!employee) return '';
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(' ');
-}
-
 export default function AttendancePunchesPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
+  const employeeName = useEmployeeName();
   const { formatDateTime } = useCalendarPreference();
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');

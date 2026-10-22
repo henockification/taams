@@ -1,7 +1,10 @@
 'use client';
 
+import { useLocale } from 'next-intl';
+
 import { Badge } from '@/components/ui/badge';
 import type { Department } from '@/data/types/core.types';
+import { localizedFullName } from '@/lib/employee-name';
 
 import type { DepartmentNode } from './department-tree';
 
@@ -19,6 +22,7 @@ function OrganizationChartNode({
   node: DepartmentNode;
   onSelect?: (department: Department) => void;
 }) {
+  const locale = useLocale();
   const hasChildren = node.children.length > 0;
 
   return (
@@ -32,7 +36,7 @@ function OrganizationChartNode({
         <span className="line-clamp-2 text-sm font-semibold">{node.nameEn}</span>
         <span className="mt-1 truncate text-xs text-muted-foreground">{node.code || '-'}</span>
         {node.headEmployee ? (
-          <span className="mt-1 truncate text-xs font-medium text-primary">{headLabel(node.headEmployee.fullName)}</span>
+          <span className="mt-1 truncate text-xs font-medium text-primary">{headLabel(localizedFullName(node.headEmployee, locale))}</span>
         ) : null}
         {!node.isActive ? (
           <Badge variant="secondary" className="mx-auto mt-2 w-fit">

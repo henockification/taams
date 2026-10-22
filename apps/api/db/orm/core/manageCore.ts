@@ -67,7 +67,7 @@ export async function getDepartments() {
   return db.query.departments.findMany({
     with: {
       headEmployee: {
-        columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true },
+        columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true, firstNameAm: true, middleNameAm: true, lastNameAm: true },
       },
     },
     orderBy: [asc(departments.nameEn)],
@@ -85,10 +85,13 @@ export async function searchDepartmentHeadCandidates(search: string) {
           ilike(employees.firstNameEn, `%${term}%`),
           ilike(employees.middleNameEn, `%${term}%`),
           ilike(employees.lastNameEn, `%${term}%`),
+          ilike(employees.firstNameAm, `%${term}%`),
+          ilike(employees.middleNameAm, `%${term}%`),
+          ilike(employees.lastNameAm, `%${term}%`),
         )
         : undefined,
     ),
-    columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true },
+    columns: { id: true, employeeCode: true, firstNameEn: true, middleNameEn: true, lastNameEn: true, firstNameAm: true, middleNameAm: true, lastNameAm: true },
     with: { department: { columns: { nameEn: true } } },
     orderBy: [asc(employees.firstNameEn), asc(employees.lastNameEn)],
     limit: 20,
@@ -407,6 +410,9 @@ export async function getEmployeesPaginated({
         ilike(employees.firstNameEn, `%${normalizedSearch}%`),
         ilike(employees.middleNameEn, `%${normalizedSearch}%`),
         ilike(employees.lastNameEn, `%${normalizedSearch}%`),
+        ilike(employees.firstNameAm, `%${normalizedSearch}%`),
+        ilike(employees.middleNameAm, `%${normalizedSearch}%`),
+        ilike(employees.lastNameAm, `%${normalizedSearch}%`),
       )
     : undefined;
 
@@ -613,9 +619,10 @@ export async function upsertPermanentEmployees(
         firstNameEn: sql`excluded.first_name_en`,
         middleNameEn: sql`excluded.middle_name_en`,
         lastNameEn: sql`excluded.last_name_en`,
-        firstNameAm: sql`excluded.first_name_am`,
-        middleNameAm: sql`excluded.middle_name_am`,
-        lastNameAm: sql`excluded.last_name_am`,
+        // Rows without an Amharic name keep the one already on file (typed in or imported earlier).
+        firstNameAm: sql`CASE WHEN excluded.first_name_am IS NULL THEN ${employees.firstNameAm} ELSE excluded.first_name_am END`,
+        middleNameAm: sql`CASE WHEN excluded.first_name_am IS NULL THEN ${employees.middleNameAm} ELSE excluded.middle_name_am END`,
+        lastNameAm: sql`CASE WHEN excluded.first_name_am IS NULL THEN ${employees.lastNameAm} ELSE excluded.last_name_am END`,
         gender: sql`excluded.gender`,
         phoneNumber: sql`excluded.phone_number`,
         email: sql`excluded.email`,

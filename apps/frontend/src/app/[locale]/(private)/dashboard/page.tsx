@@ -19,7 +19,7 @@ import {
   UsersRound as UsersRoundIcon,
   Wallet,
 } from "lucide-react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,6 +40,7 @@ import type {
 } from "@/data/types/core.types"
 import { Link, useRouter } from "@/i18n"
 import { useSession } from "@/lib/auth-client"
+import { formatEmployeeName, useEmployeeName } from "@/lib/employee-name"
 import { cn } from "@/lib/utils"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
@@ -102,6 +103,9 @@ function DashboardHero({
   canViewManualPunchRequests: boolean
 }) {
   const t = useTranslations("dashboard")
+  const locale = useLocale()
+  // Greet Amharic users with their Amharic employee name; the account name stays the English default.
+  const greetingName = (locale === "am" ? formatEmployeeName(dashboard.employee, locale) : "") || dashboard.user.name
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -114,7 +118,7 @@ function DashboardHero({
           </Badge>
           <div className="space-y-2">
             <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl md:text-3xl">
-              {dashboard.setupRequired ? t("setupHeroTitle") : t("heroTitle", { name: dashboard.user.name ?? t("there") })}
+              {dashboard.setupRequired ? t("setupHeroTitle") : t("heroTitle", { name: greetingName ?? t("there") })}
             </h1>
             <p className="max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
               {dashboard.setupRequired ? t("setupHeroDescription") : heroDescription(dashboard.role, t)}
@@ -640,6 +644,7 @@ function TimeOperationsPanel({ dashboard }: { dashboard: DashboardSummary }) {
 
 function PunchList({ title, punches, emptyText }: { title: string; punches: AttendancePunch[]; emptyText: string }) {
   const t = useTranslations("dashboard")
+  const employeeName = useEmployeeName()
   const { formatDateTime } = useCalendarPreference()
 
   return (
@@ -756,6 +761,7 @@ function ManualRequestsList({
   emptyText: string
 }) {
   const { formatDateTime } = useCalendarPreference()
+  const employeeName = useEmployeeName()
   return (
     <Card>
       <CardHeader>
@@ -798,6 +804,7 @@ function TeamRequestsList({
 }) {
   const t = useTranslations("dashboard")
   const coreT = useTranslations("core")
+  const employeeName = useEmployeeName()
   const { formatDate, formatDateTime } = useCalendarPreference()
 
   const isEmpty = manualRequests.length === 0 && leaveRequests.length === 0
@@ -1055,10 +1062,6 @@ function severityClass(severity: string) {
     severity === "warning" && "bg-amber-500/10 text-amber-700 hover:bg-amber-500/10",
     severity === "success" && "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/10",
   )
-}
-
-function employeeName(employee: { firstNameEn: string; middleNameEn?: string | null; lastNameEn: string }) {
-  return [employee.firstNameEn, employee.middleNameEn, employee.lastNameEn].filter(Boolean).join(" ")
 }
 
 function leaveRequestHref(request: LeaveRequest) {
