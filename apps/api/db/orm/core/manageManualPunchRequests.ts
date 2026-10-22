@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { db } from '../../db';
 import { attendanceDailyRecords, attendancePunches, employees, manualPunchRequests, user } from '../../schema';
@@ -39,21 +39,27 @@ export async function createManualPunchRequest(input: CreateManualPunchRequestIn
   await assertEmployeeExists(employeeId);
   if (scope) await assertCanAccessEmployee(employeeId, scope);
 
-  const [request] = await db
-    .insert(manualPunchRequests)
-    .values({
-      employeeId,
-      requestedPunchTime: new Date(input.requestedPunchTime),
-      requestedPunchType: input.requestedPunchType,
-      reason: input.reason,
-      status: 'PENDING_REVIEW',
-      supportingDocumentName: input.supportingDocumentName ?? null,
-      supportingDocumentUrl: input.supportingDocumentUrl ?? null,
-      supportingDocumentMimeType: input.supportingDocumentMimeType ?? null,
-      supportingDocumentSize: input.supportingDocumentSize ?? null,
-      requestedBy: input.requestedBy,
-    } as any)
-    .returning();
+  const requestedPunchTime = new Date(input.requestedPunchTime);
+  const request = await db.transaction(async (tx) => {
+    await lockEmployeeCorrections(employeeId, tx);
+    await assertNoActiveCorrectionForPunch(employeeId, requestedPunchTime, input.requestedPunchType, tx);
+    const [row] = await tx
+      .insert(manualPunchRequests)
+      .values({
+        employeeId,
+        requestedPunchTime,
+        requestedPunchType: input.requestedPunchType,
+        reason: input.reason,
+        status: 'PENDING_REVIEW',
+        supportingDocumentName: input.supportingDocumentName ?? null,
+        supportingDocumentUrl: input.supportingDocumentUrl ?? null,
+        supportingDocumentMimeType: input.supportingDocumentMimeType ?? null,
+        supportingDocumentSize: input.supportingDocumentSize ?? null,
+        requestedBy: input.requestedBy,
+      } as any)
+      .returning();
+    return row;
+  });
 
   const created = await getManualPunchRequestById(request.id);
   await writeAuditEvent(db, {
@@ -125,6 +131,8 @@ export async function updateOwnManualPunchRequest(
 
   const requestedPunchTime = new Date(input.requestedPunchTime);
   const updated = await db.transaction(async (tx) => {
+    await lockEmployeeCorrections(request.employeeId, tx);
+    await assertNoActiveCorrectionForPunch(request.employeeId, requestedPunchTime, input.requestedPunchType, tx, id);
     // Guard on status so an edit cannot overwrite a request approved in the meantime.
     const [row] = await tx.update(manualPunchRequests)
       .set({
@@ -393,6 +401,36 @@ export async function getManualPunchRequestById(id: string, tx: DbClient = db) {
       },
     },
   });
+}
+
+const ACTIVE_CORRECTION_STATUSES = [...PENDING_CORRECTION_STATUSES, 'SUPERVISOR_APPROVED', 'APPROVED'];
+
+// Serializes correction submissions per employee so a double submit cannot slip past the duplicate check.
+async function lockEmployeeCorrections(employeeId: string, tx: DbClient) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`manual-punch-request:${employeeId}`}))`);
+}
+
+/** One pending or approved correction per employee, attendance day and punch type. */
+async function assertNoActiveCorrectionForPunch(
+  employeeId: string,
+  requestedPunchTime: Date,
+  requestedPunchType: string,
+  tx: DbClient = db,
+  ignoreRequestId?: string,
+) {
+  const dateKey = toDateKey(requestedPunchTime);
+  const existing = await tx.query.manualPunchRequests.findMany({
+    where: and(
+      eq(manualPunchRequests.employeeId, employeeId),
+      eq(manualPunchRequests.requestedPunchType, requestedPunchType),
+      inArray(manualPunchRequests.status, ACTIVE_CORRECTION_STATUSES),
+      ignoreRequestId ? ne(manualPunchRequests.id, ignoreRequestId) : undefined,
+    ),
+    columns: { requestedPunchTime: true },
+  });
+  if (existing.some((row: any) => toDateKey(new Date(row.requestedPunchTime)) === dateKey)) {
+    throw new Error(`An attendance correction for ${requestedPunchType} on ${dateKey} has already been requested`);
+  }
 }
 
 async function assertEmployeeExists(id: string, tx: DbClient = db) {

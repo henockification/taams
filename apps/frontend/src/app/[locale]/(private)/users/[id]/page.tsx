@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useSession } from '@/lib/auth-client';
+import { EmployeeBiometricEnrollmentCard } from '@/components/biometric/employee-biometric-enrollment-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
 import { ArrowLeft, AlertCircle, RotateCw, Loader2, ShieldCheck, ShieldOff } from 'lucide-react';
@@ -564,6 +565,8 @@ export default function UserDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Device provisioning and removal is a system administrator task; the card gates itself by role. */}
+        {user.employee?.id ? <EmployeeBiometricEnrollmentCard employeeId={user.employee.id} /> : null}
       </div>
 
       <AlertDialog

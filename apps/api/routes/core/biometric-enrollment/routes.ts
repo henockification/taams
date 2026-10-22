@@ -13,26 +13,28 @@ import {
   refreshFromMasterHandler,
   retryFailedDeviceCommandsHandler,
 } from './handlers/biometricEnrollment';
-import { requirePermission } from '../../../middleware/rbac';
-import { requireDeviceAdministrator } from '../biometric-devices/routes';
+import { requirePermission, requirePermissionOrRole } from '../../../middleware/rbac';
+import { PRIVILEGED_ROLE_NAMES } from '../../../lib/privileged-roles';
 
 const biometricEnrollmentApp = new Hono();
-const canRead = requirePermission('biometric-devices:read');
+// Enrollment has its own permissions so it can be granted apart from device monitoring.
+// biometric-devices:read still opens the read-only view, as it did before.
+const canRead = requirePermission('biometric-enrollment:read', 'biometric-devices:read');
+// Writing to devices (sync, provision, remove) needs biometric-enrollment:push or a system administrator role.
+const canManage = requirePermissionOrRole(['biometric-enrollment:push'], [...PRIVILEGED_ROLE_NAMES]);
 
-// Viewing follows device monitoring; anything that writes to devices is a system
-// administration task.
 biometricEnrollmentApp.get('/biometric-enrollment/overview', canRead, getEnrollmentOverviewHandler);
 biometricEnrollmentApp.get('/biometric-enrollment/sync-runs', canRead, getEnrollmentSyncRunsHandler);
 biometricEnrollmentApp.get('/biometric-enrollment/employees/:id', canRead, getEmployeeEnrollmentHandler);
 
-biometricEnrollmentApp.post('/biometric-enrollment/import-usb', canRead, requireDeviceAdministrator, importUsbEnrollmentHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/refresh-from-master', canRead, requireDeviceAdministrator, refreshFromMasterHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/sync/preview', canRead, requireDeviceAdministrator, previewEnrollmentSyncHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/sync', canRead, requireDeviceAdministrator, applyEnrollmentSyncHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/refresh-roster', canRead, requireDeviceAdministrator, refreshDeviceRosterHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/cancel-pending', canRead, requireDeviceAdministrator, cancelPendingDeviceCommandsHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/retry-failed', canRead, requireDeviceAdministrator, retryFailedDeviceCommandsHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/provision', canRead, requireDeviceAdministrator, provisionEmployeeHandler);
-biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/deprovision', canRead, requireDeviceAdministrator, deprovisionEmployeeHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/import-usb', canManage, importUsbEnrollmentHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/refresh-from-master', canManage, refreshFromMasterHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/sync/preview', canManage, previewEnrollmentSyncHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/sync', canManage, applyEnrollmentSyncHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/refresh-roster', canManage, refreshDeviceRosterHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/cancel-pending', canManage, cancelPendingDeviceCommandsHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/retry-failed', canManage, retryFailedDeviceCommandsHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/provision', canManage, provisionEmployeeHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/deprovision', canManage, deprovisionEmployeeHandler);
 
 export default biometricEnrollmentApp;

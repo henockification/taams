@@ -1,19 +1,11 @@
 'use client';
 
-import { ChangeEvent, FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, FileSpreadsheet, Plus, UploadCloud } from 'lucide-react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { FileSpreadsheet, Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,13 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { formatEmployeeName } from '@/lib/employee-name';
-import { notifications } from '@/lib/notifications';
-import {
-  useEmployees,
-  useImportContractEmployees,
-  useImportPermanentEmployees,
-} from '@/data/hooks/core.hooks';
-import type { Employee, EmploymentType, PermanentEmployeeImportResponse } from '@/data/types/core.types';
+import { useEmployees } from '@/data/hooks/core.hooks';
+import type { Employee, EmploymentType } from '@/data/types/core.types';
 import { matchSourceEmploymentStatus, SOURCE_EMPLOYMENT_STATUS_OPTIONS } from '@/lib/employment-status';
 import { useRouter } from '@/i18n';
 
@@ -46,14 +33,8 @@ const directoryCopy = {
     searchId: 'permanent-employee-search',
     statusId: 'permanent-employee-status-filter',
     departmentId: 'permanent-employee-department-filter',
-    fileId: 'permanent-employee-file',
     searchPlaceholder: 'searchPermanentEmployees',
     totalLabel: 'totalPermanentEmployees',
-    importTitle: 'importPermanentEmployees',
-    importDescription: 'importPermanentEmployeesDescription',
-    importing: 'importingPermanentEmployees',
-    importComplete: 'permanentEmployeesImportComplete',
-    importFailed: 'permanentEmployeesImportFailed',
     emptyTitle: 'noPermanentEmployees',
     emptyDescription: 'noPermanentEmployeesDescription',
     noMatchTitle: 'noMatchingPermanentEmployees',
@@ -63,14 +44,8 @@ const directoryCopy = {
     searchId: 'contract-employee-search',
     statusId: 'contract-employee-status-filter',
     departmentId: 'contract-employee-department-filter',
-    fileId: 'contract-employee-file',
     searchPlaceholder: 'searchContractEmployees',
     totalLabel: 'totalContractEmployees',
-    importTitle: 'importContractEmployees',
-    importDescription: 'importContractEmployeesDescription',
-    importing: 'importingContractEmployees',
-    importComplete: 'contractEmployeesImportComplete',
-    importFailed: 'contractEmployeesImportFailed',
     emptyTitle: 'noContractEmployees',
     emptyDescription: 'noContractEmployeesDescription',
     noMatchTitle: 'noMatchingContractEmployees',
@@ -88,17 +63,10 @@ export function ImportedEmployeesPage({
   detailBasePath: '/permanent-employees' | '/contract-employees';
 }) {
   const t = useTranslations('core');
-  const common = useTranslations('common');
   const locale = useLocale();
   const router = useRouter();
   const copy = directoryCopy[kind];
   const { data: employeesResponse, isLoading } = useEmployees();
-  const importPermanentEmployees = useImportPermanentEmployees();
-  const importContractEmployees = useImportContractEmployees();
-  const importer = kind === 'permanent' ? importPermanentEmployees : importContractEmployees;
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [result, setResult] = useState<PermanentEmployeeImportResponse | null>(null);
   const [search, setSearch] = useState('');
   const [employmentStatusFilter, setEmploymentStatusFilter] = useState<EmploymentStatusFilter>('ALL');
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
@@ -144,6 +112,7 @@ export function ImportedEmployeesPage({
         employee.employeeCode,
         employee.sourceIdNo,
         employee.phoneNumber,
+        employee.email,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
         employee.positionName,
@@ -170,36 +139,8 @@ export function ImportedEmployeesPage({
     setPage(1);
   }, [departmentFilter, employmentStatusFilter, pageSize, search]);
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setSelectedFile(event.target.files?.[0] ?? null);
-    setResult(null);
-  };
-
   const openEmployee = (employeeId: string) => {
     router.push(`${detailBasePath}/${employeeId}`);
-  };
-
-  const importFile = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedFile) return;
-
-    try {
-      const response = await importer.mutateAsync({ file: selectedFile });
-      setResult(response);
-      setSelectedFile(null);
-      setImportDialogOpen(false);
-      notifications.show({
-        title: common('success'),
-        message: t(copy.importComplete),
-        color: response.failed > 0 ? 'yellow' : 'green',
-      });
-    } catch (error) {
-      notifications.show({
-        title: common('error'),
-        message: error instanceof Error ? error.message : t(copy.importFailed),
-        color: 'red',
-      });
-    }
   };
 
   return (
@@ -250,53 +191,12 @@ export function ImportedEmployeesPage({
             <Plus className="size-4" />
             {t('addEmployee')}
           </Button>
-          <Button onClick={() => setImportDialogOpen(true)}>
-            <UploadCloud className="size-4" />
-            {common('import')}
-          </Button>
           <div className="rounded-md border border-border px-3 py-2">
             <p className="text-[11px] leading-none text-muted-foreground">{t(copy.totalLabel)}</p>
             <p className="text-base font-semibold">{totalRecords}</p>
           </div>
         </div>
       </div>
-
-      {result ? (
-        <div className="space-y-4 rounded-lg border border-border p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <ImportMetric label={t('created')} value={result.created} />
-            <ImportMetric label={t('updated')} value={result.updated} />
-            <ImportMetric label={t('skipped')} value={result.skipped} />
-            <ImportMetric label={t('failed')} value={result.failed} tone={result.failed > 0 ? 'warning' : 'default'} />
-            <ImportMetric label={t('totalRows')} value={result.totalRows} />
-          </div>
-
-          {result.errors.length > 0 ? (
-            <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
-              <div className="mb-2 flex items-center gap-2 font-medium">
-                <AlertCircle className="size-4" />
-                {t('rowErrors')}
-              </div>
-              <div className="max-h-52 space-y-2 overflow-auto pr-1">
-                {result.errors.map((error) => (
-                  <div key={`${error.rowNumber}-${error.employeeCode ?? 'unknown'}`} className="rounded-md bg-background/70 p-2">
-                    <p className="font-medium">
-                      {t('rowNumber', { rowNumber: error.rowNumber })}
-                      {error.employeeCode ? ` · ${error.employeeCode}` : ''}
-                    </p>
-                    <p className="mt-1 text-muted-foreground">{error.errors.join(', ')}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-100">
-              <CheckCircle2 className="size-4" />
-              {t('allRowsImported')}
-            </div>
-          )}
-        </div>
-      ) : null}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">{t('loadingEmployees')}</p>
@@ -402,42 +302,6 @@ export function ImportedEmployeesPage({
         </div>
       )}
 
-      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{t(copy.importTitle)}</DialogTitle>
-            <DialogDescription>{t(copy.importDescription)}</DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={importFile}>
-            <div className="space-y-2">
-              <Label htmlFor={copy.fileId}>{t('excelFile')}</Label>
-              <Input
-                id={copy.fileId}
-                type="file"
-                accept=".xls,.xlsx"
-                onChange={handleFileChange}
-              />
-            </div>
-
-            {selectedFile ? (
-              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
-                <FileSpreadsheet className="size-4 text-muted-foreground" />
-                <span className="min-w-0 truncate">{selectedFile.name}</span>
-              </div>
-            ) : null}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setImportDialogOpen(false)}>
-                {common('cancel')}
-              </Button>
-              <Button type="submit" disabled={!selectedFile || importer.isPending}>
-                <UploadCloud className="size-4" />
-                {importer.isPending ? t(copy.importing) : common('import')}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -460,25 +324,6 @@ function FilterField({ label, htmlFor, children }: { label: string; htmlFor: str
     <div className="flex min-w-0 flex-col gap-2">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
-    </div>
-  );
-}
-
-function ImportMetric({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string;
-  value: number;
-  tone?: 'default' | 'warning';
-}) {
-  return (
-    <div className="rounded-md border border-border p-3">
-      <p className="text-[11px] leading-none text-muted-foreground">{label}</p>
-      <p className={tone === 'warning' ? 'mt-1 text-lg font-semibold text-amber-600' : 'mt-1 text-lg font-semibold'}>
-        {value}
-      </p>
     </div>
   );
 }

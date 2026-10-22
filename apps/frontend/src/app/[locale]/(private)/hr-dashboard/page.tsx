@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   ClipboardCheck,
   ClipboardList,
@@ -13,7 +14,6 @@ import {
   LogOut,
   RefreshCw,
   RotateCcw,
-  ServerOff,
   ShieldAlert,
   TimerOff,
   UsersRound,
@@ -54,10 +54,8 @@ type HrDashboardMessageKey =
   | "attendanceExceptions"
   | "upcomingLeave"
   | "leaveExpiring"
-  | "offlineDevices"
-  | "syncStatus"
 
-const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ className?: string }>; group: "openItems" | "people" | "systems"; labelKey: HrDashboardMessageKey }> = {
+const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ className?: string }>; group: "openItems" | "people"; labelKey: HrDashboardMessageKey }> = {
   pendingApprovals: { icon: ClipboardCheck, tone: "bg-slate-900 text-white", group: "openItems", labelKey: "pendingAuthorizations" },
   correctionsReturned: { icon: RotateCcw, tone: "bg-rose-600 text-white", group: "openItems", labelKey: "recentReturnedCorrections" },
   manualAttendanceRequests: { icon: ClipboardList, tone: "bg-amber-500 text-white", group: "openItems", labelKey: "pendingManualRequests" },
@@ -68,8 +66,6 @@ const widgetMeta: Record<WidgetKey, { tone: string; icon: React.ComponentType<{ 
   attendanceExceptions: { icon: AlertTriangle, tone: "bg-red-700 text-white", group: "openItems", labelKey: "attendanceExceptions" },
   upcomingLeave: { icon: CalendarClock, tone: "bg-emerald-700 text-white", group: "people", labelKey: "upcomingLeave" },
   employeesNearLeaveExpiry: { icon: TimerOff, tone: "bg-teal-700 text-white", group: "people", labelKey: "leaveExpiring" },
-  devicesOffline: { icon: ServerOff, tone: "bg-zinc-800 text-white", group: "systems", labelKey: "offlineDevices" },
-  synchronizationStatus: { icon: RefreshCw, tone: "bg-blue-700 text-white", group: "systems", labelKey: "syncStatus" },
 }
 
 export default function HrDashboardPage() {
@@ -128,7 +124,11 @@ export default function HrDashboardPage() {
       </div>
 
       <DashboardDataQualityNotice dataQuality={dashboard.dataQuality} isLive={dashboard.isLive} />
-      <DashboardAttendanceStrip summary={dashboard.attendanceSummary} isLive={dashboard.isLive} />
+      <DashboardAttendanceStrip
+        summary={dashboard.attendanceSummary}
+        isLive={dashboard.isLive}
+        absentHref={dashboard.widgets.employeesWithoutPunch.href || undefined}
+      />
 
       <div className={cn("grid gap-5", showPersonalLeaveBalance && "xl:grid-cols-[minmax(0,1fr)_18rem]")}>
         <WidgetGrid dashboard={dashboard} />
@@ -145,11 +145,6 @@ export default function HrDashboardPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <PeopleStatus dashboard={dashboard} />
         <LeaveStatus dashboard={dashboard} />
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <DeviceStatus dashboard={dashboard} />
-        <SynchronizationStatus dashboard={dashboard} />
       </div>
     </div>
   )
@@ -170,8 +165,8 @@ function WidgetCard({ widgetKey, widget }: { widgetKey: WidgetKey; widget: HrDas
   const meta = widgetMeta[widgetKey]
   const Icon = meta.icon
 
-  return (
-    <Card className="min-w-0 gap-3 py-3 sm:gap-6 sm:py-6">
+  const card = (
+    <Card className={cn("h-full min-w-0 gap-3 py-3 sm:gap-6 sm:py-6", widget.href && "transition-colors group-hover:border-primary/50 group-hover:bg-accent/40")}>
       <CardContent className="flex min-w-0 items-center gap-2 px-3 sm:gap-4 sm:px-4">
         <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md sm:size-11", meta.tone)}>
           <Icon className="size-4 sm:size-5" />
@@ -180,16 +175,20 @@ function WidgetCard({ widgetKey, widget }: { widgetKey: WidgetKey; widget: HrDas
           <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{t(meta.labelKey)}</p>
           <p className="mt-1 text-xl font-semibold tracking-tight text-foreground sm:text-2xl">{widget.count}</p>
         </div>
-        {widget.href ? (
-          <Button className="size-7 shrink-0 sm:size-9" variant="ghost" size="icon" asChild>
-            <Link href={widget.href as any} aria-label={t(meta.labelKey)}>
-              <RefreshCw className="size-4" />
-            </Link>
-          </Button>
-        ) : null}
+        {widget.href ? <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
       </CardContent>
     </Card>
   )
+
+  // The whole card opens the list behind its count.
+  return widget.href ? <DashboardLink href={widget.href} label={t(meta.labelKey)}>{card}</DashboardLink> : card
+}
+
+/** In-page anchors (#open-items) scroll to a dashboard section; anything else navigates. */
+function DashboardLink({ href, label, children }: { href: string; label?: string; children: React.ReactNode }) {
+  const className = "group block min-w-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+  if (href.startsWith("#")) return <a href={href} aria-label={label} className={className}>{children}</a>
+  return <Link href={href as any} aria-label={label} className={className}>{children}</Link>
 }
 
 function PersonalLeaveBalance({ balance }: { balance: LeaveBalance | null }) {
@@ -255,7 +254,7 @@ function OperationalQueue({ dashboard }: { dashboard: HrDashboardSummary }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("openItems")}</CardTitle>
+        <CardTitle id="open-items" className="scroll-mt-20">{t("openItems")}</CardTitle>
       </CardHeader>
       <CardContent className="overflow-x-auto">
         <DataTable emptyLabel={t("noRows")}>
@@ -284,9 +283,12 @@ function AttendanceExceptions({ dashboard }: { dashboard: HrDashboardSummary }) 
       <CardContent className="grid gap-2">
         {dashboard.details.attendanceExceptions.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("noAlerts")}</p>
-        ) : dashboard.details.attendanceExceptions.map((item) => (
-          <AlertRow key={item.id} severity={item.severity} title={`${item.title}: ${item.count}`} description={item.description} />
-        ))}
+        ) : dashboard.details.attendanceExceptions.map((item) => {
+          const row = <AlertRow severity={item.severity} title={`${item.title}: ${item.count}`} description={item.description} linked={Boolean(item.href && item.count > 0)} />
+          return item.href && item.count > 0
+            ? <DashboardLink key={item.id} href={item.href}>{row}</DashboardLink>
+            : <React.Fragment key={item.id}>{row}</React.Fragment>
+        })}
       </CardContent>
     </Card>
   )
@@ -410,70 +412,7 @@ function LeaveStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
   )
 }
 
-function DeviceStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
-  const t = useTranslations("hrDashboard")
-  const { formatDateTime } = useCalendarPreference()
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("offlineDevices")}</CardTitle>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <SimpleTable headers={[t("device"), t("status"), t("lastSeen")]} emptyLabel={t("noRows")}>
-          {dashboard.details.devicesOffline.map((device) => (
-            <TableRow key={device.id}>
-              <TableCell className="min-w-52 font-medium">{device.deviceName}</TableCell>
-              <TableCell><Badge variant="destructive">{device.healthStatus}</Badge></TableCell>
-              <TableCell className="min-w-36 text-muted-foreground">{formatDateTime(device.lastSeenAt)}</TableCell>
-            </TableRow>
-          ))}
-        </SimpleTable>
-      </CardContent>
-    </Card>
-  )
-}
-
-function SynchronizationStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
-  const t = useTranslations("hrDashboard")
-  const counts = dashboard.details.synchronizationStatus.counts
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t("syncStatus")}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-4">
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {[
-            [t("started"), counts.started, "text-blue-700"],
-            [t("completed"), counts.completed, "text-emerald-700"],
-            [t("failed"), counts.failed, "text-rose-700"],
-            [t("partial"), counts.partial, "text-amber-700"],
-          ].map(([label, value, className]) => (
-            <div key={label} className="rounded-md border border-border p-3">
-              <p className="text-xs font-medium uppercase text-muted-foreground">{label}</p>
-              <p className={cn("mt-1 text-2xl font-semibold", className)}>{value}</p>
-            </div>
-          ))}
-        </div>
-        <div className="overflow-x-auto">
-          <SimpleTable headers={[t("device"), t("status"), t("records")]} emptyLabel={t("noRows")}>
-            {dashboard.details.synchronizationStatus.recent.slice(0, 8).map((batch) => (
-              <TableRow key={batch.id}>
-                <TableCell className="min-w-52 font-medium">{batch.device?.deviceName ?? "-"}</TableCell>
-                <TableCell><StatusBadge status={batch.syncStatus} /></TableCell>
-                <TableCell className="min-w-36 text-muted-foreground">{batch.successfulRecords}/{batch.totalRecords}</TableCell>
-              </TableRow>
-            ))}
-          </SimpleTable>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function AlertRow({ severity, title, description }: { severity: HrDashboardSeverity; title: string; description: string }) {
+function AlertRow({ severity, title, description, linked = false }: { severity: HrDashboardSeverity; title: string; description: string; linked?: boolean }) {
   const iconClass = severity === "critical"
     ? "bg-destructive text-destructive-foreground"
     : severity === "warning"
@@ -481,7 +420,7 @@ function AlertRow({ severity, title, description }: { severity: HrDashboardSever
       : "bg-primary text-primary-foreground"
 
   return (
-    <div className="flex gap-3 rounded-md border border-border p-3">
+    <div className={cn("flex gap-3 rounded-md border border-border p-3", linked && "transition-colors group-hover:border-primary/50 group-hover:bg-accent/40")}>
       <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md", iconClass)}>
         {severity === "critical" ? <ShieldAlert className="size-4" /> : severity === "warning" ? <AlertTriangle className="size-4" /> : <HeartPulse className="size-4" />}
       </div>
@@ -489,6 +428,7 @@ function AlertRow({ severity, title, description }: { severity: HrDashboardSever
         <p className="text-sm font-semibold text-foreground">{title}</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
       </div>
+      {linked ? <ChevronRight className="ml-auto size-4 shrink-0 self-center text-muted-foreground" aria-hidden="true" /> : null}
     </div>
   )
 }

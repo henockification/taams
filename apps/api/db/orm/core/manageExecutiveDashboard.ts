@@ -22,15 +22,28 @@ import {
   workforceStatus,
   type ClassifiedDay,
 } from '../../../lib/dashboard/executive-metrics';
+import {
+  arrivalCurve,
+  averageLateMinutes,
+  daysAsOf,
+  departmentMovers,
+  lostTime,
+  previousWorkingDate,
+  repeatCases,
+  sameClockOn,
+  weekdayLateness,
+  WEEKDAY_LATENESS_WEEKS,
+} from '../../../lib/dashboard/executive-insights';
 import { db } from '../../db';
 import {
   attendancePunches,
+  employees,
   attendanceSyncBatches,
   biometricDevices,
   leaveRequests,
   manualPunchRequests,
 } from '../../schema';
-import { countMissingRecords, loadAttendanceDays, resolveDepartmentScope } from './attendanceDays';
+import { countMissingRecords, loadAttendanceDays, resolveDepartmentScope, type AttendanceDay } from './attendanceDays';
 import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
 
 const LOW_ATTENDANCE_THRESHOLD = 90;
@@ -115,7 +128,28 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
   const classified = absentUntilArrived(context.days.filter((day) => inScope(day.departmentId)));
   const inRange = (start: string, end: string) => classified.filter((day) => day.date >= start && day.date <= end);
   const current = rangeDates.length ? inRange(range.start, rangeEnd) : [];
-  const previous = inRange(previousStart, previousEnd);
+  // Like-for-like comparison, used by every "previous" figure on the dashboard: a day is compared
+  // with the previous working day, a week or month with the previous period of the same length.
+  // While the period is live, the matching day is taken as it stood at the same clock time.
+  const comparison = (() => {
+    if (period === 'day') {
+      const previousDate = previousWorkingDate(classified, focusDate);
+      if (!previousDate) return null;
+      const asOf = isLive ? sameClockOn(now, today, previousDate) : null;
+      const days = inRange(previousDate, previousDate);
+      return { dateFrom: previousDate, dateTo: previousDate, asOf, days: asOf ? daysAsOf(days, asOf) : days };
+    }
+    if (!rangeDates.length) return null;
+    const asOf = isLive ? sameClockOn(now, today, previousEnd) : null;
+    const days = inRange(previousStart, previousEnd);
+    return {
+      dateFrom: previousStart,
+      dateTo: previousEnd,
+      asOf,
+      days: asOf ? [...days.filter((day) => day.date !== previousEnd), ...daysAsOf(days.filter((day) => day.date === previousEnd), asOf)] : days,
+    };
+  })();
+  const previous = comparison?.days ?? [];
   const currentCounts = countStatuses(current);
   const previousCounts = countStatuses(previous);
 
@@ -191,6 +225,21 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     notYetArrived,
   });
 
+  const insights = await buildInsights({
+    classified,
+    current,
+    currentCounts,
+    previousCounts,
+    comparison,
+    period,
+    focusDate,
+    isLive,
+    now,
+    inRange,
+    departmentPerformance,
+    departmentById,
+  });
+
   return {
     generatedAt: now,
     date: anchor,
@@ -245,6 +294,134 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     attendanceExceptions: exceptions.attendance,
     deviceHealth,
     executiveAlerts: exceptions.executive,
+    insights,
+  };
+}
+
+type DashboardDay = ReturnType<typeof absentUntilArrived<AttendanceDay>>[number];
+
+/** The headline comparison, arrival curve, lost time, movers, repeat cases and drill-down lists. */
+async function buildInsights(input: {
+  classified: DashboardDay[];
+  current: DashboardDay[];
+  currentCounts: ReturnType<typeof countStatuses>;
+  previousCounts: ReturnType<typeof countStatuses>;
+  comparison: { dateFrom: string; dateTo: string; asOf: Date | null } | null;
+  period: 'day' | 'week' | 'month';
+  focusDate: string;
+  isLive: boolean;
+  now: Date;
+  inRange: (start: string, end: string) => DashboardDay[];
+  departmentPerformance: ReturnType<typeof buildDepartmentPerformance>;
+  departmentById: Map<string, { id: string; nameEn: string }>;
+}) {
+  const rates = (counts: ReturnType<typeof countStatuses>) => {
+    const present = counts.ON_TIME + counts.LATE;
+    const due = present + counts.ABSENT;
+    const attendance = attendanceRate(counts);
+    return {
+      due,
+      present,
+      absent: counts.ABSENT,
+      late: counts.LATE,
+      attendanceRate: attendance,
+      // The complement, so present % and absent % always add up to 100.
+      absenceRate: attendance === null ? null : round1(100 - attendance),
+      lateRate: rate(counts.LATE, present),
+    };
+  };
+
+  const monthStart = `${input.focusDate.slice(0, 7)}-01`;
+  const repeat = repeatCases(input.inRange(monthStart, input.focusDate));
+  const weekdayFrom = addDays(input.focusDate, -(WEEKDAY_LATENESS_WEEKS * 7 - 1));
+  // Who is late or absent on the day, for the card drill-downs (single days only).
+  const people = input.period === 'day'
+    ? input.current.filter((day) => day.status === 'LATE' || day.status === 'ABSENT')
+    : [];
+
+  const nameIds = [...new Set([...repeat.employees.map((entry) => entry.employeeId), ...people.map((day) => day.record.employeeId)])];
+  const nameRows = nameIds.length
+    ? await db.select({
+      id: employees.id,
+      employeeCode: employees.employeeCode,
+      firstNameEn: employees.firstNameEn,
+      middleNameEn: employees.middleNameEn,
+      lastNameEn: employees.lastNameEn,
+      firstNameAm: employees.firstNameAm,
+      middleNameAm: employees.middleNameAm,
+      lastNameAm: employees.lastNameAm,
+    }).from(employees).where(inArray(employees.id, nameIds))
+    : [];
+  const nameById = new Map(nameRows.map(({ id, ...name }) => [id, name]));
+  const departmentName = (departmentId: string | null) => (
+    departmentId ? input.departmentById.get(departmentId)?.nameEn ?? 'Unknown department' : 'Unassigned'
+  );
+  const withName = <T extends { employeeId: string; departmentId: string | null }>(entry: T) => ({
+    ...entry,
+    employee: nameById.get(entry.employeeId) ?? null,
+    department: departmentName(entry.departmentId),
+  });
+
+  const rankedDepartments = input.departmentPerformance.filter((department) => (
+    department.attendanceRate !== null && department.dueDays >= LOW_ATTENDANCE_MIN_DUE_DAYS
+  ));
+  const lowest = rankedDepartments.reduce<(typeof rankedDepartments)[number] | null>(
+    (worst, department) => (!worst || department.attendanceRate! < worst.attendanceRate! ? department : worst),
+    null,
+  );
+  const movers = departmentMovers(
+    input.departmentPerformance.map((department) => ({
+      departmentId: department.departmentId,
+      department: department.department,
+      attendanceRate: department.attendanceRate,
+      comparisonRate: department.previousAttendanceRate,
+      dueDays: department.dueDays,
+      comparisonDueDays: department.previousDueDays,
+    })),
+    LOW_ATTENDANCE_MIN_DUE_DAYS,
+  );
+
+  return {
+    current: { ...rates(input.currentCounts), averageLateMinutes: averageLateMinutes(input.current) },
+    comparison: input.comparison
+      ? {
+        kind: input.period === 'day' ? 'PREVIOUS_WORKING_DAY' as const : 'PREVIOUS_PERIOD' as const,
+        dateFrom: input.comparison.dateFrom,
+        dateTo: input.comparison.dateTo,
+        asOf: input.comparison.asOf,
+        ...rates(input.previousCounts),
+      }
+      : null,
+    lowestDepartment: rankedDepartments.length > 1 && lowest
+      ? { departmentId: lowest.departmentId, department: lowest.department, attendanceRate: lowest.attendanceRate! }
+      : null,
+    arrivalCurve: arrivalCurve({ days: input.classified, focusDate: input.focusDate, now: input.now, isLive: input.isLive }),
+    lostTime: lostTime(input.current, input.now),
+    departmentMovers: {
+      improved: movers.improved.map(({ departmentId, department, attendanceRate: value, comparisonRate, change }) => ({ departmentId, department, attendanceRate: value!, comparisonRate: comparisonRate!, change })),
+      declined: movers.declined.map(({ departmentId, department, attendanceRate: value, comparisonRate, change }) => ({ departmentId, department, attendanceRate: value!, comparisonRate: comparisonRate!, change })),
+    },
+    repeatCases: {
+      dateFrom: monthStart,
+      dateTo: input.focusDate,
+      lateThreshold: repeat.lateThreshold,
+      absentThreshold: repeat.absentThreshold,
+      lateCount: repeat.lateCount,
+      absentCount: repeat.absentCount,
+      employees: repeat.employees.map(withName),
+    },
+    weekdayLateness: {
+      dateFrom: weekdayFrom,
+      dateTo: input.focusDate,
+      days: weekdayLateness(input.inRange(weekdayFrom, input.focusDate)),
+    },
+    people: people.map((day) => withName({
+      employeeId: day.record.employeeId,
+      departmentId: day.departmentId,
+      status: day.notYetArrived ? 'NOT_YET_ARRIVED' as const : day.status as 'LATE' | 'ABSENT',
+      checkInAt: day.record.checkInAt ?? null,
+      lateMinutes: day.status === 'LATE' ? Number(day.record.lateMinutes ?? 0) : null,
+    })),
   };
 }
 
@@ -331,6 +508,7 @@ function buildDepartmentPerformance(input: {
         attendanceRate: currentRate,
         punctualityRate: punctualityRate(counts),
         previousAttendanceRate: previousRate,
+        previousDueDays: previousCounts.ON_TIME + previousCounts.LATE + previousCounts.ABSENT,
         trend: trendDirection(currentRate, previousRate),
       };
     })

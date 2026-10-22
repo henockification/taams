@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendanceLeaveVerifications, employees, ismisLeaveDays, ismisLeaveImportBatches } from '../../schema';
 
@@ -100,6 +100,63 @@ export async function getExternalLeaveDays(employeeId: string, attendanceDate: s
     where: and(eq(ismisLeaveDays.employeeId, employeeId), eq(ismisLeaveDays.attendanceDate, attendanceDate), sql`EXISTS (SELECT 1 FROM "ismis_leave_import_batches" b WHERE b."id" = ${ismisLeaveDays.batchId} AND b."status" = 'COMPLETED')`),
   });
   return row ? 1 : 0;
+}
+
+/**
+ * Confirmed ISMIS leave starting between `from` and `to`, one entry per ISMIS leave row,
+ * shaped like an authorized leave request so dashboards and reports can list both together.
+ * Re-imports of the same row in later batches are folded into one entry.
+ */
+export async function getIsmisLeavePeriods(from: string, to: string) {
+  if (from > to) return [];
+  const rows = await db.select({
+    employeeId: ismisLeaveDays.employeeId,
+    attendanceDate: ismisLeaveDays.attendanceDate,
+    sourceLeaveType: ismisLeaveDays.sourceLeaveType,
+    sourceStartDate: ismisLeaveDays.sourceStartDate,
+    sourceEndDate: ismisLeaveDays.sourceEndDate,
+    sourceLeaveDays: ismisLeaveDays.sourceLeaveDays,
+  }).from(ismisLeaveDays).where(and(
+    isNotNull(ismisLeaveDays.employeeId),
+    gte(ismisLeaveDays.attendanceDate, from),
+    lte(ismisLeaveDays.attendanceDate, to),
+    sql`EXISTS (SELECT 1 FROM "ismis_leave_import_batches" b WHERE b."id" = ${ismisLeaveDays.batchId} AND b."status" = 'COMPLETED')`,
+  ));
+
+  const periods = new Map<string, { employeeId: string; leaveType: string | null; startDate: string; endDate: string; days: string | null }>();
+  for (const row of rows) {
+    const key = `${row.employeeId}:${row.sourceStartDate}:${row.sourceEndDate}`;
+    if (periods.has(key)) continue;
+    const date = String(row.attendanceDate);
+    periods.set(key, {
+      employeeId: row.employeeId!,
+      leaveType: row.sourceLeaveType,
+      startDate: parseEthiopianDate(row.sourceStartDate) ?? date,
+      endDate: parseEthiopianDate(row.sourceEndDate) ?? date,
+      days: row.sourceLeaveDays ?? null,
+    });
+  }
+  const starting = [...periods.entries()].filter(([, period]) => period.startDate >= from && period.startDate <= to);
+  if (!starting.length) return [];
+
+  const people = await db.query.employees.findMany({
+    where: inArray(employees.id, [...new Set(starting.map(([, period]) => period.employeeId))]),
+    with: { department: true, position: true },
+  });
+  const personById = new Map(people.map((person) => [person.id, person]));
+  return starting
+    .map(([key, period]) => ({
+      id: `ismis:${key}`,
+      employeeId: period.employeeId,
+      employee: personById.get(period.employeeId) ?? null,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      requestedDays: period.days,
+      status: 'AUTHORIZED',
+      source: 'ISMIS' as const,
+      leaveType: { code: 'ISMIS', nameEn: period.leaveType ? `${period.leaveType} (ISMIS)` : 'Leave (ISMIS)' },
+    }))
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
 }
 
 export function parseEthiopianDate(value: string): string | null {

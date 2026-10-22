@@ -39,6 +39,8 @@ INSERT INTO _seed_permissions (name, resource, action, description) VALUES
   ('shifts:read', 'shifts', 'read', 'View shifts'),
   ('schedule-assignments:read', 'schedule-assignments', 'read', 'View schedule assignments'),
   ('biometric-devices:read', 'biometric-devices', 'read', 'View biometric devices'),
+  ('biometric-enrollment:read', 'biometric-enrollment', 'read', 'View biometric enrollment status and sync runs'),
+  ('biometric-enrollment:push', 'biometric-enrollment', 'push', 'Sync, provision and remove employee enrollments on biometric devices'),
   ('biometric-exemptions:read', 'biometric-exemptions', 'read', 'View biometric exemption requests'),
   ('biometric-exemptions:approve', 'biometric-exemptions', 'approve', 'Approve biometric exemption requests'),
   ('attendance-punches:read', 'attendance-punches', 'read', 'View attendance punches'),

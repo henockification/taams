@@ -14,6 +14,7 @@ import {
   LogIn,
   LogOut,
   Megaphone,
+  ServerOff,
   ShieldCheck,
   Timer,
   UsersRound as UsersRoundIcon,
@@ -24,12 +25,14 @@ import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useDashboardSummary } from "@/data/hooks/core.hooks"
 import type {
   AttendancePunch,
   DashboardMetric,
   DashboardPlaceholder,
   DashboardQuickAction,
+  DashboardDeviceHealth,
   DashboardRoleSummary,
   DashboardSummary,
   ManualPunchRequest,
@@ -90,6 +93,7 @@ export default function DashboardPage() {
       {dashboard.role === "MANAGER" ? <ManagerDashboard dashboard={dashboard} /> : null}
       {dashboard.role === "EMPLOYEE" ? <EmployeeDashboard dashboard={dashboard} canViewManualPunchRequests={canViewManualPunchRequests} /> : null}
       {dashboard.role === "SETUP_REQUIRED" ? <SetupRequiredDashboard dashboard={dashboard} /> : null}
+      {dashboard.sections.deviceHealth ? <DeviceHealthCard health={dashboard.sections.deviceHealth} /> : null}
       {dashboard.sections.roleSummary ? <RoleSummaryCard summary={dashboard.sections.roleSummary} /> : null}
     </div>
   )
@@ -445,6 +449,104 @@ function SetupRequiredDashboard({ dashboard }: { dashboard: DashboardSummary }) 
       </Card>
       <QuickActions actions={dashboard.quickActions} />
     </div>
+  )
+}
+
+/** System administrators only: offline devices and recent attendance syncs, which HR does not act on. */
+function DeviceHealthCard({ health }: { health: DashboardDeviceHealth }) {
+  const t = useTranslations("dashboard")
+  const { formatDateTime } = useCalendarPreference()
+  const tiles = [
+    { label: t("offlineDevicesCount"), value: health.offlineDevices.length, tone: health.offlineDevices.length ? "text-rose-700 dark:text-rose-400" : "text-foreground" },
+    { label: t("syncIssues"), value: health.sync.openIssues, tone: health.sync.openIssues ? "text-amber-700 dark:text-amber-400" : "text-foreground", hint: t("syncIssuesHint") },
+    { label: t("syncCompleted"), value: health.sync.counts.completed, tone: "text-emerald-700 dark:text-emerald-400" },
+    { label: t("syncFailed"), value: health.sync.counts.failed, tone: health.sync.counts.failed ? "text-rose-700 dark:text-rose-400" : "text-foreground" },
+  ]
+  const syncVariant = (status: string) => (status === "FAILED" ? "destructive" : status === "COMPLETED" ? "default" : "secondary")
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <ServerOff className="size-5 text-primary" />
+            {t("deviceHealthTitle")}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">{t("deviceHealthDescription", { active: health.activeDevices })}</p>
+        </div>
+        <Link href="/biometric-devices" className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+          {t("openDevices")}
+          <ArrowRight className="size-4" />
+        </Link>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+          {tiles.map((tile) => (
+            <Link key={tile.label} href="/biometric-devices" className="min-w-0 rounded-xl border border-border bg-background p-3 transition-colors hover:bg-muted sm:p-4">
+              <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{tile.label}</p>
+              <p className={cn("mt-2 text-2xl font-semibold", tile.tone)}>{tile.value}</p>
+              {tile.hint ? <p className="mt-1 text-[11px] text-muted-foreground">{tile.hint}</p> : null}
+            </Link>
+          ))}
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <div className="min-w-0 overflow-x-auto">
+            <p className="mb-2 text-sm font-medium">{t("offlineDevicesCount")}</p>
+            {health.offlineDevices.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("noOfflineDevices")}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("deviceColumn")}</TableHead>
+                    <TableHead>{t("lastSeenColumn")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {health.offlineDevices.map((device) => (
+                    <TableRow key={device.id}>
+                      <TableCell className="min-w-44 font-medium">
+                        {device.deviceName}
+                        {device.locationName ? <span className="block text-xs text-muted-foreground">{device.locationName}</span> : null}
+                      </TableCell>
+                      <TableCell className="min-w-36 text-muted-foreground">{device.lastSeenAt ? formatDateTime(device.lastSeenAt) : "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          <div className="min-w-0 overflow-x-auto">
+            <p className="mb-2 text-sm font-medium">{t("recentSyncs")}</p>
+            {health.sync.recent.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("noRecentSyncs")}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("deviceColumn")}</TableHead>
+                    <TableHead>{t("statusColumn")}</TableHead>
+                    <TableHead>{t("recordsColumn")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {health.sync.recent.slice(0, 8).map((batch) => (
+                    <TableRow key={batch.id}>
+                      <TableCell className="min-w-44 font-medium">
+                        {batch.deviceName ?? "-"}
+                        {batch.createdAt ? <span className="block text-xs text-muted-foreground">{formatDateTime(batch.createdAt)}</span> : null}
+                      </TableCell>
+                      <TableCell><Badge variant={syncVariant(batch.syncStatus)}>{batch.syncStatus}</Badge></TableCell>
+                      <TableCell className="text-muted-foreground">{batch.successfulRecords ?? 0}/{batch.totalRecords ?? 0}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

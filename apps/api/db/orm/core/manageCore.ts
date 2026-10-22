@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { and, asc, count, eq, ilike, inArray, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { departments, employeeSupervisors, employees, positions, roles, user, userRoles } from '../../schema';
 import {
@@ -28,6 +28,7 @@ import { assertValidAbsenceReason } from '../../../lib/employees/absence';
 import { normalizeLoginEmail, normalizeLoginPhone } from '../../../lib/login-identifier';
 import { syncLinkedUserContact } from '../users/syncLinkedUserContact';
 import { revokeSeparatedEmployeeAccess } from '../users/revokeSeparatedEmployeeAccess';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import {
   diffChanges,
   employeeAuditFields,
@@ -349,6 +350,119 @@ export async function createEmployee(input: CreateEmployeeInput) {
     ...employeeAuditFields(createdEmployee),
   });
   return createdEmployee;
+}
+
+/**
+ * Gives an employee created before accounts were automatic a login account: links an unclaimed
+ * user with the same email or phone, or creates one with the employee role, as adding an employee does.
+ */
+export async function createEmployeeUserAccountScoped(id: string, scope: EmployeeVisibilityScope) {
+  await assertCanAccessEmployee(id, scope);
+  const employee = await getEmployeeById(id);
+  if (!employee) throw new Error('Employee not found');
+  if (employee.userId) throw new Error('This employee already has a user account');
+  if (!normalizeLoginEmail(employee.email) || !normalizeLoginPhone(employee.phoneNumber)) {
+    throw new Error('Email and phone number are required to create a user account. Add them to the employee profile first');
+  }
+
+  const updated = await db.transaction(async (tx) => {
+    const userId = await linkOrCreateEmployeeUser(employee as unknown as CreateEmployeeInput, tx);
+    // Guard on userId so two clicks cannot attach two accounts.
+    const [row] = await tx.update(employees)
+      .set({ userId, updatedAt: new Date() } as any)
+      .where(and(eq(employees.id, id), isNull(employees.userId)))
+      .returning({ id: employees.id });
+    if (!row) throw new Error('This employee already has a user account');
+    await revokeSeparatedEmployeeAccess([{ userId, previousStatus: null, nextStatus: employee.sourceEmploymentStatus }], tx);
+    return getEmployeeById(id, tx);
+  });
+
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_USER_ACCOUNT_CREATED',
+    resourceType: 'employee',
+    resourceId: updated?.id,
+    resourceLabel: formatEmployeeLabel(updated),
+    ...employeeAuditFields(updated),
+    metadata: { userId: updated?.userId ?? null },
+  });
+  return updated;
+}
+
+/**
+ * A permanent employee who resigned and was rehired on contract keeps the same record, email,
+ * phone and login: only the employment type, department (from the contract structure) and
+ * primary supervisor change, from today. Earlier supervisor assignments end yesterday so
+ * history stays intact; assignments that had not started yet are dropped.
+ */
+export async function convertEmployeeToContractScoped(
+  id: string,
+  input: { departmentId: string; supervisorId: string },
+  scope: EmployeeVisibilityScope,
+) {
+  await assertCanAccessEmployee(id, scope);
+  if (!isDepartmentVisibleInScope(input.departmentId, scope)) throw new Error('Department not found');
+  if (id === input.supervisorId) throw new Error('Employee cannot be their own supervisor');
+  await assertActiveWorkingSupervisor(input.supervisorId);
+
+  const today = addisToday();
+  const yesterday = previousDateString(today);
+  let previous: { departmentId: string | null; supervisorIds: string[] } = { departmentId: null, supervisorIds: [] };
+  const converted = await db.transaction(async (tx) => {
+    const current = await getEmployeeById(id, tx);
+    if (!current) throw new Error('Employee not found');
+    if (current.employmentType !== 'PERMANENT') throw new Error('Only permanent employees can be moved to contract');
+    const department = await tx.query.departments.findFirst({
+      where: eq(departments.id, input.departmentId),
+      columns: { id: true, isContract: true, isActive: true },
+    });
+    if (!department) throw new Error('Department not found');
+    if (!department.isContract) throw new Error('The new department must be from the contract structure');
+
+    const [row] = await tx.update(employees)
+      .set({ employmentType: 'CONTRACT', departmentId: input.departmentId, updatedAt: new Date() } as any)
+      .where(and(eq(employees.id, id), eq(employees.employmentType, 'PERMANENT')))
+      .returning({ id: employees.id });
+    if (!row) throw new Error('Only permanent employees can be moved to contract');
+
+    const assignments = await tx.query.employeeSupervisors.findMany({
+      where: and(
+        eq(employeeSupervisors.employeeId, id),
+        or(sql`${employeeSupervisors.effectiveTo} IS NULL`, sql`${employeeSupervisors.effectiveTo} >= ${today}`),
+      ),
+    });
+    for (const assignment of assignments) {
+      if (String(assignment.effectiveFrom) >= today) {
+        await tx.delete(employeeSupervisors).where(eq(employeeSupervisors.id, assignment.id));
+      } else {
+        await tx.update(employeeSupervisors).set({ effectiveTo: yesterday } as any).where(eq(employeeSupervisors.id, assignment.id));
+      }
+    }
+    await tx.insert(employeeSupervisors).values({
+      employeeId: id,
+      supervisorId: input.supervisorId,
+      isPrimary: true,
+      effectiveFrom: today,
+      effectiveTo: null,
+    } as any);
+    await ensureSupervisorRole(input.supervisorId, tx);
+
+    previous = { departmentId: current.departmentId, supervisorIds: assignments.map((assignment) => assignment.supervisorId) };
+    return getEmployeeById(id, tx);
+  });
+
+  await writeAuditEvent(db, {
+    action: 'EMPLOYEE_CONVERTED_TO_CONTRACT',
+    resourceType: 'employee',
+    resourceId: id,
+    resourceLabel: formatEmployeeLabel(converted),
+    ...employeeAuditFields(converted),
+    changes: diffChanges(
+      { employmentType: 'PERMANENT', departmentId: previous.departmentId },
+      { employmentType: 'CONTRACT', departmentId: input.departmentId },
+    ),
+    metadata: { effectiveFrom: today, previousSupervisorIds: previous.supervisorIds, supervisorId: input.supervisorId },
+  });
+  return converted;
 }
 
 export async function createEmployeeScoped(input: CreateEmployeeInput, scope: EmployeeVisibilityScope) {

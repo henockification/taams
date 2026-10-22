@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, type ReactNode, useMemo, useState } from 'react';
-import { ArrowLeft, Pencil, Plus, UserRoundCog } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Pencil, Plus, UserPlus, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -24,7 +24,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
-import { EmployeeBiometricEnrollmentCard } from '@/components/biometric/employee-biometric-enrollment-card';
+import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import {
   Select,
   SelectContent,
@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Link } from '@/i18n';
+import { Link, useRouter } from '@/i18n';
 import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -44,6 +44,9 @@ import {
   useEmployee,
   useEmployees,
   useEmployeeSupervisors,
+  useConvertEmployeeToContract,
+  useCreateEmployeeUserAccount,
+  useSupervisorCandidates,
   useUpdateEmployee,
 } from '@/data/hooks/core.hooks';
 import type { AbsenceReason } from '@/data/types/core.types';
@@ -71,6 +74,13 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
   const { data: biometricExemptionsResponse } = useBiometricExemptions();
   const createSupervisor = useCreateEmployeeSupervisor();
   const updateEmployee = useUpdateEmployee();
+  const createUserAccount = useCreateEmployeeUserAccount();
+  const convertToContract = useConvertEmployeeToContract();
+  const router = useRouter();
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [contractDepartmentId, setContractDepartmentId] = useState('');
+  const [contractSupervisorId, setContractSupervisorId] = useState('');
+  const { data: supervisorCandidatesResponse } = useSupervisorCandidates(convertOpen);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -135,6 +145,45 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
       notifications.show({
         title: common('error'),
         message: error instanceof Error ? error.message : t('saveFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  // Employees added before accounts were created automatically have no login yet.
+  const createAccount = async () => {
+    try {
+      await createUserAccount.mutateAsync(employeeId);
+      notifications.show({
+        title: common('success'),
+        message: t('userAccountCreated'),
+        color: 'green',
+      });
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('userAccountCreateFailed'),
+        color: 'red',
+      });
+    }
+  };
+
+  // Permanent staff who resign and return on contract keep their record, contact details and login.
+  const saveContractMove = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      await convertToContract.mutateAsync({ employeeId, departmentId: contractDepartmentId, supervisorId: contractSupervisorId });
+      setConvertOpen(false);
+      notifications.show({
+        title: common('success'),
+        message: t('movedToContract'),
+        color: 'green',
+      });
+      router.replace(`/contract-employees/${employeeId}`);
+    } catch (error) {
+      notifications.show({
+        title: common('error'),
+        message: error instanceof Error ? error.message : t('moveToContractFailed'),
         color: 'red',
       });
     }
@@ -225,8 +274,28 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
               {t(`absenceReason${employee.absenceReason}`)}
             </Badge>
           ) : null}
+          {!employee.userId ? (
+            <>
+              <Badge variant="outline" className="border-amber-500 text-amber-700 dark:text-amber-400">
+                {t('noUserAccount')}
+              </Badge>
+              <Button
+                type="button"
+                size="sm"
+                onClick={createAccount}
+                disabled={createUserAccount.isPending || !employee.email || !employee.phoneNumber}
+                title={!employee.email || !employee.phoneNumber ? t('userAccountNeedsContact') : undefined}
+              >
+                <UserPlus className="size-4" />
+                {createUserAccount.isPending ? t('creatingUserAccount') : t('createUserAccount')}
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
+      {!employee.userId && (!employee.email || !employee.phoneNumber) ? (
+        <p className="-mt-3 text-xs text-muted-foreground lg:text-right">{t('userAccountNeedsContact')}</p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="rounded-lg">
@@ -245,10 +314,26 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
                 </Button>
               </div>
             ) : (
-              <Button type="button" variant="outline" onClick={startEditing}>
-                <Pencil className="size-4" />
-                {t('editEmployee')}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                {employee.employmentType === 'PERMANENT' ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setContractDepartmentId('');
+                      setContractSupervisorId('');
+                      setConvertOpen(true);
+                    }}
+                  >
+                    <ArrowRightLeft className="size-4" />
+                    {t('moveToContract')}
+                  </Button>
+                ) : null}
+                <Button type="button" variant="outline" onClick={startEditing}>
+                  <Pencil className="size-4" />
+                  {t('editEmployee')}
+                </Button>
+              </div>
             )}
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-3">
@@ -424,7 +509,48 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
         </Card>
       </div>
 
-      <EmployeeBiometricEnrollmentCard employeeId={employee.id} />
+      <Dialog open={convertOpen} onOpenChange={setConvertOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('moveToContract')}</DialogTitle>
+            <DialogDescription>{t('moveToContractDescription')}</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={saveContractMove}>
+            <div className="space-y-2">
+              <Label htmlFor="contract-department">{t('contractNewDepartment')}</Label>
+              <DepartmentCombobox
+                id="contract-department"
+                departments={departments}
+                isContract
+                value={contractDepartmentId}
+                onChange={setContractDepartmentId}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t('contractNewSupervisor')}</Label>
+              <Select value={contractSupervisorId} onValueChange={setContractSupervisorId}>
+                <SelectTrigger><SelectValue placeholder={t('selectSupervisor')} /></SelectTrigger>
+                <SelectContent>
+                  {(supervisorCandidatesResponse?.employees ?? [])
+                    .filter((option) => option.id !== employeeId)
+                    .map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {employeeName(option)} - {option.employeeCode}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('moveToContractNote')}</p>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConvertOpen(false)}>{common('cancel')}</Button>
+              <Button type="submit" disabled={!contractDepartmentId || !contractSupervisorId || convertToContract.isPending}>
+                {convertToContract.isPending ? t('saving') : t('moveToContract')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

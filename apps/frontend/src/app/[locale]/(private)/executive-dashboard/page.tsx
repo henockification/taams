@@ -13,10 +13,13 @@ import {
   Clock3,
   DoorOpen,
   HeartPulse,
+  Maximize2,
   RefreshCw,
   ShieldAlert,
+  Timer,
   TrendingUp,
   UsersRound,
+  X,
 } from "lucide-react"
 import { useTranslations } from "next-intl"
 import {
@@ -29,6 +32,7 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceLine,
   XAxis,
   YAxis,
 } from "recharts"
@@ -36,8 +40,9 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -45,6 +50,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DashboardDataQualityNotice, DashboardDepartmentFilter, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useExecutiveDashboardSummary } from "@/data/hooks/core.hooks"
 import type { ExecutiveDashboardSeverity, ExecutiveDashboardSummary, ExecutiveDashboardTrend } from "@/data/types/core.types"
+import { useEmployeeName } from "@/lib/employee-name"
 import { cn } from "@/lib/utils"
 import { useCalendarPreference } from "@/providers/CalendarPreferenceProvider"
 
@@ -71,6 +77,14 @@ const timelineChartConfig = {
   count: { label: "All punches", color: "#2563eb" },
 } satisfies ChartConfig
 const trendChartConfig = { attendanceRate: { label: "Attendance %", color: "#7c3aed" } } satisfies ChartConfig
+// Validated pair (light and dark): the usual-day line is also dashed, so it never relies on colour alone.
+const arrivalColors = {
+  focus: { light: "#1f8a70", dark: "#2aa384" },
+  typical: { light: "#2563eb", dark: "#6b8ff0" },
+}
+const weekdayChartConfig = { lateRate: { label: "Late %", color: "#d97706" } } satisfies ChartConfig
+
+type DrillKind = "present" | "absent" | "late"
 
 export default function ExecutiveDashboardPage() {
   const t = useTranslations("executiveDashboard")
@@ -79,6 +93,8 @@ export default function ExecutiveDashboardPage() {
   const [month, setMonth] = React.useState(todayInput().slice(0, 7))
   const [period, setPeriod] = React.useState<ExecutiveDashboardPeriod>("day")
   const [departmentId, setDepartmentId] = React.useState<string | undefined>(undefined)
+  const [drill, setDrill] = React.useState<DrillKind | null>(null)
+  const [wallScreen, setWallScreen] = React.useState(false)
   const { data, isLoading, isFetching, isError, error, refetch } = useExecutiveDashboardSummary({ date, month, period, departmentId })
   const dashboard = data?.executiveDashboard
   const handlePeriodChange = (value: ExecutiveDashboardPeriod) => {
@@ -148,10 +164,16 @@ export default function ExecutiveDashboardPage() {
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="min-w-0 text-xs text-muted-foreground">{t("generatedAt", { value: formatDateTime(dashboard.generatedAt) })}</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="mr-2 size-4" />
-            {t("refresh")}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setWallScreen(true)}>
+              <Maximize2 className="mr-2 size-4" />
+              {t("wallScreen")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="mr-2 size-4" />
+              {t("refresh")}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -162,7 +184,21 @@ export default function ExecutiveDashboardPage() {
 
       <DashboardDataQualityNotice dataQuality={dashboard.dataQuality} isLive={dashboard.isLive} />
 
-      <KpiGrid dashboard={dashboard} />
+      <Headline dashboard={dashboard} />
+
+      <KpiGrid dashboard={dashboard} onDrill={setDrill} />
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
+        <ArrivalCurve dashboard={dashboard} />
+        <LostTime dashboard={dashboard} />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <DepartmentMovers dashboard={dashboard} onSelect={setDepartmentId} />
+        <WeekdayLateness dashboard={dashboard} />
+      </div>
+
+      <RepeatCases dashboard={dashboard} />
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <WorkforceDistribution dashboard={dashboard} />
@@ -187,37 +223,83 @@ export default function ExecutiveDashboardPage() {
         <MonthlyTrend dashboard={dashboard} />
         <AlertsPanel dashboard={dashboard} />
       </div>
+
+      <DrillDownDialog dashboard={dashboard} kind={drill} onClose={() => setDrill(null)} />
+      {wallScreen ? <WallScreen dashboard={dashboard} onExit={() => setWallScreen(false)} /> : null}
     </div>
   )
 }
 
-function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+function KpiGrid({ dashboard, onDrill }: { dashboard: ExecutiveDashboardSummary; onDrill: (kind: DrillKind) => void }) {
   const t = useTranslations("executiveDashboard")
   const status = dashboard.workforceStatus
+  const { current, comparison } = dashboard.insights
+  const comparedWith = useComparisonLabel(dashboard)
   const multiDay = dashboard.dateFrom !== dashboard.dateTo
   const label = (key: string) => t(multiDay ? `${key}Days` : key)
-  const items = [
-    { label: t("totalEmployees"), value: status.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white", hint: status.indefinitelyAbsent ? t("indefinitelyAbsentHint", { count: status.indefinitelyAbsent }) : null },
-    { label: label("present"), value: status.presentToday, icon: CheckCircle2, tone: "bg-emerald-600 text-white", hint: null },
-    { label: label("absent"), value: status.absentToday, icon: AlertTriangle, tone: "bg-rose-600 text-white", hint: dashboard.isLive && status.notYetArrived ? t("notYetArrivedHint", { count: status.notYetArrived }) : null },
-    { label: label("onLeave"), value: status.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white", hint: null },
-    { label: label("late"), value: status.lateArrivals, icon: Clock3, tone: "bg-amber-500 text-white", hint: status.punctualityRate !== null ? t("punctualityHint", { value: status.punctualityRate }) : null },
-    { label: label("remote"), value: status.workingRemotely, icon: BriefcaseBusiness, tone: "bg-cyan-700 text-white", hint: null },
-    { label: label("officialDuty"), value: status.officialAssignment, icon: Building2, tone: "bg-teal-700 text-white", hint: null },
+  const lateHint = current.lateRate === null
+    ? null
+    : current.averageLateMinutes === null
+      ? t("lateShareHintNoAverage", { rate: current.lateRate })
+      : t("lateShareHint", { rate: current.lateRate, minutes: current.averageLateMinutes })
+  const items: Array<{
+    label: string
+    value: React.ReactNode
+    icon: React.ComponentType<{ className?: string }>
+    tone: string
+    hints: Array<string | null>
+    change?: { points: number | null; goodWhenUp: boolean }
+    trend?: ExecutiveDashboardTrend
+    drill?: DrillKind
+  }> = [
+    { label: t("totalEmployees"), value: status.totalEmployees, icon: UsersRound, tone: "bg-slate-900 text-white", hints: [status.indefinitelyAbsent ? t("indefinitelyAbsentHint", { count: status.indefinitelyAbsent }) : null] },
+    {
+      label: label("present"),
+      value: status.presentToday,
+      icon: CheckCircle2,
+      tone: "bg-emerald-600 text-white",
+      hints: [current.attendanceRate !== null ? t("shareOfDueHint", { rate: current.attendanceRate }) : null],
+      change: { points: pointChange(current.attendanceRate, comparison?.attendanceRate), goodWhenUp: true },
+      drill: "present",
+    },
+    {
+      label: label("absent"),
+      value: status.absentToday,
+      icon: AlertTriangle,
+      tone: "bg-rose-600 text-white",
+      hints: [
+        current.absenceRate !== null ? t("shareOfDueHint", { rate: current.absenceRate }) : null,
+        dashboard.isLive && status.notYetArrived ? t("notYetArrivedHint", { count: status.notYetArrived }) : null,
+      ],
+      change: { points: pointChange(current.absenceRate, comparison?.absenceRate), goodWhenUp: false },
+      drill: "absent",
+    },
+    { label: label("onLeave"), value: status.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white", hints: [] },
+    {
+      label: label("late"),
+      value: status.lateArrivals,
+      icon: Clock3,
+      tone: "bg-amber-500 text-white",
+      hints: [lateHint],
+      change: { points: pointChange(current.lateRate, comparison?.lateRate), goodWhenUp: false },
+      drill: "late",
+    },
+    { label: label("remote"), value: status.workingRemotely, icon: BriefcaseBusiness, tone: "bg-cyan-700 text-white", hints: [] },
+    { label: label("officialDuty"), value: status.officialAssignment, icon: Building2, tone: "bg-teal-700 text-white", hints: [] },
     {
       label: t("attendanceRate"),
       value: status.presentToday + status.absentToday > 0 ? `${status.attendanceRate}%` : "—",
       icon: TrendingUp,
       tone: "bg-violet-700 text-white",
-      hint: status.previousAttendanceRate !== null ? t("previousPeriodHint", { value: status.previousAttendanceRate }) : null,
+      hints: [status.previousAttendanceRate !== null && comparedWith ? t("comparisonValueHint", { comparison: comparedWith, value: status.previousAttendanceRate }) : null],
       trend: status.attendanceTrend,
     },
   ]
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
-      {items.map((item) => (
-        <Card key={item.label} className="min-w-0 gap-3 py-3 sm:gap-6 sm:py-6">
+      {items.map((item) => {
+        const content = (
           <CardContent className="flex min-w-0 items-center gap-2 px-3 sm:gap-4 sm:px-4">
             <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-md sm:size-11", item.tone)}>
               <item.icon className="size-4 sm:size-5" />
@@ -226,15 +308,551 @@ function KpiGrid({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
               <p className="text-xs font-medium leading-tight text-muted-foreground sm:text-sm">{item.label}</p>
               <p className="mt-1 flex items-center gap-1.5 break-words text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
                 {item.value}
-                {"trend" in item ? <TrendIcon trend={item.trend ?? null} /> : null}
+                {item.trend !== undefined ? <TrendIcon trend={item.trend} /> : null}
               </p>
-              {item.hint ? <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{item.hint}</p> : null}
+              {item.hints.filter(Boolean).map((hint) => (
+                <p key={hint} className="mt-0.5 text-[11px] leading-tight text-muted-foreground">{hint}</p>
+              ))}
+              {item.change && item.change.points !== null && comparedWith ? (
+                <PointChange points={item.change.points} goodWhenUp={item.change.goodWhenUp} comparedWith={comparedWith} />
+              ) : null}
             </div>
           </CardContent>
-        </Card>
-      ))}
+        )
+        return (
+          <Card key={item.label} className={cn("min-w-0 gap-3 py-3 sm:gap-6 sm:py-6", item.drill && "transition-colors hover:bg-accent/50")}>
+            {item.drill ? (
+              <button type="button" className="w-full cursor-pointer text-left" onClick={() => onDrill(item.drill!)} title={t("showBreakdown")}>
+                {content}
+              </button>
+            ) : content}
+          </Card>
+        )
+      })}
     </div>
   )
+}
+
+/** "▲ 3.1 pts vs Tue at the same time"; green when the move is good, red when bad. */
+function PointChange({ points, goodWhenUp, comparedWith, className }: { points: number; goodWhenUp: boolean; comparedWith: string; className?: string }) {
+  const t = useTranslations("executiveDashboard")
+  const good = points === 0 ? null : (points > 0) === goodWhenUp
+  const Icon = points > 0 ? ArrowUp : points < 0 ? ArrowDown : ArrowRight
+  return (
+    <p className={cn("mt-0.5 flex flex-wrap items-center gap-1 text-[11px] leading-tight text-muted-foreground", className)}>
+      <span className={cn("inline-flex items-center gap-0.5 font-semibold", good === true && "text-emerald-700 dark:text-emerald-400", good === false && "text-rose-700 dark:text-rose-400")}>
+        <Icon className="size-3" aria-hidden="true" />
+        {t("pointsChange", { points: Math.abs(points) })}
+      </span>
+      <span>{t("vsComparison", { comparison: comparedWith })}</span>
+    </p>
+  )
+}
+
+/** One-paragraph summary of the figures above, for a reader who only has a few seconds. */
+function Headline({ dashboard, textClassName }: { dashboard: ExecutiveDashboardSummary; textClassName?: string }) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const comparedWith = useComparisonLabel(dashboard)
+  const { current, comparison, lowestDepartment } = dashboard.insights
+  const sentences: string[] = []
+
+  if (current.attendanceRate === null) {
+    sentences.push(t("headlineNoneDue"))
+  } else {
+    if (dashboard.period === "day" && dashboard.isLive) sentences.push(t("headlineLive", { time: addisClock(dashboard.generatedAt), rate: current.attendanceRate }))
+    else if (dashboard.period === "day") sentences.push(t("headlineDay", { date: formatDate(dashboard.dateFrom), rate: current.attendanceRate }))
+    else sentences.push(t("headlinePeriod", { range: `${formatDate(dashboard.dateFrom)} – ${formatDate(dashboard.dateTo)}`, rate: current.attendanceRate }))
+
+    const change = pointChange(current.attendanceRate, comparison?.attendanceRate)
+    if (change !== null && comparedWith) {
+      if (change > 0) sentences.push(t("headlineUp", { points: change, comparison: comparedWith }))
+      else if (change < 0) sentences.push(t("headlineDown", { points: Math.abs(change), comparison: comparedWith }))
+      else sentences.push(t("headlineSame", { comparison: comparedWith }))
+    }
+    if (current.late > 0 && current.averageLateMinutes !== null) sentences.push(t("headlineLate", { count: current.late, minutes: current.averageLateMinutes }))
+    if (lowestDepartment) sentences.push(t("headlineLowest", { department: lowestDepartment.department, rate: lowestDepartment.attendanceRate }))
+  }
+
+  return (
+    <Card className="border-primary/20 bg-primary/5 py-4">
+      <CardContent className={cn("px-4 text-sm leading-6 text-foreground sm:text-base", textClassName)}>
+        {sentences.join(" ")}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ArrivalCurve({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const curve = dashboard.insights.arrivalCurve
+  const config = {
+    focus: { label: dashboard.isLive ? t("arrivalToday") : formatDate(curve?.date ?? dashboard.focusDate), theme: arrivalColors.focus },
+    typical: { label: t("arrivalTypical"), theme: arrivalColors.typical },
+  } satisfies ChartConfig
+  const shiftStartTick = curve?.shiftStart && curve.points.some((point) => point.time === curve.shiftStart) ? curve.shiftStart : null
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{dashboard.isLive ? t("arrivalCurve") : t("arrivalCurveOn", { date: formatDate(dashboard.focusDate) })}</CardTitle>
+        <CardDescription>{t("arrivalCurveDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {!curve ? (
+          <p className="text-sm text-muted-foreground">{t("noData")}</p>
+        ) : (
+          <>
+            <ChartContainer config={config} className="min-h-60 sm:min-h-72">
+              <LineChart data={curve.points} margin={{ left: 4, right: 12, top: 16 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="time" tickLine={false} axisLine={false} minTickGap={24} />
+                <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(value) => `${value}%`} tickLine={false} axisLine={false} width={44} />
+                <ChartTooltip content={<ChartTooltipContent formatter={percentTooltipRow(config)} />} />
+                <ChartLegend content={<ChartLegendContent />} />
+                {shiftStartTick ? (
+                  <ReferenceLine x={shiftStartTick} stroke="var(--muted-foreground)" strokeDasharray="2 3" label={{ value: t("shiftStart", { time: shiftStartTick }), position: "insideTopLeft", fontSize: 11, fill: "var(--muted-foreground)" }} />
+                ) : null}
+                <Line dataKey="typical" type="monotone" stroke="var(--color-typical)" strokeWidth={2} strokeDasharray="6 4" dot={false} connectNulls={false} />
+                <Line dataKey="focus" type="monotone" stroke="var(--color-focus)" strokeWidth={2} dot={false} connectNulls={false} />
+              </LineChart>
+            </ChartContainer>
+            <p className="text-xs text-muted-foreground">
+              {curve.typicalDates.length ? t("arrivalTypicalNote", { count: curve.typicalDates.length }) : t("arrivalNoTypical")}
+            </p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function LostTime({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const lost = dashboard.insights.lostTime
+  const parts = [
+    { label: t("lostLate"), hours: lost.lateHours, tone: "bg-amber-500" },
+    { label: t("lostEarly"), hours: lost.earlyLeaveHours, tone: "bg-orange-600" },
+    { label: t("lostMissed"), hours: lost.missedSessionHours, tone: "bg-rose-600" },
+  ]
+  const largest = Math.max(...parts.map((part) => part.hours), 0)
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("lostTime")}</CardTitle>
+        <CardDescription>{t("lostTimeDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-rose-600 text-white">
+            <Timer className="size-5" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">{t("lostTotal")}</p>
+            <p className="text-3xl font-semibold tracking-tight text-foreground">{t("lostHours", { value: lost.totalHours })}</p>
+            {lost.equivalentWorkdays !== null && lost.workdayHours !== null ? (
+              <p className="text-xs text-muted-foreground">{t("lostEquivalent", { days: lost.equivalentWorkdays, hours: lost.workdayHours })}</p>
+            ) : null}
+          </div>
+        </div>
+        <div className="grid gap-3">
+          {parts.map((part) => (
+            <div key={part.label} className="grid gap-1">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">{part.label}</span>
+                <span className="font-semibold text-foreground">{t("lostHours", { value: part.hours })}</span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className={cn("h-full rounded-full", part.tone)} style={{ width: largest > 0 ? `${(part.hours / largest) * 100}%` : "0%" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        {dashboard.isLive ? <p className="text-xs text-muted-foreground">{t("lostTimeLiveNote")}</p> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DepartmentMovers({ dashboard, onSelect }: { dashboard: ExecutiveDashboardSummary; onSelect?: (departmentId: string) => void }) {
+  const t = useTranslations("executiveDashboard")
+  const comparedWith = useComparisonLabel(dashboard)
+  const { improved, declined } = dashboard.insights.departmentMovers
+  const columns = [
+    { title: t("mostImproved"), items: improved, Icon: ArrowUp, tone: "text-emerald-700 dark:text-emerald-400" },
+    { title: t("mostDeclined"), items: declined, Icon: ArrowDown, tone: "text-rose-700 dark:text-rose-400" },
+  ]
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("departmentMovers")}</CardTitle>
+        <CardDescription>{comparedWith ? t("departmentMoversDescription", { comparison: comparedWith }) : t("noComparison")}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        {columns.map(({ title, items, Icon, tone }) => (
+          <div key={title} className="grid content-start gap-2">
+            <p className="text-xs font-medium uppercase text-muted-foreground">{title}</p>
+            {items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("noMovers")}</p>
+            ) : items.map((item) => (
+              <button
+                key={item.departmentId ?? item.department}
+                type="button"
+                disabled={!onSelect || !item.departmentId}
+                onClick={() => item.departmentId && onSelect?.(item.departmentId)}
+                title={onSelect && item.departmentId ? t("drillDown") : undefined}
+                className="flex items-center justify-between gap-3 rounded-md border border-border p-3 text-left enabled:hover:bg-accent/50"
+              >
+                <span className="min-w-0">
+                  <span className="block break-words text-sm font-medium leading-tight text-foreground">{item.department}</span>
+                  <span className="text-xs text-muted-foreground">{item.comparisonRate}% → {item.attendanceRate}%</span>
+                </span>
+                <span className={cn("inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold", tone)}>
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  {t("pointsChange", { points: Math.abs(item.change) })}
+                </span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
+
+function WeekdayLateness({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const weekdays = dashboard.insights.weekdayLateness
+  const data = weekdays.days.map((day) => ({ ...day, label: t(`weekday_${day.weekday}`) }))
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("weekdayLateness")}</CardTitle>
+        <CardDescription>{t("weekdayLatenessDescription", { from: formatDate(weekdays.dateFrom), to: formatDate(weekdays.dateTo) })}</CardDescription>
+      </CardHeader>
+      <CardContent className="px-3 sm:px-6">
+        {data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noData")}</p>
+        ) : (
+          <ChartContainer config={weekdayChartConfig} className="min-h-56 sm:min-h-64">
+            <BarChart data={data} margin={{ top: 20, left: 4, right: 4 }}>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} interval={0} tickFormatter={(value: string) => value.slice(0, 3)} />
+              <YAxis domain={[0, 100]} tickFormatter={(value) => `${value}%`} tickLine={false} axisLine={false} width={44} />
+              <ChartTooltip
+                content={(
+                  <ChartTooltipContent
+                    formatter={(_value, _name, item) => (
+                      <div className="grid gap-0.5 text-xs">
+                        <span className="font-medium text-foreground">{t("lateRateLabel")}: {item.payload.lateRate}%</span>
+                        <span className="text-muted-foreground">{item.payload.late} / {item.payload.present}</span>
+                        {item.payload.averageLateMinutes !== null ? (
+                          <span className="text-muted-foreground">{t("averageLateMinutesValue", { minutes: item.payload.averageLateMinutes })}</span>
+                        ) : null}
+                      </div>
+                    )}
+                  />
+                )}
+              />
+              <Bar dataKey="lateRate" fill="var(--color-lateRate)" radius={[4, 4, 0, 0]}>
+                <LabelList dataKey="lateRate" position="top" className="fill-foreground text-[11px]" formatter={(value) => `${value ?? 0}%`} />
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function RepeatCases({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const employeeName = useEmployeeName()
+  const repeat = dashboard.insights.repeatCases
+
+  return (
+    <Card className="min-w-0">
+      <CardHeader>
+        <CardTitle>{t("repeatCases")}</CardTitle>
+        <CardDescription>
+          {t("repeatCasesDescription", { from: formatDate(repeat.dateFrom), to: formatDate(repeat.dateTo), late: repeat.lateThreshold, absent: repeat.absentThreshold })}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:max-w-md sm:gap-3">
+          <div className="rounded-md border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">{t("repeatLate", { count: repeat.lateThreshold })}</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground">{repeat.lateCount}</p>
+          </div>
+          <div className="rounded-md border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">{t("repeatAbsent", { count: repeat.absentThreshold })}</p>
+            <p className="mt-1 text-2xl font-semibold text-foreground">{repeat.absentCount}</p>
+          </div>
+        </div>
+        {repeat.employees.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noRepeatCases")}</p>
+        ) : (
+          <div className="max-h-[24rem] overflow-auto">
+            <Table className="min-w-[40rem] table-fixed">
+              <TableHeader className="sticky top-0 bg-card">
+                <TableRow>
+                  <TableHead className="w-[34%]">{t("employee")}</TableHead>
+                  <TableHead className="w-[38%]">{t("department")}</TableHead>
+                  <TableHead className="w-[14%]">{t("lateDaysShort")}</TableHead>
+                  <TableHead className="w-[14%]">{t("absentDaysShort")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {repeat.employees.map((entry) => (
+                  <TableRow key={entry.employeeId}>
+                    <TableCell className="whitespace-normal break-words font-medium leading-5">
+                      {employeeName(entry.employee) || "—"}
+                      {entry.employee ? <span className="block text-xs font-normal text-muted-foreground">{entry.employee.employeeCode}</span> : null}
+                    </TableCell>
+                    <TableCell className="whitespace-normal break-words leading-5">{entry.department}</TableCell>
+                    <TableCell className={cn(entry.lateDays >= repeat.lateThreshold && "font-semibold text-amber-700 dark:text-amber-400")}>{entry.lateDays}</TableCell>
+                    <TableCell className={cn(entry.absentDays >= repeat.absentThreshold && "font-semibold text-rose-700 dark:text-rose-400")}>{entry.absentDays}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DrillDownDialog({ dashboard, kind, onClose }: { dashboard: ExecutiveDashboardSummary; kind: DrillKind | null; onClose: () => void }) {
+  const t = useTranslations("executiveDashboard")
+  const employeeName = useEmployeeName()
+  const [selected, setSelected] = React.useState<string | null | undefined>(undefined)
+  React.useEffect(() => setSelected(undefined), [kind])
+
+  const departments = dashboard.departmentPerformance
+    .map((department) => {
+      const count = kind === "present" ? department.present : kind === "absent" ? department.absent : department.lateEmployees
+      const share = kind === "present"
+        ? department.attendanceRate
+        : kind === "absent"
+          ? shareOf(department.absent, department.dueDays)
+          : shareOf(department.lateEmployees, department.present)
+      return { departmentId: department.departmentId, department: department.department, count, share }
+    })
+    .filter((department) => department.count > 0)
+    .sort((left, right) => right.count - left.count || left.department.localeCompare(right.department))
+
+  const showPeople = kind === "absent" || kind === "late"
+  const people = dashboard.insights.people.filter((person) => (
+    (kind === "late" ? person.status === "LATE" : person.status !== "LATE")
+    && (selected === undefined || person.departmentId === selected)
+  ))
+  const title = kind === "present" ? t("drillDownPresent") : kind === "absent" ? t("drillDownAbsent") : t("drillDownLate")
+
+  return (
+    <Dialog open={kind !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {showPeople && dashboard.period === "day" ? <DialogDescription>{t("drillDownDescription")}</DialogDescription> : null}
+        </DialogHeader>
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[60%]">{t("department")}</TableHead>
+              <TableHead className="w-[20%]">{t("count")}</TableHead>
+              <TableHead className="w-[20%]">{kind === "late" ? t("lateRateLabel") : t("shareOfDepartment")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {departments.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="h-16 text-center text-sm text-muted-foreground">{t("noPeople")}</TableCell>
+              </TableRow>
+            ) : departments.map((department) => (
+              <TableRow
+                key={department.departmentId ?? department.department}
+                className={cn(showPeople && dashboard.period === "day" && "cursor-pointer", selected === department.departmentId && "bg-accent")}
+                onClick={() => showPeople && dashboard.period === "day" && setSelected(department.departmentId)}
+              >
+                <TableCell className="whitespace-normal break-words font-medium leading-5">{department.department}</TableCell>
+                <TableCell>{department.count}</TableCell>
+                <TableCell>{department.share === null ? "—" : `${department.share}%`}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {showPeople ? (
+          dashboard.period !== "day" ? (
+            <p className="text-sm text-muted-foreground">{t("peopleOnlyForDay")}</p>
+          ) : (
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-foreground">{t("people")} · {people.length}</p>
+                {selected !== undefined ? (
+                  <Button variant="ghost" size="sm" onClick={() => setSelected(undefined)}>{t("showAllPeople")}</Button>
+                ) : null}
+              </div>
+              {people.length === 0 ? (
+                <p className="text-sm text-muted-foreground">{t("noPeople")}</p>
+              ) : (
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[34%]">{t("employee")}</TableHead>
+                      <TableHead className="w-[34%]">{t("department")}</TableHead>
+                      <TableHead className="w-[32%]">{kind === "late" ? t("checkIn") : t("absentShort")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {people
+                      .slice()
+                      .sort((left, right) => left.department.localeCompare(right.department) || employeeName(left.employee).localeCompare(employeeName(right.employee)))
+                      .map((person) => (
+                        <TableRow key={person.employeeId}>
+                          <TableCell className="whitespace-normal break-words font-medium leading-5">
+                            {employeeName(person.employee) || "—"}
+                            {person.employee ? <span className="block text-xs font-normal text-muted-foreground">{person.employee.employeeCode}</span> : null}
+                          </TableCell>
+                          <TableCell className="whitespace-normal break-words leading-5">{person.department}</TableCell>
+                          <TableCell className="whitespace-normal leading-5">
+                            {person.status === "LATE"
+                              ? <>{person.checkInAt ? addisClock(person.checkInAt) : "—"} <span className="text-xs text-muted-foreground">· {t("minutesLate", { count: person.lateMinutes ?? 0 })}</span></>
+                              : <Badge variant={person.status === "ABSENT" ? "destructive" : "secondary"}>{t(person.status === "ABSENT" ? "segment_absent" : "segment_notYetArrived")}</Badge>}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          )
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Full-screen view for an office display: headline, the three key figures, the morning curve and movers. */
+function WallScreen({ dashboard, onExit }: { dashboard: ExecutiveDashboardSummary; onExit: () => void }) {
+  const t = useTranslations("executiveDashboard")
+  const comparedWith = useComparisonLabel(dashboard)
+  const { current, comparison } = dashboard.insights
+  const status = dashboard.workforceStatus
+  const exitRef = React.useRef(onExit)
+  exitRef.current = onExit
+
+  React.useEffect(() => {
+    const root = document.documentElement
+    let enteredFullscreen = false
+    root.requestFullscreen?.().then(() => { enteredFullscreen = true }).catch(() => undefined)
+    // Leaving browser full screen (Esc) also leaves the wall screen.
+    const onFullscreenChange = () => { if (enteredFullscreen && !document.fullscreenElement) exitRef.current() }
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") exitRef.current() }
+    document.addEventListener("fullscreenchange", onFullscreenChange)
+    window.addEventListener("keydown", onKeyDown)
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange)
+      window.removeEventListener("keydown", onKeyDown)
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined)
+    }
+  }, [])
+
+  const tiles = [
+    { label: t("present"), value: status.presentToday, share: current.attendanceRate, change: pointChange(current.attendanceRate, comparison?.attendanceRate), goodWhenUp: true, tone: "text-emerald-700 dark:text-emerald-400" },
+    { label: t("absent"), value: status.absentToday, share: current.absenceRate, change: pointChange(current.absenceRate, comparison?.absenceRate), goodWhenUp: false, tone: "text-rose-700 dark:text-rose-400" },
+    { label: t("late"), value: status.lateArrivals, share: current.lateRate, change: pointChange(current.lateRate, comparison?.lateRate), goodWhenUp: false, tone: "text-amber-700 dark:text-amber-400" },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 sm:p-8">
+      <div className="mx-auto grid max-w-7xl gap-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-lg font-semibold text-foreground sm:text-2xl">{dashboard.scope.departmentName ?? t("allDepartments")}</p>
+            <p className="text-sm text-muted-foreground">{t("wallUpdated", { time: addisClock(dashboard.generatedAt) })}</p>
+          </div>
+          <Button variant="outline" onClick={onExit}>
+            <X className="mr-2 size-4" />
+            {t("exitWallScreen")}
+          </Button>
+        </div>
+        <Headline dashboard={dashboard} textClassName="text-lg sm:text-2xl sm:leading-9" />
+        <div className="grid gap-4 sm:grid-cols-3">
+          {tiles.map((tile) => (
+            <Card key={tile.label} className="py-5">
+              <CardContent className="px-5">
+                <p className="text-base font-medium text-muted-foreground sm:text-lg">{tile.label}</p>
+                <p className={cn("mt-1 text-5xl font-semibold tracking-tight sm:text-7xl", tile.tone)}>{tile.value}</p>
+                {tile.share !== null ? <p className="mt-1 text-xl font-semibold text-foreground sm:text-2xl">{tile.share}%</p> : null}
+                {tile.change !== null && comparedWith ? (
+                  <PointChange points={tile.change} goodWhenUp={tile.goodWhenUp} comparedWith={comparedWith} className="text-sm [&_svg]:size-4" />
+                ) : null}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+          <ArrivalCurve dashboard={dashboard} />
+          <DepartmentMovers dashboard={dashboard} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Plain-language name of what the figures are compared with, or null when there is nothing to compare. */
+function useComparisonLabel(dashboard: ExecutiveDashboardSummary) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const comparison = dashboard.insights.comparison
+  if (!comparison || comparison.due === 0) return null
+  if (comparison.kind === "PREVIOUS_WORKING_DAY") {
+    return comparison.asOf
+      ? t("comparedDayAtTime", { date: formatDate(comparison.dateFrom), time: addisClock(comparison.asOf) })
+      : t("comparedDay", { date: formatDate(comparison.dateFrom) })
+  }
+  const range = `${formatDate(comparison.dateFrom)} – ${formatDate(comparison.dateTo)}`
+  return comparison.asOf ? t("comparedPeriodSoFar", { range }) : t("comparedPeriod", { range })
+}
+
+/** Change in percentage points, or null when either side has nothing to compare. */
+function pointChange(current: number | null | undefined, previous: number | null | undefined) {
+  if (current === null || current === undefined || previous === null || previous === undefined) return null
+  return Math.round((current - previous) * 10) / 10
+}
+
+function shareOf(value: number, total: number) {
+  return total > 0 ? Math.round((value / total) * 1000) / 10 : null
+}
+
+/** Tooltip row "Series  42.5%" that, unlike the default, also shows zero values. */
+function percentTooltipRow(config: ChartConfig) {
+  return function PercentRow(value: unknown, name: string, item: { color?: string }) {
+    return (
+      <>
+        <span className="size-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: item.color }} />
+        <div className="flex flex-1 items-center justify-between gap-3 leading-none">
+          <span className="text-muted-foreground">{config[name]?.label ?? name}</span>
+          <span className="font-mono font-medium tabular-nums text-foreground">{value === null || value === undefined ? "—" : `${value}%`}</span>
+        </div>
+      </>
+    )
+  }
+}
+
+/** Clock time in Addis Ababa (UTC+3, no daylight saving), whatever the viewer's time zone. */
+function addisClock(value: string | Date | null) {
+  if (!value) return ""
+  const local = new Date(new Date(value).getTime() + 3 * 60 * 60 * 1000)
+  return `${String(local.getUTCHours()).padStart(2, "0")}:${String(local.getUTCMinutes()).padStart(2, "0")}`
 }
 
 function TrendIcon({ trend }: { trend: ExecutiveDashboardTrend }) {
@@ -468,6 +1086,7 @@ function HrPerformance({ dashboard }: { dashboard: ExecutiveDashboardSummary }) 
 
 function DepartmentPerformance({ dashboard, onSelect }: { dashboard: ExecutiveDashboardSummary; onSelect: (departmentId: string) => void }) {
   const t = useTranslations("executiveDashboard")
+  const comparedWith = useComparisonLabel(dashboard)
   const rate = (value: number | null) => (value === null ? "—" : `${value}%`)
 
   return (
@@ -514,7 +1133,7 @@ function DepartmentPerformance({ dashboard, onSelect }: { dashboard: ExecutiveDa
                   <TableCell>{department.pendingApprovals}</TableCell>
                   <TableCell>
                     {department.trend ? (
-                      <Badge variant={department.trend === "DOWN" ? "destructive" : "secondary"} className="gap-1" title={department.previousAttendanceRate !== null ? t("previousPeriodHint", { value: department.previousAttendanceRate }) : undefined}>
+                      <Badge variant={department.trend === "DOWN" ? "destructive" : "secondary"} className="gap-1" title={department.previousAttendanceRate !== null && comparedWith ? t("comparisonValueHint", { comparison: comparedWith, value: department.previousAttendanceRate }) : undefined}>
                         <TrendIcon trend={department.trend} />
                         {t(`trend${department.trend}`)}
                       </Badge>

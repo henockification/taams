@@ -30,6 +30,7 @@ import {
   UserCheck,
   UserRoundCog,
   Users,
+  UserX,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -76,6 +77,7 @@ export type AppNavItem = {
     | 'attendanceDailyReport'
     | 'attendancePunchesReport'
     | 'lateAttendanceReport'
+    | 'absentEmployeesReport'
     | 'overtimeReport'
     | 'leaveBalancesReport'
     | 'leaveRequestsReport'
@@ -395,8 +397,10 @@ export const appNavGroups: AppNavGroup[] = [
       {
         titleKey: 'biometricEnrollment',
         url: '/biometric-enrollment',
-        permissionResource: 'biometric-devices',
-        requiredPermission: 'biometric-devices:read',
+        // Its own resource, so the Permissions page can grant it apart from device monitoring.
+        permissionResource: 'biometric-enrollment',
+        requiredPermission: 'biometric-enrollment:read',
+        legacyPermissions: ['biometric-devices:read'],
         icon: ScanFace,
       },
       {
@@ -467,6 +471,14 @@ export const appNavGroups: AppNavGroup[] = [
         permissionResource: 'reports-late-attendance',
         requiredPermission: 'reports-late-attendance:read',
         icon: Clock3,
+      },
+      {
+        titleKey: 'absentEmployeesReport',
+        url: '/reports/absent-employees',
+        // Shares the daily attendance report permission.
+        permissionResource: 'reports-attendance-daily',
+        requiredPermission: 'reports-attendance-daily:read',
+        icon: UserX,
       },
       {
         titleKey: 'overtimeReport',

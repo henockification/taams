@@ -26,7 +26,7 @@ export function totalLateMinutes(record: AttendanceDailyRecord) {
 
 export function summarizeAttendanceExceptions(records: AttendanceDailyRecord[]) {
   return records.reduce((summary, record) => {
-    const sessions = (record.attendanceSessions ?? []).map(materializeAttendanceSession);
+    const sessions = recordAttendanceSessions(record);
     const lateMinutes = sessions.length
       ? sessions.reduce((total, session) => total + session.lateMinutes, 0)
       : totalLateMinutes(record);
@@ -65,6 +65,28 @@ export function summarizeAttendanceExceptions(records: AttendanceDailyRecord[]) 
   });
 }
 
+export type AttendanceExceptionFilter = 'late' | 'missing-checkout' | 'early-departure' | 'any';
+
+/**
+ * Matches the HR dashboard's exception counts: late is a late first check-in, missing checkout a
+ * session checked into but not out of once its window closed, early departure leaving before the
+ * last session ended, and "any" also includes days with every session missed.
+ */
+export function matchesAttendanceException(record: AttendanceDailyRecord, exception: AttendanceExceptionFilter) {
+  if (isNoDutyDay(record)) return false;
+  const sessions = recordAttendanceSessions(record);
+  const present = Boolean(record.checkInAt) || sessions.some((session) => session.checkInAt);
+  const late = present && (record.lateMinutes ?? 0) > 0;
+  const missingCheckout = present && (sessions.length
+    ? sessions.some((session) => session.checkInAt && !session.checkOutAt && session.checkOutStatus === 'MISSING')
+    : !record.checkOutAt && record.attendanceDate < new Date().toISOString().slice(0, 10));
+  const earlyDeparture = present && (record.earlyDepartureMinutes ?? 0) > 0;
+  if (exception === 'late') return late;
+  if (exception === 'missing-checkout') return missingCheckout;
+  if (exception === 'early-departure') return earlyDeparture;
+  return late || missingCheckout || earlyDeparture || isFullDayAbsence(record, sessions);
+}
+
 /** A duty day on which every session was missed; leave and biometric-exempt days are not absences. */
 function isFullDayAbsence(record: AttendanceDailyRecord, sessions: AttendanceSessionEvaluation[]) {
   if (isNoDutyDay(record) || record.isBiometricExempt || Number(record.leaveDays ?? 0) > 0) return false;
@@ -88,15 +110,13 @@ export function AttendanceSessions({
     return <span className="text-sm text-muted-foreground">{legacyAttendanceRule(record)}</span>;
   }
 
-  return <div className="space-y-2">{record.attendanceSessions.map(materializeAttendanceSession).map((session) => (
+  return <div className="space-y-2">{recordAttendanceSessions(record).map((session) => (
     <div key={`${record.id}:${session.segmentId}`} className="flex flex-wrap items-center gap-1.5 text-sm">
       <span className="min-w-24 font-medium">{session.name}</span>
       <span>{sessionPunchLabel(session, 'IN', formatDateTime, t)}</span>
       <span className="text-muted-foreground">/</span>
       <span>{sessionPunchLabel(session, 'OUT', formatDateTime, t)}</span>
-      <Badge variant={session.attendanceStatus === 'PRESENT' ? 'default' : session.attendanceStatus === 'ABSENT' ? 'destructive' : 'secondary'}>
-        {t(session.attendanceStatus === 'PRESENT' ? 'sessionPresent' : session.attendanceStatus === 'ABSENT' ? 'sessionAbsent' : 'sessionPending')}
-      </Badge>
+      <Badge variant={sessionBadgeVariant(session)}>{t(sessionStatusKey(session))}</Badge>
     </div>
   ))}</div>;
 }
@@ -132,6 +152,49 @@ function NoDutyDay({
   );
 }
 
+const SESSION_STATUS_KEYS = {
+  PRESENT: 'sessionPresent',
+  ABSENT: 'sessionAbsent',
+  ON_LEAVE: 'sessionOnLeave',
+  PENDING: 'sessionPending',
+} as const;
+
+function sessionStatusKey(session: AttendanceSessionEvaluation) {
+  return SESSION_STATUS_KEYS[session.attendanceStatus] ?? 'sessionPending';
+}
+
+function sessionBadgeVariant(session: AttendanceSessionEvaluation) {
+  if (session.attendanceStatus === 'PRESENT') return 'default';
+  if (session.attendanceStatus === 'ABSENT') return 'destructive';
+  if (session.attendanceStatus === 'ON_LEAVE') return 'outline';
+  return 'secondary';
+}
+
+/** A record's sessions with final statuses, and missed sessions covered by its approved leave shown as on leave. */
+export function recordAttendanceSessions(record: AttendanceDailyRecord) {
+  return applyLeaveToSessions(record, (record.attendanceSessions ?? []).map(materializeAttendanceSession));
+}
+
+/**
+ * Leave (TAAMS or imported from ISMIS) is stored as day values, not per session: a full
+ * leave day covers every missed session, half a day covers half of them. Mirrors
+ * applyLeaveToSessions in the API's session-slots helper.
+ */
+function applyLeaveToSessions(record: AttendanceDailyRecord, sessions: AttendanceSessionEvaluation[]) {
+  const leaveDays = Math.min(1, Math.max(0, Number(record.leaveDays ?? 0)));
+  let covered = Math.round(leaveDays * sessions.length);
+  return sessions.map((session): AttendanceSessionEvaluation => {
+    if (covered <= 0 || session.attendanceStatus !== 'ABSENT') return session;
+    covered -= 1;
+    return {
+      ...session,
+      checkInStatus: session.checkInAt ? session.checkInStatus : 'ON_LEAVE',
+      checkOutStatus: session.checkOutAt ? session.checkOutStatus : 'ON_LEAVE',
+      attendanceStatus: 'ON_LEAVE',
+    };
+  });
+}
+
 export function materializeAttendanceSession(session: AttendanceSessionEvaluation): AttendanceSessionEvaluation {
   if (new Date(session.completionAt ?? session.scheduledEndAt).getTime() > Date.now()) return session;
   return {
@@ -155,6 +218,7 @@ function sessionPunchLabel(
 ) {
   const value = direction === 'IN' ? session.checkInAt : session.checkOutAt;
   const status = direction === 'IN' ? session.checkInStatus : session.checkOutStatus;
+  if (!value && status === 'ON_LEAVE') return '-';
   if (!value) return t(status === 'PENDING' ? 'sessionPendingPunch' : direction === 'IN' ? 'missingCheckIn' : 'missingCheckOut');
   const time = formatDateTime(value, {
     year: undefined,

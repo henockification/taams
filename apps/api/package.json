@@ -25,6 +25,7 @@
     "db:seed-super-admin": "tsx scripts/seed-super-admin.ts",
     "db:seed-system-roles": "tsx scripts/seed-system-roles.ts",
     "ifmis:setup": "tsx scripts/setup-ifmis-oracle.ts",
+    "test:dashboard": "tsx --test lib/dashboard/*.test.ts",
     "test:ifmis": "tsx --test lib/ifmis/*.test.ts",
     "test:sms": "tsx --test lib/sms/*.test.ts",
     "test:zkteco": "tsx --test lib/zkteco/enrollment/*.test.ts",

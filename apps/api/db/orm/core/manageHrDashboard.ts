@@ -11,7 +11,6 @@ import {
 import { db } from '../../db';
 import {
   attendancePunches,
-  biometricDevices,
   employees,
   leaveBalances,
   leaveFiscalYears,
@@ -21,6 +20,7 @@ import {
 import { countMissingRecords, hasMissingCheckout, loadAttendanceDays, resolveDepartmentScope, type AttendanceDay } from './attendanceDays';
 import { getAttendanceReportingDisciplineSummary } from './manageAttendanceReportingDiscipline';
 import type { EmployeeVisibilityScope } from './manageEmployeeVisibility';
+import { getIsmisLeavePeriods } from './manageIsmisLeave';
 
 const UPCOMING_LEAVE_DAYS = 14;
 const LEAVE_EXPIRY_DAYS = 30;
@@ -80,9 +80,8 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     pendingCorrections,
     returnedCorrections,
     upcomingLeave,
+    upcomingIsmisLeave,
     unprocessedPunches,
-    activeDevices,
-    recentSyncBatches,
   ] = await Promise.all([
     db.query.leaveFiscalYears.findFirst({
       where: and(eq(leaveFiscalYears.isActive, true), lte(leaveFiscalYears.startsAt, selectedDate), gte(leaveFiscalYears.endsAt, selectedDate)),
@@ -114,19 +113,17 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       with: { employee: { with: { department: true, position: true } }, leaveType: true },
       orderBy: (table, { asc }) => [asc(table.startDate)],
     }),
+    // Permanent employees' leave comes from confirmed ISMIS imports, not leave requests.
+    getIsmisLeavePeriods(addDays(selectedDate, 1), upcomingLeaveEnd),
     db.select({ id: attendancePunches.id, employeeId: attendancePunches.employeeId }).from(attendancePunches).where(eq(attendancePunches.isProcessed, false)),
-    db.query.biometricDevices.findMany({ where: eq(biometricDevices.isActive, true), with: { department: true } }),
-    db.query.attendanceSyncBatches.findMany({
-      orderBy: (table) => [desc(table.createdAt)],
-      with: { device: true },
-      limit: 20,
-    }),
   ]);
 
   const scopedAuthorizations = pendingAuthorizations.filter((request) => inScopeEmployee(request.employeeId));
   const scopedCorrections = pendingCorrections.filter((request) => inScopeEmployee(request.employeeId));
   const scopedReturned = returnedCorrections.filter((request) => inScopeEmployee(request.employeeId));
-  const scopedUpcoming = upcomingLeave.filter((request) => inScopeEmployee(request.employeeId, String(request.startDate)));
+  const scopedUpcoming = [...upcomingLeave, ...upcomingIsmisLeave]
+    .filter((request) => inScopeEmployee(request.employeeId, String(request.startDate)))
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
   const scopedUnprocessed = unprocessedPunches.filter((punch) => inScopeEmployee(punch.employeeId));
 
   const [leaveBalancesNearExpiry, currentAnnualLeaveBalance, unprocessedDetails] = await Promise.all([
@@ -178,9 +175,9 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
   const missingCheckoutCount = people.filter((person) => person.status === 'MISSING_CHECKOUT').length;
   const earlyDepartureCount = people.filter((person) => person.status === 'EARLY_DEPARTURE').length;
   const withoutPunchCount = counts.ABSENT;
-  const offlineDevices = activeDevices.filter((device) => device.healthStatus === 'OFFLINE');
-  const syncStatus = buildSyncStatus(recentSyncBatches);
   const attendanceExceptions = buildAttendanceExceptions({
+    date: selectedDate,
+    departmentId: selectedDepartment?.id ?? null,
     absent: counts.ABSENT,
     notYetArrived,
     missingCheckout: missingCheckoutCount,
@@ -229,18 +226,21 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
     dataQuality: { missingRecords, missingToday, noScheduleEmployees: counts.NO_SCHEDULE },
     widgets: {
       pendingApprovals: createWidget('pending-approvals', 'Pending Approvals', scopedAuthorizations.length, '/leave-management/authorizations'),
-      // Corrections are decided by supervisors; HR has no review page to open.
-      correctionsReturned: createWidget('corrections-returned', 'Corrections Returned', scopedReturned.length, ''),
-      manualAttendanceRequests: createWidget('manual-attendance-requests', 'Manual Attendance Requests', scopedCorrections.length, ''),
-      employeesOnLeave: createWidget('employees-on-leave', 'Employees on Leave', counts.LEAVE, `/reports/leave-requests?status=AUTHORIZED&dateFrom=&dateTo=${selectedDate}`),
-      employeesWithoutPunch: createWidget('employees-without-punch', 'Employees Without Punch', withoutPunchCount, attendanceApprovalsHref(selectedDate)),
-      missingCheckout: createWidget('missing-check-out', 'Missing Check-out', missingCheckoutCount, attendanceApprovalsHref(selectedDate)),
-      lateEmployees: createWidget('late-employees', 'Late Employees', counts.LATE, attendanceApprovalsHref(selectedDate)),
-      attendanceExceptions: createWidget('attendance-exceptions', 'Attendance Exceptions', attendanceExceptions.total, attendanceApprovalsHref(selectedDate)),
+      // Corrections are decided by supervisors; HR has no review page, so these open the dashboard's own list.
+      correctionsReturned: createWidget('corrections-returned', 'Corrections Returned', scopedReturned.length, OPEN_ITEMS_ANCHOR),
+      manualAttendanceRequests: createWidget('manual-attendance-requests', 'Manual Attendance Requests', scopedCorrections.length, OPEN_ITEMS_ANCHOR),
+      employeesOnLeave: createWidget('employees-on-leave', 'Employees on Leave', counts.LEAVE, `/reports/attendance-daily?view=daily&onLeave=true&dateFrom=${selectedDate}&dateTo=${selectedDate}`),
+      employeesWithoutPunch: createWidget('employees-without-punch', 'Employees Without Punch', withoutPunchCount, absentEmployeesHref(selectedDate, selectedDepartment?.id)),
+      missingCheckout: createWidget('missing-check-out', 'Missing Check-out', missingCheckoutCount, attendanceApprovalsHref(selectedDate, 'missing-checkout')),
+      lateEmployees: createWidget('late-employees', 'Late Employees', counts.LATE, attendanceApprovalsHref(selectedDate, 'late')),
+      attendanceExceptions: createWidget('attendance-exceptions', 'Attendance Exceptions', attendanceExceptions.total, attendanceApprovalsHref(selectedDate, 'any')),
       upcomingLeave: createWidget('upcoming-leave', 'Upcoming Leave', scopedUpcoming.length, `/reports/leave-requests?status=AUTHORIZED&dateFrom=${addDays(selectedDate, 1)}&dateTo=${upcomingLeaveEnd}`),
-      employeesNearLeaveExpiry: createWidget('employees-near-leave-expiry', 'Employees Near Leave Expiry', leaveBalancesNearExpiry.length, '/leave-management/balances'),
-      devicesOffline: createWidget('devices-offline', 'Devices Offline', offlineDevices.length, '/biometric-devices'),
-      synchronizationStatus: createWidget('synchronization-status', 'Synchronization Status', syncStatus.openIssues, '/biometric-devices'),
+      employeesNearLeaveExpiry: createWidget(
+        'employees-near-leave-expiry',
+        'Employees Near Leave Expiry',
+        leaveBalancesNearExpiry.length,
+        activeFiscalYear ? `/reports/leave-balances?fiscalYearId=${activeFiscalYear.id}&hasAvailable=true` : '/leave-management/balances',
+      ),
     },
     details: {
       pendingManualRequests: scopedCorrections.slice(0, DETAIL_LIMIT),
@@ -258,8 +258,6 @@ export async function getHrDashboardSummary(params: HrDashboardSummaryParams = {
       attendanceExceptions: attendanceExceptions.items,
       upcomingLeave: scopedUpcoming.slice(0, DETAIL_LIMIT),
       employeesNearLeaveExpiry: leaveBalancesNearExpiry.slice(0, DETAIL_LIMIT),
-      devicesOffline: offlineDevices,
-      synchronizationStatus: syncStatus,
       unprocessedPunches: unprocessedDetails,
     },
   };
@@ -275,11 +273,21 @@ function isPresent(day: AttendanceDay) {
   return day.status === 'ON_TIME' || day.status === 'LATE';
 }
 
-function attendanceApprovalsHref(date: string) {
-  return `/attendance-approvals/hr?date=${date}`;
+/** The absent report lists the same people as the dashboard's Absent count for that day and department. */
+function absentEmployeesHref(date: string, departmentId?: string | null) {
+  return `/reports/absent-employees?view=daily&dateFrom=${date}&dateTo=${date}${departmentId ? `&departmentId=${departmentId}` : ''}`;
+}
+
+const OPEN_ITEMS_ANCHOR = '#open-items';
+
+/** Opens HR attendance approval for the day, narrowed to one kind of exception when given. */
+function attendanceApprovalsHref(date: string, exception?: 'late' | 'missing-checkout' | 'early-departure' | 'any') {
+  return `/attendance-approvals/hr?date=${date}${exception ? `&exception=${exception}` : ''}`;
 }
 
 function buildAttendanceExceptions(input: {
+  date: string;
+  departmentId: string | null;
   absent: number;
   notYetArrived: number;
   missingCheckout: number;
@@ -292,34 +300,25 @@ function buildAttendanceExceptions(input: {
 }) {
   const severity = (count: number) => (count > 0 ? 'warning' : 'info') as 'warning' | 'info';
   const items = [
-    { id: 'absent', severity: severity(input.absent), title: 'Absent', count: input.absent, description: `Due to work with no check-in${input.notYetArrived > 0 ? `, including ${input.notYetArrived} not yet arrived today` : ''}. Rest days, approved leave and biometric-exempt staff are excluded.` },
-    { id: 'missing-check-out', severity: severity(input.missingCheckout), title: 'Missing check-out', count: input.missingCheckout, description: 'Checked in for a session but did not check out before its window closed.' },
-    { id: 'late-employees', severity: severity(input.late), title: 'Late arrivals', count: input.late, description: "Checked in after the shift's allowed start." },
-    { id: 'early-departure', severity: severity(input.earlyDeparture), title: 'Early departure', count: input.earlyDeparture, description: 'Left before the end of the last session.' },
-    { id: 'no-schedule', severity: severity(input.noSchedule), title: 'No work schedule', count: input.noSchedule, description: 'Attendance cannot be judged without a schedule; assign work schedules.' },
+    { id: 'absent', href: absentEmployeesHref(input.date, input.departmentId), severity: severity(input.absent), title: 'Absent', count: input.absent, description: `Due to work with no check-in${input.notYetArrived > 0 ? `, including ${input.notYetArrived} not yet arrived today` : ''}. Rest days, approved leave and biometric-exempt staff are excluded.` },
+    { id: 'missing-check-out', href: attendanceApprovalsHref(input.date, 'missing-checkout'), severity: severity(input.missingCheckout), title: 'Missing check-out', count: input.missingCheckout, description: 'Checked in for a session but did not check out before its window closed.' },
+    { id: 'late-employees', href: attendanceApprovalsHref(input.date, 'late'), severity: severity(input.late), title: 'Late arrivals', count: input.late, description: "Checked in after the shift's allowed start." },
+    { id: 'early-departure', href: attendanceApprovalsHref(input.date, 'early-departure'), severity: severity(input.earlyDeparture), title: 'Early departure', count: input.earlyDeparture, description: 'Left before the end of the last session.' },
+    { id: 'no-schedule', href: '/work-schedule-assignments', severity: severity(input.noSchedule), title: 'No work schedule', count: input.noSchedule, description: 'Attendance cannot be judged without a schedule; assign work schedules.' },
     {
       id: 'not-generated',
+      href: '',
       severity: severity(input.notGenerated),
       title: 'Attendance not generated',
       count: input.notGenerated,
       description: input.isLive ? 'No attendance record yet today; it appears after the next biometric sync.' : 'Generate daily records for this date.',
     },
-    { id: 'unprocessed-punches', severity: severity(input.unprocessedPunches), title: 'Unprocessed attendance punches', count: input.unprocessedPunches, description: 'Raw punches that still need attendance processing.' },
+    { id: 'unprocessed-punches', href: '/reports/attendance-punches?status=unprocessed&dateFrom=&dateTo=', severity: severity(input.unprocessedPunches), title: 'Unprocessed attendance punches', count: input.unprocessedPunches, description: 'Raw punches that still need attendance processing.' },
   ];
   return {
     total: input.absent + input.missingCheckout + input.late + input.earlyDeparture,
     items,
   };
-}
-
-function buildSyncStatus(batches: any[]) {
-  const counts = {
-    started: batches.filter((batch) => batch.syncStatus === 'STARTED').length,
-    completed: batches.filter((batch) => batch.syncStatus === 'COMPLETED').length,
-    failed: batches.filter((batch) => batch.syncStatus === 'FAILED').length,
-    partial: batches.filter((batch) => batch.syncStatus === 'PARTIAL').length,
-  };
-  return { latest: batches[0] ?? null, recent: batches, counts, openIssues: counts.started + counts.failed + counts.partial };
 }
 
 function createWidget(id: string, label: string, count: number, href: string) {

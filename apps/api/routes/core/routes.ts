@@ -53,7 +53,7 @@ import ifmisAttendanceApp from './ifmis-attendance/routes';
 import auditEventsApp from './audit-events/routes';
 import { createDepartmentHandler, getDepartmentHeadCandidatesHandler, getDepartmentsHandler, moveDepartmentHandler, setDepartmentHeadHandler, updateDepartmentHandler } from './handlers/departments';
 import { createPositionHandler, getPositionsHandler, updatePositionHandler } from './handlers/positions';
-import { createEmployeeHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
+import { convertEmployeeToContractHandler, createEmployeeHandler, createEmployeeUserAccountHandler, createEmployeeSupervisorHandler, bulkCreateEmployeeSupervisorsHandler, createEmployeeWorkScheduleHandler, bulkCreateEmployeeWorkSchedulesHandler, deleteEmployeeWorkScheduleHandler, getAllEmployeeSupervisorsHandler, getAllEmployeeWorkSchedulesHandler, importContractEmployeesHandler, getEmployeeHandler, getEmployeesHandler, getEmployeesPaginatedHandler, getEmployeeSupervisorsHandler, getEmployeeWorkSchedulesHandler, getSupervisorCandidatesHandler, importPermanentEmployeesHandler, updateEmployeeWorkScheduleHandler, updateEmployeeHandler } from './handlers/employees';
 import { requirePermission, requirePermissionOrDelegation, requireHrSupervisorRole } from '../../middleware/rbac';
 
 const coreApp = new Hono();
@@ -697,6 +697,8 @@ coreApp.put('/employees/work-schedules/:id', requirePermission('schedule-assignm
 coreApp.delete('/employees/work-schedules/:id', requirePermission('schedule-assignments:read', 'employees:update'), deleteEmployeeWorkScheduleHandler);
 coreApp.get('/employees/:id', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read', 'reports-employees:read'), getEmployeeHandler);
 coreApp.put('/employees/:id', requirePermission('employees:update'), updateEmployeeHandler);
+coreApp.post('/employees/:id/user-account', requirePermission('employees:update'), createEmployeeUserAccountHandler);
+coreApp.post('/employees/:id/convert-to-contract', requirePermission('employees:update'), convertEmployeeToContractHandler);
 coreApp.post('/employees/:id/supervisors', requirePermission('employees:update'), createEmployeeSupervisorHandler);
 coreApp.get('/employees/:id/supervisors', requirePermission('employees:read', 'permanent-employees:read', 'dashboard:read', 'department-head-dashboard:read'), getEmployeeSupervisorsHandler);
 coreApp.post('/employees/:id/work-schedules', requirePermission('schedule-assignments:read', 'employees:update'), createEmployeeWorkScheduleHandler);

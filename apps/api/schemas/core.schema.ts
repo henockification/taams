@@ -813,6 +813,11 @@ export const UpdateEmployeeRequestSchema = CreateEmployeeRequestSchema.partial()
   email: z.string().email().max(150).nullable().optional(),
 });
 
+export const ConvertEmployeeToContractRequestSchema = z.object({
+  departmentId: UuidSchema,
+  supervisorId: UuidSchema,
+});
+
 export const CreateEmployeeSupervisorRequestSchema = z.object({
   supervisorId: UuidSchema,
   isPrimary: z.boolean().optional(),
@@ -1695,6 +1700,97 @@ export const DashboardSummaryResponseSchema = z.object({
   dashboard: DashboardSummarySchema,
 });
 
+const ExecutiveDashboardRatesSchema = z.object({
+  due: z.number().int().nonnegative(),
+  present: z.number().int().nonnegative(),
+  absent: z.number().int().nonnegative(),
+  late: z.number().int().nonnegative(),
+  attendanceRate: z.number().nullable(),
+  absenceRate: z.number().nullable(),
+  lateRate: z.number().nullable(),
+});
+
+const ExecutiveDashboardEmployeeNameSchema = z.object({
+  employeeCode: z.string(),
+  firstNameEn: z.string(),
+  middleNameEn: z.string().nullable(),
+  lastNameEn: z.string(),
+  firstNameAm: z.string().nullable(),
+  middleNameAm: z.string().nullable(),
+  lastNameAm: z.string().nullable(),
+}).nullable();
+
+const ExecutiveDashboardMoverSchema = z.object({
+  departmentId: z.string().nullable(),
+  department: z.string(),
+  attendanceRate: z.number(),
+  comparisonRate: z.number(),
+  change: z.number(),
+});
+
+const ExecutiveDashboardInsightsSchema = z.object({
+  current: ExecutiveDashboardRatesSchema.extend({ averageLateMinutes: z.number().int().nullable() }),
+  comparison: ExecutiveDashboardRatesSchema.extend({
+    kind: z.enum(['PREVIOUS_WORKING_DAY', 'PREVIOUS_PERIOD']),
+    dateFrom: z.string(),
+    dateTo: z.string(),
+    asOf: z.string().nullable(),
+  }).nullable(),
+  lowestDepartment: z.object({ departmentId: z.string().nullable(), department: z.string(), attendanceRate: z.number() }).nullable(),
+  arrivalCurve: z.object({
+    date: z.string(),
+    due: z.number().int().nonnegative(),
+    typicalDates: z.array(z.string()),
+    shiftStart: z.string().nullable(),
+    points: z.array(z.object({ time: z.string(), focus: z.number().nullable(), typical: z.number().nullable() })),
+  }).nullable(),
+  lostTime: z.object({
+    lateHours: z.number(),
+    earlyLeaveHours: z.number(),
+    missedSessionHours: z.number(),
+    totalHours: z.number(),
+    workdayHours: z.number().nullable(),
+    equivalentWorkdays: z.number().nullable(),
+  }),
+  departmentMovers: z.object({ improved: z.array(ExecutiveDashboardMoverSchema), declined: z.array(ExecutiveDashboardMoverSchema) }),
+  repeatCases: z.object({
+    dateFrom: z.string(),
+    dateTo: z.string(),
+    lateThreshold: z.number().int(),
+    absentThreshold: z.number().int(),
+    lateCount: z.number().int().nonnegative(),
+    absentCount: z.number().int().nonnegative(),
+    employees: z.array(z.object({
+      employeeId: z.string(),
+      departmentId: z.string().nullable(),
+      department: z.string(),
+      lateDays: z.number().int().nonnegative(),
+      absentDays: z.number().int().nonnegative(),
+      employee: ExecutiveDashboardEmployeeNameSchema,
+    })),
+  }),
+  weekdayLateness: z.object({
+    dateFrom: z.string(),
+    dateTo: z.string(),
+    days: z.array(z.object({
+      weekday: z.number().int().min(1).max(7),
+      present: z.number().int().nonnegative(),
+      late: z.number().int().nonnegative(),
+      lateRate: z.number(),
+      averageLateMinutes: z.number().int().nullable(),
+    })),
+  }),
+  people: z.array(z.object({
+    employeeId: z.string(),
+    departmentId: z.string().nullable(),
+    department: z.string(),
+    status: z.enum(['LATE', 'ABSENT', 'NOT_YET_ARRIVED']),
+    checkInAt: z.string().nullable(),
+    lateMinutes: z.number().int().nullable(),
+    employee: ExecutiveDashboardEmployeeNameSchema,
+  })),
+});
+
 export const ExecutiveDashboardSummarySchema = z.object({
   generatedAt: z.string().nullable(),
   date: z.string(),
@@ -1830,6 +1926,7 @@ export const ExecutiveDashboardSummarySchema = z.object({
       description: z.string(),
     }),
   ),
+  insights: ExecutiveDashboardInsightsSchema,
 });
 
 export const ExecutiveDashboardSummaryResponseSchema = z.object({

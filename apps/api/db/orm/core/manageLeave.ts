@@ -517,7 +517,6 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
     await assertAnnualFiscalYearAllowed(employee, fiscalYear!);
     const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
     await assertAnnualLeaveDatesAreWorkingDays(input.employeeId, dateSelections);
-    await assertNoActiveAnnualLeaveDateOverlap(input.employeeId, dateSelections.map((selection) => selection.date));
     const requestedDays = sumDaySelections(dateSelections);
     assertWithinAllowedDays(leaveType, requestedDays);
 
@@ -527,6 +526,8 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
 
     const dateValues = dateSelections.map((selection) => selection.date).sort();
     return db.transaction(async (tx) => {
+      await lockEmployeeLeave(input.employeeId, tx);
+      await assertNoActiveLeaveOverlap(input.employeeId, { dates: dateValues }, tx);
       const [request] = await tx.insert(leaveRequests).values({
         employeeId: input.employeeId,
         leaveTypeId: input.leaveTypeId,
@@ -564,6 +565,8 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
   assertWithinAllowedDays(leaveType, requestedDays);
 
   return db.transaction(async (tx) => {
+    await lockEmployeeLeave(input.employeeId, tx);
+    await assertNoActiveLeaveOverlap(input.employeeId, { startDate: input.startDate!, endDate: input.endDate! }, tx);
     const [request] = await tx.insert(leaveRequests).values({
       employeeId: input.employeeId,
       leaveTypeId: input.leaveTypeId,
@@ -604,7 +607,8 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
 
       const dateSelections = normalizeAnnualLeaveDateSelections(input.annualLeaveDates);
       await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, dateSelections, tx);
-      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, dateSelections.map((selection) => selection.date), tx, request.id);
+      await lockEmployeeLeave(request.employeeId, tx);
+      await assertNoActiveLeaveOverlap(request.employeeId, { dates: dateSelections.map((selection) => selection.date) }, tx, request.id);
       const requestedDays = sumDaySelections(dateSelections);
       assertWithinAllowedDays(leaveType, requestedDays);
 
@@ -656,6 +660,8 @@ export async function updateLeaveRequest(id: string, input: UpdateLeaveRequestIn
     }
     const requestedDays = await calculateWorkingDays(request.employeeId, input.startDate, input.endDate, tx);
     assertWithinAllowedDays(nextLeaveType, requestedDays);
+    await lockEmployeeLeave(request.employeeId, tx);
+    await assertNoActiveLeaveOverlap(request.employeeId, { startDate: input.startDate, endDate: input.endDate }, tx, request.id);
 
     const [updated] = await tx.update(leaveRequests).set({
       leaveTypeId: nextLeaveType?.id ?? request.leaveTypeId,
@@ -754,7 +760,7 @@ export async function changeLeaveRequestStatus(
       if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
       const approvedSelections = resolveAnnualApprovalSelections(request, input.approvedDates);
       await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedSelections, tx);
-      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedSelections.map((selection) => selection.date), tx, request.id);
+      await assertNoActiveLeaveOverlap(request.employeeId, { dates: approvedSelections.map((selection) => selection.date) }, tx, request.id);
       const days = sumDaySelections(approvedSelections);
       if (days <= 0) throw new Error('At least one annual leave date must be approved');
       assertWithinAllowedDays(leaveType, days);
@@ -912,7 +918,7 @@ export async function authorizeLeaveRequest(id: string, input: AuthorizeLeaveInp
       if (!request.fiscalYearId) throw new Error('Annual leave request has no fiscal year');
       if (approvedDates.length === 0) throw new Error('Annual leave request has no approved dates');
       await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, approvedDates, tx);
-      await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, approvedDates.map((date) => date.date), tx, request.id);
+      await assertNoActiveLeaveOverlap(request.employeeId, { dates: approvedDates.map((date) => date.date) }, tx, request.id);
       const days = sumDaySelections(approvedDates);
       const balance = await getEmployeeFiscalYearBalance(request.employeeId, request.fiscalYearId, tx);
       if (!balance || numeric(balance.reserved) < days) throw new Error('Reserved annual leave balance is inconsistent');
@@ -1299,21 +1305,68 @@ async function validateInterruptionPattern(
     }
   }
   await assertAnnualLeaveDatesAreWorkingDays(request.employeeId, continuation, tx);
-  await assertNoActiveAnnualLeaveDateOverlap(request.employeeId, continuation.map((selection) => selection.date), tx);
+  await assertNoActiveLeaveOverlap(request.employeeId, { dates: continuation.map((selection) => selection.date) }, tx);
 }
 
-async function assertNoActiveAnnualLeaveDateOverlap(employeeId: string, dates: string[], tx: DbClient = db, ignoreLeaveRequestId?: string) {
-  const overlap = await tx.query.annualLeaveRequestDates.findFirst({
+const ACTIVE_LEAVE_REQUEST_STATUSES = ['PENDING', 'APPROVED', 'AUTHORIZED'];
+
+// Serializes leave submissions per employee so two concurrent requests cannot both pass the overlap check.
+async function lockEmployeeLeave(employeeId: string, tx: DbClient) {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`leave-request:${employeeId}`}))`);
+}
+
+/**
+ * An employee can hold only one active leave per day, whatever the leave type.
+ * Annual leave occupies its selected dates; other leave types occupy their whole start–end range.
+ */
+async function assertNoActiveLeaveOverlap(
+  employeeId: string,
+  period: { dates: string[] } | { startDate: string; endDate: string },
+  tx: DbClient = db,
+  ignoreLeaveRequestId?: string,
+) {
+  const dates = 'dates' in period ? [...period.dates].sort() : null;
+  if (dates && !dates.length) return;
+  const startDate = dates ? dates[0] : (period as { startDate: string }).startDate;
+  const endDate = dates ? dates[dates.length - 1] : (period as { endDate: string }).endDate;
+
+  const annualOverlap = await tx.query.annualLeaveRequestDates.findFirst({
     where: and(
       eq(annualLeaveRequestDates.employeeId, employeeId),
-      inArray(annualLeaveRequestDates.leaveDate, dates),
+      dates
+        ? inArray(annualLeaveRequestDates.leaveDate, dates)
+        : and(gte(annualLeaveRequestDates.leaveDate, startDate), lte(annualLeaveRequestDates.leaveDate, endDate)),
       or(eq(annualLeaveRequestDates.status, 'PENDING'), eq(annualLeaveRequestDates.status, 'APPROVED')),
       or(eq(annualLeaveRequestDates.utilizationStatus, 'SCHEDULED'), eq(annualLeaveRequestDates.utilizationStatus, 'CONSUMED')),
-      ignoreLeaveRequestId ? sql`${annualLeaveRequestDates.leaveRequestId} <> ${ignoreLeaveRequestId}` : undefined,
+      ignoreLeaveRequestId ? ne(annualLeaveRequestDates.leaveRequestId, ignoreLeaveRequestId) : undefined,
     ),
     columns: { leaveDate: true },
   });
-  if (overlap) throw new Error(`Annual leave date ${formatDateValue(overlap.leaveDate)} is already part of another active request`);
+  if (annualOverlap) throw new Error(`Leave date ${formatDateValue(annualOverlap.leaveDate)} is already part of another active request`);
+
+  const candidates = await tx.query.leaveRequests.findMany({
+    where: and(
+      eq(leaveRequests.employeeId, employeeId),
+      inArray(leaveRequests.status, ACTIVE_LEAVE_REQUEST_STATUSES),
+      lte(leaveRequests.startDate, endDate),
+      gte(leaveRequests.endDate, startDate),
+      ignoreLeaveRequestId ? ne(leaveRequests.id, ignoreLeaveRequestId) : undefined,
+    ),
+    columns: { id: true, startDate: true, endDate: true },
+    with: { leaveType: true },
+  });
+  for (const candidate of candidates) {
+    // Annual requests were already checked date by date above; their start–end span may contain gaps.
+    if (isAnnualLeaveType(candidate.leaveType)) continue;
+    const candidateStart = formatDateValue(candidate.startDate);
+    const candidateEnd = formatDateValue(candidate.endDate);
+    const overlapDate = dates
+      ? dates.find((date) => date >= candidateStart && date <= candidateEnd)
+      : (startDate > candidateStart ? startDate : candidateStart);
+    if (overlapDate) {
+      throw new Error(`Leave date ${overlapDate} is already covered by another active leave request (${candidateStart} – ${candidateEnd})`);
+    }
+  }
 }
 
 function insertInterruptionDates(

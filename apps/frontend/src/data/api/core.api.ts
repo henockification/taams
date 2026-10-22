@@ -403,6 +403,10 @@ export const coreApi = {
       method: 'POST',
       body: JSON.stringify(input),
     }),
+  convertEmployeeToContract: ({ employeeId, ...input }: { employeeId: string; departmentId: string; supervisorId: string }) =>
+    coreFetch<EmployeeResponse>(`/employees/${employeeId}/convert-to-contract`, { method: 'POST', body: JSON.stringify(input) }),
+  createEmployeeUserAccount: (employeeId: string) =>
+    coreFetch<EmployeeResponse>(`/employees/${employeeId}/user-account`, { method: 'POST' }),
   updateEmployee: ({ employeeId, ...input }: UpdateEmployeeInput) =>
     coreFetch<EmployeeResponse>(`/employees/${employeeId}`, {
       method: 'PUT',

@@ -41,9 +41,29 @@ export function materializeSession(session: AttendanceSession): AttendanceSessio
 }
 
 export function recordSessions(record: any): AttendanceSession[] {
-  return [...((record.sessionEvaluations ?? []) as AttendanceSession[])]
+  return applyLeaveToSessions(record, [...((record.sessionEvaluations ?? []) as AttendanceSession[])]
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map(materializeSession);
+    .map(materializeSession));
+}
+
+/**
+ * Leave (TAAMS or imported from ISMIS) is stored as day values, not per session: a full
+ * leave day covers every missed session, half a day covers half of them. Covered sessions
+ * read "On leave" instead of "Absent".
+ */
+export function applyLeaveToSessions<T extends AttendanceSession>(record: any, sessions: T[]): T[] {
+  const leaveDays = Math.min(1, Math.max(0, Number(record.leaveDays ?? 0)));
+  let covered = Math.round(leaveDays * sessions.length);
+  return sessions.map((session) => {
+    if (covered <= 0 || session.attendanceStatus !== 'ABSENT') return session;
+    covered -= 1;
+    return {
+      ...session,
+      checkInStatus: session.checkInAt ? session.checkInStatus : 'ON_LEAVE',
+      checkOutStatus: session.checkOutAt ? session.checkOutStatus : 'ON_LEAVE',
+      attendanceStatus: 'ON_LEAVE',
+    };
+  });
 }
 
 /**
@@ -106,6 +126,7 @@ export function formatAddisTime(value: string | Date | null | undefined) {
 export function sessionPunchLabel(session: AttendanceSession, direction: 'IN' | 'OUT') {
   const value = direction === 'IN' ? session.checkInAt : session.checkOutAt;
   const status = direction === 'IN' ? session.checkInStatus : session.checkOutStatus;
+  if (!value && status === 'ON_LEAVE') return '';
   if (!value) return status === 'PENDING' ? 'Pending' : direction === 'IN' ? 'Missing check-in' : 'Missing check-out';
   const time = formatAddisTime(value);
   if (direction === 'IN' && status === 'LATE') return `${time} Late (${session.lateMinutes} min)`;
@@ -119,6 +140,7 @@ export function sessionPunchLabel(session: AttendanceSession, direction: 'IN' | 
 export function sessionStatusLabel(session: AttendanceSession) {
   if (session.attendanceStatus === 'PRESENT') return 'Present';
   if (session.attendanceStatus === 'ABSENT') return 'Absent';
+  if (session.attendanceStatus === 'ON_LEAVE') return 'On leave';
   return 'Pending';
 }
 

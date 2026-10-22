@@ -9,6 +9,8 @@ import { getSessionByToken } from '../../../../db/orm/auth/manageAuth';
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse } from '../../helpers/errors';
 import { formatDashboardSummary } from '../../helpers/formatters';
+import { getDeviceHealthSummary } from '../../../../db/orm/core/manageDeviceHealth';
+import { hasSystemAdminRole } from '../../../../lib/privileged-roles';
 
 export async function getDashboardSummaryHandler(c: Context) {
   try {
@@ -34,12 +36,16 @@ export async function getDashboardSummaryHandler(c: Context) {
       }),
       userHasPermission(session.user.id, 'users:read'),
     ]);
-    // System administrators get a headcount of users per role alongside their own dashboard.
-    const roleSummary = canManageUsers ? await getUserRoleCounts() : null;
+    // System administrators get a headcount of users per role alongside their own dashboard,
+    // and device and sync health, which HR does not act on.
+    const [roleSummary, deviceHealth] = await Promise.all([
+      canManageUsers ? getUserRoleCounts() : null,
+      hasSystemAdminRole(session.user.role) ? getDeviceHealthSummary() : null,
+    ]);
 
     return c.json({
       success: true,
-      dashboard: formatDashboardSummary({ ...dashboard, sections: { ...dashboard.sections, roleSummary } }),
+      dashboard: formatDashboardSummary({ ...dashboard, sections: { ...dashboard.sections, roleSummary, deviceHealth } }),
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch dashboard summary');

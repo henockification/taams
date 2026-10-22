@@ -7,7 +7,7 @@ import { useTranslations } from 'next-intl';
 import {
   AttendanceSessions,
   ExceptionMinutes,
-  materializeAttendanceSession,
+  recordAttendanceSessions,
   summarizeAttendanceExceptions,
   totalLateMinutes,
 } from '@/components/attendance/attendance-record-display';
@@ -206,7 +206,7 @@ function Summary({ label, value, detail }: { label: string; value: number; detai
 }
 
 function correctionHref(record: AttendanceDailyRecord) {
-  const sessions = (record.attendanceSessions ?? []).map(materializeAttendanceSession);
+  const sessions = recordAttendanceSessions(record);
   const missingCheckIn = sessions.find((session) => session.checkInStatus === 'MISSING');
   const missingCheckOut = sessions.find((session) => session.checkOutStatus === 'MISSING');
   const punchType: PunchType = missingCheckIn ? 'IN' : missingCheckOut ? 'OUT' : 'UNKNOWN';

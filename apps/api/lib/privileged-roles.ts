@@ -22,6 +22,13 @@ export function hasSuperAdminRole(roles?: string[] | null) {
   return (roles ?? []).some((role) => SUPER_ADMIN_ROLE_NAMES.has(normalizeRoleName(role)));
 }
 
+/** Roles that run the system itself (devices, sync, users), as opposed to HR or line management. */
+export const SYSTEM_ADMIN_ROLE_NAMES = new Set([...PRIVILEGED_ROLE_NAMES, 'system_admin']);
+
+export function hasSystemAdminRole(roles?: string[] | null) {
+  return (roles ?? []).some((role) => SYSTEM_ADMIN_ROLE_NAMES.has(normalizeRoleName(role)));
+}
+
 export function includesPrivilegedRole(roles?: string[] | null) {
   return (roles ?? []).some((role) => PRIVILEGED_ROLE_NAMES.has(normalizeRoleName(role)));
 }

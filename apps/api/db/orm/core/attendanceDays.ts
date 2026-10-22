@@ -36,7 +36,13 @@ export type AttendanceEmployee = {
 export type AttendanceDay = ClassifiedDay & {
   date: string;
   departmentId: string | null;
-  record: MetricRecord & { id: string; earlyDepartureMinutes: number | null };
+  record: MetricRecord & {
+    id: string;
+    earlyDepartureMinutes: number | null;
+    lateReturnMinutes: number | null;
+    earlyBreakMinutes: number | null;
+    scheduledEndAt: Date | string | null;
+  };
 };
 
 export type DepartmentNode = { id: string; nameEn: string; parentDepartmentId: string | null };
@@ -79,12 +85,15 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       checkOutAt: attendanceDailyRecords.checkOutAt,
       lateMinutes: attendanceDailyRecords.lateMinutes,
       earlyDepartureMinutes: attendanceDailyRecords.earlyDepartureMinutes,
+      lateReturnMinutes: attendanceDailyRecords.lateReturnMinutes,
+      earlyBreakMinutes: attendanceDailyRecords.earlyBreakMinutes,
       attendanceDays: attendanceDailyRecords.attendanceDays,
       leaveDays: attendanceDailyRecords.leaveDays,
       holidayDays: attendanceDailyRecords.holidayDays,
       isOffDay: attendanceDailyRecords.isOffDay,
       isBiometricExempt: attendanceDailyRecords.isBiometricExempt,
       scheduledStartAt: attendanceDailyRecords.scheduledStartAt,
+      scheduledEndAt: attendanceDailyRecords.scheduledEndAt,
       sessionEvaluations: attendanceDailyRecords.sessionEvaluations,
       returnedAt: attendanceDailyRecords.returnedAt,
     }).from(attendanceDailyRecords).where(and(
@@ -171,12 +180,15 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
           checkOutAt: null,
           lateMinutes: null,
           earlyDepartureMinutes: null,
+          lateReturnMinutes: null,
+          earlyBreakMinutes: null,
           attendanceDays: 0,
           leaveDays: 0,
           holidayDays: 0,
           isOffDay: false,
           isBiometricExempt: true,
           scheduledStartAt: null,
+          scheduledEndAt: null,
           sessionEvaluations: [],
           returnedAt: null,
         }, date);

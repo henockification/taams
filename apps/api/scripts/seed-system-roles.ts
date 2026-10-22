@@ -199,6 +199,18 @@ const PERMISSIONS = [
     description: 'View biometric devices',
   },
   {
+    name: 'biometric-enrollment:read',
+    resource: 'biometric-enrollment',
+    action: 'read',
+    description: 'View biometric enrollment status and sync runs',
+  },
+  {
+    name: 'biometric-enrollment:push',
+    resource: 'biometric-enrollment',
+    action: 'push',
+    description: 'Sync, provision and remove employee enrollments on biometric devices',
+  },
+  {
     name: 'biometric-exemptions:read',
     resource: 'biometric-exemptions',
     action: 'read',

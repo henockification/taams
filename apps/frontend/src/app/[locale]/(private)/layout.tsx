@@ -173,6 +173,8 @@ export default function PrivateLayout({ children }: PrivateLayoutProps) {
         return coreT('attendancePunchesReportDescription');
       case 'lateAttendanceReport':
         return coreT('lateAttendanceReportDescription');
+      case 'absentEmployeesReport':
+        return coreT('absentEmployeesReportDescription');
       case 'overtimeReport':
         return coreT('overtimeReportDescription');
       case 'leaveBalancesReport':

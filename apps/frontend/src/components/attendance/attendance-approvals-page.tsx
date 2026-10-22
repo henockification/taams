@@ -64,7 +64,9 @@ import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 import {
   AttendanceSessions,
   ExceptionMinutes,
+  matchesAttendanceException,
   materializeAttendanceSession,
+  type AttendanceExceptionFilter,
   summarizeAttendanceExceptions,
   totalLateMinutes,
 } from './attendance-record-display';
@@ -138,14 +140,17 @@ export function AttendanceApprovalsPage({
   initialFilters,
 }: {
   mode: AttendanceApprovalMode;
-  initialFilters?: { date?: string; approval?: ApprovalFilter; search?: string };
+  initialFilters?: { date?: string; approval?: ApprovalFilter; search?: string; exception?: AttendanceExceptionFilter };
 }) {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const employeeName = useEmployeeName();
   const { formatDate, formatDateTime } = useCalendarPreference();
-  const initialDate = initialFilters?.date && initialFilters.date !== today() ? initialFilters.date : null;
-  const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : mode === 'hr' ? 'AWAITING_HR' : 'TODAY');
+  // A dashboard link for today opens today's records rather than HR's default awaiting-approval view.
+  const linkedToday = initialFilters?.date === today();
+  const initialDate = initialFilters?.date && !linkedToday ? initialFilters.date : null;
+  const [dateFilter, setDateFilter] = useState<DateFilter>(initialDate ? 'CUSTOM' : linkedToday ? 'TODAY' : mode === 'hr' ? 'AWAITING_HR' : 'TODAY');
+  const [exceptionFilter, setExceptionFilter] = useState<AttendanceExceptionFilter | 'all'>(initialFilters?.exception ?? 'all');
   const [customDateFilters, setCustomDateFilters] = useState({ fromDate: initialDate ?? today(), toDate: initialDate ?? today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [isBulkReturnOpen, setIsBulkReturnOpen] = useState(false);
@@ -232,9 +237,10 @@ export function AttendanceApprovalsPage({
         || (approvalFilter === 'unapproved' && !isAttendanceApproved(record, mode))
         || (approvalFilter === 'conflicts' && hasLeaveAttendanceConflict(record));
       const matchesType = !isHrMode || !hasEmploymentType || employee?.employmentType === typeFilter;
-      return matchesEmployee && matchesDepartment && matchesApproval && matchesType;
+      const matchesException = exceptionFilter === 'all' || matchesAttendanceException(record, exceptionFilter);
+      return matchesEmployee && matchesDepartment && matchesApproval && matchesType && matchesException;
     });
-  }, [approvalFilter, departmentFilter, deferredEmployeeSearch, hasEmploymentType, isHrMode, mode, records, typeFilter]);
+  }, [approvalFilter, departmentFilter, deferredEmployeeSearch, exceptionFilter, hasEmploymentType, isHrMode, mode, records, typeFilter]);
   const summary = useMemo(() => summarize(filteredRecords), [filteredRecords]);
   const conflictCount = useMemo(() => filteredRecords.filter(hasLeaveAttendanceConflict).length, [filteredRecords]);
   // The ISMIS leave check must cover the dates HR is about to approve, which in the
@@ -528,6 +534,24 @@ export function AttendanceApprovalsPage({
                 <SelectItem value="approved">{t('approved')}</SelectItem>
                 <SelectItem value="unapproved">{t('unapproved')}</SelectItem>
                 <SelectItem value="conflicts">{t('workedDuringLeave')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FilterField>
+          <FilterField label={t('exceptionFilter')} htmlFor="attendance-approval-exception-filter">
+            <Select value={exceptionFilter} onValueChange={(value) => {
+              setExceptionFilter(value as AttendanceExceptionFilter | 'all');
+              setSelectedRecordIds([]);
+              setPage(1);
+            }}>
+              <SelectTrigger id="attendance-approval-exception-filter" className="w-full">
+                <SelectValue placeholder={t('exceptionFilter')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('allRecords')}</SelectItem>
+                <SelectItem value="any">{t('exceptionAny')}</SelectItem>
+                <SelectItem value="late">{t('exceptionLate')}</SelectItem>
+                <SelectItem value="missing-checkout">{t('exceptionMissingCheckout')}</SelectItem>
+                <SelectItem value="early-departure">{t('exceptionEarlyDeparture')}</SelectItem>
               </SelectContent>
             </Select>
           </FilterField>

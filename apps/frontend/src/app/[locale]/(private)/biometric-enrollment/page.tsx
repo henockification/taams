@@ -24,7 +24,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { bioTypeLabel, FACE_BIO_TYPE, isPrivilegedDeviceAdmin, PALM_BIO_TYPE } from '@/components/biometric/enrollment-labels';
+import { bioTypeLabel, canManageEnrollment, FACE_BIO_TYPE, PALM_BIO_TYPE } from '@/components/biometric/enrollment-labels';
 import {
   useApplyEnrollmentSync,
   useBiometricEnrollmentOverview,
@@ -49,8 +49,8 @@ export default function BiometricEnrollmentPage() {
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
   const session = useSession();
-  // Anything that writes to devices is reserved for system administrators, like device setup.
-  const canManage = isPrivilegedDeviceAdmin(session.data?.user?.role);
+  // Anything that writes to devices needs a system administrator role or biometric-enrollment:push.
+  const canManage = canManageEnrollment(session.data?.user);
 
   const overviewQuery = useBiometricEnrollmentOverview();
   const overview = overviewQuery.data?.overview;

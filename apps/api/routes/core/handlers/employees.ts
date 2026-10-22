@@ -1,5 +1,6 @@
 import { Context } from 'hono';
 import {
+  ConvertEmployeeToContractRequestSchema,
   CreateEmployeeRequestSchema,
   CreateEmployeeSupervisorRequestSchema,
   BulkCreateEmployeeSupervisorRequestSchema,
@@ -10,6 +11,8 @@ import {
 } from '../../../schemas/core.schema';
 import {
   createEmployeeScoped,
+  createEmployeeUserAccountScoped,
+  convertEmployeeToContractScoped,
   createEmployeeSupervisor,
   bulkCreateEmployeeSupervisorsScoped,
   getAllEmployeeSupervisorsScoped,
@@ -125,6 +128,39 @@ export async function getEmployeesPaginatedHandler(c: Context) {
     });
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to fetch employees');
+  }
+}
+
+export async function createEmployeeUserAccountHandler(c: Context) {
+  try {
+    const scope = await resolveScope(c);
+    const employee = await createEmployeeUserAccountScoped(c.req.param('id'), scope);
+
+    return c.json({
+      success: true,
+      employee: formatEmployee(employee, { includeSensitive: true }),
+    }, 201);
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to create user account');
+  }
+}
+
+export async function convertEmployeeToContractHandler(c: Context) {
+  try {
+    const scope = await resolveScope(c);
+    const parsed = ConvertEmployeeToContractRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return validationErrorResponse(c, parsed.error.message);
+    }
+
+    const employee = await convertEmployeeToContractScoped(c.req.param('id'), parsed.data, scope);
+
+    return c.json({
+      success: true,
+      employee: formatEmployee(employee, { includeSensitive: true }),
+    });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to move employee to contract');
   }
 }
 

@@ -577,9 +577,9 @@ export type AttendanceSessionEvaluation = {
   completionAt: string;
   checkInAt: string | null;
   checkOutAt: string | null;
-  checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING';
-  checkOutStatus: 'ON_TIME' | 'EARLY' | 'LATE' | 'MISSING' | 'PENDING';
-  attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING';
+  checkInStatus: 'ON_TIME' | 'LATE' | 'MISSING' | 'PENDING' | 'ON_LEAVE';
+  checkOutStatus: 'ON_TIME' | 'EARLY' | 'LATE' | 'MISSING' | 'PENDING' | 'ON_LEAVE';
+  attendanceStatus: 'PRESENT' | 'ABSENT' | 'PENDING' | 'ON_LEAVE';
   lateMinutes: number;
   earlyCheckoutMinutes: number;
   lateCheckoutMinutes: number;
@@ -915,8 +915,36 @@ export type DashboardSummary = {
     };
     /** Present for users who can manage users (system administrators). */
     roleSummary?: DashboardRoleSummary | null;
+    /** Present only for system administrator roles: device health and recent attendance syncs. */
+    deviceHealth?: DashboardDeviceHealth | null;
   };
   placeholders: DashboardPlaceholder[];
+};
+
+export type DashboardDeviceHealth = {
+  activeDevices: number;
+  offlineDevices: Array<{
+    id: string;
+    deviceName: string;
+    locationName: string | null;
+    healthStatus: string | null;
+    lastSeenAt: string | null;
+    lastErrorMessage: string | null;
+  }>;
+  sync: {
+    counts: { started: number; completed: number; failed: number; partial: number };
+    openIssues: number;
+    recent: Array<{
+      id: string;
+      syncStatus: SyncStatus;
+      totalRecords: number | null;
+      successfulRecords: number | null;
+      failedRecords: number | null;
+      errorMessage: string | null;
+      createdAt: string | null;
+      deviceName: string | null;
+    }>;
+  };
 };
 
 export type DashboardRoleSummary = {
@@ -1014,12 +1042,96 @@ export type ExecutiveDashboardSummary = {
     attendanceRate: number | null;
     punctualityRate: number | null;
     previousAttendanceRate: number | null;
+    previousDueDays: number;
     trend: ExecutiveDashboardTrend;
   }>;
   monthlyAttendanceTrend: Array<{ month: string; monthKey: string; present: number; dueDays: number; attendanceRate: number | null }>;
   attendanceExceptions: Array<{ id: string; severity: ExecutiveDashboardSeverity; title: string; count: number; description: string }>;
   deviceHealth: { total: number; online: number; offline: number; error: number; unknown: number };
   executiveAlerts: Array<{ id: string; severity: ExecutiveDashboardSeverity; title: string; description: string }>;
+  insights: ExecutiveDashboardInsights;
+};
+
+/** Due = present + absent (people not arrived yet today count as absent); rates are percentages. */
+export type ExecutiveDashboardRates = {
+  due: number;
+  present: number;
+  absent: number;
+  late: number;
+  attendanceRate: number | null;
+  absenceRate: number | null;
+  /** Late arrivals as a share of those present. */
+  lateRate: number | null;
+};
+
+export type ExecutiveDashboardEmployeeName = {
+  employeeCode: string;
+  firstNameEn: string;
+  middleNameEn: string | null;
+  lastNameEn: string;
+  firstNameAm: string | null;
+  middleNameAm: string | null;
+  lastNameAm: string | null;
+} | null;
+
+export type ExecutiveDashboardMover = {
+  departmentId: string | null;
+  department: string;
+  attendanceRate: number;
+  comparisonRate: number;
+  change: number;
+};
+
+export type ExecutiveDashboardInsights = {
+  current: ExecutiveDashboardRates & { averageLateMinutes: number | null };
+  /** Previous working day (at the same clock time while live) or the previous period of the same length. */
+  comparison: (ExecutiveDashboardRates & {
+    kind: 'PREVIOUS_WORKING_DAY' | 'PREVIOUS_PERIOD';
+    dateFrom: string;
+    dateTo: string;
+    asOf: string | null;
+  }) | null;
+  lowestDepartment: { departmentId: string | null; department: string; attendanceRate: number } | null;
+  arrivalCurve: {
+    date: string;
+    due: number;
+    typicalDates: string[];
+    shiftStart: string | null;
+    points: Array<{ time: string; focus: number | null; typical: number | null }>;
+  } | null;
+  lostTime: {
+    lateHours: number;
+    earlyLeaveHours: number;
+    missedSessionHours: number;
+    totalHours: number;
+    workdayHours: number | null;
+    equivalentWorkdays: number | null;
+  };
+  departmentMovers: { improved: ExecutiveDashboardMover[]; declined: ExecutiveDashboardMover[] };
+  repeatCases: {
+    dateFrom: string;
+    dateTo: string;
+    lateThreshold: number;
+    absentThreshold: number;
+    lateCount: number;
+    absentCount: number;
+    employees: Array<{ employeeId: string; departmentId: string | null; department: string; lateDays: number; absentDays: number; employee: ExecutiveDashboardEmployeeName }>;
+  };
+  weekdayLateness: {
+    dateFrom: string;
+    dateTo: string;
+    days: Array<{ weekday: number; present: number; late: number; lateRate: number; averageLateMinutes: number | null }>;
+  };
+  /** Late and absent people on the day (single-day view only). */
+  people: Array<{
+    employeeId: string;
+    departmentId: string | null;
+    department: string;
+    status: 'LATE' | 'ABSENT' | 'NOT_YET_ARRIVED';
+    checkInAt: string | null;
+    lateMinutes: number | null;
+    employee: ExecutiveDashboardEmployeeName;
+  }>;
 };
 
 export type HrDashboardSeverity = 'critical' | 'warning' | 'info';
@@ -1055,8 +1167,6 @@ export type HrDashboardSummary = {
     attendanceExceptions: HrDashboardWidget;
     upcomingLeave: HrDashboardWidget;
     employeesNearLeaveExpiry: HrDashboardWidget;
-    devicesOffline: HrDashboardWidget;
-    synchronizationStatus: HrDashboardWidget;
   };
   details: {
     pendingManualRequests: ManualPunchRequest[];
@@ -1069,6 +1179,8 @@ export type HrDashboardSummary = {
     lateEmployees: Employee[];
     attendanceExceptions: Array<{
       id: string;
+      /** Where to see the people behind the count; empty when there is no page for it. */
+      href?: string;
       severity: HrDashboardSeverity;
       title: string;
       count: number;
@@ -1076,18 +1188,6 @@ export type HrDashboardSummary = {
     }>;
     upcomingLeave: LeaveRequest[];
     employeesNearLeaveExpiry: LeaveBalance[];
-    devicesOffline: BiometricDevice[];
-    synchronizationStatus: {
-      latest: AttendanceSyncBatch | null;
-      recent: AttendanceSyncBatch[];
-      counts: {
-        started: number;
-        completed: number;
-        failed: number;
-        partial: number;
-      };
-      openIssues: number;
-    };
     unprocessedPunches: AttendancePunch[];
   };
 };
@@ -1614,7 +1714,7 @@ export type DepartmentHeadDashboardSummaryResponse = {
   departmentHeadDashboard: DepartmentHeadDashboardSummary;
 };
 
-export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit' | 'users' | 'supervisor-attendance' | 'supervisor-attendance-summary';
+export type ReportKey = 'attendance-daily' | 'attendance-punches' | 'late-attendance' | 'absent-employees' | 'overtime' | 'leave-balances' | 'leave-requests' | 'employees' | 'device-sync' | 'audit' | 'users' | 'supervisor-attendance' | 'supervisor-attendance-summary';
 
 export type ReportColumn = {
   key: string;

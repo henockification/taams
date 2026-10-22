@@ -16,10 +16,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { bioTypeLabel, isPrivilegedDeviceAdmin } from '@/components/biometric/enrollment-labels';
+import { bioTypeLabel, canManageEnrollment, canViewEnrollment } from '@/components/biometric/enrollment-labels';
 import { useDeprovisionEmployeeEnrollment, useEmployeeBiometricEnrollment, useProvisionEmployeeEnrollment } from '@/data/hooks/core.hooks';
 import type { EmployeeDeviceEnrollmentStatus } from '@/data/types/core.types';
-import { userHasPermission } from '@/config/app-navigation';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
@@ -39,9 +38,9 @@ export function EmployeeBiometricEnrollmentCard({ employeeId }: { employeeId: st
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
   const session = useSession();
-  const canView = userHasPermission(session.data?.user, 'biometric-devices:read');
-  // Writing to devices is reserved for system administrators, like device setup.
-  const canManage = isPrivilegedDeviceAdmin(session.data?.user?.role);
+  const canView = canViewEnrollment(session.data?.user);
+  // Writing to devices needs a system administrator role or biometric-enrollment:push.
+  const canManage = canManageEnrollment(session.data?.user);
   const { data, isLoading } = useEmployeeBiometricEnrollment(employeeId, canView);
   const provision = useProvisionEmployeeEnrollment();
   const deprovision = useDeprovisionEmployeeEnrollment();

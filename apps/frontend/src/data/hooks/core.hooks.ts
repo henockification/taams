@@ -741,6 +741,33 @@ export function useCreateEmployee() {
   });
 }
 
+export function useConvertEmployeeToContract() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: { employeeId: string; departmentId: string; supervisorId: string }) => coreApi.convertEmployeeToContract(input),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(coreQueryKeys.employee(data.employee.id), data);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() }),
+        queryClient.invalidateQueries({ queryKey: coreQueryKeys.employeeSupervisors(data.employee.id) }),
+      ]);
+    },
+  });
+}
+
+export function useCreateEmployeeUserAccount() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (employeeId: string) => coreApi.createEmployeeUserAccount(employeeId),
+    onSuccess: async (data) => {
+      queryClient.setQueryData(coreQueryKeys.employee(data.employee.id), data);
+      await queryClient.invalidateQueries({ queryKey: coreQueryKeys.employees() });
+    },
+  });
+}
+
 export function useUpdateEmployee() {
   const queryClient = useQueryClient();
 

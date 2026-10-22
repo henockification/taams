@@ -372,6 +372,13 @@
       "when": 1791331200000,
       "tag": "0056_employee_amharic_names",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1791417600000,
+      "tag": "0057_biometric_enrollment_permissions",
+      "breakpoints": true
     }
   ]
 }

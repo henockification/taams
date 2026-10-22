@@ -7,6 +7,8 @@ const LEAVE_VALIDATION_PHRASES = [
   'is a half-day holiday (',
   'insufficient annual leave balance',
   'is already part of another active request',
+  'is already covered by another active leave request',
+  'has already been requested',
   'conflicts with another authorized leave request',
   'does not include any scheduled working days',
 ];
@@ -31,6 +33,7 @@ export function coreErrorResponse(c: Context, error: unknown, fallback: string) 
       : lowerMessage.includes('authentication required')
         ? 401
         : lowerMessage.includes('duplicate') || lowerMessage.includes('unique') || lowerMessage.includes('already has an active')
+          || lowerMessage.includes('already has a user account') || lowerMessage.includes('already linked to another')
           ? 409
           : lowerMessage.includes('only ') || lowerMessage.includes('not authorized') || lowerMessage.includes('permission')
             ? 403

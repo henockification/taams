@@ -1,4 +1,5 @@
 import type { Context, Next } from 'hono';
+import { getRequestClientIp } from '../../middleware/auth';
 
 // ZK_ADMS_DEBUG=true logs every iclock request (path, query, first 1 KB of the body) so
 // the firmware's push dialect can be confirmed. Template data is redacted.
@@ -15,6 +16,8 @@ export async function logAdmsRequest(c: Context, next: Next) {
     method: c.req.method,
     path: c.req.path,
     query: c.req.query(),
+    // Must equal the device's IP in TAAMS, or the device gets no commands.
+    clientIp: getRequestClientIp(c),
     status: c.res.status,
     bodyPreview,
   });

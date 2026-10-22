@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import * as XLSX from 'xlsx';
-import { and, asc, desc, eq, gte, ilike, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, ilike, inArray, lte, or } from 'drizzle-orm';
 import { db } from '../../db/db';
 import {
   attendanceDailyRecords,
@@ -18,6 +18,10 @@ import {
   user,
 } from '../../db/schema';
 import { listAuditEvents, auditActionLabel } from '../../db/orm/core/manageAuditEvents';
+import { loadAttendanceDays as loadDashboardAttendanceDays, resolveDepartmentScope } from '../../db/orm/core/attendanceDays';
+import { getIsmisLeavePeriods } from '../../db/orm/core/manageIsmisLeave';
+import { absentUntilArrived } from '../../lib/dashboard/executive-metrics';
+import { addisToday } from '../../lib/attendance/schedule-evaluator';
 import { summarizeChanges, type AuditChanges } from '../../lib/audit';
 import { getSessionByToken } from '../../db/orm/auth/manageAuth';
 import { getUserPermissionNames, userHasPermission } from '../../db/orm/rbac/manageRbac';
@@ -34,6 +38,7 @@ import {
 } from '../../db/orm/core/manageSupervisorReport';
 import {
   buildSessionSlotColumns,
+  formatAddisTime,
   formatDuration,
   isNoDutyDay,
   minutesToHours,
@@ -50,6 +55,7 @@ type ReportKey =
   | 'attendance-daily'
   | 'attendance-punches'
   | 'late-attendance'
+  | 'absent-employees'
   | 'overtime'
   | 'leave-balances'
   | 'leave-requests'
@@ -117,6 +123,28 @@ const attendanceDailyColumns: ReportColumn[] = [
   { key: 'overtimeHours', label: 'Overtime hours' },
   { key: 'status', label: 'Approval status' },
   { key: 'payrollNote', label: 'Note' },
+];
+
+const absentEmployeeColumns: ReportColumn[] = [
+  { key: 'attendanceDate', label: 'Date' },
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'position', label: 'Position' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'scheduledStart', label: 'Scheduled start' },
+  { key: 'absence', label: 'Status' },
+];
+
+const absentEmployeeTotalsColumns: ReportColumn[] = [
+  { key: 'employeeCode', label: 'Employee ID' },
+  { key: 'employeeName', label: 'Employee name' },
+  { key: 'department', label: 'Department' },
+  { key: 'position', label: 'Position' },
+  { key: 'phoneNumber', label: 'Phone' },
+  { key: 'absentDays', label: 'Absent days' },
+  { key: 'firstAbsentDate', label: 'First absent date' },
+  { key: 'lastAbsentDate', label: 'Last absent date' },
 ];
 
 const attendanceTotalsColumns: ReportColumn[] = [
@@ -199,6 +227,13 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
     ],
     buildRows: buildAttendancePunchRows,
   },
+  'absent-employees': {
+    title: 'Absent Employees',
+    // Same audience as the daily attendance report, so no new permission is needed.
+    permission: 'reports-attendance-daily:read',
+    columns: absentEmployeeColumns,
+    buildRows: buildAbsentEmployeeRows,
+  },
   'late-attendance': {
     title: 'Late Attendance',
     permission: 'reports-late-attendance:read',
@@ -258,6 +293,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'interruptedDays', label: 'Interrupted days' },
       { key: 'remainingDays', label: 'Remaining days' },
       { key: 'status', label: 'Status' },
+      { key: 'source', label: 'Source' },
     ],
     buildRows: buildLeaveRequestRows,
   },
@@ -748,7 +784,9 @@ function attendanceHighlights(days: AttendanceDay[]): ReportHighlight[] {
 }
 
 async function buildAttendanceDailyRows(input: ReportInput): Promise<ReportResult> {
-  const days = await loadAttendanceDays(input);
+  // "On leave only" covers TAAMS leave and ISMIS imports alike, since both are stored as leave days.
+  const days = (await loadAttendanceDays(input))
+    .filter((day) => input.query.get('onLeave') !== 'true' || Number(day.record.leaveDays ?? 0) > 0);
   const highlights = attendanceHighlights(days);
   if (isSummaryView(input.query)) {
     return { rows: totalAttendanceByEmployee(days), columns: attendanceTotalsColumns, highlights };
@@ -760,6 +798,88 @@ async function buildAttendanceDailyRows(input: ReportInput): Promise<ReportResul
     return { attendanceDate, employeeCode, employeeName, department, ...sessionCells(day), ...metrics };
   });
   return { rows, columns, highlights };
+}
+
+/**
+ * Employees due to work who never checked in, classified exactly like the dashboards' Absent
+ * count: anyone who checked in (late included) is present, and leave, rest days, holidays and
+ * biometric exemptions are excluded. Today, people still inside the first session are listed
+ * as not yet arrived, as the dashboards count them, and drop off once they check in.
+ */
+async function buildAbsentEmployeeRows({ query, scope }: ReportInput): Promise<ReportResult> {
+  const today = addisToday();
+  const from = dateFrom(query) ?? today;
+  const to = dateTo(query) ?? from;
+  const context = await loadDashboardAttendanceDays({ from, to });
+  const { inScope } = resolveDepartmentScope({
+    departments: context.departments,
+    departmentId: query.get('departmentId'),
+    allowedDepartmentIds: scope.type === 'hr-departments' ? scope.departmentIds : null,
+  });
+  const absentDays = absentUntilArrived(context.days)
+    .filter((day) => day.status === 'ABSENT' && day.date >= from && day.date <= to && inScope(day.departmentId))
+    .filter((day) => !query.get('employeeId') || day.record.employeeId === query.get('employeeId'));
+
+  const employeeIds = [...new Set(absentDays.map((day) => day.record.employeeId))];
+  const people = employeeIds.length
+    ? await db.query.employees.findMany({ where: inArray(employees.id, employeeIds), with: { department: true, position: true } })
+    : [];
+  const departmentWide = scope.type === 'unrestricted' || scope.type === 'hr' || scope.type === 'hr-departments';
+  const personById = new Map(people
+    .filter((person) => departmentWide || isEmployeeVisibleInScope(person, scope))
+    .map((person) => [person.id, person]));
+  const rows = absentDays
+    .filter((day) => personById.has(day.record.employeeId))
+    .map((day) => {
+      const person: any = personById.get(day.record.employeeId);
+      return {
+        attendanceDate: day.date,
+        employeeId: person.id,
+        employeeCode: person.employeeCode,
+        employeeName: employeeName(person),
+        department: context.departmentById.get(day.departmentId ?? '')?.nameEn ?? person.department?.nameEn ?? '',
+        position: person.position?.nameEn ?? person.positionName ?? '',
+        phoneNumber: person.phoneNumber ?? '',
+        scheduledStart: formatAddisTime(day.record.scheduledStartAt),
+        absence: day.notYetArrived ? 'Not yet arrived' : 'Absent',
+      };
+    })
+    .sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate)
+      || a.department.localeCompare(b.department)
+      || a.employeeName.localeCompare(b.employeeName));
+
+  const notYetArrived = rows.filter((row) => row.absence === 'Not yet arrived').length;
+  const highlights: ReportHighlight[] = [
+    { label: 'Absent employee-days', value: rows.length },
+    { label: 'Employees', value: new Set(rows.map((row) => row.employeeId)).size },
+    { label: 'Departments', value: new Set(rows.map((row) => row.department)).size },
+    ...(notYetArrived ? [{ label: 'Not yet arrived today', value: notYetArrived, detail: 'Counted as absent until they check in' }] : []),
+  ];
+
+  if (isSummaryView(query)) {
+    const totals = new Map<string, Record<string, any>>();
+    for (const row of rows) {
+      const total = totals.get(row.employeeId) ?? {
+        employeeCode: row.employeeCode,
+        employeeName: row.employeeName,
+        department: row.department,
+        position: row.position,
+        phoneNumber: row.phoneNumber,
+        absentDays: 0,
+        firstAbsentDate: row.attendanceDate,
+        lastAbsentDate: row.attendanceDate,
+      };
+      total.absentDays += 1;
+      if (row.attendanceDate < total.firstAbsentDate) total.firstAbsentDate = row.attendanceDate;
+      if (row.attendanceDate > total.lastAbsentDate) total.lastAbsentDate = row.attendanceDate;
+      totals.set(row.employeeId, total);
+    }
+    const summaryRows = [...totals.values()]
+      .sort((a, b) => b.absentDays - a.absentDays || a.department.localeCompare(b.department) || a.employeeName.localeCompare(b.employeeName));
+    return { rows: summaryRows, columns: absentEmployeeTotalsColumns, highlights };
+  }
+
+  return { rows: rows.map(({ employeeId: _employeeId, ...row }) => row), columns: absentEmployeeColumns, highlights };
 }
 
 async function buildLateAttendanceRows(input: ReportInput): Promise<ReportResult> {
@@ -877,6 +997,7 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
     where: and(
       query.get('fiscalYearId') ? eq(leaveBalances.fiscalYearId, query.get('fiscalYearId')!) : undefined,
       query.get('lowBalance') === 'true' ? lte(leaveBalances.available, '5') : undefined,
+      query.get('hasAvailable') === 'true' ? gte(leaveBalances.available, '0.01') : undefined,
     ),
     with: {
       employee: { with: { department: true, position: true } },
@@ -902,15 +1023,36 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
 }
 
 async function buildLeaveRequestRows({ query, scope }: ReportInput) {
+  const status = query.get('status') || (scope.type === 'hr' ? 'AUTHORIZED' : null);
+  // Permanent employees' leave is authorized in ISMIS; list confirmed imports alongside TAAMS leave.
+  const includeIsmis = (!status || status === 'AUTHORIZED') && !query.get('leaveTypeId');
+  const ismisFrom = dateFrom(query) ?? '1900-01-01';
+  const ismisTo = dateTo(query) ?? '9999-12-31';
+  const ismisPeriods = includeIsmis ? await getIsmisLeavePeriods(ismisFrom, ismisTo) : [];
+  const ismisRows = ismisPeriods
+    .filter((period) => matchesEmployeeFilters(period.employee, query, scope))
+    .map((period) => ({
+      createdAt: '',
+      employeeCode: period.employee?.employeeCode ?? '',
+      employeeName: employeeName(period.employee),
+      department: period.employee?.department?.nameEn ?? '',
+      leaveType: period.leaveType.nameEn,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      requestedDays: period.requestedDays ?? '',
+      approvedDays: period.requestedDays ?? '',
+      consumedDays: '',
+      interruptedDays: '',
+      remainingDays: '',
+      status: period.status,
+      source: 'ISMIS',
+    }));
+
   const records = await db.query.leaveRequests.findMany({
     where: and(
       dateFrom(query) ? gte(leaveRequests.startDate, dateFrom(query)!) : undefined,
       dateTo(query) ? lte(leaveRequests.startDate, dateTo(query)!) : undefined,
-      query.get('status')
-        ? eq(leaveRequests.status, query.get('status')!)
-        : scope.type === 'hr'
-          ? eq(leaveRequests.status, 'AUTHORIZED')
-          : undefined,
+      status ? eq(leaveRequests.status, status) : undefined,
       query.get('leaveTypeId') ? eq(leaveRequests.leaveTypeId, query.get('leaveTypeId')!) : undefined,
     ),
     with: {
@@ -948,8 +1090,11 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       interruptedDays: interrupted.toFixed(2),
       remainingDays: Math.max(0, originalApproved - consumed).toFixed(2),
       status: record.status,
+      source: 'TAAMS',
       };
-    });
+    })
+    .concat(ismisRows)
+    .sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
 }
 
 async function buildEmployeeRows({ query, scope }: ReportInput) {

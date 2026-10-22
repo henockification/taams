@@ -45,6 +45,10 @@ export async function getUserHandler(c: Context) {
       updatedAt: user.updatedAt.toISOString(),
       image: user.image,
       ...formatUserLock(user),
+      // The detail page shows Restore access instead of Revoke access when these are set.
+      accessRevoked: Boolean(user.accessRevokedAt),
+      accessRevokedAt: user.accessRevokedAt ? user.accessRevokedAt.toISOString() : null,
+      accessRevokedReason: user.accessRevokedReason ?? null,
       employee: employee
         ? { id: employee.id, employeeCode: employee.employeeCode ?? null, biometricId: employee.biometricId ?? null }
         : null,

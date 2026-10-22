@@ -1,5 +1,6 @@
 import { employeeDisplayName } from '../../../lib/employees/display-name';
 import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
+import { applyLeaveToSessions } from '../../../lib/attendance/session-slots';
 
 export function formatDate(value: unknown) {
   if (!value) return null;
@@ -434,7 +435,7 @@ export function formatAttendancePunch(punch: any) {
 }
 
 export function formatAttendanceDailyRecord(record: any) {
-  const attendanceSessions = (record.sessionEvaluations ?? []).map((session: any) => {
+  const attendanceSessions = applyLeaveToSessions(record, (record.sessionEvaluations ?? []).map((session: any) => {
     const completed = new Date(session.completionAt ?? session.scheduledEndAt).getTime() <= Date.now();
     return {
       ...session,
@@ -452,7 +453,7 @@ export function formatAttendanceDailyRecord(record: any) {
       lateCheckoutMinutes: session.lateCheckoutMinutes ?? 0,
       attendanceStatus: session.checkInAt && session.checkOutAt ? 'PRESENT' : completed ? 'ABSENT' : 'PENDING',
     };
-  });
+  }));
   const lateMinutes = attendanceSessions.length ? attendanceSessions[0]?.lateMinutes ?? 0 : record.lateMinutes ?? 0;
   const lateReturnMinutes = attendanceSessions.length ? attendanceSessions.slice(1).reduce((total: number, session: any) => total + session.lateMinutes, 0) : record.lateReturnMinutes ?? 0;
   const earlyBreakMinutes = attendanceSessions.length ? attendanceSessions.slice(0, -1).reduce((total: number, session: any) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes : 0), 0) : record.earlyBreakMinutes ?? 0;
@@ -786,6 +787,7 @@ export function formatDashboardSummary(summary: any) {
     sections: {
       ...formatDashboardSections(summary.sections),
       ...(summary.sections?.roleSummary ? { roleSummary: summary.sections.roleSummary } : {}),
+      ...(summary.sections?.deviceHealth ? { deviceHealth: summary.sections.deviceHealth } : {}),
     },
     placeholders: summary.placeholders,
   };

@@ -4,6 +4,8 @@ import * as React from "react"
 import { Check, ChevronsUpDown, Info, X } from "lucide-react"
 import { useTranslations } from "next-intl"
 
+import { Link } from "@/i18n"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
@@ -99,13 +101,22 @@ export function DashboardDataQualityNotice({ dataQuality, isLive }: { dataQualit
 }
 
 /** One-line attendance picture for the day: who is here, late, absent, away. */
-export function DashboardAttendanceStrip({ summary, isLive }: { summary: DashboardAttendanceSummary; isLive: boolean }) {
+export function DashboardAttendanceStrip({
+  summary,
+  isLive,
+  absentHref,
+}: {
+  summary: DashboardAttendanceSummary
+  isLive: boolean
+  /** Makes the absent figure open the list of absent employees. */
+  absentHref?: string
+}) {
   const t = useTranslations("dashboardShared")
-  const items: Array<{ label: string; value: React.ReactNode; tone?: string; hidden?: boolean }> = [
+  const items: Array<{ label: string; value: React.ReactNode; tone?: string; hidden?: boolean; href?: string }> = [
     { label: t("headcount"), value: summary.headcount },
     { label: t("present"), value: summary.present, tone: "text-emerald-700 dark:text-emerald-400" },
     { label: t("late"), value: summary.late, tone: "text-amber-700 dark:text-amber-400" },
-    { label: t("absent"), value: summary.absent, tone: "text-rose-700 dark:text-rose-400" },
+    { label: t("absent"), value: summary.absent, tone: "text-rose-700 dark:text-rose-400", href: absentHref },
     { label: t("absentNotYetArrived"), value: summary.notYetArrived, hidden: !isLive },
     { label: t("onLeave"), value: summary.onLeave, tone: "text-indigo-700 dark:text-indigo-400" },
     { label: t("attendanceRate"), value: summary.attendanceRate === null ? "—" : `${summary.attendanceRate}%` },
@@ -118,7 +129,13 @@ export function DashboardAttendanceStrip({ summary, isLive }: { summary: Dashboa
         {items.filter((item) => !item.hidden).map((item) => (
           <div key={item.label} className="min-w-0">
             <p className="truncate text-xs text-muted-foreground">{item.label}</p>
-            <p className={cn("text-lg font-semibold text-foreground", item.tone)}>{item.value}</p>
+            {item.href ? (
+              <Link href={item.href as any} className={cn("text-lg font-semibold text-foreground underline-offset-4 hover:underline", item.tone)}>
+                {item.value}
+              </Link>
+            ) : (
+              <p className={cn("text-lg font-semibold text-foreground", item.tone)}>{item.value}</p>
+            )}
           </div>
         ))}
       </CardContent>
