@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
 import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
@@ -6,13 +6,14 @@ import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   categorizeLeaveType,
   classifyDay,
+  ISMIS_LEAVE,
   datesBetween,
   type ClassifiedDay,
   type LeaveCover,
   type MetricRecord,
 } from '../../../lib/dashboard/executive-metrics';
 import { db } from '../../db';
-import { attendanceDailyRecords, biometricExemptions, departments, employees, leaveRequests, temporaryDepartmentAssignments } from '../../schema';
+import { attendanceDailyRecords, biometricExemptions, departments, employees, ismisLeaveDays, leaveRequests, temporaryDepartmentAssignments } from '../../schema';
 import { expandDepartmentDescendants } from './manageEmployeeVisibility';
 
 /**
@@ -29,6 +30,7 @@ export type AttendanceEmployee = {
   employmentStatus: string | null;
   isActive: boolean;
   hireDate: string | null;
+  terminationDate: string | null;
   absenceReason: string | null;
   positionId: string | null;
 };
@@ -53,7 +55,7 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
   const employeeFilter = input.employeeIds;
   const noEmployees = Array.isArray(employeeFilter) && employeeFilter.length === 0;
 
-  const [allDepartments, employeeRows, temporaryAssignments, records, approvedLeaves, activeExemptions] = await Promise.all([
+  const [allDepartments, employeeRows, temporaryAssignments, records, approvedLeaves, activeExemptions, ismisDays] = await Promise.all([
     db.select({ id: departments.id, nameEn: departments.nameEn, parentDepartmentId: departments.parentDepartmentId }).from(departments),
     db.select({
       id: employees.id,
@@ -63,6 +65,7 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       employmentStatus: employees.employmentStatus,
       isActive: employees.isActive,
       hireDate: employees.hireDate,
+      terminationDate: employees.terminationDate,
       absenceReason: employees.absenceReason,
       positionId: employees.positionId,
     }).from(employees) as Promise<AttendanceEmployee[]>,
@@ -112,6 +115,18 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       with: { leaveType: true, annualLeaveDates: true },
     }),
     db.query.biometricExemptions.findMany({ where: eq(biometricExemptions.isActive, true) }),
+    // Permanent employees' leave lives in ISMIS; HR-confirmed imports count as leave like TAAMS requests do.
+    noEmployees ? Promise.resolve([]) : db.select({
+      employeeId: ismisLeaveDays.employeeId,
+      attendanceDate: ismisLeaveDays.attendanceDate,
+      sourceLeaveType: ismisLeaveDays.sourceLeaveType,
+    }).from(ismisLeaveDays).where(and(
+      isNotNull(ismisLeaveDays.employeeId),
+      gte(ismisLeaveDays.attendanceDate, input.from),
+      lte(ismisLeaveDays.attendanceDate, input.to),
+      employeeFilter ? inArray(ismisLeaveDays.employeeId, employeeFilter) : undefined,
+      sql`EXISTS (SELECT 1 FROM "ismis_leave_import_batches" b WHERE b."id" = ${ismisLeaveDays.batchId} AND b."status" = 'COMPLETED')`,
+    )),
   ]);
 
   const departmentById = new Map(allDepartments.map((department) => [department.id, department]));
@@ -123,9 +138,13 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
       .sort((left, right) => String(right.effectiveFrom).localeCompare(String(left.effectiveFrom)))[0];
     return assignment?.targetDepartmentId ?? employeeById.get(employeeId)?.departmentId ?? null;
   };
-  /** Should this employee have attendance on this date (working, hired, not away indefinitely)? */
+  /**
+   * Should this employee have attendance on this date (working, hired, not away indefinitely)?
+   * Someone no longer working still counts on days before their termination date; without one
+   * we cannot tell when they left, so none of their days count.
+   */
   const isCounted = (employee: AttendanceEmployee, date: string) => (
-    isWorkingEmployee(employee)
+    (isWorkingEmployee(employee) || Boolean(employee.terminationDate && date < String(employee.terminationDate)))
     && !isIndefinitelyAbsent(employee)
     && (!employee.hireDate || String(employee.hireDate) <= date)
   );
@@ -143,6 +162,21 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
         .map((item: any) => String(item.leaveDate).slice(0, 10))
       : null,
   }));
+  for (const day of ismisDays) {
+    const date = String(day.attendanceDate).slice(0, 10);
+    const type = day.sourceLeaveType?.trim() || null;
+    covers.push({
+      employeeId: day.employeeId!,
+      startDate: date,
+      endDate: date,
+      // ISMIS "መስክ ሥራ" is field work: official duty, not leave taken.
+      category: type?.includes('መስክ') ? 'OFFICIAL_DUTY' : 'LEAVE',
+      typeKey: type ? `ISMIS:${type}` : ISMIS_LEAVE.typeKey,
+      typeLabel: type ? `${type} (ISMIS)` : ISMIS_LEAVE.typeLabel,
+      dates: [date],
+      fullDay: true,
+    });
+  }
   const coversByEmployee = groupBy(covers, (cover) => cover.employeeId);
 
   const days: AttendanceDay[] = [];
@@ -157,7 +191,9 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
     const date = String(row.attendanceDate).slice(0, 10);
     if (date > today) continue;
     const employee = employeeById.get(row.employeeId);
-    if (!employee || isIndefinitelyAbsent(employee)) continue;
+    // Records already generated stay in the table after someone leaves; count them only while
+    // the employee is counted (same rule as the headcount), so making them inactive clears them.
+    if (!employee || !isCounted(employee, date)) continue;
     // Exempt days come from the exemption itself (below), not from older records.
     if (isExemptOn(employee, date)) continue;
     pushDay(row as any, date);

@@ -44,6 +44,11 @@ export type LeaveCover = {
   typeLabel: string;
   /** Annual leave lists its approved dates; other leave covers start..end. */
   dates?: string[] | null;
+  /**
+   * Confirmed ISMIS leave: a full day of leave on its own, even before the attendance record
+   * has been recalculated with the import (records are only refreshed for the confirmed range).
+   */
+  fullDay?: boolean;
 };
 
 export type ClassifiedDay = {
@@ -63,17 +68,17 @@ export function classifyDay(record: MetricRecord, covers: LeaveCover[], now: Dat
   const present = Boolean(record.checkInAt) || num(record.attendanceDays) > 0;
   // Unpaid leave is not counted in leaveDays (payroll treats it as absence) but the
   // employee is still on approved leave, not a no-show.
-  const onLeave = leaveDays > 0 || cover?.category === 'UNPAID';
+  const onLeave = leaveDays > 0 || cover?.category === 'UNPAID' || Boolean(cover?.fullDay);
   const leave = onLeave
     ? {
       category: cover?.category ?? 'LEAVE',
       typeKey: cover?.typeKey ?? ISMIS_LEAVE.typeKey,
       typeLabel: cover?.typeLabel ?? ISMIS_LEAVE.typeLabel,
-      days: leaveDays > 0 ? Math.min(1, leaveDays) : 1,
+      days: leaveDays > 0 && !cover?.fullDay ? Math.min(1, leaveDays) : 1,
     }
     : null;
 
-  if (leave && (leaveDays >= 1 || cover?.category === 'UNPAID' || !present)) return { record, status: 'LEAVE', leave };
+  if (leave && (leaveDays >= 1 || cover?.category === 'UNPAID' || cover?.fullDay || !present)) return { record, status: 'LEAVE', leave };
   if (record.isBiometricExempt) return { record, status: 'EXEMPT', leave: null };
   if (present) return { record, status: num(record.lateMinutes) > 0 ? 'LATE' : 'ON_TIME', leave: null };
 
