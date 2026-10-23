@@ -3,18 +3,23 @@ import { and, eq, gte, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '../../db';
 import { attendanceLeaveVerifications, employees, ismisLeaveDays, ismisLeaveImportBatches } from '../../schema';
 
+type DbClient = typeof db | any;
+
+// Postgres accepts at most 65,535 bind parameters per statement; a day row binds 11.
+const DAY_INSERT_CHUNK = 1000;
+
 const HEADERS = {
   id: 'መለያ ቁጥር', name: 'ሙሉ ስም', type: 'ዓይነት', start: 'ከ', end: 'እስከ', days: 'ቀናት',
 };
 
-export async function importIsmisLeaveWorkbook(buffer: Buffer, fileName: string, importedBy: string) {
+export async function importIsmisLeaveWorkbook(buffer: Buffer, fileName: string, importedBy: string, client: DbClient = db) {
   const workbook = XLSX.read(buffer, { type: 'buffer', raw: false, cellDates: false });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   if (!sheet) throw new Error('Workbook does not contain any worksheets');
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false });
   if (!rows.length || !(HEADERS.id in rows[0])) throw new Error(`The workbook must contain the ${HEADERS.id} column`);
 
-  const people = await db.query.employees.findMany({
+  const people = await client.query.employees.findMany({
     where: eq(employees.employmentType, 'PERMANENT'),
     columns: { id: true, employeeCode: true, payrollId: true, biometricId: true, sourceIdNo: true, sourceEmployeeCode: true },
   });
@@ -26,13 +31,24 @@ export async function importIsmisLeaveWorkbook(buffer: Buffer, fileName: string,
   }
 
   const prepared: Array<Record<string, unknown>> = [];
-  for (const row of rows) {
+  // Rows that cannot become leave days are reported back rather than dropped silently.
+  const skippedRows: Array<{ rowNumber: number; sourceEmployeeId: string; reason: string }> = [];
+  rows.forEach((row, index) => {
+    const rowNumber = index + 2; // header is row 1
     const sourceEmployeeId = normalizeId(read(row, HEADERS.id));
     const start = parseEthiopianDate(read(row, HEADERS.start));
     const end = parseEthiopianDate(read(row, HEADERS.end));
-    if (!sourceEmployeeId || !start || !end || start > end) continue;
+    const skip = !sourceEmployeeId
+      ? 'Missing ID'
+      : !start || !end
+        ? `Unreadable Ethiopian date (${read(row, HEADERS.start)} – ${read(row, HEADERS.end)}); expected day/month/year`
+        : start > end ? 'Start date is after end date' : null;
+    if (skip) {
+      skippedRows.push({ rowNumber, sourceEmployeeId, reason: skip });
+      return;
+    }
     const employee = byId.get(sourceEmployeeId);
-    for (const attendanceDate of datesInclusive(start, end)) {
+    for (const attendanceDate of datesInclusive(start!, end!)) {
       prepared.push({
         sourceEmployeeId,
         employeeId: employee?.id ?? null,
@@ -40,17 +56,17 @@ export async function importIsmisLeaveWorkbook(buffer: Buffer, fileName: string,
         sourceLeaveType: read(row, HEADERS.type) || null,
         sourceStartDate: read(row, HEADERS.start),
         sourceEndDate: read(row, HEADERS.end),
-        sourceLeaveDays: numericOrNull(read(row, HEADERS.days)),
+        sourceLeaveDays: leaveDaysOrNull(read(row, HEADERS.days)),
         attendanceDate,
         matchStatus: employee ? 'MATCHED' : 'UNMATCHED',
         note: employee ? null : 'No permanent employee matched the ISMIS ID',
       });
     }
-  }
+  });
   const matchedIds = new Set(prepared.filter((row) => row.matchStatus === 'MATCHED').map((row) => row.sourceEmployeeId));
   const unmatchedIds = new Set(prepared.filter((row) => row.matchStatus !== 'MATCHED').map((row) => row.sourceEmployeeId));
 
-  return db.transaction(async (tx) => {
+  return client.transaction(async (tx: DbClient) => {
     const [batch] = await tx.insert(ismisLeaveImportBatches).values({
       sourceFileName: fileName,
       importedBy,
@@ -58,8 +74,13 @@ export async function importIsmisLeaveWorkbook(buffer: Buffer, fileName: string,
       matchedCount: matchedIds.size,
       unmatchedCount: unmatchedIds.size,
     }).returning();
-    if (prepared.length) await tx.insert(ismisLeaveDays).values(prepared.map((row) => ({ ...row, batchId: batch.id })) as any).onConflictDoNothing();
-    return { ...batch, dayCount: prepared.length, unmatchedEmployeeIds: [...unmatchedIds] };
+    // A year of leave expands to thousands of day rows, more than one statement can bind.
+    for (let index = 0; index < prepared.length; index += DAY_INSERT_CHUNK) {
+      await tx.insert(ismisLeaveDays)
+        .values(prepared.slice(index, index + DAY_INSERT_CHUNK).map((row) => ({ ...row, batchId: batch.id })) as any)
+        .onConflictDoNothing();
+    }
+    return { ...batch, dayCount: prepared.length, unmatchedEmployeeIds: [...unmatchedIds], skippedRows };
   });
 }
 
@@ -175,3 +196,10 @@ function datesInclusive(start: string, end: string) { const result: string[] = [
 function read(row: Record<string, unknown>, key: string) { return String(row[key] ?? '').trim(); }
 function normalizeId(value: string) { return value.trim().replace(/^'+/, ''); }
 function numericOrNull(value: string) { const number = Number(value.replace(/,/g, '')); return Number.isFinite(number) ? String(number) : null; }
+/** ISMIS splits leave across fiscal years as "15(2019) , 15.00(2018)"; the row's total is the sum. */
+function leaveDaysOrNull(value: string) {
+  const plain = numericOrNull(value);
+  if (plain !== null) return plain;
+  const parts = [...value.matchAll(/(\d+(?:\.\d+)?)\s*\(\s*\d{4}\s*\)/g)].map((match) => Number(match[1]));
+  return parts.length ? String(parts.reduce((total, part) => total + part, 0)) : null;
+}
