@@ -439,7 +439,6 @@ const SYSTEM_ROLES = [
     description: 'Executive user with organization-wide dashboard and reporting visibility',
     permissions: [
       'executive-dashboard:read',
-      'hr-dashboard:read',
       'department-head-dashboard:read',
       'reports-attendance-daily:read',
       'reports-attendance-punches:read',

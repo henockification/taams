@@ -114,8 +114,8 @@ export async function getHrDashboardSummaryHandler(c: Context) {
       || role === 'super_admin'
       || role === 'superadmin'
       || role === 'admin'
-      || role === 'executive'
     ));
+    // Executives have their own dashboard; they see this one only if granted hr-dashboard:read.
     const hasPermission = hasHrRole || await userHasPermission(session.user.id, 'hr-dashboard:read');
 
     if (!hasPermission) {

@@ -672,7 +672,10 @@ export function hasHrRole(user: AuthzUser) {
 }
 
 export function hasHrDashboardAccess(user: AuthzUser) {
-  return hasUnrestrictedRole(user) || hasHumanResourceRole(user) || userHasPermission(user, 'hr-dashboard:read');
+  // Executives have their own dashboard; the HR dashboard is for HR and system administrators.
+  const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
+  const isAdministrator = roles.some((role) => role === 'super_admin' || role === 'superadmin' || role === 'admin');
+  return isAdministrator || hasHumanResourceRole(user) || userHasPermission(user, 'hr-dashboard:read');
 }
 
 export function hasHrAttendanceApprovalAccess(user: AuthzUser) {

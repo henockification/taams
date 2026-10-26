@@ -274,7 +274,21 @@ function KpiGrid({ dashboard, onDrill }: { dashboard: ExecutiveDashboardSummary;
       change: { points: pointChange(current.absenceRate, comparison?.absenceRate), goodWhenUp: false },
       drill: "absent",
     },
-    { label: label("onLeave"), value: status.onApprovedLeave, icon: CalendarClock, tone: "bg-indigo-600 text-white", hints: [] },
+    {
+      label: label("onLeave"),
+      value: status.onApprovedLeave,
+      icon: CalendarClock,
+      tone: "bg-indigo-600 text-white",
+      hints: [
+        status.officialAssignment && status.workingRemotely
+          ? t("onLeaveIncludesBoth", { duty: status.officialAssignment, remote: status.workingRemotely })
+          : status.officialAssignment
+            ? t("onLeaveIncludesDuty", { duty: status.officialAssignment })
+            : status.workingRemotely
+              ? t("onLeaveIncludesRemote", { remote: status.workingRemotely })
+              : null,
+      ],
+    },
     {
       label: label("late"),
       value: status.lateArrivals,

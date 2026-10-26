@@ -96,7 +96,7 @@ INSERT INTO _seed_roles (name, description, permission_names) VALUES
   ('super_admin', 'Unrestricted system administrator', ARRAY(SELECT name FROM _seed_permissions)),
   ('admin', 'System administrator with user, configuration, attendance, leave, and report access', ARRAY(SELECT name FROM _seed_permissions WHERE name <> 'system:manage')),
   ('executive', 'Executive user with organization-wide dashboard and reporting visibility', ARRAY[
-    'executive-dashboard:read', 'hr-dashboard:read', 'department-head-dashboard:read',
+    'executive-dashboard:read', 'department-head-dashboard:read',
     'reports-attendance-daily:read', 'reports-attendance-punches:read', 'reports-late-attendance:read',
     'reports-overtime:read', 'reports-leave-balances:read', 'reports-leave-requests:read',
     'reports-employees:read', 'reports-device-sync:read', 'reports-audit:read', 'notification-logs:read'

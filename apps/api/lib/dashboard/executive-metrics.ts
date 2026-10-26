@@ -142,7 +142,8 @@ export function workforceStatus(counts: StatusCounts, totalEmployees: number, no
     totalEmployees,
     presentToday: counts.ON_TIME + counts.LATE,
     absentToday: counts.ABSENT,
-    onApprovedLeave: counts.LEAVE - counts.officialDuty - counts.remote,
+    // Everyone on approved leave, as on the HR dashboard; field duty and remote are also shown on their own cards.
+    onApprovedLeave: counts.LEAVE,
     lateArrivals: counts.LATE,
     workingRemotely: counts.remote,
     officialAssignment: counts.officialDuty,
