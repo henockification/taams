@@ -520,6 +520,22 @@
         [
           "Early out before minutes",
           "The accepted checkout window after each session end, and the accepted early return before later sessions. A checkout before the session end is Early."
+        ],
+        [
+          "Duplicate punch window (minutes)",
+          "Punches of the same direction closer together than this count as one. Default and minimum 2 (device punches within 2 minutes are merged when they arrive)."
+        ],
+        [
+          "Session: Check-in opens (min before start)",
+          "Overrides the shift default for this session. For the first session, punches before this window are ignored (e.g. 30 on an 08:30 start: check-in 08:00-08:30, a 07:40 punch does not count)."
+        ],
+        [
+          "Session: Late after (min after start)",
+          "Overrides the shift's late-after for this session, e.g. 0 makes any return after 13:30 a late return."
+        ],
+        [
+          "Session: Check-out closes (min after end)",
+          "Overrides the shift default for this session's check-out window, e.g. 15 on a 12:30 end gives 12:30-12:45. Leaving before the end is early."
         ]
       ],
       "widths": [

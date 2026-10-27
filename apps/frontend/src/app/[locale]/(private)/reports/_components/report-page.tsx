@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { Check, ChevronsUpDown, Download, FileText, Printer, RefreshCw } from 'lucide-react';
+import { ArrowRight, Check, ChevronsUpDown, Download, FileText, Printer, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
@@ -338,7 +338,7 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {report.columns.map((column) => (
+                    {screenColumns(report.columns).map((column) => (
                       <TableHead
                         key={column.key}
                         className={wideTextColumns.has(column.key) ? 'min-w-48' : 'whitespace-nowrap'}
@@ -351,12 +351,16 @@ export function ReportPage({ reportKey, departmentOptions, headerNote }: ReportP
                 <TableBody>
                   {report.rows.map((row, index) => (
                     <TableRow key={index}>
-                      {report.columns.map((column) => (
+                      {screenColumns(report.columns).map((column) => (
                         <TableCell
                           key={column.key}
                           className={wideTextColumns.has(column.key) ? 'min-w-48 max-w-72 whitespace-normal' : 'whitespace-nowrap'}
                         >
-                          <ReportCell columnKey={column.key} value={formatReportValue(row[column.key], formatDate, formatDateTime)} />
+                          {column.key === 'department' && row.temporaryFrom ? (
+                            <TemporaryDepartmentCell department={String(row.department ?? '')} temporaryFrom={String(row.temporaryFrom)} />
+                          ) : (
+                            <ReportCell columnKey={column.key} value={formatReportValue(row[column.key], formatDate, formatDateTime)} />
+                          )}
                         </TableCell>
                       ))}
                     </TableRow>
@@ -528,6 +532,26 @@ function ReportHighlights({ highlights }: { highlights?: ReportHighlight[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * On screen the home department is struck through inside the Department cell, so the separate
+ * "Temporarily from" column (kept in the Excel export) is not repeated.
+ */
+function screenColumns<T extends { key: string }>(columns: T[]) {
+  return columns.some((column) => column.key === 'department')
+    ? columns.filter((column) => column.key !== 'temporaryFrom')
+    : columns;
+}
+
+function TemporaryDepartmentCell({ department, temporaryFrom }: { department: string; temporaryFrom: string }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5" title={`Temporarily assigned from ${temporaryFrom}`}>
+      <span className="text-muted-foreground line-through decoration-muted-foreground/70">{temporaryFrom}</span>
+      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="font-medium">{department}</span>
+    </span>
   );
 }
 

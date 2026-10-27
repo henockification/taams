@@ -86,6 +86,8 @@ export type Shift = {
   gracePeriodMinutes: number;
   lateAfterMinutes: number;
   earlyOutBeforeMinutes: number;
+  /** Punches of the same direction closer together than this count once. */
+  duplicatePunchWindowMinutes: number;
   isOvernight: boolean;
   isActive: boolean;
   createdAt: string;
@@ -100,6 +102,10 @@ export type ShiftSegment = {
   startTime: string;
   endTime: string;
   sortOrder: number;
+  /** Session punch windows in minutes; null uses the shift-level defaults. */
+  checkInOpensBeforeMinutes: number | null;
+  lateAfterMinutes: number | null;
+  checkOutClosesAfterMinutes: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -1122,6 +1128,22 @@ export type ExecutiveDashboardInsights = {
     dateTo: string;
     days: Array<{ weekday: number; present: number; late: number; lateRate: number; averageLateMinutes: number | null }>;
   };
+  /** Biometric-exempt employees in the period; `days` is how many of its days they were exempt. */
+  exemptEmployees: Array<{
+    employeeId: string;
+    departmentId: string | null;
+    department: string;
+    days: number;
+    position: string | null;
+    employee: ExecutiveDashboardEmployeeName;
+    exemption: {
+      arrangementType: string;
+      reason: string;
+      scope: 'EMPLOYEE' | 'POSITION';
+      effectiveFrom: string | null;
+      effectiveTo: string | null;
+    } | null;
+  }>;
   /** Late and absent people on the day (single-day view only). */
   people: Array<{
     employeeId: string;
@@ -1804,6 +1826,7 @@ export type CreateShiftInput = {
   gracePeriodMinutes?: number;
   lateAfterMinutes?: number;
   earlyOutBeforeMinutes?: number;
+  duplicatePunchWindowMinutes?: number;
   isOvernight?: boolean;
   isActive?: boolean;
 };
@@ -1817,6 +1840,9 @@ export type CreateShiftSegmentInput = {
   startTime: string;
   endTime: string;
   sortOrder?: number;
+  checkInOpensBeforeMinutes?: number | null;
+  lateAfterMinutes?: number | null;
+  checkOutClosesAfterMinutes?: number | null;
   isActive?: boolean;
 };
 
@@ -2163,4 +2189,18 @@ export type ReviewLeaveInterruptionInput = {
   interruptedDates?: Array<{ date: string; dayValue: string | number }>;
   continuationDates?: Array<{ date: string; dayValue: string | number }>;
   rejectionReason?: string | null;
+};
+
+export type TemporaryAssignmentSpan = {
+  id: string;
+  employeeId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  sourceDepartment: { id: string; nameEn: string; nameAm: string | null } | null;
+  targetDepartment: { id: string; nameEn: string; nameAm: string | null } | null;
+};
+
+export type TemporaryAssignmentSpansResponse = {
+  success: boolean;
+  temporaryAssignments: TemporaryAssignmentSpan[];
 };

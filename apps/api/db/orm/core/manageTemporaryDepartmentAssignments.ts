@@ -188,6 +188,40 @@ export async function getActiveTemporaryDepartmentAssignments(referenceDate: str
   });
 }
 
+/**
+ * Every active assignment with only what is needed to show it next to an employee: who, when,
+ * and the two departments. No reasons or creators, so any signed-in user may read it.
+ */
+type DepartmentLabel = { id: string; nameEn: string; nameAm: string | null };
+
+export type TemporaryAssignmentSpanRow = {
+  id: string;
+  employeeId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  sourceDepartment: DepartmentLabel | null;
+  targetDepartment: DepartmentLabel | null;
+};
+
+export async function getTemporaryAssignmentSpans(tx: DbClient = db): Promise<TemporaryAssignmentSpanRow[]> {
+  const rows = await tx.query.temporaryDepartmentAssignments.findMany({
+    where: eq(temporaryDepartmentAssignments.isActive, true),
+    columns: { id: true, employeeId: true, effectiveFrom: true, effectiveTo: true },
+    with: {
+      sourceDepartment: { columns: { id: true, nameEn: true, nameAm: true } },
+      targetDepartment: { columns: { id: true, nameEn: true, nameAm: true } },
+    },
+  });
+  return rows.map((row: any) => ({
+    id: row.id,
+    employeeId: row.employeeId,
+    effectiveFrom: String(row.effectiveFrom).slice(0, 10),
+    effectiveTo: row.effectiveTo ? String(row.effectiveTo).slice(0, 10) : null,
+    sourceDepartment: row.sourceDepartment ?? null,
+    targetDepartment: row.targetDepartment ?? null,
+  }));
+}
+
 export async function getTemporaryDepartmentAssignmentById(id: string, tx: DbClient = db) {
   return tx.query.temporaryDepartmentAssignments.findFirst({
     where: eq(temporaryDepartmentAssignments.id, id),

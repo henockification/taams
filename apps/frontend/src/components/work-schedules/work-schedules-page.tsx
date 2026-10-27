@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { EmployeeDepartment, useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
 import {
   useAllEmployeeWorkSchedules,
   useBulkCreateEmployeeWorkSchedules,
@@ -78,16 +79,21 @@ const shiftInitialForm = {
   gracePeriodMinutes: 0,
   lateAfterMinutes: 0,
   earlyOutBeforeMinutes: 0,
+  duplicatePunchWindowMinutes: 2,
   isOvernight: false,
   isActive: true,
 };
 
+// Window fields are text so "blank" (use the shift default) differs from 0.
 const shiftSegmentInitialForm = {
   nameEn: '',
   nameAm: '',
   startTime: '08:30',
   endTime: '12:00',
   sortOrder: 1,
+  checkInOpensBeforeMinutes: '',
+  lateAfterMinutes: '',
+  checkOutClosesAfterMinutes: '',
   isActive: true,
 };
 
@@ -138,6 +144,44 @@ function numberValue(value: FormDataEntryValue | null) {
   return Number(value ?? 0) || 0;
 }
 
+/** Blank means "use the shift default" (null); otherwise whole non-negative minutes. */
+function optionalMinutes(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const minutes = Number(trimmed);
+  return Number.isFinite(minutes) && minutes >= 0 ? Math.floor(minutes) : null;
+}
+
+/** HH:MM moved by some minutes, wrapping around midnight. */
+function offsetClock(value: string, deltaMinutes: number) {
+  const [hours, minutes] = toTimeInput(value).split(':').map(Number);
+  const total = (((hours * 60 + minutes + deltaMinutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+type SegmentWindowFields = {
+  checkInOpensBeforeMinutes: number | null;
+  lateAfterMinutes: number | null;
+  checkOutClosesAfterMinutes: number | null;
+};
+
+/**
+ * The windows a session will use, mirroring the API: its own values, otherwise the shift defaults
+ * (grace before the first session, early-out before later ones and after every session).
+ */
+function effectiveSessionWindows(shift: Shift | undefined, segment: SegmentWindowFields, isFirst: boolean) {
+  const grace = shift?.gracePeriodMinutes ?? 0;
+  const departure = shift?.earlyOutBeforeMinutes ?? 0;
+  return {
+    opensBefore: segment.checkInOpensBeforeMinutes ?? (isFirst ? grace : departure),
+    lateAfter: segment.lateAfterMinutes ?? shift?.lateAfterMinutes ?? 0,
+    closesAfter: segment.checkOutClosesAfterMinutes ?? departure,
+    // Only a first session with its own check-in window ignores earlier punches.
+    ignoresEarlier: isFirst && segment.checkInOpensBeforeMinutes != null,
+    defaults: { opensBefore: isFirst ? grace : departure, lateAfter: shift?.lateAfterMinutes ?? 0, closesAfter: departure },
+  };
+}
+
 type WorkScheduleSection = 'shifts' | 'work-schedules' | 'assignments';
 
 type WorkSchedulesPageProps = {
@@ -174,6 +218,23 @@ export function WorkSchedulesPage({
   });
   const { data: allEmployeeWorkSchedulesResponse, isLoading: allEmployeeWorkSchedulesLoading } = useAllEmployeeWorkSchedules();
   const shiftSegments = shiftSegmentsResponse?.shiftSegments ?? [];
+  // The first active session (lowest order) gets the grace period as its default check-in window.
+  const isFirstSegment = (sortOrder: number, segmentId?: string | null) => !shiftSegments.some((other) => (
+    other.isActive && other.id !== segmentId && other.sortOrder < sortOrder
+  ));
+  const describeWindows = (startTime: string, endTime: string, windows: ReturnType<typeof effectiveSessionWindows>) => t('sessionWindowsPreview', {
+    open: offsetClock(startTime, -windows.opensBefore),
+    start: toTimeInput(startTime),
+    late: offsetClock(startTime, windows.lateAfter),
+    end: toTimeInput(endTime),
+    close: offsetClock(endTime, windows.closesAfter),
+    ignored: windows.ignoresEarlier ? t('sessionWindowsIgnoredBefore', { open: offsetClock(startTime, -windows.opensBefore) }) : '',
+  });
+  const describeSegmentWindows = (segment: ShiftSegment, isFirst: boolean) => describeWindows(
+    segment.startTime,
+    segment.endTime,
+    effectiveSessionWindows(selectedShift, segment, isFirst),
+  );
   const workScheduleDays = workScheduleDaysResponse?.days ?? [];
   const allEmployeeWorkSchedules = allEmployeeWorkSchedulesResponse?.employeeWorkSchedules ?? [];
 
@@ -215,6 +276,8 @@ export function WorkSchedulesPage({
   const [workScheduleForm, setWorkScheduleForm] = useState(workScheduleInitialForm);
   const [workScheduleDayForm, setWorkScheduleDayForm] = useState(workScheduleDayInitialForm);
 
+  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
+
   const assignmentByEmployeeId = useMemo(() => {
     const map = new Map<string, EmployeeWorkSchedule>();
     const sorted = [...allEmployeeWorkSchedules].sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom));
@@ -247,6 +310,7 @@ export function WorkSchedulesPage({
         employee.employeeCode,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
+        employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
         employee.position?.nameEn,
         employee.positionName,
         employee.sourcePositionName,
@@ -254,7 +318,7 @@ export function WorkSchedulesPage({
 
       return haystack.includes(query);
     });
-  }, [assignmentSearch, departmentFilter, employees, hasEmploymentType, typeFilter]);
+  }, [assignmentSearch, departmentFilter, employeeDepartmentLabel, employees, hasEmploymentType, typeFilter]);
 
   const assignmentTotal = filteredEmployees.length;
   const assignmentTotalPages = Math.max(1, Math.ceil(assignmentTotal / assignmentPageSize));
@@ -317,6 +381,7 @@ export function WorkSchedulesPage({
       gracePeriodMinutes: shift.gracePeriodMinutes,
       lateAfterMinutes: shift.lateAfterMinutes,
       earlyOutBeforeMinutes: shift.earlyOutBeforeMinutes,
+      duplicatePunchWindowMinutes: shift.duplicatePunchWindowMinutes ?? 2,
       isOvernight: shift.isOvernight,
       isActive: shift.isActive,
     });
@@ -337,6 +402,9 @@ export function WorkSchedulesPage({
       startTime: toTimeInput(segment.startTime),
       endTime: toTimeInput(segment.endTime),
       sortOrder: segment.sortOrder,
+      checkInOpensBeforeMinutes: segment.checkInOpensBeforeMinutes == null ? '' : String(segment.checkInOpensBeforeMinutes),
+      lateAfterMinutes: segment.lateAfterMinutes == null ? '' : String(segment.lateAfterMinutes),
+      checkOutClosesAfterMinutes: segment.checkOutClosesAfterMinutes == null ? '' : String(segment.checkOutClosesAfterMinutes),
       isActive: segment.isActive,
     });
     setShiftSegmentDialogOpen(true);
@@ -444,6 +512,7 @@ export function WorkSchedulesPage({
       gracePeriodMinutes: numberValue(formData.get('gracePeriodMinutes')),
       lateAfterMinutes: numberValue(formData.get('lateAfterMinutes')),
       earlyOutBeforeMinutes: numberValue(formData.get('earlyOutBeforeMinutes')),
+      duplicatePunchWindowMinutes: numberValue(formData.get('duplicatePunchWindowMinutes')),
       isOvernight: shiftForm.isOvernight,
       isActive: shiftForm.isActive,
     };
@@ -471,6 +540,9 @@ export function WorkSchedulesPage({
       startTime: shiftSegmentForm.startTime,
       endTime: shiftSegmentForm.endTime,
       sortOrder: Math.max(1, numberValue(formData.get('sortOrder'))),
+      checkInOpensBeforeMinutes: optionalMinutes(shiftSegmentForm.checkInOpensBeforeMinutes),
+      lateAfterMinutes: optionalMinutes(shiftSegmentForm.lateAfterMinutes),
+      checkOutClosesAfterMinutes: optionalMinutes(shiftSegmentForm.checkOutClosesAfterMinutes),
       isActive: shiftSegmentForm.isActive,
     };
 
@@ -481,7 +553,11 @@ export function WorkSchedulesPage({
         await createShiftSegment.mutateAsync(payload);
       }
       setShiftSegmentDialogOpen(false);
-      notifications.show({ title: common('success'), message: editingShiftSegment ? t('shiftSegmentUpdated') : t('shiftSegmentCreated'), color: 'green' });
+      notifications.show({
+        title: common('success'),
+        message: `${editingShiftSegment ? t('shiftSegmentUpdated') : t('shiftSegmentCreated')} ${t('punchRulesRecalculating')}`,
+        color: 'green',
+      });
     } catch (error) {
       notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
     }
@@ -582,6 +658,11 @@ export function WorkSchedulesPage({
 
   const shiftSaving = createShift.isPending || updateShift.isPending;
   const shiftSegmentSaving = createShiftSegment.isPending || updateShiftSegment.isPending;
+  const segmentFormWindows = effectiveSessionWindows(selectedShift, {
+    checkInOpensBeforeMinutes: optionalMinutes(shiftSegmentForm.checkInOpensBeforeMinutes),
+    lateAfterMinutes: optionalMinutes(shiftSegmentForm.lateAfterMinutes),
+    checkOutClosesAfterMinutes: optionalMinutes(shiftSegmentForm.checkOutClosesAfterMinutes),
+  }, isFirstSegment(shiftSegmentForm.sortOrder, editingShiftSegment?.id));
   const workScheduleSaving = createWorkSchedule.isPending || updateWorkSchedule.isPending;
   const workScheduleDaySaving = createWorkScheduleDay.isPending || updateWorkScheduleDay.isPending;
   const employeeWorkScheduleSaving = bulkCreateEmployeeWorkSchedules.isPending || updateEmployeeWorkSchedule.isPending || deleteEmployeeWorkSchedule.isPending;
@@ -655,6 +736,7 @@ export function WorkSchedulesPage({
                     <div className="min-w-0">
                       <p className="font-medium">{segment.nameEn}</p>
                       <p className="text-xs text-muted-foreground">{formatTime(segment.startTime)} - {formatTime(segment.endTime)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{describeSegmentWindows(segment, isFirstSegment(segment.sortOrder, segment.id))}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary">#{segment.sortOrder}</Badge>
@@ -839,7 +921,7 @@ export function WorkSchedulesPage({
                                   <p className="text-xs text-muted-foreground">{employee.employeeCode}</p>
                                 </div>
                               </TableCell>
-                              <TableCell>{employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'}</TableCell>
+                              <TableCell><EmployeeDepartment employeeId={employee.id} department={employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'} /></TableCell>
                               <TableCell>{employee.position?.nameEn ?? employee.positionName ?? employee.sourcePositionName ?? '-'}</TableCell>
                               <TableCell className="font-medium">{assignment?.workSchedule?.nameEn ?? '-'}</TableCell>
                               <TableCell className="whitespace-nowrap">{assignment ? formatDate(assignment.effectiveFrom) : '-'}</TableCell>
@@ -1004,7 +1086,9 @@ export function WorkSchedulesPage({
               <Field label={t('gracePeriodMinutes')} id="shift-grace"><Input id="shift-grace" name="gracePeriodMinutes" type="number" min={0} value={shiftForm.gracePeriodMinutes} onChange={(event) => setShiftForm((current) => ({ ...current, gracePeriodMinutes: Number(event.target.value) }))} /></Field>
               <Field label={t('lateAfterMinutes')} id="shift-late"><Input id="shift-late" name="lateAfterMinutes" type="number" min={0} value={shiftForm.lateAfterMinutes} onChange={(event) => setShiftForm((current) => ({ ...current, lateAfterMinutes: Number(event.target.value) }))} /></Field>
               <Field label={t('earlyOutBeforeMinutes')} id="shift-early"><Input id="shift-early" name="earlyOutBeforeMinutes" type="number" min={0} value={shiftForm.earlyOutBeforeMinutes} onChange={(event) => setShiftForm((current) => ({ ...current, earlyOutBeforeMinutes: Number(event.target.value) }))} /></Field>
+              <Field label={t('duplicatePunchWindowMinutes')} id="shift-duplicate-window"><Input id="shift-duplicate-window" name="duplicatePunchWindowMinutes" type="number" min={2} max={60} value={shiftForm.duplicatePunchWindowMinutes} onChange={(event) => setShiftForm((current) => ({ ...current, duplicatePunchWindowMinutes: Number(event.target.value) }))} /></Field>
             </div>
+            <p className="text-xs text-muted-foreground">{t('shiftToleranceDefaultsHint')}</p>
             <SwitchRow label={t('overnightShift')} checked={shiftForm.isOvernight} onCheckedChange={(checked) => setShiftForm((current) => ({ ...current, isOvernight: checked }))} />
             <SwitchRow label={t('active')} checked={shiftForm.isActive} onCheckedChange={(checked) => setShiftForm((current) => ({ ...current, isActive: checked }))} />
             <DialogFooter><Button type="button" variant="outline" onClick={() => setShiftDialogOpen(false)}>{common('cancel')}</Button><Button type="submit" disabled={shiftSaving || !shiftForm.nameEn.trim()}>{shiftSaving ? t('saving') : common('save')}</Button></DialogFooter>
@@ -1022,6 +1106,24 @@ export function WorkSchedulesPage({
               <Field label={t('startTime')} id="segment-start"><Input id="segment-start" type="time" value={shiftSegmentForm.startTime} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, startTime: event.target.value }))} required /></Field>
               <Field label={t('endTime')} id="segment-end"><Input id="segment-end" type="time" value={shiftSegmentForm.endTime} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, endTime: event.target.value }))} required /></Field>
               <Field label={t('sortOrder')} id="segment-sort-order"><Input id="segment-sort-order" name="sortOrder" type="number" min={1} value={shiftSegmentForm.sortOrder} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, sortOrder: Number(event.target.value) }))} /></Field>
+            </div>
+            <div className="space-y-3 rounded-md border border-border p-3">
+              <div>
+                <p className="text-sm font-medium">{t('sessionPunchWindows')}</p>
+                <p className="text-xs text-muted-foreground">{t('sessionPunchWindowsHint')}</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label={t('checkInOpensBeforeMinutes')} id="segment-check-in-opens">
+                  <Input id="segment-check-in-opens" type="number" min={0} value={shiftSegmentForm.checkInOpensBeforeMinutes} placeholder={String(segmentFormWindows.defaults.opensBefore)} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, checkInOpensBeforeMinutes: event.target.value }))} />
+                </Field>
+                <Field label={t('sessionLateAfterMinutes')} id="segment-late-after">
+                  <Input id="segment-late-after" type="number" min={0} value={shiftSegmentForm.lateAfterMinutes} placeholder={String(segmentFormWindows.defaults.lateAfter)} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, lateAfterMinutes: event.target.value }))} />
+                </Field>
+                <Field label={t('checkOutClosesAfterMinutes')} id="segment-check-out-closes">
+                  <Input id="segment-check-out-closes" type="number" min={0} value={shiftSegmentForm.checkOutClosesAfterMinutes} placeholder={String(segmentFormWindows.defaults.closesAfter)} onChange={(event) => setShiftSegmentForm((current) => ({ ...current, checkOutClosesAfterMinutes: event.target.value }))} />
+                </Field>
+              </div>
+              <p className="rounded bg-muted px-2 py-1.5 text-xs">{describeWindows(shiftSegmentForm.startTime, shiftSegmentForm.endTime, segmentFormWindows)}</p>
             </div>
             <SwitchRow label={t('active')} checked={shiftSegmentForm.isActive} onCheckedChange={(checked) => setShiftSegmentForm((current) => ({ ...current, isActive: checked }))} />
             <DialogFooter><Button type="button" variant="outline" onClick={() => setShiftSegmentDialogOpen(false)}>{common('cancel')}</Button><Button type="submit" disabled={shiftSegmentSaving || !shiftSegmentForm.nameEn.trim()}>{shiftSegmentSaving ? t('saving') : common('save')}</Button></DialogFooter>

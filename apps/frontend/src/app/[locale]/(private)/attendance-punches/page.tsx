@@ -302,7 +302,7 @@ export default function AttendancePunchesPage() {
                         <TableCell>{punch.device?.deviceName ?? '-'}</TableCell>
                         <TableCell><Badge variant="secondary">{punch.punchType}</Badge></TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : punch.inferredRule === 'SCHEDULE_EARLY_IN' ? 'Early check-in' : punch.inferredRule === 'SCHEDULE_LATE_IN' ? 'Late check-in' : punch.inferredRule === 'SCHEDULE_ON_TIME_IN' ? 'On-time check-in' : punch.inferredRule === 'SCHEDULE_EARLY_OUT' ? 'Early check-out' : punch.inferredPunchType === 'OUT' ? 'Schedule-based check-out' : 'Direction not supplied by device'}
+                          {punch.punchType === 'IN' ? 'Check-in' : punch.punchType === 'OUT' ? 'Check-out' : punch.punchType === 'BREAK_OUT' ? 'Break start' : punch.punchType === 'BREAK_IN' ? 'Break return' : punch.inferredRule === 'SCHEDULE_BEFORE_WINDOW' ? 'Before check-in window (ignored)' : punch.inferredRule === 'SCHEDULE_EARLY_IN' ? 'Early check-in' : punch.inferredRule === 'SCHEDULE_LATE_IN' ? 'Late check-in' : punch.inferredRule === 'SCHEDULE_ON_TIME_IN' ? 'On-time check-in' : punch.inferredRule === 'SCHEDULE_EARLY_OUT' ? 'Early check-out' : punch.inferredPunchType === 'OUT' ? 'Schedule-based check-out' : 'Direction not supplied by device'}
                         </TableCell>
                         <TableCell>{punch.source}</TableCell>
                         <TableCell>

@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { EmployeeDepartment, useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -69,6 +70,7 @@ export function SupervisorAssignmentsPage() {
   const t = useTranslations('core');
   const common = useTranslations('common');
   const employeeName = useEmployeeName();
+  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
   const { formatDate } = useCalendarPreference();
   const { data: employeesResponse, isLoading: employeesLoading } = useWorkingEmployees();
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useAllEmployeeSupervisors();
@@ -136,6 +138,7 @@ export function SupervisorAssignmentsPage() {
         employee.phoneNumber,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
+        employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
         employee.position?.nameEn,
         employee.positionName,
         employee.sourcePositionName,
@@ -143,7 +146,7 @@ export function SupervisorAssignmentsPage() {
 
       return haystack.includes(query);
     }).sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }));
-  }, [departmentFilter, employeeName, employees, search, statusFilter, typeFilter]);
+  }, [departmentFilter, employeeDepartmentLabel, employeeName, employees, search, statusFilter, typeFilter]);
 
   const filteredEmployeeIds = useMemo(() => filteredEmployees.map((employee) => employee.id), [filteredEmployees]);
   const selectedFilteredCount = filteredEmployeeIds.filter((id) => selectedEmployeeIds.has(id)).length;
@@ -351,7 +354,7 @@ export function SupervisorAssignmentsPage() {
                               <p className="text-xs text-muted-foreground">{employee.employeeCode}</p>
                             </div>
                           </TableCell>
-                          <TableCell>{employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'}</TableCell>
+                          <TableCell><EmployeeDepartment employeeId={employee.id} department={employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'} /></TableCell>
                           <TableCell>{employee.position?.nameEn ?? employee.positionName ?? employee.sourcePositionName ?? '-'}</TableCell>
                           <TableCell>{currentPrimary?.supervisor ? employeeName(currentPrimary.supervisor) : '-'}</TableCell>
                           <TableCell className="whitespace-nowrap">
@@ -491,6 +494,7 @@ function SearchableEmployeeSelect({
   emptyMessage: string;
 }) {
   const employeeName = useEmployeeName();
+  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const selectedEmployee = employees.find((employee) => employee.id === value);
@@ -525,7 +529,7 @@ function SearchableEmployeeSelect({
                 const name = employeeName(employee);
                 const description = [
                   employee.employeeCode,
-                  employee.department?.nameEn ?? employee.sourceDepartmentName,
+                  employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
                   employee.email,
                   employee.phoneNumber,
                 ].filter(Boolean).join(' ');

@@ -242,6 +242,8 @@ export async function loadAttendanceDays(input: { from: string; to: string; empl
     effectiveDepartment,
     isCounted,
     days,
+    /** Active biometric exemptions (employee or position), for showing why someone is exempt. */
+    exemptions: activeExemptions,
   };
 }
 

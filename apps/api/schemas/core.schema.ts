@@ -54,6 +54,7 @@ export const ShiftSchema = z.object({
   gracePeriodMinutes: z.number().int().openapi({ example: 15 }),
   lateAfterMinutes: z.number().int().openapi({ example: 10 }),
   earlyOutBeforeMinutes: z.number().int().openapi({ example: 30 }),
+  duplicatePunchWindowMinutes: z.number().int().openapi({ example: 2 }),
   isOvernight: z.boolean().openapi({ example: false }),
   isActive: z.boolean().openapi({ example: true }),
   createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
@@ -70,6 +71,9 @@ export const ShiftSegmentSchema = z.object({
   startTime: z.string().openapi({ example: '08:30:00' }),
   endTime: z.string().openapi({ example: '12:00:00' }),
   sortOrder: z.number().int().openapi({ example: 1 }),
+  checkInOpensBeforeMinutes: z.number().int().nullable().openapi({ example: 30 }),
+  lateAfterMinutes: z.number().int().nullable().openapi({ example: 0 }),
+  checkOutClosesAfterMinutes: z.number().int().nullable().openapi({ example: 15 }),
   isActive: z.boolean().openapi({ example: true }),
   createdAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
   updatedAt: z.string().openapi({ example: '2026-06-09T00:00:00.000Z' }),
@@ -673,6 +677,8 @@ export const CreateShiftRequestSchema = z.object({
   gracePeriodMinutes: z.number().int().nonnegative().optional(),
   lateAfterMinutes: z.number().int().nonnegative().optional(),
   earlyOutBeforeMinutes: z.number().int().nonnegative().optional(),
+  // Device punches within 2 minutes are already merged when they arrive, so 2 is the floor.
+  duplicatePunchWindowMinutes: z.number().int().min(2).max(60).optional(),
   isOvernight: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
@@ -686,6 +692,10 @@ export const CreateShiftSegmentRequestSchema = z.object({
   startTime: TimeSchema,
   endTime: TimeSchema,
   sortOrder: z.number().int().positive().optional(),
+  // Minutes; null clears the session's own value so it uses the shift default again.
+  checkInOpensBeforeMinutes: z.number().int().nonnegative().max(720).nullable().optional(),
+  lateAfterMinutes: z.number().int().nonnegative().max(720).nullable().optional(),
+  checkOutClosesAfterMinutes: z.number().int().nonnegative().max(720).nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -1780,6 +1790,21 @@ const ExecutiveDashboardInsightsSchema = z.object({
       averageLateMinutes: z.number().int().nullable(),
     })),
   }),
+  exemptEmployees: z.array(z.object({
+    employeeId: z.string(),
+    departmentId: z.string().nullable(),
+    department: z.string(),
+    days: z.number().int().nonnegative(),
+    position: z.string().nullable(),
+    employee: ExecutiveDashboardEmployeeNameSchema,
+    exemption: z.object({
+      arrangementType: z.string(),
+      reason: z.string(),
+      scope: z.enum(['EMPLOYEE', 'POSITION']),
+      effectiveFrom: z.string().nullable(),
+      effectiveTo: z.string().nullable(),
+    }).nullable(),
+  })),
   people: z.array(z.object({
     employeeId: z.string(),
     departmentId: z.string().nullable(),

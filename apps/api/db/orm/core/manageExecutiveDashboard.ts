@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, lte, or } from 'drizzle-orm';
 import { PENDING_CORRECTION_STATUSES } from '../../../lib/attendance/correction-status';
 import { addisToday } from '../../../lib/attendance/schedule-evaluator';
 import { isIndefinitelyAbsent } from '../../../lib/employees/absence';
+import { resolveEmployeeBiometricExemptions } from '../../../lib/biometric-exemptions';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   absentUntilArrived,
@@ -38,6 +39,7 @@ import { db } from '../../db';
 import {
   attendancePunches,
   employees,
+  positions,
   attendanceSyncBatches,
   biometricDevices,
   leaveRequests,
@@ -238,6 +240,8 @@ export async function getExecutiveDashboardSummary(params: ExecutiveDashboardSum
     inRange,
     departmentPerformance,
     departmentById,
+    employeeById,
+    exemptions: context.exemptions,
   });
 
   return {
@@ -314,6 +318,8 @@ async function buildInsights(input: {
   inRange: (start: string, end: string) => DashboardDay[];
   departmentPerformance: ReturnType<typeof buildDepartmentPerformance>;
   departmentById: Map<string, { id: string; nameEn: string }>;
+  employeeById: Map<string, { id: string; positionId: string | null }>;
+  exemptions: Awaited<ReturnType<typeof loadAttendanceDays>>['exemptions'];
 }) {
   const rates = (counts: ReturnType<typeof countStatuses>) => {
     const present = counts.ON_TIME + counts.LATE;
@@ -338,8 +344,25 @@ async function buildInsights(input: {
   const people = input.period === 'day'
     ? input.current.filter((day) => day.status === 'LATE' || day.status === 'ABSENT')
     : [];
+  // Biometric-exempt employees in the period, with the exemption that applied on their last exempt day.
+  const exemptByEmployee = new Map<string, { employeeId: string; departmentId: string | null; days: number; lastDate: string }>();
+  for (const day of input.current) {
+    if (day.status !== 'EXEMPT') continue;
+    const entry = exemptByEmployee.get(day.record.employeeId)
+      ?? { employeeId: day.record.employeeId, departmentId: day.departmentId, days: 0, lastDate: day.date };
+    entry.days += 1;
+    if (day.date >= entry.lastDate) {
+      entry.lastDate = day.date;
+      entry.departmentId = day.departmentId;
+    }
+    exemptByEmployee.set(day.record.employeeId, entry);
+  }
 
-  const nameIds = [...new Set([...repeat.employees.map((entry) => entry.employeeId), ...people.map((day) => day.record.employeeId)])];
+  const nameIds = [...new Set([
+    ...repeat.employees.map((entry) => entry.employeeId),
+    ...people.map((day) => day.record.employeeId),
+    ...exemptByEmployee.keys(),
+  ])];
   const nameRows = nameIds.length
     ? await db.select({
       id: employees.id,
@@ -350,9 +373,12 @@ async function buildInsights(input: {
       firstNameAm: employees.firstNameAm,
       middleNameAm: employees.middleNameAm,
       lastNameAm: employees.lastNameAm,
-    }).from(employees).where(inArray(employees.id, nameIds))
+      positionTitle: positions.nameEn,
+      sourcePositionName: employees.positionName,
+    }).from(employees).leftJoin(positions, eq(positions.id, employees.positionId)).where(inArray(employees.id, nameIds))
     : [];
-  const nameById = new Map(nameRows.map(({ id, ...name }) => [id, name]));
+  const nameById = new Map(nameRows.map(({ id, positionTitle: _positionTitle, sourcePositionName: _sourcePositionName, ...name }) => [id, name]));
+  const positionById = new Map(nameRows.map((row) => [row.id, row.positionTitle ?? row.sourcePositionName ?? null]));
   const departmentName = (departmentId: string | null) => (
     departmentId ? input.departmentById.get(departmentId)?.nameEn ?? 'Unknown department' : 'Unassigned'
   );
@@ -415,6 +441,25 @@ async function buildInsights(input: {
       dateTo: input.focusDate,
       days: weekdayLateness(input.inRange(weekdayFrom, input.focusDate)),
     },
+    exemptEmployees: [...exemptByEmployee.values()].map(({ lastDate, ...entry }) => {
+      const employee = input.employeeById.get(entry.employeeId);
+      const match = employee
+        ? resolveEmployeeBiometricExemptions(employee, input.exemptions as any, lastDate).matches[0] as (typeof input.exemptions)[number] | undefined
+        : undefined;
+      return withName({
+        ...entry,
+        position: positionById.get(entry.employeeId) ?? null,
+        exemption: match
+          ? {
+            arrangementType: match.arrangementType,
+            reason: match.reason,
+            scope: match.employeeId ? 'EMPLOYEE' as const : 'POSITION' as const,
+            effectiveFrom: match.effectiveFrom ? String(match.effectiveFrom).slice(0, 10) : null,
+            effectiveTo: match.effectiveTo ? String(match.effectiveTo).slice(0, 10) : null,
+          }
+          : null,
+      });
+    }),
     people: people.map((day) => withName({
       employeeId: day.record.employeeId,
       departmentId: day.departmentId,

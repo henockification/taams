@@ -1,5 +1,6 @@
 import { and, asc, count, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db';
+import { addisToday, duplicatePunchWindowMinutes, earliestAcceptedPunchTime, resolveSessionWindows } from '../../../lib/attendance/schedule-evaluator';
 import { attendancePunches, attendanceSyncBatches, biometricDeviceLocks, biometricDevices, departments, employees, employeeWorkSchedules, user } from '../../schema';
 import type {
   CreateAttendancePunchInput,
@@ -280,6 +281,7 @@ export async function createAttendancePunch(
   // The same employee can be read by several machines at a compound entrance.
   // Treat a near-simultaneous same-direction device punch as one event. IN and
   // OUT remain separate events, and UNKNOWN punches are retained for review.
+  // A shift's duplicate punch window can widen this during evaluation, not narrow it.
   if (input.source === 'DEVICE' && input.employeeId && input.punchType && input.punchType !== 'UNKNOWN') {
     const windowStart = new Date(punchTime.getTime() - 2 * 60_000);
     const windowEnd = new Date(punchTime.getTime() + 2 * 60_000);
@@ -466,40 +468,65 @@ async function findDuplicatePunchIds(punches: Array<{ id: string }>) {
   return new Set(rows.map((row) => row.id));
 }
 
+/**
+ * Labels undeclared (UNKNOWN) punches with the session rule they fall under, and marks punches the
+ * evaluator would treat as duplicates under the employee's shift window. Uses the same session
+ * windows as attendance evaluation, in Addis Ababa time.
+ */
 async function annotateScheduleBasedPunchRules(punches: any[]) {
   const employeeIds = [...new Set(punches.map((punch) => punch.employeeId).filter(Boolean))];
   if (!employeeIds.length) return;
-  const dates = punches.map((punch) => String(punch.punchTime).slice(0, 10)).sort();
+  const punchDate = (punch: any) => addisToday(new Date(punch.punchTime));
+  const dates = punches.map(punchDate).sort();
   const assignments = await db.query.employeeWorkSchedules.findMany({
     where: and(inArray(employeeWorkSchedules.employeeId, employeeIds), lte(employeeWorkSchedules.effectiveFrom, dates.at(-1)!), or(isNull(employeeWorkSchedules.effectiveTo), gte(employeeWorkSchedules.effectiveTo, dates[0]))),
     with: { workSchedule: { with: { days: { with: { shift: { with: { segments: true } } } } } } },
   });
   const grouped = new Map<string, any[]>();
-  for (const punch of punches) grouped.set(`${punch.employeeId}:${String(punch.punchTime).slice(0, 10)}`, [...(grouped.get(`${punch.employeeId}:${String(punch.punchTime).slice(0, 10)}`) ?? []), punch]);
+  for (const punch of punches) {
+    if (!punch.employeeId) continue;
+    const key = `${punch.employeeId}:${punchDate(punch)}`;
+    grouped.set(key, [...(grouped.get(key) ?? []), punch]);
+  }
   for (const [key, group] of grouped) {
     const [employeeId, date] = key.split(':');
     const assignment = assignments.filter((item: any) => item.employeeId === employeeId && String(item.effectiveFrom) <= date && (!item.effectiveTo || String(item.effectiveTo) >= date)).sort((a: any, b: any) => String(b.effectiveFrom).localeCompare(String(a.effectiveFrom)))[0];
-    const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T12:00:00`).getDay()];
+    const dayName = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][new Date(`${date}T12:00:00Z`).getUTCDay()];
     const day = assignment?.workSchedule?.days?.find((candidate: any) => candidate.isActive && !candidate.isOffDay && (candidate.dayOfWeek === dayName || candidate.dayOfWeek === 'ROSTER'));
-    const segments = [...(day?.shift?.segments ?? [])].sort((a: any, b: any) => Number(a.sortOrder) - Number(b.sortOrder));
     const shift = day?.shift;
-    if (!segments.length || !shift) continue;
-    const start = new Date(`${date}T${segments[0].startTime}`);
-    const end = new Date(`${date}T${segments[segments.length - 1].endTime}`);
-    if (end <= start) end.setDate(end.getDate() + 1);
-    const threshold = start.getTime() + (end.getTime() - start.getTime()) / 2;
-    const graceStart = start.getTime() - Number(shift.gracePeriodMinutes ?? 0) * 60_000;
-    const lateStart = start.getTime() + (Number(shift.gracePeriodMinutes ?? 0) + Number(shift.lateAfterMinutes ?? 0)) * 60_000;
-    const earlyOut = end.getTime() - Number(shift.earlyOutBeforeMinutes ?? 0) * 60_000;
+    if (!shift) continue;
+
+    // A shift with a wider duplicate window also flags punches the default 2-minute check
+    // (findDuplicatePunchIds) did not; same rule: same type, or either one UNKNOWN.
+    const windowMs = duplicatePunchWindowMinutes(shift) * 60_000;
+    if (windowMs > 2 * 60_000) {
+      for (const punch of group) {
+        const time = new Date(punch.punchTime).getTime();
+        punch.isDuplicate = punch.isDuplicate || group.some((other) => other !== punch
+          && Math.abs(new Date(other.punchTime).getTime() - time) <= windowMs
+          && (other.punchType === punch.punchType || other.punchType === 'UNKNOWN' || punch.punchType === 'UNKNOWN'));
+      }
+    }
+
+    const windows = resolveSessionWindows(date, shift);
+    if (!windows.length) continue;
+    const earliestAccepted = earliestAcceptedPunchTime(windows);
     for (const punch of group) {
       if (punch.punchType !== 'UNKNOWN') continue;
       const time = new Date(punch.punchTime).getTime();
-      if (time <= threshold) {
+      if (earliestAccepted && time < earliestAccepted.getTime()) {
+        punch.inferredPunchType = null;
+        punch.inferredRule = 'SCHEDULE_BEFORE_WINDOW';
+        continue;
+      }
+      const window = windows.find((candidate) => time >= candidate.spanStart.getTime() && time < candidate.spanEnd.getTime())
+        ?? (time < windows[0].spanStart.getTime() ? windows[0] : windows.at(-1)!);
+      if (time < window.midpoint.getTime()) {
         punch.inferredPunchType = 'IN';
-        punch.inferredRule = time < graceStart ? 'SCHEDULE_EARLY_IN' : time > lateStart ? 'SCHEDULE_LATE_IN' : 'SCHEDULE_ON_TIME_IN';
+        punch.inferredRule = time < window.checkInOpen.getTime() ? 'SCHEDULE_EARLY_IN' : time > window.lateThreshold.getTime() ? 'SCHEDULE_LATE_IN' : 'SCHEDULE_ON_TIME_IN';
       } else {
         punch.inferredPunchType = 'OUT';
-        punch.inferredRule = time < earlyOut ? 'SCHEDULE_EARLY_OUT' : 'SCHEDULE_OUT';
+        punch.inferredRule = time < window.end.getTime() ? 'SCHEDULE_EARLY_OUT' : 'SCHEDULE_OUT';
       }
     }
   }

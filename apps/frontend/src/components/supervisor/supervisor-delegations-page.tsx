@@ -23,6 +23,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
 import { Label } from '@/components/ui/label';
 import { CalendarDateTimeField } from '@/components/calendar/calendar-date-field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -334,6 +335,7 @@ function SearchableEmployeeSelect({
   disabled?: boolean;
 }) {
   const employeeName = useEmployeeName();
+  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
   const [open, setOpen] = useState(false);
   const selectedEmployee = employees.find((employee) => employee.id === value);
 
@@ -365,7 +367,7 @@ function SearchableEmployeeSelect({
                 const name = employeeName(employee);
                 const description = [
                   employee.employeeCode,
-                  employee.department?.nameEn ?? employee.sourceDepartmentName,
+                  employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
                   employee.email,
                   employee.phoneNumber,
                 ].filter(Boolean).join(' ');

@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { EmployeeDepartment } from "@/components/employees/employee-department"
 import { DashboardAttendanceStrip, DashboardDataQualityNotice, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useDepartmentHeadDashboardSummary } from "@/data/hooks/core.hooks"
 import { Link, useRouter } from "@/i18n"
@@ -147,9 +148,9 @@ export default function DepartmentHeadDashboardPage() {
 
       <div className={cn("grid gap-5", showLeave && "xl:grid-cols-[1fr_1fr]")}>
         {showLeave
-          ? <StaffStatus title={t("staffOnLeave")} employees={dashboard.details.employeesOnLeave.map((request) => request.employee).filter(Boolean) as Employee[]} />
+          ? <StaffStatus title={t("staffOnLeave")} employees={dashboard.details.employeesOnLeave.map((request) => request.employee).filter(Boolean) as Employee[]} date={dashboard.date} />
           : null}
-        <StaffStatus title={t("lateEmployees")} employees={dashboard.details.lateEmployees} />
+        <StaffStatus title={t("lateEmployees")} employees={dashboard.details.lateEmployees} date={dashboard.date} />
       </div>
     </div>
   )
@@ -250,7 +251,7 @@ function AttendanceSnapshot({ dashboard }: { dashboard: DepartmentHeadDashboardS
           {rows.map((row) => (
             <TableRow key={row.id}>
               <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
-              <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(row.employee)}</TableCell>
+              <TableCell className="min-w-44 text-muted-foreground"><EmployeeDepartment employeeId={row.employee.id} department={formatDepartment(row.employee)} date={dashboard.date} /></TableCell>
               <TableCell><StatusBadge status={row.status} /></TableCell>
             </TableRow>
           ))}
@@ -322,7 +323,7 @@ function PendingWork({ dashboard, showLeave }: { dashboard: DepartmentHeadDashbo
   )
 }
 
-function StaffStatus({ title, employees }: { title: string; employees: Employee[] }) {
+function StaffStatus({ title, employees, date }: { title: string; employees: Employee[]; date: string }) {
   const t = useTranslations("departmentHeadDashboard")
   const employeeName = useEmployeeName()
 
@@ -336,7 +337,7 @@ function StaffStatus({ title, employees }: { title: string; employees: Employee[
           {employees.slice(0, 12).map((employee) => (
             <TableRow key={employee.id}>
               <TableCell className="min-w-52 font-medium">{employeeName(employee) || "-"}</TableCell>
-              <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(employee)}</TableCell>
+              <TableCell className="min-w-44 text-muted-foreground"><EmployeeDepartment employeeId={employee.id} department={formatDepartment(employee)} date={date} /></TableCell>
               <TableCell><StatusBadge status={title} /></TableCell>
             </TableRow>
           ))}

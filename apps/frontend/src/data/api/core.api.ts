@@ -113,6 +113,7 @@ import type {
   SupervisorDelegationsResponse,
   TemporaryDepartmentAssignmentResponse,
   TemporaryDepartmentAssignmentsResponse,
+  TemporaryAssignmentSpansResponse,
   TimeOperationsSummaryResponse,
   DepartmentHeadCandidatesResponse,
   MoveDepartmentInput,
@@ -454,6 +455,7 @@ export const coreApi = {
       method: 'POST',
     }),
   getTemporaryDepartmentAssignments: () => coreFetch<TemporaryDepartmentAssignmentsResponse>('/temporary-department-assignments'),
+  getTemporaryAssignmentSpans: () => coreFetch<TemporaryAssignmentSpansResponse>('/temporary-department-assignments/spans'),
   getTemporaryAssignmentEligibleEmployees: () => coreFetch<EmployeesResponse>('/temporary-department-assignments/eligible-employees'),
   createTemporaryDepartmentAssignment: (input: CreateTemporaryDepartmentAssignmentInput) =>
     coreFetch<TemporaryDepartmentAssignmentResponse>('/temporary-department-assignments', {

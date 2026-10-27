@@ -6,12 +6,12 @@ import {
   ArrowDown,
   ArrowRight,
   ArrowUp,
-  BriefcaseBusiness,
   Building2,
   CalendarClock,
   CheckCircle2,
   Clock3,
   DoorOpen,
+  Fingerprint,
   HeartPulse,
   Maximize2,
   RefreshCw,
@@ -47,6 +47,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { EmployeeDepartment } from "@/components/employees/employee-department"
 import { DashboardDataQualityNotice, DashboardDepartmentFilter, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useExecutiveDashboardSummary } from "@/data/hooks/core.hooks"
 import type { ExecutiveDashboardSeverity, ExecutiveDashboardSummary, ExecutiveDashboardTrend } from "@/data/types/core.types"
@@ -84,7 +85,7 @@ const arrivalColors = {
 }
 const weekdayChartConfig = { lateRate: { label: "Late %", color: "#d97706" } } satisfies ChartConfig
 
-type DrillKind = "present" | "absent" | "late"
+type DrillKind = "present" | "absent" | "late" | "exempt"
 
 export default function ExecutiveDashboardPage() {
   const t = useTranslations("executiveDashboard")
@@ -298,7 +299,7 @@ function KpiGrid({ dashboard, onDrill }: { dashboard: ExecutiveDashboardSummary;
       change: { points: pointChange(current.lateRate, comparison?.lateRate), goodWhenUp: false },
       drill: "late",
     },
-    { label: label("remote"), value: status.workingRemotely, icon: BriefcaseBusiness, tone: "bg-cyan-700 text-white", hints: [] },
+    { label: label("biometricExempt"), value: status.biometricExempt, icon: Fingerprint, tone: "bg-cyan-700 text-white", hints: [], drill: "exempt" },
     { label: label("officialDuty"), value: status.officialAssignment, icon: Building2, tone: "bg-teal-700 text-white", hints: [] },
     {
       label: t("attendanceRate"),
@@ -629,7 +630,7 @@ function RepeatCases({ dashboard }: { dashboard: ExecutiveDashboardSummary }) {
                       {employeeName(entry.employee) || "—"}
                       {entry.employee ? <span className="block text-xs font-normal text-muted-foreground">{entry.employee.employeeCode}</span> : null}
                     </TableCell>
-                    <TableCell className="whitespace-normal break-words leading-5">{entry.department}</TableCell>
+                    <TableCell className="whitespace-normal break-words leading-5"><EmployeeDepartment employeeId={entry.employeeId} department={entry.department} date={dashboard.dateTo} /></TableCell>
                     <TableCell className={cn(entry.lateDays >= repeat.lateThreshold && "font-semibold text-amber-700 dark:text-amber-400")}>{entry.lateDays}</TableCell>
                     <TableCell className={cn(entry.absentDays >= repeat.absentThreshold && "font-semibold text-rose-700 dark:text-rose-400")}>{entry.absentDays}</TableCell>
                   </TableRow>
@@ -668,6 +669,8 @@ function DrillDownDialog({ dashboard, kind, onClose }: { dashboard: ExecutiveDas
     && (selected === undefined || person.departmentId === selected)
   ))
   const title = kind === "present" ? t("drillDownPresent") : kind === "absent" ? t("drillDownAbsent") : t("drillDownLate")
+
+  if (kind === "exempt") return <ExemptEmployeesDialog dashboard={dashboard} onClose={onClose} />
 
   return (
     <Dialog open={kind !== null} onOpenChange={(open) => !open && onClose()}>
@@ -735,7 +738,7 @@ function DrillDownDialog({ dashboard, kind, onClose }: { dashboard: ExecutiveDas
                             {employeeName(person.employee) || "—"}
                             {person.employee ? <span className="block text-xs font-normal text-muted-foreground">{person.employee.employeeCode}</span> : null}
                           </TableCell>
-                          <TableCell className="whitespace-normal break-words leading-5">{person.department}</TableCell>
+                          <TableCell className="whitespace-normal break-words leading-5"><EmployeeDepartment employeeId={person.employeeId} department={person.department} date={dashboard.focusDate} /></TableCell>
                           <TableCell className="whitespace-normal leading-5">
                             {person.status === "LATE"
                               ? <>{person.checkInAt ? addisClock(person.checkInAt) : "—"} <span className="text-xs text-muted-foreground">· {t("minutesLate", { count: person.lateMinutes ?? 0 })}</span></>
@@ -749,6 +752,73 @@ function DrillDownDialog({ dashboard, kind, onClose }: { dashboard: ExecutiveDas
             </div>
           )
         ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Who is exempt from biometric attendance, in which department, and under which exemption. */
+function ExemptEmployeesDialog({ dashboard, onClose }: { dashboard: ExecutiveDashboardSummary; onClose: () => void }) {
+  const t = useTranslations("executiveDashboard")
+  const { formatDate } = useCalendarPreference()
+  const employeeName = useEmployeeName()
+  const multiDay = dashboard.dateFrom !== dashboard.dateTo
+  const employees = dashboard.insights.exemptEmployees
+    .slice()
+    .sort((left, right) => left.department.localeCompare(right.department) || employeeName(left.employee).localeCompare(employeeName(right.employee)))
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{t("drillDownExempt")} · {employees.length}</DialogTitle>
+          <DialogDescription>{t("drillDownExemptDescription")}</DialogDescription>
+        </DialogHeader>
+        {employees.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("noPeople")}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table className="min-w-[44rem] table-fixed">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[26%]">{t("employee")}</TableHead>
+                  <TableHead className="w-[22%]">{t("department")}</TableHead>
+                  <TableHead className="w-[30%]">{t("exemptArrangement")}</TableHead>
+                  <TableHead className={multiDay ? "w-[14%]" : "w-[22%]"}>{t("exemptValidity")}</TableHead>
+                  {multiDay ? <TableHead className="w-[8%]">{t("exemptDays")}</TableHead> : null}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {employees.map((entry) => (
+                  <TableRow key={entry.employeeId}>
+                    <TableCell className="whitespace-normal break-words align-top font-medium leading-5">
+                      {employeeName(entry.employee) || "—"}
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {[entry.employee?.employeeCode, entry.position].filter(Boolean).join(" · ")}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-normal break-words align-top leading-5"><EmployeeDepartment employeeId={entry.employeeId} department={entry.department} date={dashboard.dateTo} /></TableCell>
+                    <TableCell className="whitespace-normal break-words align-top leading-5">
+                      {entry.exemption ? (
+                        <>
+                          <span className="font-medium">{entry.exemption.arrangementType.replace(/_/g, " ")}</span>
+                          {entry.exemption.scope === "POSITION" ? <Badge variant="secondary" className="ml-1.5">{t("exemptByPosition")}</Badge> : null}
+                          <span className="block text-xs text-muted-foreground">{entry.exemption.reason}</span>
+                        </>
+                      ) : "—"}
+                    </TableCell>
+                    <TableCell className="whitespace-normal align-top text-xs leading-5 text-muted-foreground">
+                      {entry.exemption
+                        ? `${entry.exemption.effectiveFrom ? formatDate(entry.exemption.effectiveFrom) : "—"} – ${entry.exemption.effectiveTo ? formatDate(entry.exemption.effectiveTo) : t("exemptNoEndDate")}`
+                        : "—"}
+                    </TableCell>
+                    {multiDay ? <TableCell className="align-top">{entry.days}</TableCell> : null}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

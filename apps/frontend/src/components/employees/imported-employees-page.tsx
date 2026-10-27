@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { EmployeeDepartment, useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -65,6 +66,7 @@ export function ImportedEmployeesPage({
   const t = useTranslations('core');
   const locale = useLocale();
   const router = useRouter();
+  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
   const copy = directoryCopy[kind];
   const { data: employeesResponse, isLoading } = useEmployees();
   const [search, setSearch] = useState('');
@@ -115,13 +117,14 @@ export function ImportedEmployeesPage({
         employee.email,
         employee.department?.nameEn,
         employee.sourceDepartmentName,
+        employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
         employee.positionName,
         employee.sourcePositionName,
       ].filter(Boolean).join(' ').toLowerCase();
 
       return haystack.includes(query);
     }).sort((left, right) => formatEmployeeName(left, locale).localeCompare(formatEmployeeName(right, locale), undefined, { sensitivity: 'base' }));
-  }, [departmentFilter, directoryEmployees, employmentStatusFilter, locale, search]);
+  }, [departmentFilter, directoryEmployees, employeeDepartmentLabel, employmentStatusFilter, locale, search]);
 
   const totalRecords = filteredEmployees.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
@@ -248,7 +251,7 @@ export function ImportedEmployeesPage({
                     <div className="flex items-center">
                       <Badge variant="secondary">{employee.sourceIdNo ?? employee.employeeCode}</Badge>
                     </div>
-                    <p className="truncate">{employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'}</p>
+                    <p className="truncate"><EmployeeDepartment employeeId={employee.id} department={employee.department?.nameEn ?? employee.sourceDepartmentName ?? '-'} /></p>
                     <div className="min-w-0">
                       <p className="truncate">{employee.positionName ?? employee.position?.nameEn ?? employee.sourcePositionName ?? t('noPosition')}</p>
                       <p className="truncate text-xs text-muted-foreground">{employee.sourcePositionCode ?? '-'}</p>

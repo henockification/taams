@@ -69,9 +69,13 @@ export async function generateAttendanceDailyRecords(
     // (e.g. after an approved attendance correction). HR-approved records move
     // back to SUPERVISOR_APPROVED so HR confirms the corrected numbers.
     recalculateEmployeeIds?: string[];
+    // Regenerate only these employees; everyone else on the date is left exactly as stored
+    // and no records are created for them (e.g. after a shift's punch rules change).
+    onlyEmployeeIds?: string[];
   },
 ) {
   const attendanceDate = normalizeDateParam(date);
+  const onlyEmployeeIds = options?.onlyEmployeeIds ? new Set(options.onlyEmployeeIds) : null;
   if (attendanceDate < addisToday()) {
     await reconcileAnnualLeaveConsumption(attendanceDate);
   }
@@ -150,7 +154,8 @@ export async function generateAttendanceDailyRecords(
   // Employees flagged as away indefinitely have no attendance. Biometric-exempt employees
   // have no daily records either: the IFMIS export counts them as present except for
   // unpaid leave, and finance adjusts their absent days there.
-  const activeEmployees = allEmployees.filter((employee) => isWorkingEmployee(employee)
+  const activeEmployees = allEmployees.filter((employee) => (!onlyEmployeeIds || onlyEmployeeIds.has(employee.id))
+    && isWorkingEmployee(employee)
     && !isIndefinitelyAbsent(employee)
     && !isEmployeeBiometricExempt(employee, activeExemptions, attendanceDate));
 
@@ -353,6 +358,42 @@ async function recalculateOutdatedAttendance(range: { dateFrom: string; dateTo: 
   for (const { attendanceDate } of outdated) {
     await generateAttendanceDailyRecords(String(attendanceDate));
   }
+}
+
+/**
+ * Re-evaluates days not yet approved for employees whose schedule uses this shift, after its
+ * session times or punch windows change. Approved days keep the result they were approved with
+ * (generateAttendanceDailyRecords only overwrites pending and returned records).
+ */
+export async function recalculateOpenAttendanceForShift(shiftId: string) {
+  // Existing pending/returned records of employees whose schedule uses this shift on that
+  // weekday (or on a roster). Only those records are regenerated; nothing new is created.
+  const rows = await db.execute(sql`
+    SELECT DISTINCT r.attendance_date AS "attendanceDate", r.employee_id AS "employeeId"
+    FROM attendance_daily_records r
+    JOIN employee_work_schedules ews
+      ON ews.employee_id = r.employee_id
+     AND ews.is_active
+     AND ews.effective_from <= r.attendance_date
+     AND (ews.effective_to IS NULL OR ews.effective_to >= r.attendance_date)
+    JOIN work_schedule_days d
+      ON d.work_schedule_id = ews.work_schedule_id
+     AND d.shift_id = ${shiftId}
+     AND d.is_active
+     AND (upper(d.day_of_week) = 'ROSTER' OR upper(d.day_of_week) = trim(to_char(r.attendance_date, 'FMDAY')))
+    WHERE r.status IN ('PENDING_SUPERVISOR', 'RETURNED')
+  `);
+  const employeeIdsByDate = new Map<string, string[]>();
+  for (const row of ((rows as any).rows ?? rows) as Array<{ attendanceDate: unknown; employeeId: string }>) {
+    const date = String(row.attendanceDate).slice(0, 10);
+    employeeIdsByDate.set(date, [...(employeeIdsByDate.get(date) ?? []), row.employeeId]);
+  }
+  let recalculatedRecords = 0;
+  for (const [date, employeeIds] of [...employeeIdsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    await generateAttendanceDailyRecords(date, { onlyEmployeeIds: employeeIds });
+    recalculatedRecords += employeeIds.length;
+  }
+  return { recalculatedDates: employeeIdsByDate.size, recalculatedRecords };
 }
 
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {

@@ -50,6 +50,8 @@ import {
 } from '../../lib/attendance/session-slots';
 import { clearSessionCookie, getSessionCookie } from '../auth/handlers/helpers';
 import { employeeDisplayName, parseNameLocale, withNameLocale } from '../../lib/employees/display-name';
+import { buildTemporaryDepartmentLookup, departmentOn, withTemporaryDepartments } from '../../lib/employees/temporary-department';
+import { getTemporaryAssignmentSpans } from '../../db/orm/core/manageTemporaryDepartmentAssignments';
 
 type ReportKey =
   | 'attendance-daily'
@@ -110,6 +112,7 @@ const attendanceDailyColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'workedTime', label: 'Worked time' },
   { key: 'lateMinutes', label: 'Late (min)' },
   { key: 'earlyBreakMinutes', label: 'Early break (min)' },
@@ -130,6 +133,7 @@ const absentEmployeeColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'position', label: 'Position' },
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'scheduledStart', label: 'Scheduled start' },
@@ -140,6 +144,7 @@ const absentEmployeeTotalsColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'position', label: 'Position' },
   { key: 'phoneNumber', label: 'Phone' },
   { key: 'absentDays', label: 'Absent days' },
@@ -151,6 +156,7 @@ const attendanceTotalsColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'daysRecorded', label: 'Days recorded' },
   { key: 'workedTime', label: 'Worked time' },
   { key: 'workedHours', label: 'Worked hours' },
@@ -175,6 +181,7 @@ const lateAttendanceColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'lateCheckInMinutes', label: 'Late check-in (min)' },
   { key: 'lateReturnMinutes', label: 'Late return (min)' },
   { key: 'lateMinutes', label: 'Total late (min)' },
@@ -189,6 +196,7 @@ const lateTotalsColumns: ReportColumn[] = [
   { key: 'employeeCode', label: 'Employee ID' },
   { key: 'employeeName', label: 'Employee name' },
   { key: 'department', label: 'Department' },
+  { key: 'temporaryFrom', label: 'Temporarily from' },
   { key: 'lateDays', label: 'Late days' },
   { key: 'lateCheckInMinutes', label: 'Late check-in (min)' },
   { key: 'lateReturnMinutes', label: 'Late return (min)' },
@@ -219,6 +227,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
       { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'biometricId', label: 'Biometric ID' },
       { key: 'deviceName', label: 'Device' },
       { key: 'punchType', label: 'Punch type' },
@@ -248,6 +257,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
       { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'startAt', label: 'Approved start' },
       { key: 'endAt', label: 'Approved end' },
       { key: 'approvedMinutes', label: 'Approved minutes' },
@@ -266,6 +276,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
       { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'fiscalYear', label: 'Fiscal year' },
       { key: 'employmentType', label: 'Employment type' },
       { key: 'opening', label: 'Opening' },
@@ -284,6 +295,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
       { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'leaveType', label: 'Leave type' },
       { key: 'startDate', label: 'Start date' },
       { key: 'endDate', label: 'End date' },
@@ -304,6 +316,7 @@ const reportDefinitions: Record<ReportKey, ReportDefinition> = {
       { key: 'employeeCode', label: 'Employee ID' },
       { key: 'employeeName', label: 'Employee name' },
       { key: 'department', label: 'Department' },
+      { key: 'temporaryFrom', label: 'Temporarily from' },
       { key: 'position', label: 'Position' },
       { key: 'employmentType', label: 'Employment type' },
       { key: 'employmentStatus', label: 'Employment status' },
@@ -509,8 +522,20 @@ reportsApp.get('/reports/:key/excel', async (c) => {
 });
 
 async function runReport(definition: ReportDefinition, input: ReportInput): Promise<ReportResult> {
-  // Employee names follow the language the report was requested in (`locale`, default English).
-  const result = await withNameLocale(parseNameLocale(input.query.get('locale')), () => definition.buildRows(input));
+  // Employee names follow the language the report was requested in (`locale`, default English), and
+  // departments follow temporary assignments on each row's date (`departmentOn`).
+  const spans = await getTemporaryAssignmentSpans();
+  const lookup = buildTemporaryDepartmentLookup(spans.map((span) => ({
+    employeeId: span.employeeId,
+    effectiveFrom: span.effectiveFrom,
+    effectiveTo: span.effectiveTo,
+    sourceDepartmentName: span.sourceDepartment?.nameEn ?? null,
+    targetDepartmentName: span.targetDepartment?.nameEn ?? null,
+  })));
+  const result = await withNameLocale(
+    parseNameLocale(input.query.get('locale')),
+    () => withTemporaryDepartments(lookup, () => definition.buildRows(input)),
+  );
   return Array.isArray(result) ? { rows: result, columns: definition.columns } : result;
 }
 
@@ -606,7 +631,10 @@ async function loadAttendanceDays({ query, scope }: ReportInput) {
 
   return sortAttendanceDays(records
     .filter((record) => matchesEmployeeFilters(record.employee, query, scope))
-    .map((record) => toAttendanceDay(record, record.employee?.department?.nameEn ?? '')));
+    .map((record) => {
+      const { department, temporaryFrom } = departmentOn(record.employee, String(record.attendanceDate));
+      return toAttendanceDay(record, department, temporaryFrom || department, Boolean(temporaryFrom));
+    }));
 }
 
 /** Newest day first, then by department and name so each day reads like the approval list. */
@@ -644,6 +672,7 @@ function attendanceDayValues(day: AttendanceDay) {
     employeeCode: record.employee?.employeeCode ?? '',
     employeeName: employeeName(record.employee),
     department: day.department,
+    temporaryFrom: day.isTemporary ? day.homeDepartment : '',
     workedTime: day.workedMinutes ? formatDuration(day.workedMinutes) : '',
     lateMinutes: dutyMinutes(day, day.lateMinutes),
     earlyBreakMinutes: dutyMinutes(day, day.earlyBreakMinutes),
@@ -664,6 +693,7 @@ type EmployeeAttendanceTotals = {
   employeeCode: string;
   employeeName: string;
   department: string;
+  temporaryFrom: string;
   directSupervisor: string;
   daysRecorded: number;
   temporaryAssignmentDays: number;
@@ -694,6 +724,7 @@ function totalAttendanceByEmployee(days: AttendanceDay[]) {
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
       department: day.department,
+      temporaryFrom: day.isTemporary ? day.homeDepartment : '',
       directSupervisor: directSupervisorName(record.employee),
       daysRecorded: 0,
       temporaryAssignmentDays: 0,
@@ -792,10 +823,10 @@ async function buildAttendanceDailyRows(input: ReportInput): Promise<ReportResul
     return { rows: totalAttendanceByEmployee(days), columns: attendanceTotalsColumns, highlights };
   }
 
-  const { columns, sessionCells } = withSessionColumns(attendanceDailyColumns, 'department', days);
+  const { columns, sessionCells } = withSessionColumns(attendanceDailyColumns, 'temporaryFrom', days);
   const rows = days.map((day) => {
-    const { attendanceDate, employeeCode, employeeName, department, ...metrics } = attendanceDayValues(day);
-    return { attendanceDate, employeeCode, employeeName, department, ...sessionCells(day), ...metrics };
+    const { attendanceDate, employeeCode, employeeName, department, temporaryFrom, ...metrics } = attendanceDayValues(day);
+    return { attendanceDate, employeeCode, employeeName, department, temporaryFrom, ...sessionCells(day), ...metrics };
   });
   return { rows, columns, highlights };
 }
@@ -832,12 +863,14 @@ async function buildAbsentEmployeeRows({ query, scope }: ReportInput): Promise<R
     .filter((day) => personById.has(day.record.employeeId))
     .map((day) => {
       const person: any = personById.get(day.record.employeeId);
+      const { department, temporaryFrom } = departmentOn(person, day.date);
       return {
         attendanceDate: day.date,
         employeeId: person.id,
         employeeCode: person.employeeCode,
         employeeName: employeeName(person),
-        department: context.departmentById.get(day.departmentId ?? '')?.nameEn ?? person.department?.nameEn ?? '',
+        department,
+        temporaryFrom,
         position: person.position?.nameEn ?? person.positionName ?? '',
         phoneNumber: person.phoneNumber ?? '',
         scheduledStart: formatAddisTime(day.record.scheduledStartAt),
@@ -863,6 +896,7 @@ async function buildAbsentEmployeeRows({ query, scope }: ReportInput): Promise<R
         employeeCode: row.employeeCode,
         employeeName: row.employeeName,
         department: row.department,
+        temporaryFrom: row.temporaryFrom,
         position: row.position,
         phoneNumber: row.phoneNumber,
         absentDays: 0,
@@ -902,14 +936,15 @@ async function buildLateAttendanceRows(input: ReportInput): Promise<ReportResult
     return { rows, columns: lateTotalsColumns, highlights };
   }
 
-  const { columns, sessionCells } = withSessionColumns(lateAttendanceColumns, 'department', lateDays);
+  const { columns, sessionCells } = withSessionColumns(lateAttendanceColumns, 'temporaryFrom', lateDays);
   const rows = lateDays.map((day) => {
-    const { attendanceDate, employeeCode, employeeName, department, attendanceDays, absenceDays, leaveDays, status } = attendanceDayValues(day);
+    const { attendanceDate, employeeCode, employeeName, department, temporaryFrom, attendanceDays, absenceDays, leaveDays, status } = attendanceDayValues(day);
     return {
       attendanceDate,
       employeeCode,
       employeeName,
       department,
+      temporaryFrom,
       ...sessionCells(day),
       lateCheckInMinutes: day.lateCheckInMinutes,
       lateReturnMinutes: day.lateReturnMinutes,
@@ -946,7 +981,7 @@ async function buildAttendancePunchRows({ query, scope }: ReportInput) {
       punchTime: formatDateTime(record.punchTime),
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      department: record.employee?.department?.nameEn ?? '',
+      ...departmentOn(record.employee, addisDate(record.punchTime)),
       biometricId: record.biometricId,
       deviceName: record.device?.deviceName ?? '',
       punchType: record.punchType,
@@ -978,7 +1013,7 @@ async function buildOvertimeRows({ query, scope }: ReportInput) {
         attendanceDate: request.overtimeDate,
         employeeCode: request.employee?.employeeCode ?? '',
         employeeName: employeeName(request.employee),
-        department: request.employee?.department?.nameEn ?? '',
+        ...departmentOn(request.employee, String(request.overtimeDate)),
         startAt: formatDateTime(request.startAt),
         endAt: formatDateTime(request.endAt),
         approvedMinutes: request.approvedMinutes,
@@ -1011,7 +1046,7 @@ async function buildLeaveBalanceRows({ query, scope }: ReportInput) {
     .map((record) => ({
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      department: record.employee?.department?.nameEn ?? '',
+      ...departmentOn(record.employee, addisToday()),
       fiscalYear: record.fiscalYear?.name ?? '',
       employmentType: record.employmentTypeSnapshot,
       opening: record.opening,
@@ -1035,7 +1070,7 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       createdAt: '',
       employeeCode: period.employee?.employeeCode ?? '',
       employeeName: employeeName(period.employee),
-      department: period.employee?.department?.nameEn ?? '',
+      ...departmentOn(period.employee, String(period.startDate)),
       leaveType: period.leaveType.nameEn,
       startDate: period.startDate,
       endDate: period.endDate,
@@ -1080,7 +1115,7 @@ async function buildLeaveRequestRows({ query, scope }: ReportInput) {
       createdAt: formatDateTime(record.createdAt),
       employeeCode: record.employee?.employeeCode ?? '',
       employeeName: employeeName(record.employee),
-      department: record.employee?.department?.nameEn ?? '',
+      ...departmentOn(record.employee, String(record.startDate)),
       leaveType: record.leaveType?.nameEn ?? '',
       startDate: record.startDate,
       endDate: record.endDate,
@@ -1120,7 +1155,7 @@ async function buildEmployeeRows({ query, scope }: ReportInput) {
   return records.map((employee) => ({
     employeeCode: employee.employeeCode,
     employeeName: employeeName(employee),
-    department: employee.department?.nameEn ?? '',
+    ...departmentOn(employee, addisToday()),
     position: employee.position?.nameEn ?? employee.positionName ?? '',
     employmentType: employee.employmentType,
     employmentStatus: employee.employmentStatus,
@@ -1338,6 +1373,11 @@ async function buildAuditRows({ query, scope }: ReportInput) {
 
 function employeeName(employee: any) {
   return employeeDisplayName(employee);
+}
+
+/** Calendar date (YYYY-MM-DD) of an instant in Addis Ababa (UTC+3, no daylight saving). */
+function addisDate(value: Date | string) {
+  return new Date(new Date(value).getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 function dateFrom(query: URLSearchParams) {

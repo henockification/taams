@@ -187,7 +187,9 @@ export async function ingestEnrollment(input: {
   };
 }
 
-// Same matching rule as the TCP pull: biometric id first, then employee code.
+// Same matching rule as the TCP pull: biometric id first, then employee code. Re-run
+// before anything that reads the links, since employees' biometric ids change in TAAMS
+// after the enrollment was captured. Only rows whose match changed are written.
 export async function linkEnrollmentUsersToEmployees(tx: DbClient = db) {
   await tx.execute(sql`
     UPDATE biometric_device_users u
@@ -517,6 +519,7 @@ function summarizePlan(device: Device, plan: DevicePlan, rosterSize: number): De
 }
 
 export async function previewEnrollmentSync(input: { deviceId?: string | null; allowRemovals: boolean }) {
+  await linkEnrollmentUsersToEmployees();
   const devices = await getSyncDevices(input.deviceId);
   const users = await loadProvisionableUsers();
   const previews: DeviceSyncPreview[] = [];
@@ -558,6 +561,7 @@ async function createSyncRun(values: typeof biometricSyncRuns.$inferInsert, tx: 
 }
 
 export async function applyEnrollmentSync(input: { deviceId?: string | null; allowRemovals: boolean; triggeredBy: string | null }) {
+  await linkEnrollmentUsersToEmployees();
   const devices = await getSyncDevices(input.deviceId);
   const users = await loadProvisionableUsers();
   const usersByPin = new Map(users.map((user) => [user.pin, user]));
@@ -666,6 +670,7 @@ export async function retryFailedDeviceCommands(deviceId: string) {
 // ---------------------------------------------------------------------------
 
 async function getEmployeeEnrollmentUser(employeeId: string, tx: DbClient = db) {
+  await linkEnrollmentUsersToEmployees(tx);
   const employee = await tx.query.employees.findFirst({
     where: eq(employees.id, employeeId),
     columns: { id: true, biometricId: true, employeeCode: true, isActive: true, employmentStatus: true, sourceEmploymentStatus: true },
@@ -789,6 +794,7 @@ function emptyCounts(): CommandCounts {
 }
 
 export async function getEnrollmentOverview() {
+  await linkEnrollmentUsersToEmployees();
   const devices: Device[] = await db.query.biometricDevices.findMany({
     where: eq(biometricDevices.isActive, true),
     orderBy: (table, { asc }) => [asc(table.deviceName)],

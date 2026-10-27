@@ -203,6 +203,8 @@ export const shifts = pgTable('shifts', {
   gracePeriodMinutes: integer('grace_period_minutes').notNull().default(0),
   lateAfterMinutes: integer('late_after_minutes').notNull().default(0),
   earlyOutBeforeMinutes: integer('early_out_before_minutes').notNull().default(0),
+  // Punches of the same direction closer together than this count once.
+  duplicatePunchWindowMinutes: integer('duplicate_punch_window_minutes').notNull().default(2),
   isOvernight: boolean('is_overnight').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
@@ -217,6 +219,10 @@ export const shiftSegments = pgTable('shift_segments', {
   startTime: time('start_time').notNull(),
   endTime: time('end_time').notNull(),
   sortOrder: integer('sort_order').notNull().default(1),
+  // Punch windows for this session; NULL falls back to the shift's grace / late after / early-out.
+  checkInOpensBeforeMinutes: integer('check_in_opens_before_minutes'),
+  lateAfterMinutes: integer('late_after_minutes'),
+  checkOutClosesAfterMinutes: integer('check_out_closes_after_minutes'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, precision: 6 }).notNull().defaultNow(),

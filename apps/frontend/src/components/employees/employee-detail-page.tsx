@@ -25,6 +25,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { DepartmentCombobox } from '@/components/employees/department-combobox';
+import { EmployeeDepartment } from '@/components/employees/employee-department';
 import {
   Select,
   SelectContent,
@@ -381,7 +382,7 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
             <Field label={t('email')} editing={isEditing} value={employee.email}>
               <Input type="email" value={draft?.email ?? ''} onChange={(event) => patchDraft({ email: event.target.value })} />
             </Field>
-            <Field label={t('department')} editing={isEditing} value={departmentName}>
+            <Field label={t('department')} editing={isEditing} value={<EmployeeDepartment employeeId={employee.id} department={departmentName} showPeriod />}>
               <Select value={draft?.departmentId} onValueChange={(departmentId) => patchDraft({ departmentId })}>
                 <SelectTrigger>
                   <SelectValue placeholder={t('selectDepartment')} />
@@ -614,7 +615,7 @@ function Field({
   children,
 }: {
   label: string;
-  value?: string | null;
+  value?: ReactNode;
   editing?: boolean;
   children: ReactNode;
 }) {
@@ -628,7 +629,7 @@ function Field({
   );
 }
 
-function Info({ label, value }: { label: string; value?: string | null }) {
+function Info({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div>
       <p className="text-xs text-muted-foreground">{label}</p>

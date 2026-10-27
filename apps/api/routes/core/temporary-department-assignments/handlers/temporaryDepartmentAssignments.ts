@@ -7,6 +7,7 @@ import {
   createTemporaryDepartmentAssignment,
   deactivateTemporaryDepartmentAssignment,
   getTemporaryAssignmentEligibleEmployees,
+  getTemporaryAssignmentSpans,
   getTemporaryDepartmentAssignments,
   updateTemporaryDepartmentAssignment,
 } from '../../../../db/orm/core/manageTemporaryDepartmentAssignments';
@@ -16,6 +17,15 @@ import { getUserPermissionNames, getUserRoleNames } from '../../../../db/orm/rba
 import { clearSessionCookie, getSessionCookie } from '../../../auth/handlers/helpers';
 import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors';
 import { formatEmployee, formatTemporaryDepartmentAssignment } from '../../helpers/formatters';
+
+/** Active assignments in their minimal form, so every screen can show where an employee is temporarily placed. */
+export async function getTemporaryAssignmentSpansHandler(c: Context) {
+  try {
+    return c.json({ success: true, temporaryAssignments: await getTemporaryAssignmentSpans() });
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to fetch temporary assignments');
+  }
+}
 
 export async function getTemporaryAssignmentEligibleEmployeesHandler(c: Context) {
   try {

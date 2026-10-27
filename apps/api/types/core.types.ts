@@ -213,6 +213,7 @@ export type CreateShiftInput = {
   gracePeriodMinutes?: number;
   lateAfterMinutes?: number;
   earlyOutBeforeMinutes?: number;
+  duplicatePunchWindowMinutes?: number;
   isOvernight?: boolean;
   isActive?: boolean;
 };
@@ -226,6 +227,9 @@ export type CreateShiftSegmentInput = {
   startTime: string;
   endTime: string;
   sortOrder?: number;
+  checkInOpensBeforeMinutes?: number | null;
+  lateAfterMinutes?: number | null;
+  checkOutClosesAfterMinutes?: number | null;
   isActive?: boolean;
 };
 

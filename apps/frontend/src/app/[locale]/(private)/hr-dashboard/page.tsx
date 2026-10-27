@@ -28,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CalendarDateField } from "@/components/calendar/calendar-date-field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { EmployeeDepartment } from "@/components/employees/employee-department"
 import { DashboardAttendanceStrip, DashboardDataQualityNotice, DashboardDepartmentFilter, addisTodayInput } from "@/components/dashboard/dashboard-shared"
 import { useHrDashboardSummary } from "@/data/hooks/core.hooks"
 import type {
@@ -357,7 +358,7 @@ function PeopleStatus({ dashboard }: { dashboard: HrDashboardSummary }) {
           {rows.map((row) => (
             <TableRow key={`${row.status}-${row.employeeId}`}>
               <TableCell className="min-w-52 font-medium">{employeeName(row.employee) || "-"}</TableCell>
-              <TableCell className="min-w-44 text-muted-foreground">{formatDepartment(row.employee)}</TableCell>
+              <TableCell className="min-w-44 text-muted-foreground"><EmployeeDepartment employeeId={row.employeeId} department={formatDepartment(row.employee)} date={dashboard.date} /></TableCell>
               <TableCell className="min-w-44">
                 <Badge variant={row.status === "ABSENT" ? "destructive" : "secondary"}>{shared(`status_${row.status}`)}</Badge>
                 {row.minutes ? <span className="ml-2 text-xs text-muted-foreground">{shared("minutesShort", { value: row.minutes })}</span> : null}

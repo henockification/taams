@@ -13,6 +13,7 @@ import {
   createTemporaryDepartmentAssignmentHandler,
   deactivateTemporaryDepartmentAssignmentHandler,
   getTemporaryAssignmentEligibleEmployeesHandler,
+  getTemporaryAssignmentSpansHandler,
   getTemporaryDepartmentAssignmentsHandler,
   updateTemporaryDepartmentAssignmentHandler,
 } from './handlers/temporaryDepartmentAssignments';
@@ -126,6 +127,8 @@ export const deactivateTemporaryDepartmentAssignmentRoute = createRoute({
 });
 
 temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments', requirePermissionOrRole(['temporary-assignment:read'], TEMPORARY_ASSIGNMENT_ROLES), getTemporaryDepartmentAssignmentsHandler);
+// Any signed-in user: only who, when and which departments (no reasons), for showing assignments everywhere.
+temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments/spans', getTemporaryAssignmentSpansHandler);
 temporaryDepartmentAssignmentsApp.get('/temporary-department-assignments/eligible-employees', requirePermissionOrRole(['temporary-assignment:read'], TEMPORARY_ASSIGNMENT_ROLES), getTemporaryAssignmentEligibleEmployeesHandler);
 temporaryDepartmentAssignmentsApp.post('/temporary-department-assignments', requirePermissionOrRole(['temporary-assignment:add'], TEMPORARY_ASSIGNMENT_ROLES), createTemporaryDepartmentAssignmentHandler);
 temporaryDepartmentAssignmentsApp.put('/temporary-department-assignments/:id', requirePermissionOrRole(['temporary-assignment:edit'], TEMPORARY_ASSIGNMENT_ROLES), updateTemporaryDepartmentAssignmentHandler);

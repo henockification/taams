@@ -386,6 +386,13 @@
       "when": 1791504000000,
       "tag": "0058_executive_no_hr_dashboard",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1791590400000,
+      "tag": "0059_session_punch_windows",
+      "breakpoints": true
     }
   ]
 }

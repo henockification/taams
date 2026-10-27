@@ -5,14 +5,40 @@ export type AttendanceScheduleSegment = {
   endTime: string;
   sortOrder?: number | null;
   isActive?: boolean | null;
+  /** Session punch windows in minutes; null/undefined falls back to the shift-level tolerances. */
+  checkInOpensBeforeMinutes?: number | null;
+  lateAfterMinutes?: number | null;
+  checkOutClosesAfterMinutes?: number | null;
 };
 
 export type AttendanceScheduleShift = {
   gracePeriodMinutes?: number | null;
   lateAfterMinutes?: number | null;
   earlyOutBeforeMinutes?: number | null;
+  duplicatePunchWindowMinutes?: number | null;
   isOvernight?: boolean | null;
   segments?: AttendanceScheduleSegment[];
+};
+
+/** One session's punch windows on a given day, as UTC instants. */
+export type AttendanceSessionWindow = {
+  segment: AttendanceScheduleSegment;
+  /** Scheduled start and end of the session. */
+  start: Date;
+  end: Date;
+  /** Earliest check-in that counts for this session (e.g. 08:00 for an 08:30 start). */
+  checkInOpen: Date;
+  /** A check-in after this is late; late minutes are still counted from `start`. */
+  lateThreshold: Date;
+  /** Latest on-time check-out (e.g. 12:45 for a 12:30 end); later is a late check-out. */
+  checkOutClose: Date;
+  /** Punches in [spanStart, spanEnd) belong to this session. */
+  spanStart: Date;
+  spanEnd: Date;
+  /** Undeclared punches before this are check-ins, after it check-outs. */
+  midpoint: Date;
+  /** After this the session's missing punches are final (missing / absent). */
+  completionAt: Date;
 };
 
 export type AttendancePunchLike = { id: string; punchTime: Date | string; punchType?: string | null };
@@ -58,6 +84,7 @@ export type AttendanceScheduleEvaluation = {
 export const ATTENDANCE_CALCULATION_VERSION = 2;
 
 const MINUTE = 60_000;
+const DEFAULT_DUPLICATE_PUNCH_WINDOW_MINUTES = 2;
 // An undeclared punch this long after the check-in means the employee left
 // (early checkout); anything sooner is treated as an accidental duplicate.
 const EARLY_CHECKOUT_GAP = 60 * MINUTE;
@@ -95,13 +122,19 @@ function punchDirection(punchType?: string | null): 'IN' | 'OUT' | null {
   return null;
 }
 
-function deduplicatePunches(punches: AttendancePunchLike[]) {
+/** Minutes within which repeated punches of the same direction count once (shift setting, default 2). */
+export function duplicatePunchWindowMinutes(shift?: AttendanceScheduleShift | null) {
+  const value = Number(shift?.duplicatePunchWindowMinutes ?? DEFAULT_DUPLICATE_PUNCH_WINDOW_MINUTES);
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_DUPLICATE_PUNCH_WINDOW_MINUTES;
+}
+
+function deduplicatePunches(punches: AttendancePunchLike[], windowMinutes = DEFAULT_DUPLICATE_PUNCH_WINDOW_MINUTES) {
   const sorted = [...punches].sort((a, b) => asDate(a.punchTime).getTime() - asDate(b.punchTime).getTime());
   return sorted.filter((punch, index) => {
     if (index === 0) return true;
     const previous = sorted[index - 1];
     const elapsed = asDate(punch.punchTime).getTime() - asDate(previous.punchTime).getTime();
-    if (elapsed > 2 * MINUTE) return true;
+    if (elapsed > windowMinutes * MINUTE) return true;
     const direction = punchDirection(punch.punchType);
     const previousDirection = punchDirection(previous.punchType);
     return direction !== previousDirection || (direction === null && punch.punchType !== previous.punchType);
@@ -139,17 +172,95 @@ function sessionPunches(
 }
 
 /** Evaluate every configured schedule segment as an independent attendance session. */
+/**
+ * Punch windows for every active session of a shift on a day. Each session may set its own
+ * windows; when it does not, the shift-level tolerances apply as before:
+ * - check-in opens: `gracePeriodMinutes` before the first session (08:00-08:30), and
+ *   `earlyOutBeforeMinutes` before later sessions (early return from lunch, 13:15-13:30);
+ * - late after: `lateAfterMinutes` after the session start;
+ * - check-out closes: `earlyOutBeforeMinutes` after each session end (12:30-12:45, 17:30-17:45).
+ * Punches between two sessions belong to the earlier session's check-out or the later session's
+ * check-in, split halfway between the two windows.
+ */
+export function resolveSessionWindows(attendanceDate: string, shift: AttendanceScheduleShift): AttendanceSessionWindow[] {
+  const segments = [...(shift.segments ?? [])]
+    .filter((segment) => segment.isActive !== false)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  if (segments.length === 0) return [];
+
+  const scheduled: Array<{ segment: AttendanceScheduleSegment; start: Date; end: Date }> = [];
+  for (const segment of segments) {
+    let start = addisDateAtTime(attendanceDate, segment.startTime);
+    if (scheduled.length > 0 && start.getTime() < scheduled.at(-1)!.end.getTime()) start = new Date(start.getTime() + DAY);
+    let end = addisDateAtTime(attendanceDate, segment.endTime);
+    while (end.getTime() <= start.getTime()) end = new Date(end.getTime() + DAY);
+    scheduled.push({ segment, start, end });
+  }
+
+  const minutes = (value: number | null | undefined, fallback: number) => Math.max(0, Number(value ?? fallback) || 0);
+  const grace = minutes(shift.gracePeriodMinutes, 0);
+  const lateAfter = minutes(shift.lateAfterMinutes, 0);
+  const departureTolerance = minutes(shift.earlyOutBeforeMinutes, 0);
+  const checkInOpen = scheduled.map(({ segment, start }, index) => new Date(
+    start.getTime() - minutes(segment.checkInOpensBeforeMinutes, index === 0 ? grace : departureTolerance) * MINUTE,
+  ));
+  const checkOutClose = scheduled.map(({ segment, end }) => new Date(
+    end.getTime() + minutes(segment.checkOutClosesAfterMinutes, departureTolerance) * MINUTE,
+  ));
+  const boundaries = scheduled.slice(0, -1).map((_, index) => {
+    const close = checkOutClose[index].getTime();
+    const open = checkInOpen[index + 1].getTime();
+    const [from, to] = close <= open
+      ? [close, open]
+      : [scheduled[index].end.getTime(), scheduled[index + 1].start.getTime()];
+    return new Date(from + (to - from) / 2);
+  });
+  const offDuty = DAY - (scheduled.at(-1)!.end.getTime() - scheduled[0].start.getTime());
+  const firstSpanStart = offDuty > 0
+    ? new Date(Math.min(checkInOpen[0].getTime(), scheduled[0].start.getTime() - offDuty / 2))
+    : checkInOpen[0];
+  const lastIndex = scheduled.length - 1;
+  const lastSpanEnd = offDuty > 0
+    ? new Date(Math.max(checkOutClose[lastIndex].getTime(), scheduled[lastIndex].end.getTime() + offDuty / 2))
+    : new Date(scheduled[lastIndex].end.getTime() + DAY);
+
+  return scheduled.map(({ segment, start, end }, index) => {
+    const hasNext = index < lastIndex;
+    const spanEnd = hasNext ? boundaries[index] : lastSpanEnd;
+    return {
+      segment,
+      start,
+      end,
+      checkInOpen: checkInOpen[index],
+      lateThreshold: new Date(start.getTime() + minutes(segment.lateAfterMinutes, lateAfter) * MINUTE),
+      checkOutClose: checkOutClose[index],
+      spanStart: index === 0 ? firstSpanStart : boundaries[index - 1],
+      spanEnd,
+      midpoint: new Date(start.getTime() + (end.getTime() - start.getTime()) / 2),
+      completionAt: hasNext ? spanEnd : checkOutClose[index],
+    };
+  });
+}
+
+/**
+ * When the first session sets its own check-in window, punches before it are ignored (e.g. a
+ * 07:40 punch when check-in opens at 08:00). Shifts still on the shared grace period keep counting them.
+ */
+export function earliestAcceptedPunchTime(windows: AttendanceSessionWindow[]) {
+  const first = windows[0];
+  return first && first.segment.checkInOpensBeforeMinutes != null ? first.checkInOpen : null;
+}
+
+/** Evaluate every configured schedule segment as an independent attendance session. */
 export function evaluateAttendancePunches(
   attendanceDate: string,
   punches: AttendancePunchLike[],
   shift?: AttendanceScheduleShift | null,
   options: { asOf?: Date } = {},
 ): AttendanceScheduleEvaluation {
-  const ordered = deduplicatePunches(punches);
-  const segments = [...(shift?.segments ?? [])]
-    .filter((segment) => segment.isActive !== false)
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-  if (!shift || segments.length === 0) {
+  const ordered = deduplicatePunches(punches, duplicatePunchWindowMinutes(shift));
+  const windows = shift ? resolveSessionWindows(attendanceDate, shift) : [];
+  if (windows.length === 0) {
     return {
       checkInAt: ordered[0] ? asDate(ordered[0].punchTime) : null,
       checkOutAt: ordered.length > 1 ? asDate(ordered[ordered.length - 1].punchTime) : null,
@@ -166,58 +277,20 @@ export function evaluateAttendancePunches(
     };
   }
 
-  const scheduled: Array<{ segment: AttendanceScheduleSegment; start: Date; end: Date }> = [];
-  for (const segment of segments) {
-    let start = addisDateAtTime(attendanceDate, segment.startTime);
-    if (scheduled.length > 0 && start.getTime() < scheduled.at(-1)!.end.getTime()) start = new Date(start.getTime() + DAY);
-    let end = addisDateAtTime(attendanceDate, segment.endTime);
-    while (end.getTime() <= start.getTime()) end = new Date(end.getTime() + DAY);
-    scheduled.push({ segment, start, end });
-  }
-  // Shift tolerances:
-  // - gracePeriodMinutes: approved early check-in before the first session (08:00-08:30).
-  // - lateAfterMinutes: minutes after a session start before a check-in counts as late.
-  // - earlyOutBeforeMinutes: approved checkout window after each session end
-  //   (12:30-12:45, 17:30-17:45) and approved early return before later sessions (13:15-13:30).
-  // A checkout before the session end is early; a check-in after start + lateAfter is late.
-  const grace = Math.max(0, Number(shift.gracePeriodMinutes ?? 0));
-  const lateAfter = Math.max(0, Number(shift.lateAfterMinutes ?? 0));
-  const departureTolerance = Math.max(0, Number(shift.earlyOutBeforeMinutes ?? 0));
   const asOf = options.asOf ?? new Date();
-  const approvedCheckInOpen = (index: number) => new Date(
-    scheduled[index].start.getTime() - (index === 0 ? grace : departureTolerance) * MINUTE,
-  );
-  const approvedCheckOutClose = (index: number) => new Date(scheduled[index].end.getTime() + departureTolerance * MINUTE);
-  // Punches between two sessions belong to the earlier session's checkout or the
-  // later session's check-in, split halfway between the two approved windows.
-  const boundaries = scheduled.slice(0, -1).map((_, index) => {
-    const checkOutClose = approvedCheckOutClose(index).getTime();
-    const checkInOpen = approvedCheckInOpen(index + 1).getTime();
-    const [from, to] = checkOutClose <= checkInOpen
-      ? [checkOutClose, checkInOpen]
-      : [scheduled[index].end.getTime(), scheduled[index + 1].start.getTime()];
-    return new Date(from + (to - from) / 2);
-  });
-  const offDuty = DAY - (scheduled.at(-1)!.end.getTime() - scheduled[0].start.getTime());
-  const firstSpanStart = offDuty > 0
-    ? new Date(Math.min(approvedCheckInOpen(0).getTime(), scheduled[0].start.getTime() - offDuty / 2))
-    : approvedCheckInOpen(0);
-  const lastSpanEnd = offDuty > 0
-    ? new Date(Math.max(approvedCheckOutClose(scheduled.length - 1).getTime(), scheduled.at(-1)!.end.getTime() + offDuty / 2))
-    : new Date(scheduled.at(-1)!.end.getTime() + DAY);
+  const earliestAccepted = earliestAcceptedPunchTime(windows);
+  const accepted = earliestAccepted
+    ? ordered.filter((punch) => asDate(punch.punchTime).getTime() >= earliestAccepted.getTime())
+    : ordered;
 
-  const sessions: AttendanceSessionEvaluation[] = scheduled.map(({ segment, start, end }, index) => {
-    const next = scheduled[index + 1];
-    const spanStart = index === 0 ? firstSpanStart : boundaries[index - 1];
-    const spanEnd = next ? boundaries[index] : lastSpanEnd;
-    const midpoint = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
-    const completionAt = next ? spanEnd : approvedCheckOutClose(index);
-    const { checkIn: checkInPunch, checkOut: checkOutPunch } = sessionPunches(ordered, spanStart, spanEnd, midpoint);
+  const sessions: AttendanceSessionEvaluation[] = windows.map((window, index) => {
+    const { segment, start, end, spanStart, spanEnd, midpoint, completionAt } = window;
+    const { checkIn: checkInPunch, checkOut: checkOutPunch } = sessionPunches(accepted, spanStart, spanEnd, midpoint);
     const checkInAt = checkInPunch ? asDate(checkInPunch.punchTime) : null;
     const checkOutAt = checkOutPunch ? asDate(checkOutPunch.punchTime) : null;
     const completed = asOf.getTime() >= completionAt.getTime();
-    const lateThreshold = start.getTime() + lateAfter * MINUTE;
-    const approvedCheckoutEnd = approvedCheckOutClose(index).getTime();
+    const lateThreshold = window.lateThreshold.getTime();
+    const approvedCheckoutEnd = window.checkOutClose.getTime();
     const lateMinutes = checkInAt && checkInAt.getTime() > lateThreshold
       ? Math.max(0, Math.floor((checkInAt.getTime() - start.getTime()) / MINUTE))
       : 0;
@@ -254,8 +327,8 @@ export function evaluateAttendancePunches(
 
   const firstCheckIn = sessions.find((session) => session.checkInAt)?.checkInAt ?? null;
   const lastCheckOut = [...sessions].reverse().find((session) => session.checkOutAt)?.checkOutAt ?? null;
-  const scheduledStartAt = scheduled[0].start;
-  const scheduledEndAt = scheduled.at(-1)!.end;
+  const scheduledStartAt = windows[0].start;
+  const scheduledEndAt = windows.at(-1)!.end;
   const lateMinutes = sessions[0]?.lateMinutes ?? 0;
   const lateReturnMinutes = sessions.slice(1).reduce((total, session) => total + session.lateMinutes, 0);
   const earlyBreakMinutes = sessions.slice(0, -1).reduce((total, session) => total + (session.checkOutStatus === 'EARLY' ? session.earlyCheckoutMinutes : 0), 0);

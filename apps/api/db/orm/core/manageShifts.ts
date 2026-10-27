@@ -17,6 +17,26 @@ import { writeAuditEvent } from '../../../lib/audit';
 
 type DbClient = typeof db | any;
 
+const SHIFT_TIMING_FIELDS = ['gracePeriodMinutes', 'lateAfterMinutes', 'earlyOutBeforeMinutes', 'duplicatePunchWindowMinutes', 'isOvernight'] as const;
+const SEGMENT_TIMING_FIELDS = ['shiftId', 'startTime', 'endTime', 'sortOrder', 'isActive', 'checkInOpensBeforeMinutes', 'lateAfterMinutes', 'checkOutClosesAfterMinutes'] as const;
+
+/** True when a save changes a value attendance is calculated from (times compare as HH:MM). */
+function timingChanged(before: Record<string, unknown> | undefined, after: Record<string, unknown>, fields: readonly string[]) {
+  if (!before) return true;
+  const normalize = (value: unknown) => (typeof value === 'string' && /^\d{2}:\d{2}/.test(value) ? value.slice(0, 5) : value ?? null);
+  return fields.some((field) => field in after && normalize(after[field]) !== normalize(before[field]));
+}
+
+/**
+ * Days not yet approved are re-evaluated with the new rules in the background, so saving stays
+ * fast even with many open days; approved days keep their result.
+ */
+function recalculateOpenAttendanceInBackground(shiftId: string) {
+  import('./manageAttendanceApprovals')
+    .then(({ recalculateOpenAttendanceForShift }) => recalculateOpenAttendanceForShift(shiftId))
+    .catch((error) => console.error('Failed to recalculate attendance after a shift change', { shiftId, error }));
+}
+
 export async function createShift(input: CreateShiftInput) {
   const [shift] = await db
     .insert(shifts)
@@ -51,6 +71,7 @@ export async function updateShift(id: string, input: UpdateShiftInput) {
     return getShiftById(id);
   }
 
+  const before = await getShiftById(id);
   const [shift] = await db
     .update(shifts)
     .set({ ...updateData, updatedAt: new Date() })
@@ -63,6 +84,7 @@ export async function updateShift(id: string, input: UpdateShiftInput) {
     resourceId: shift.id,
     resourceLabel: shift.nameEn,
   });
+  if (timingChanged(before, updateData, SHIFT_TIMING_FIELDS)) recalculateOpenAttendanceInBackground(shift.id);
   return shift;
 }
 
@@ -74,6 +96,7 @@ export async function createShiftSegment(input: CreateShiftSegmentInput) {
     .values(normalizeShiftSegmentInput(input) as any)
     .returning();
 
+  recalculateOpenAttendanceInBackground(shiftSegment.shiftId);
   return shiftSegment;
 }
 
@@ -102,12 +125,18 @@ export async function updateShiftSegment(id: string, input: UpdateShiftSegmentIn
     return getShiftSegmentById(id);
   }
 
+  const before = await getShiftSegmentById(id);
   const [shiftSegment] = await db
     .update(shiftSegments)
     .set({ ...updateData, updatedAt: new Date() })
     .where(eq(shiftSegments.id, id))
     .returning();
 
+  if (timingChanged(before, updateData, SEGMENT_TIMING_FIELDS)) {
+    recalculateOpenAttendanceInBackground(shiftSegment.shiftId);
+    // A segment moved to another shift changes that shift's sessions too.
+    if (before && before.shiftId !== shiftSegment.shiftId) recalculateOpenAttendanceInBackground(before.shiftId);
+  }
   return shiftSegment;
 }
 
@@ -190,6 +219,7 @@ function normalizeShiftInput(input: Partial<CreateShiftInput>) {
     gracePeriodMinutes: input.gracePeriodMinutes,
     lateAfterMinutes: input.lateAfterMinutes,
     earlyOutBeforeMinutes: input.earlyOutBeforeMinutes,
+    duplicatePunchWindowMinutes: input.duplicatePunchWindowMinutes,
     isOvernight: input.isOvernight,
     isActive: input.isActive,
   });
@@ -203,6 +233,9 @@ function normalizeShiftSegmentInput(input: Partial<CreateShiftSegmentInput>) {
     startTime: input.startTime,
     endTime: input.endTime,
     sortOrder: input.sortOrder,
+    checkInOpensBeforeMinutes: input.checkInOpensBeforeMinutes,
+    lateAfterMinutes: input.lateAfterMinutes,
+    checkOutClosesAfterMinutes: input.checkOutClosesAfterMinutes,
     isActive: input.isActive,
   });
 }

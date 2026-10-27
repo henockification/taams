@@ -110,6 +110,8 @@ export const coreQueryKeys = {
   eligibleSupervisorDelegates: () => [...coreQueryKeys.supervisorDelegations(), 'eligible-employees'] as const,
   temporaryDepartmentAssignments: () => [...coreQueryKeys.all, 'temporary-department-assignments'] as const,
   temporaryAssignmentEligibleEmployees: () => [...coreQueryKeys.temporaryDepartmentAssignments(), 'eligible-employees'] as const,
+  // Under the assignments key, so creating or changing an assignment refreshes it too.
+  temporaryAssignmentSpans: () => [...coreQueryKeys.temporaryDepartmentAssignments(), 'spans'] as const,
   employeeWorkSchedules: (id: string) => [...coreQueryKeys.employee(id), 'work-schedules'] as const,
   allEmployeeWorkSchedules: () => [...coreQueryKeys.all, 'employee-work-schedules'] as const,
   biometricDevices: () => [...coreQueryKeys.all, 'biometric-devices'] as const,
@@ -924,6 +926,15 @@ export function useTemporaryDepartmentAssignments() {
     queryKey: coreQueryKeys.temporaryDepartmentAssignments(),
     queryFn: () => coreApi.getTemporaryDepartmentAssignments(),
     staleTime: 30 * 1000,
+  });
+}
+
+/** Every active temporary assignment (who, when, which departments), shared by all screens. */
+export function useTemporaryAssignmentSpans() {
+  return useQuery({
+    queryKey: coreQueryKeys.temporaryAssignmentSpans(),
+    queryFn: () => coreApi.getTemporaryAssignmentSpans(),
+    staleTime: 5 * 60 * 1000,
   });
 }
 
