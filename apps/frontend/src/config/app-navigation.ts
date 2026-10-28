@@ -915,6 +915,11 @@ function hasHrSupervisorAccess(user: AuthzUser) {
   return hasUnrestrictedRole(user) || (hasHumanResourceRole(user) && hasExactSupervisorRole(user));
 }
 
+/** Mirrors POST /leave/direct: HR with the supervisor role (or unrestricted) who can authorize leave. */
+export function canRecordDirectLeave(user: AuthzUser) {
+  return hasHrSupervisorAccess(user) && userHasPermission(user, 'leave-authorizations:approve');
+}
+
 function hasTemporaryAssignmentAccess(user: AuthzUser) {
   const roles = user?.role?.map((role) => role.toLowerCase()) ?? [];
   return roles.some(

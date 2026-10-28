@@ -1098,6 +1098,14 @@ export type CreateLeaveRequestInput = {
   requestedBy?: string | null;
 };
 
+export type CreateDirectLeaveInput = {
+  employeeId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  reason?: string | null;
+};
+
 export type UpdateLeaveRequestInput = {
   leaveTypeId?: string;
   fiscalYearId?: string | null;

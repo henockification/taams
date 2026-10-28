@@ -26,6 +26,7 @@ import { syncApprovedOvertimeForDate } from './manageOvertimeRequests';
 import { createAttendancePunch } from './manageBiometricDevices';
 import { ATTENDANCE_CALCULATION_VERSION, addisDayRange, addisToday, evaluateAttendancePunches } from '../../../lib/attendance/schedule-evaluator';
 import { rosterCycleIndex } from '../../../lib/attendance/roster';
+import { resolveDayLeaveValue } from '../../../lib/attendance/leave-days';
 import {
   getVisibleEmployeeIdsByDateForSupervisorActor,
   getVisibleEmployeeIdsForSupervisorActor,
@@ -162,6 +163,10 @@ export async function generateAttendanceDailyRecords(
   const punchesByEmployee = new Map<string, typeof punches>();
   const leaveDaysByEmployee = new Map<string, number>();
   const unpaidLeaveDaysByEmployee = new Map<string, number>();
+  // Non-annual leave covers whole duty days; its value depends on the employee's schedule
+  // for the day, so it is resolved per row (see resolveDayLeaveValue).
+  const wholeDayLeaveEmployees = new Set<string>();
+  const wholeDayUnpaidLeaveEmployees = new Set<string>();
   const approvedOvertimeMinutesByEmployee = new Map<string, number>();
 
   for (const leaveDay of externalLeaveDays) {
@@ -178,8 +183,14 @@ export async function generateAttendanceDailyRecords(
   }
 
   for (const leave of approvedLeaves) {
+    const isUnpaid = isUnpaidLeaveType(leave.leaveType);
+    if (!isAnnualLeaveType(leave.leaveType)) {
+      (isUnpaid ? wholeDayUnpaidLeaveEmployees : wholeDayLeaveEmployees).add(leave.employeeId);
+      continue;
+    }
+    // Annual leave: the approved value of this date (1.00 full day, 0.50 half day).
     const leaveDays = getLeaveDaysForDate(leave, attendanceDate);
-    const target = isUnpaidLeaveType(leave.leaveType) ? unpaidLeaveDaysByEmployee : leaveDaysByEmployee;
+    const target = isUnpaid ? unpaidLeaveDaysByEmployee : leaveDaysByEmployee;
     target.set(leave.employeeId, Math.min(1, (target.get(leave.employeeId) ?? 0) + leaveDays));
   }
 
@@ -210,8 +221,18 @@ export async function generateAttendanceDailyRecords(
     const lastPunch = employeePunches[employeePunches.length - 1] ?? null;
     const checkOutAt = evaluation.checkOutAt;
     const attendanceDays = evaluation.attendanceDays;
-    const leaveDays = leaveDaysByEmployee.get(employee.id) ?? 0;
-    const unpaidLeaveDays = unpaidLeaveDaysByEmployee.get(employee.id) ?? 0;
+    const leaveDays = resolveDayLeaveValue({
+      dateLeaveDays: leaveDaysByEmployee.get(employee.id) ?? 0,
+      wholeDayLeave: wholeDayLeaveEmployees.has(employee.id),
+      isNoDutyDay,
+      holidayDays,
+    });
+    const unpaidLeaveDays = resolveDayLeaveValue({
+      dateLeaveDays: unpaidLeaveDaysByEmployee.get(employee.id) ?? 0,
+      wholeDayLeave: wholeDayUnpaidLeaveEmployees.has(employee.id),
+      isNoDutyDay,
+      holidayDays,
+    });
     const payroll = resolvePayrollDays({
       attendanceDays,
       leaveDays,
@@ -492,17 +513,34 @@ export async function getMyAttendanceDailyRecords(input: {
   return attachEffectiveDepartmentContext(records, clipDateToToday(range.dateTo));
 }
 
-export async function refreshAttendanceForAuthorizedLeave(request: any) {
-  const records = await db.query.attendanceDailyRecords.findMany({
-    where: and(
+/**
+ * Applies an authorized leave (or an authorized interruption) to the employee's attendance
+ * records that already exist in the leave range, including records the supervisor has
+ * already approved, so the days stop counting as absent. Only this employee is
+ * recalculated and their record statuses are kept. Never touched:
+ * - HR-approved (payroll-ready) records: authorization refuses those dates anyway;
+ * - records with a manual payroll adjustment, whose typed-in figures must not be overwritten.
+ * Dates without a record yet pick the leave up when they are generated.
+ */
+export async function refreshAttendanceForAuthorizedLeave(request: { employeeId: string; startDate: string; endDate: string }) {
+  const records = await db
+    .select({ attendanceDate: attendanceDailyRecords.attendanceDate })
+    .from(attendanceDailyRecords)
+    .where(and(
       eq(attendanceDailyRecords.employeeId, request.employeeId),
-      gte(attendanceDailyRecords.attendanceDate, request.startDate),
-      lte(attendanceDailyRecords.attendanceDate, request.endDate),
+      gte(attendanceDailyRecords.attendanceDate, String(request.startDate).slice(0, 10)),
+      lte(attendanceDailyRecords.attendanceDate, String(request.endDate).slice(0, 10)),
       ne(attendanceDailyRecords.status, 'HR_APPROVED'),
-    ),
-    columns: { attendanceDate: true },
-  });
-  for (const record of records) await generateAttendanceDailyRecords(record.attendanceDate);
+      sql`NOT EXISTS (SELECT 1 FROM "attendance_daily_record_adjustments" a WHERE a."attendance_daily_record_id" = ${attendanceDailyRecords.id})`,
+    ))
+    .orderBy(asc(attendanceDailyRecords.attendanceDate));
+  for (const record of records) {
+    await generateAttendanceDailyRecords(String(record.attendanceDate), {
+      onlyEmployeeIds: [request.employeeId],
+      recalculateEmployeeIds: [request.employeeId],
+    });
+  }
+  return { recalculatedRecords: records.length };
 }
 
 export async function getHrAttendanceDailyRecords(

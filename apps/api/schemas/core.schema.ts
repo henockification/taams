@@ -1235,6 +1235,14 @@ export const CreateLeaveRequestRequestSchema = z.object({
   requestedBy: z.string().min(1).nullable().optional(),
 });
 
+export const CreateDirectLeaveRequestSchema = z.object({
+  employeeId: UuidSchema,
+  leaveTypeId: UuidSchema,
+  startDate: RequiredDateSchema,
+  endDate: RequiredDateSchema,
+  reason: z.string().max(1000).nullable().optional(),
+});
+
 export const UpdateLeaveRequestRequestSchema = z.object({
   leaveTypeId: UuidSchema.optional(),
   fiscalYearId: UuidSchema.nullable().optional(),

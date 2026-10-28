@@ -1,13 +1,16 @@
 'use client';
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
-import { FileSpreadsheet, Plus } from 'lucide-react';
+import { CalendarCheck, FileSpreadsheet, Plus } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EmployeeDepartment, useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
+import { DirectLeaveDialog } from '@/components/leave/direct-leave-dialog';
+import { canRecordDirectLeave } from '@/config/app-navigation';
+import { useSession } from '@/lib/auth-client';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -74,6 +77,12 @@ export function ImportedEmployeesPage({
   const [departmentFilter, setDepartmentFilter] = useState(allDepartmentsValue);
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
+  const [directLeaveTarget, setDirectLeaveTarget] = useState<Employee | null>(null);
+  const session = useSession();
+  const canMarkOnLeave = canRecordDirectLeave(session.data?.user);
+  const gridColumns = canMarkOnLeave
+    ? 'grid-cols-[260px_130px_220px_220px_100px_180px_150px]'
+    : 'grid-cols-[260px_130px_220px_220px_100px_180px]';
 
   const directoryEmployees = useMemo(() => (
     (employeesResponse?.employees ?? []).filter((employee) => employee.employmentType === employmentType)
@@ -214,13 +223,14 @@ export function ImportedEmployeesPage({
         <div className="space-y-3">
           <div className="overflow-x-auto rounded-md border border-border">
             <div className="min-w-[820px]">
-              <div className="grid grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground">
+              <div className={`grid ${gridColumns} gap-3 border-b border-border bg-muted/50 px-4 py-3 text-xs font-medium text-muted-foreground`}>
                 <span>{t('employee')}</span>
                 <span>{t('idNo')}</span>
                 <span>{t('department')}</span>
                 <span>{t('position')}</span>
                 <span>{t('gender')}</span>
                 <span>{t('status')}</span>
+                {canMarkOnLeave ? <span>{t('actions')}</span> : null}
               </div>
               {paginatedEmployees.map((employee) => {
                 const amharicName = [employee.firstNameAm, employee.middleNameAm, employee.lastNameAm]
@@ -242,7 +252,7 @@ export function ImportedEmployeesPage({
                         openEmployee(employee.id);
                       }
                     }}
-                    className="grid cursor-pointer grid-cols-[260px_130px_220px_220px_100px_180px] gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className={`grid cursor-pointer ${gridColumns} gap-3 border-b border-border px-4 py-4 text-sm outline-none transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`}
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{formatEmployeeName(employee, locale)}</p>
@@ -258,6 +268,23 @@ export function ImportedEmployeesPage({
                     </div>
                     <p className="truncate">{employee.gender ?? '-'}</p>
                     <EmploymentStatusBadge value={sourceStatus} />
+                    {canMarkOnLeave ? (
+                      <div className="flex items-center">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDirectLeaveTarget(employee);
+                          }}
+                          onKeyDown={(event) => event.stopPropagation()}
+                        >
+                          <CalendarCheck className="size-4" />
+                          {t('markOnLeave')}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
@@ -305,6 +332,13 @@ export function ImportedEmployeesPage({
         </div>
       )}
 
+      {canMarkOnLeave ? (
+        <DirectLeaveDialog
+          employee={directLeaveTarget}
+          open={Boolean(directLeaveTarget)}
+          onOpenChange={(open) => !open && setDirectLeaveTarget(null)}
+        />
+      ) : null}
     </div>
   );
 }

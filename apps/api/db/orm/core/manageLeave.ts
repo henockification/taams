@@ -22,6 +22,7 @@ import type {
   ChangeLeaveRequestStatusInput,
   CreateLeaveInterruptionInput,
   CreateLeaveFiscalYearInput,
+  CreateDirectLeaveInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
   UpdateLeaveFiscalYearInput,
@@ -37,6 +38,7 @@ import {
 } from './manageSupervisorDelegations';
 import { filterLeaveRequestsByView, type LeaveRequestView } from './leaveVisibility';
 import { assertContractLeaveEmployee } from '../../../lib/employees/leave-eligibility';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import { rosterCycleIndex } from '../../../lib/attendance/roster';
 import {
   diffChanges,
@@ -580,6 +582,128 @@ export async function createLeaveRequest(input: CreateLeaveRequestInput) {
 
     const created = await getLeaveRequestById(request.id, tx);
     await auditLeaveRequest(tx, 'LEAVE_REQUEST_SUBMITTED', created);
+    return created;
+  });
+}
+
+/**
+ * HR records leave on an employee's behalf (e.g. staff on field duty without TAAMS
+ * access). The request is stored already supervisor-approved and HR-authorized, so
+ * every "on leave" check (status AUTHORIZED) picks it up. Unlike self-service leave,
+ * permanent employees are allowed; annual leave still requires a contract employee.
+ */
+export async function createDirectLeave(input: CreateDirectLeaveInput & { actorUserId: string; scope: EmployeeVisibilityScope }) {
+  assertValidDate(input.startDate);
+  assertValidDate(input.endDate);
+  assertDateRange(input.startDate, input.endDate);
+  const currentDate = today();
+  if (input.endDate < currentDate) throw new Error('Leave end date cannot be in the past');
+
+  const employee = await getEmployeeById(input.employeeId, db, { allowPermanent: true });
+  if (!isWorkingEmployee(employee)) throw new Error('Leave can only be recorded for working employees');
+  await assertCanAccessEmployee(employee.id, input.scope);
+  const leaveType = await getLeaveTypeById(input.leaveTypeId);
+  if (!leaveType) throw new Error('Leave type not found');
+  if (!leaveType.isActive) throw new Error('Leave type is inactive');
+  await assertUserExists(input.actorUserId);
+  const reason = input.reason?.trim() || 'Recorded by HR (field duty)';
+  const now = new Date();
+  const finalState = {
+    status: 'AUTHORIZED',
+    requestedBy: input.actorUserId,
+    approvedBy: input.actorUserId,
+    approvedAt: now,
+    authorizedBy: input.actorUserId,
+    authorizedAt: now,
+  };
+
+  if (isAnnualLeaveType(leaveType)) {
+    if (employee.employmentType !== 'CONTRACT') throw new Error('Annual leave can only be recorded for contract employees');
+    const fiscalYear = await getActiveLeaveFiscalYear();
+    if (!fiscalYear) throw new Error('Active leave fiscal year is required');
+    await assertAnnualFiscalYearAllowed(employee, fiscalYear);
+    const calendar = await getLeaveWorkingCalendar(employee.id, input.startDate, input.endDate);
+    if (calendar.some((day) => day.status === 'NO_SCHEDULE')) throw new Error('Employee work schedule is required to calculate leave days');
+    const selections: AnnualLeaveDateSelection[] = calendar
+      .filter((day) => day.status === 'WORKING' || day.status === 'HALF_DAY_HOLIDAY')
+      .map((day) => ({ date: day.date, dayValue: day.maxDayValue }));
+    if (selections.length === 0) throw new Error('Leave request does not include any scheduled working days');
+    const dates = selections.map((selection) => selection.date);
+    // Past days are consumed now; today and later stay reserved until reconcileAnnualLeaveConsumption runs.
+    const usedDays = sumDaySelections(selections.filter((selection) => selection.date < currentDate));
+    const reservedDays = sumDaySelections(selections.filter((selection) => selection.date >= currentDate));
+    const requestedDays = usedDays + reservedDays;
+
+    return db.transaction(async (tx) => {
+      await lockEmployeeLeave(employee.id, tx);
+      await assertNoActiveLeaveOverlap(employee.id, { dates }, tx);
+      await assertNoPayrollReadyAttendanceDates(employee.id, dates, tx);
+      const balance = await getEmployeeFiscalYearBalance(employee.id, fiscalYear.id, tx);
+      if (!balance) throw new Error('Annual leave balance not found for this fiscal year');
+      if (numeric(balance.available) < requestedDays) throw new Error('Insufficient annual leave balance');
+
+      const [request] = await tx.insert(leaveRequests).values({
+        employeeId: employee.id,
+        leaveTypeId: leaveType.id,
+        fiscalYearId: fiscalYear.id,
+        startDate: dates[0],
+        endDate: dates[dates.length - 1],
+        requestedDays: fixed(requestedDays),
+        reason,
+        ...finalState,
+      } as any).returning();
+
+      const [updatedBalance] = await tx.update(leaveBalances).set({
+        available: sql`${leaveBalances.available} - ${requestedDays}`,
+        used: sql`${leaveBalances.used} + ${usedDays}`,
+        reserved: sql`${leaveBalances.reserved} + ${reservedDays}`,
+        updatedBy: input.actorUserId,
+        updatedAt: now,
+      } as any).where(and(eq(leaveBalances.id, balance.id), gte(leaveBalances.available, fixed(requestedDays)))).returning();
+      if (!updatedBalance) throw new Error('Insufficient annual leave balance');
+      if (usedDays > 0) await createBalanceTransaction(tx, updatedBalance, 'CONSUMPTION', usedDays, input.actorUserId, 'Annual leave recorded directly by HR', request.id);
+      if (reservedDays > 0) await createBalanceTransaction(tx, updatedBalance, 'RESERVATION', reservedDays, input.actorUserId, 'Annual leave recorded directly by HR', request.id);
+
+      await tx.insert(annualLeaveRequestDates).values(
+        selections.map((selection) => ({
+          leaveRequestId: request.id,
+          employeeId: employee.id,
+          leaveDate: selection.date,
+          requestedDayValue: fixed(selection.dayValue),
+          approvedDayValue: fixed(selection.dayValue),
+          status: 'APPROVED',
+          utilizationStatus: selection.date < currentDate ? 'CONSUMED' : 'SCHEDULED',
+        }))
+      );
+
+      const created = await getLeaveRequestById(request.id, tx);
+      await auditLeaveRequest(tx, 'LEAVE_REQUEST_DIRECT_AUTHORIZED', created, { metadata: { direct: true } });
+      return created;
+    });
+  }
+
+  const fiscalYear = await getActiveLeaveFiscalYear();
+  if (!fiscalYear) throw new Error('Active leave fiscal year is required');
+  const requestedDays = await calculateWorkingDays(employee.id, input.startDate, input.endDate);
+  assertWithinAllowedDays(leaveType, requestedDays);
+
+  return db.transaction(async (tx) => {
+    await lockEmployeeLeave(employee.id, tx);
+    await assertNoActiveLeaveOverlap(employee.id, { startDate: input.startDate, endDate: input.endDate }, tx);
+    await assertNoPayrollReadyAttendanceDates(employee.id, calendarDateRange(input.startDate, input.endDate), tx);
+    const [request] = await tx.insert(leaveRequests).values({
+      employeeId: employee.id,
+      leaveTypeId: leaveType.id,
+      fiscalYearId: fiscalYear.id,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      requestedDays: fixed(requestedDays),
+      reason,
+      ...finalState,
+    } as any).returning();
+
+    const created = await getLeaveRequestById(request.id, tx, { allowPermanent: true });
+    await auditLeaveRequest(tx, 'LEAVE_REQUEST_DIRECT_AUTHORIZED', created, { metadata: { direct: true } });
     return created;
   });
 }
@@ -1550,7 +1674,7 @@ async function getLeaveBalanceById(id: string, tx: DbClient = db) {
   });
 }
 
-async function getLeaveRequestById(id: string, tx: DbClient = db) {
+async function getLeaveRequestById(id: string, tx: DbClient = db, options: { allowPermanent?: boolean } = {}) {
   const request = await tx.query.leaveRequests.findFirst({
     where: eq(leaveRequests.id, id),
     with: {
@@ -1571,7 +1695,7 @@ async function getLeaveRequestById(id: string, tx: DbClient = db) {
       },
     },
   });
-  if (request) assertContractLeaveEmployee(request.employee);
+  if (request && !options.allowPermanent) assertContractLeaveEmployee(request.employee);
   return request;
 }
 
@@ -1593,9 +1717,13 @@ async function getEmployeeFiscalYearBalance(employeeId: string, fiscalYearId: st
   });
 }
 
-async function getEmployeeById(id: string, tx: DbClient = db) {
+async function getEmployeeById(id: string, tx: DbClient = db, options: { allowPermanent?: boolean } = {}) {
   const employee = await tx.query.employees.findFirst({ where: eq(employees.id, id) });
-  assertContractLeaveEmployee(employee);
+  if (options.allowPermanent) {
+    if (!employee) throw new Error('Employee not found');
+  } else {
+    assertContractLeaveEmployee(employee);
+  }
   return employee;
 }
 

@@ -11,6 +11,9 @@ const LEAVE_VALIDATION_PHRASES = [
   'has already been requested',
   'conflicts with another authorized leave request',
   'does not include any scheduled working days',
+  'is already payroll-ready',
+  'leave can only be recorded for',
+  'leave type is inactive',
 ];
 
 // Postgres unique violations reach us as "Failed query: ..." with the reason only in `cause`.

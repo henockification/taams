@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, type ReactNode, useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRightLeft, Pencil, Plus, UserPlus, UserRoundCog } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, CalendarCheck, Pencil, Plus, UserPlus, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,9 @@ import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import { EmployeeDepartment } from '@/components/employees/employee-department';
+import { DirectLeaveDialog } from '@/components/leave/direct-leave-dialog';
+import { canRecordDirectLeave } from '@/config/app-navigation';
+import { useSession } from '@/lib/auth-client';
 import {
   Select,
   SelectContent,
@@ -79,6 +82,9 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
   const convertToContract = useConvertEmployeeToContract();
   const router = useRouter();
   const [convertOpen, setConvertOpen] = useState(false);
+  const [directLeaveOpen, setDirectLeaveOpen] = useState(false);
+  const session = useSession();
+  const canMarkOnLeave = canRecordDirectLeave(session.data?.user);
   const [contractDepartmentId, setContractDepartmentId] = useState('');
   const [contractSupervisorId, setContractSupervisorId] = useState('');
   const { data: supervisorCandidatesResponse } = useSupervisorCandidates(convertOpen);
@@ -328,6 +334,12 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
                   >
                     <ArrowRightLeft className="size-4" />
                     {t('moveToContract')}
+                  </Button>
+                ) : null}
+                {canMarkOnLeave ? (
+                  <Button type="button" variant="outline" onClick={() => setDirectLeaveOpen(true)}>
+                    <CalendarCheck className="size-4" />
+                    {t('markOnLeave')}
                   </Button>
                 ) : null}
                 <Button type="button" variant="outline" onClick={startEditing}>
@@ -596,6 +608,10 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
           </form>
         </DialogContent>
       </Dialog>
+
+      {canMarkOnLeave ? (
+        <DirectLeaveDialog employee={employee} open={directLeaveOpen} onOpenChange={setDirectLeaveOpen} />
+      ) : null}
     </div>
   );
 }

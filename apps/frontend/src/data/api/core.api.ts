@@ -54,6 +54,7 @@ import type {
   CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
   CreateLeaveInterruptionInput,
+  CreateDirectLeaveInput,
   CreateLeaveRequestInput,
   CreateLeaveTypeInput,
   DepartmentResponse,
@@ -818,6 +819,11 @@ export const coreApi = {
   },
   createLeaveRequest: (input: CreateLeaveRequestInput) =>
     coreFetch<LeaveRequestResponse>('/leave/requests', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  createDirectLeave: (input: CreateDirectLeaveInput) =>
+    coreFetch<LeaveRequestResponse>('/leave/direct', {
       method: 'POST',
       body: JSON.stringify(input),
     }),

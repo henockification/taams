@@ -5,6 +5,7 @@ import {
   BulkUpsertLeaveBalancesRequestSchema,
   AuthorizeLeaveRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
+  CreateDirectLeaveRequestSchema,
   CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
   CreateLeaveRequestRequestSchema,
@@ -42,11 +43,12 @@ import {
   setActiveLeaveFiscalYearHandler,
   updateLeaveFiscalYearHandler,
   updateLeaveRequestHandler,
+  createDirectLeaveHandler,
   updateLeaveTypeHandler,
   deleteLeaveTypeHandler,
   upsertLeaveBalanceHandler,
 } from './handlers/leaveManagement';
-import { requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
+import { requireHrSupervisorRole, requirePermission, requirePermissionOrDelegation } from '../../../middleware/rbac';
 
 const leaveManagementApp = new Hono();
 
@@ -197,6 +199,15 @@ export const createLeaveRequestRoute = createRoute({
   responses: { 201: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Created leave request' } },
 });
 
+export const createDirectLeaveRoute = createRoute({
+  method: 'post',
+  path: '/leave/direct',
+  tags: ['Core', 'Leave Management'],
+  summary: 'Record already-authorized leave on behalf of an employee (HR with supervisor role)',
+  request: { body: { content: { 'application/json': { schema: CreateDirectLeaveRequestSchema } } } },
+  responses: { 201: { content: { 'application/json': { schema: LeaveRequestResponseSchema } }, description: 'Recorded leave' } },
+});
+
 export const updateLeaveRequestRoute = createRoute({
   method: 'put',
   path: '/leave/requests/{id}',
@@ -265,6 +276,7 @@ leaveManagementApp.post('/leave/balances/bulk', requirePermission('leave-balance
 leaveManagementApp.get('/leave/working-calendar', requirePermissionOrDelegation('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveWorkingCalendarHandler);
 leaveManagementApp.get('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read', 'leave-request-approvals:approve', 'leave-authorizations:approve'), getLeaveRequestsHandler);
 leaveManagementApp.post('/leave/requests', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), createLeaveRequestHandler);
+leaveManagementApp.post('/leave/direct', requirePermission('leave-authorizations:approve'), requireHrSupervisorRole(), createDirectLeaveHandler);
 leaveManagementApp.put('/leave/requests/:id', requirePermission('annual-leave-requests:read', 'other-leave-requests:read'), updateLeaveRequestHandler);
 leaveManagementApp.post('/leave/requests/:id/status', requirePermissionOrDelegation('leave-request-approvals:approve'), changeLeaveRequestStatusHandler);
 leaveManagementApp.post('/leave/requests/:id/authorization', requirePermission('leave-authorizations:approve'), authorizeLeaveRequestHandler);
@@ -286,6 +298,7 @@ openApiApp
   .openapi(bulkUpsertLeaveBalancesRoute, bulkUpsertLeaveBalancesHandler as any)
   .openapi(getLeaveRequestsRoute, getLeaveRequestsHandler as any)
   .openapi(createLeaveRequestRoute, createLeaveRequestHandler as any)
+  .openapi(createDirectLeaveRoute, createDirectLeaveHandler as any)
   .openapi(updateLeaveRequestRoute, updateLeaveRequestHandler as any)
   .openapi(changeLeaveRequestStatusRoute, changeLeaveRequestStatusHandler as any);
 openApiApp

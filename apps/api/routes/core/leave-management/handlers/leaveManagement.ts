@@ -3,6 +3,7 @@ import {
   BulkUpsertLeaveBalancesRequestSchema,
   AuthorizeLeaveRequestSchema,
   ChangeLeaveRequestStatusRequestSchema,
+  CreateDirectLeaveRequestSchema,
   CreateLeaveInterruptionRequestSchema,
   CreateLeaveFiscalYearRequestSchema,
   CreateLeaveRequestRequestSchema,
@@ -18,6 +19,7 @@ import {
   authorizeLeaveInterruption,
   authorizeLeaveRequest,
   changeLeaveRequestStatusScoped,
+  createDirectLeave,
   createLeaveInterruptionScoped,
   createLeaveFiscalYear,
   createLeaveRequest,
@@ -49,6 +51,20 @@ import {
 } from '../../helpers/formatters';
 import { safeEnqueueWorkflowNotification } from '../../../../lib/notifications';
 import { refreshAttendanceForAuthorizedLeave } from '../../../../db/orm/core/manageAttendanceApprovals';
+
+/**
+ * The leave is already committed when attendance is recalculated, so a failure here must not
+ * report the authorization as failed (a retry would then be refused as a duplicate). It is
+ * logged instead; the repair SQL in drizzle/0060_reapply_authorized_leave_to_attendance.sql
+ * can be run again by hand to apply it.
+ */
+async function applyLeaveToAttendance(leaveRequest: { id: string; employeeId: string; startDate: string; endDate: string }) {
+  try {
+    await refreshAttendanceForAuthorizedLeave(leaveRequest);
+  } catch (error) {
+    console.error(`Failed to apply authorized leave ${leaveRequest.id} to attendance`, error);
+  }
+}
 
 export async function getLeaveFiscalYearsHandler(c: Context) {
   try {
@@ -267,6 +283,26 @@ export async function createLeaveRequestHandler(c: Context) {
   }
 }
 
+export async function createDirectLeaveHandler(c: Context) {
+  try {
+    const session = await resolveSession(c);
+    const parsed = CreateDirectLeaveRequestSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const scope = await resolveScope(session);
+    const leaveRequest = await createDirectLeave({ ...parsed.data, actorUserId: session.user.id, scope });
+    await applyLeaveToAttendance(leaveRequest);
+    await safeEnqueueWorkflowNotification('LEAVE_REQUEST_AUTHORIZED', {
+      entityId: leaveRequest.id,
+      employeeId: leaveRequest.employeeId,
+      date: `${leaveRequest.startDate} - ${leaveRequest.endDate}`,
+      reason: leaveRequest.reason,
+    });
+    return c.json({ success: true, leaveRequest: formatLeaveRequest(leaveRequest) }, 201);
+  } catch (error) {
+    return coreErrorResponse(c, error, 'Failed to record leave');
+  }
+}
+
 export async function updateLeaveRequestHandler(c: Context) {
   try {
     const session = await resolveSession(c);
@@ -333,7 +369,7 @@ export async function authorizeLeaveRequestHandler(c: Context) {
       actorUserId: session.user.id,
       scope,
     });
-    if (leaveRequest.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
+    if (leaveRequest.status === 'AUTHORIZED') await applyLeaveToAttendance(leaveRequest);
     await safeEnqueueWorkflowNotification(
       leaveRequest.status === 'AUTHORIZED' ? 'LEAVE_REQUEST_AUTHORIZED' : 'LEAVE_REQUEST_AUTHORIZATION_REJECTED',
       {
@@ -361,7 +397,7 @@ export async function authorizeLeaveInterruptionHandler(c: Context) {
       actorUserId: session.user.id,
       scope,
     });
-    if (parsed.data.status === 'AUTHORIZED') await refreshAttendanceForAuthorizedLeave(leaveRequest);
+    if (parsed.data.status === 'AUTHORIZED') await applyLeaveToAttendance(leaveRequest);
     await safeEnqueueWorkflowNotification(
       parsed.data.status === 'AUTHORIZED' ? 'LEAVE_INTERRUPTION_AUTHORIZED' : 'LEAVE_INTERRUPTION_AUTHORIZATION_REJECTED',
       {

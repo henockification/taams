@@ -38,6 +38,7 @@ import type {
   CreateOvertimeRequestInput,
   CreateLeaveFiscalYearInput,
   CreateLeaveInterruptionInput,
+  CreateDirectLeaveInput,
   CreateLeaveRequestInput,
   LeaveRequest,
   LeaveRequestView,
@@ -2145,6 +2146,26 @@ export function useCreateLeaveRequest(kind?: 'annual' | 'other') {
       queryClient.invalidateQueries({
         queryKey: coreQueryKeys.leaveRequests(),
       });
+    },
+  });
+}
+
+/** HR records already-authorized leave for an employee, so attendance and dashboards change too. */
+export function useCreateDirectLeave() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateDirectLeaveInput) => coreApi.createDirectLeave(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveRequestsRoot() });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.leaveBalancesRoot() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'attendance'] });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'attendance-approvals'] });
+      queryClient.invalidateQueries({ queryKey: coreQueryKeys.timeOperationsSummary() });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'dashboard'] });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'executive-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'hr-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: [...coreQueryKeys.all, 'department-head-dashboard'] });
     },
   });
 }
