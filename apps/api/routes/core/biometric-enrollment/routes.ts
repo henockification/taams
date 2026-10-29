@@ -3,6 +3,7 @@ import {
   applyEnrollmentSyncHandler,
   cancelPendingDeviceCommandsHandler,
   deprovisionEmployeeHandler,
+  getDeviceConsoleHandler,
   getEmployeeEnrollmentHandler,
   getEnrollmentOverviewHandler,
   getEnrollmentSyncRunsHandler,
@@ -12,6 +13,7 @@ import {
   refreshDeviceRosterHandler,
   refreshFromMasterHandler,
   retryFailedDeviceCommandsHandler,
+  sendDeviceConsoleCommandHandler,
 } from './handlers/biometricEnrollment';
 import { requirePermission, requirePermissionOrRole } from '../../../middleware/rbac';
 import { PRIVILEGED_ROLE_NAMES } from '../../../lib/privileged-roles';
@@ -34,6 +36,9 @@ biometricEnrollmentApp.post('/biometric-enrollment/sync', canManage, applyEnroll
 biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/refresh-roster', canManage, refreshDeviceRosterHandler);
 biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/cancel-pending', canManage, cancelPendingDeviceCommandsHandler);
 biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/retry-failed', canManage, retryFailedDeviceCommandsHandler);
+// Device console: raw data/info commands and recent traffic, for troubleshooting a device.
+biometricEnrollmentApp.get('/biometric-enrollment/devices/:id/console', canManage, getDeviceConsoleHandler);
+biometricEnrollmentApp.post('/biometric-enrollment/devices/:id/console', canManage, sendDeviceConsoleCommandHandler);
 biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/provision', canManage, provisionEmployeeHandler);
 biometricEnrollmentApp.post('/biometric-enrollment/employees/:id/deprovision', canManage, deprovisionEmployeeHandler);
 

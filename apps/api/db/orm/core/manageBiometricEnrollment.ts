@@ -22,6 +22,7 @@ import {
 import { computeTemplatesHash, planDeviceSync, type DevicePlan, type PlannerUser } from '../../../lib/zkteco/enrollment/sync-planner';
 import { decryptTemplate, encryptTemplate, hashTemplate } from '../../../lib/zkteco/enrollment/template-crypto';
 import type { DeviceCommandReply, EnrollmentTemplate, EnrollmentUser } from '../../../lib/zkteco/enrollment/types';
+import { getAdmsTraffic, redactTemplates } from '../../../lib/zkteco/adms-debug';
 
 type DbClient = typeof db | any;
 type Device = typeof biometricDevices.$inferSelect;
@@ -302,7 +303,10 @@ export async function claimDeviceCommands(deviceId: string) {
     let bytes = 0;
 
     for (const command of candidates) {
-      const text = buildQueuedCommandText(command, userByPin, templateById);
+      let text = buildQueuedCommandText(command, userByPin, templateById);
+      if (text !== null && command.kind === 'QUERY' && text.includes('=@')) {
+        text = await resolveTemplatePlaceholders(text, tx);
+      }
       if (text === null) {
         cancelled.push(command.id);
         continue;
@@ -351,6 +355,110 @@ function buildQueuedCommandText(
     default:
       return command.commandText ?? null;
   }
+}
+
+// Console commands may say "Tmp=@" / "Size=@": filled at send time from the stored template
+// named by the command's Pin, Type (default 2), No and Index/FID, so templates are never typed
+// or stored in plain text. Null (command cancelled) when that template does not exist.
+async function resolveTemplatePlaceholders(text: string, tx: DbClient) {
+  const field = (pattern: RegExp) => text.match(pattern)?.[1]?.trim();
+  const pin = field(/\bpin=([^\t]+)/i);
+  if (!pin) return null;
+  const bioType = Number.parseInt(field(/\btype=(\d+)/i) ?? '2', 10);
+  const bioNo = Number.parseInt(field(/\bno=(\d+)/i) ?? '0', 10);
+  const bioIndex = Number.parseInt(field(/\b(?:index|fid)=(\d+)/i) ?? '0', 10);
+
+  const [row] = await tx
+    .select({ templateEnc: biometricTemplates.templateEnc })
+    .from(biometricTemplates)
+    .innerJoin(biometricDeviceUsers, eq(biometricDeviceUsers.id, biometricTemplates.deviceUserId))
+    .where(and(
+      eq(biometricDeviceUsers.pin, pin),
+      eq(biometricTemplates.bioType, bioType),
+      eq(biometricTemplates.bioNo, bioNo),
+      eq(biometricTemplates.bioIndex, bioIndex),
+    ))
+    .limit(1);
+  if (!row) return null;
+
+  const template = decryptTemplate(row.templateEnc);
+  const size = Buffer.from(template, 'base64').length;
+  return text.replace(/\b(tmp)=@/gi, `$1=${template}`).replace(/\b(size)=@/gi, `$1=${size}`);
+}
+
+// Device console: commands an administrator types in TAAMS, sent like any queued command.
+// Only data and info commands; the master only accepts reads so it can never be changed here.
+const CONSOLE_COMMAND_PREFIXES = ['DATA QUERY ', 'DATA UPDATE ', 'DATA DELETE ', 'INFO', 'CHECK'];
+const CONSOLE_READ_ONLY_PREFIXES = ['DATA QUERY ', 'INFO', 'CHECK'];
+
+export class DeviceConsoleError extends Error {}
+
+export async function queueDeviceConsoleCommand(input: { deviceId: string; command: string; triggeredBy: string | null }) {
+  // Browser inputs cannot hold tabs, so "\t" typed literally is a field separator.
+  const command = input.command.replace(/\\t/g, '\t').replace(/[\r\n]+/g, ' ').trim();
+  const upper = command.toUpperCase();
+  if (!CONSOLE_COMMAND_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
+    throw new DeviceConsoleError(`Only commands starting with ${CONSOLE_COMMAND_PREFIXES.map((prefix) => prefix.trim()).join(', ')} can be sent`);
+  }
+  const device = await db.query.biometricDevices.findFirst({ where: eq(biometricDevices.id, input.deviceId) });
+  if (!device) throw new DeviceConsoleError('Device not found');
+  if (device.isEnrollmentMaster && !CONSOLE_READ_ONLY_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
+    throw new DeviceConsoleError('The enrollment master only accepts read commands');
+  }
+
+  const [queued] = await db
+    .insert(biometricDeviceCommands)
+    .values({ deviceId: device.id, kind: 'QUERY', commandText: command })
+    .returning({ id: biometricDeviceCommands.id });
+
+  await writeAuditEvent(db, {
+    action: 'BIOMETRIC_DEVICE_COMMAND_SENT',
+    resourceType: 'biometric_device',
+    resourceId: device.id,
+    resourceLabel: device.deviceName,
+    departmentId: device.departmentId,
+    metadata: { commandId: queued.id, command: redactTemplates(command).slice(0, 500), triggeredBy: input.triggeredBy },
+  });
+  return { commandId: queued.id };
+}
+
+// Recent commands (with the device's Return codes) and raw iclock traffic for one device.
+export async function getDeviceConsole(deviceId: string) {
+  const device = await db.query.biometricDevices.findFirst({ where: eq(biometricDevices.id, deviceId) });
+  if (!device) throw new DeviceConsoleError('Device not found');
+
+  const commands = await db
+    .select({
+      id: biometricDeviceCommands.id,
+      kind: biometricDeviceCommands.kind,
+      pin: biometricDeviceCommands.pin,
+      templateId: biometricDeviceCommands.templateId,
+      commandText: biometricDeviceCommands.commandText,
+      status: biometricDeviceCommands.status,
+      attempts: biometricDeviceCommands.attempts,
+      returnCode: biometricDeviceCommands.returnCode,
+      createdAt: biometricDeviceCommands.createdAt,
+      completedAt: biometricDeviceCommands.completedAt,
+    })
+    .from(biometricDeviceCommands)
+    .where(eq(biometricDeviceCommands.deviceId, deviceId))
+    .orderBy(desc(biometricDeviceCommands.id))
+    .limit(30);
+
+  return {
+    deviceId: device.id,
+    deviceName: device.deviceName,
+    serialNumber: device.serialNumber,
+    pushProtocolVersion: device.pushProtocolVersion,
+    lastCommandPollAt: device.lastCommandPollAt,
+    commands: commands.map(({ templateId, commandText, ...command }) => ({
+      ...command,
+      command: commandText
+        ? redactTemplates(commandText).slice(0, 300)
+        : `${command.kind}${command.pin ? ` PIN=${command.pin}` : ''}${templateId ? ' (stored template)' : ''}`,
+    })),
+    traffic: device.serialNumber ? getAdmsTraffic(device.serialNumber) : [],
+  };
 }
 
 // devicecmd replies. Return >= 0 is success on ZKTeco firmware.

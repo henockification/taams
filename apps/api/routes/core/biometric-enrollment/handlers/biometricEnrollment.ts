@@ -3,7 +3,9 @@ import { z } from 'zod';
 import {
   applyEnrollmentSync,
   cancelPendingDeviceCommands,
+  DeviceConsoleError,
   deprovisionEmployee,
+  getDeviceConsole,
   getEmployeeEnrollment,
   getEnrollmentMasterDevice,
   getEnrollmentOverview,
@@ -11,6 +13,7 @@ import {
   ingestEnrollment,
   previewEnrollmentSync,
   provisionEmployee,
+  queueDeviceConsoleCommand,
   refreshDeviceRoster,
   refreshFromMaster,
   retryFailedDeviceCommands,
@@ -23,6 +26,10 @@ import { coreErrorResponse, validationErrorResponse } from '../../helpers/errors
 const SyncRequestSchema = z.object({
   deviceId: z.string().uuid().nullable().optional(),
   allowRemovals: z.boolean().optional().default(false),
+});
+
+const DeviceConsoleCommandSchema = z.object({
+  command: z.string().trim().min(1).max(20000),
 });
 
 const EmployeeDevicesRequestSchema = z.object({
@@ -175,5 +182,26 @@ export async function deprovisionEmployeeHandler(c: Context) {
     return c.json({ success: true, ...result }, 201);
   } catch (error) {
     return coreErrorResponse(c, error, 'Failed to remove employee from devices');
+  }
+}
+
+export async function getDeviceConsoleHandler(c: Context) {
+  try {
+    return c.json({ success: true, console: await getDeviceConsole(c.req.param('id')) });
+  } catch (error) {
+    if (error instanceof DeviceConsoleError) return validationErrorResponse(c, error.message);
+    return coreErrorResponse(c, error, 'Failed to fetch the device console');
+  }
+}
+
+export async function sendDeviceConsoleCommandHandler(c: Context) {
+  try {
+    const parsed = DeviceConsoleCommandSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) return validationErrorResponse(c, parsed.error.message);
+    const result = await queueDeviceConsoleCommand({ deviceId: c.req.param('id'), command: parsed.data.command, triggeredBy: sessionUserId(c) });
+    return c.json({ success: true, ...result }, 201);
+  } catch (error) {
+    if (error instanceof DeviceConsoleError) return validationErrorResponse(c, error.message);
+    return coreErrorResponse(c, error, 'Failed to send the device command');
   }
 }

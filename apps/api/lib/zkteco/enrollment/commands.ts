@@ -81,5 +81,11 @@ export function buildHandshakeOptions(serialNumber: string, options: { delaySeco
     'Encrypt=None',
     'ServerVer=2.4.1',
     'PushProtVer=2.4.1',
+    // Tells the device this server handles face (2), palm (8) and visible-light face (9) BIODATA,
+    // and asks it to report its own biometric versions (shown in the device console).
+    'MultiBioDataSupport=0:1:1:0:0:0:0:0:1:1',
+    'MultiBioPhotoSupport=0:0:0:0:0:0:0:0:0:1',
+    'PushOptionsFlag=1',
+    'PushOptions=FingerFunOn,FaceFunOn,FPVersion,FaceVersion,PvFunOn,PvVersion,BioPhotoFun,BioDataFun,MultiBioDataSupport,MultiBioPhotoSupport,MultiBioVersion,MaxMultiBioDataCount',
   ].join('\n');
 }

@@ -120,6 +120,7 @@ export const coreQueryKeys = {
   biometricDeviceSyncHistory: (id: string) => [...coreQueryKeys.biometricDevice(id), 'sync-history'] as const,
   biometricEnrollment: () => [...coreQueryKeys.all, 'biometric-enrollment'] as const,
   biometricEnrollmentOverview: () => [...coreQueryKeys.biometricEnrollment(), 'overview'] as const,
+  biometricDeviceConsole: (biometricDeviceId: string) => [...coreQueryKeys.biometricEnrollment(), 'console', biometricDeviceId] as const,
   biometricEnrollmentSyncRuns: () => [...coreQueryKeys.biometricEnrollment(), 'sync-runs'] as const,
   employeeBiometricEnrollment: (employeeId: string) => [...coreQueryKeys.biometricEnrollment(), 'employee', employeeId] as const,
   biometricExemptions: () => [...coreQueryKeys.all, 'biometric-exemptions'] as const,
@@ -1218,6 +1219,25 @@ export function useBiometricEnrollmentSyncRuns(poll = false) {
     queryFn: () => coreApi.getEnrollmentSyncRuns(),
     staleTime: 30 * 1000,
     refetchInterval: poll ? ENROLLMENT_POLL_INTERVAL_MS : false,
+  });
+}
+
+// Polled every few seconds while the console is open so device replies show up on their own.
+export function useBiometricDeviceConsole(biometricDeviceId: string | null) {
+  return useQuery({
+    queryKey: coreQueryKeys.biometricDeviceConsole(biometricDeviceId ?? ''),
+    queryFn: () => coreApi.getDeviceConsole(biometricDeviceId ?? ''),
+    enabled: Boolean(biometricDeviceId),
+    refetchInterval: 5 * 1000,
+  });
+}
+
+export function useSendDeviceConsoleCommand() {
+  const invalidate = useInvalidateBiometricEnrollment();
+
+  return useMutation({
+    mutationFn: (input: { biometricDeviceId: string; command: string }) => coreApi.sendDeviceConsoleCommand(input),
+    onSuccess: invalidate,
   });
 }
 

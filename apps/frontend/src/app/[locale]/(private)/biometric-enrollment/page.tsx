@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import { AlertTriangle, ChevronDown, CloudDownload, Eye, ListRestart, OctagonX, RefreshCw, RotateCcw, ScanFace, Upload } from 'lucide-react';
+import { AlertTriangle, ChevronDown, CloudDownload, Eye, ListRestart, OctagonX, RefreshCw, RotateCcw, ScanFace, Terminal, Upload } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -24,6 +24,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DeviceConsoleDialog } from '@/components/biometric/device-console-dialog';
 import { bioTypeLabel, canManageEnrollment, FACE_BIO_TYPE, PALM_BIO_TYPE } from '@/components/biometric/enrollment-labels';
 import {
   useApplyEnrollmentSync,
@@ -77,6 +78,7 @@ export default function BiometricEnrollmentPage() {
   const [cancelDevice, setCancelDevice] = useState<EnrollmentOverviewDevice | null>(null);
   const [busyDeviceId, setBusyDeviceId] = useState('');
   const [unmatchedOpen, setUnmatchedOpen] = useState(false);
+  const [consoleDeviceId, setConsoleDeviceId] = useState<string | null>(null);
 
   const usersForType = (bioType: number) => overview?.templatesByType.find((row) => row.bioType === bioType)?.users ?? 0;
   const deviceName = (deviceId: string) => devices.find((device) => device.id === deviceId)?.deviceName ?? deviceId;
@@ -294,6 +296,10 @@ export default function BiometricEnrollmentPage() {
                               {t('retryFailed')}
                             </Button>
                           ) : null}
+                          <Button size="sm" variant="outline" onClick={() => setConsoleDeviceId(device.id)}>
+                            <Terminal className="size-4" />
+                            {t('console')}
+                          </Button>
                           {device.pendingCommands > 0 ? (
                             <Button size="sm" variant="destructive" disabled={busyDeviceId === device.id} onClick={() => setCancelDevice(device)}>
                               <OctagonX className="size-4" />
@@ -552,6 +558,8 @@ export default function BiometricEnrollmentPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <DeviceConsoleDialog deviceId={consoleDeviceId} onClose={() => setConsoleDeviceId(null)} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import type {
   BiometricDeviceConnectionTestResponse,
   BiometricDeviceResponse,
   BiometricDevicesResponse,
+  DeviceConsoleResponse,
   EmployeeEnrollmentActionInput,
   EmployeeEnrollmentActionResponse,
   EmployeeEnrollmentResponse,
@@ -572,6 +573,13 @@ export const coreApi = {
   retryFailedEnrollmentCommands: (biometricDeviceId: string) =>
     coreFetch<{ success: boolean; retried: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/retry-failed`, {
       method: 'POST',
+    }),
+  getDeviceConsole: (biometricDeviceId: string) =>
+    coreFetch<DeviceConsoleResponse>(`/biometric-enrollment/devices/${biometricDeviceId}/console`),
+  sendDeviceConsoleCommand: ({ biometricDeviceId, command }: { biometricDeviceId: string; command: string }) =>
+    coreFetch<{ success: boolean; commandId: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/console`, {
+      method: 'POST',
+      body: JSON.stringify({ command }),
     }),
   getEmployeeEnrollment: (employeeId: string) => coreFetch<EmployeeEnrollmentResponse>(`/biometric-enrollment/employees/${employeeId}`),
   provisionEmployeeEnrollment: ({ employeeId, ...input }: EmployeeEnrollmentActionInput) =>

@@ -1431,6 +1431,36 @@ export type EnrollmentUsbImportResponse = {
   success: boolean;
   result: { users: number; templates: number; linkedUsers: number; unmatchedPins: string[] };
 };
+export type DeviceConsoleCommand = {
+  id: number;
+  kind: string;
+  pin: string | null;
+  command: string;
+  status: 'PENDING' | 'SENT' | 'SUCCEEDED' | 'FAILED' | 'CANCELLED';
+  attempts: number;
+  returnCode: number | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+export type DeviceConsoleTraffic = {
+  at: string;
+  method: string;
+  path: string;
+  query: string;
+  status: number;
+  requestBody: string | null;
+  responseBody: string | null;
+};
+export type DeviceConsole = {
+  deviceId: string;
+  deviceName: string;
+  serialNumber: string | null;
+  pushProtocolVersion: string | null;
+  lastCommandPollAt: string | null;
+  commands: DeviceConsoleCommand[];
+  traffic: DeviceConsoleTraffic[];
+};
+export type DeviceConsoleResponse = { success: boolean; console: DeviceConsole };
 export type EnrollmentCommandRunResponse = { success: boolean; syncRunId: string; deviceId: string };
 export type EnrollmentSyncPreview = {
   deviceId: string;
