@@ -18,16 +18,26 @@ import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 // "\t" is typed literally (the API turns it into a tab). "Tmp=@" / "Size=@" are filled by the
 // server from the stored template for that PIN, type and index.
+const range = (count: number) => Array.from({ length: count }, (_, index) => index);
+
+// One command per line. "\t" is typed literally (the API turns it into a tab). "Tmp=@" / "Size=@"
+// are filled by the server from the stored template for that PIN, type and index/FID.
 const PRESETS: { label: string; command: (pin: string) => string }[] = [
   { label: 'INFO', command: () => 'INFO' },
   { label: 'Query user', command: (pin) => `DATA QUERY USERINFO PIN=${pin}` },
   { label: 'Query face', command: (pin) => `DATA QUERY BIODATA Type=2\\tPIN=${pin}` },
   { label: 'Query palm', command: (pin) => `DATA QUERY BIODATA Type=8\\tPIN=${pin}` },
   {
-    label: 'Face piece (BIODATA)',
-    command: (pin) => `DATA UPDATE BIODATA Pin=${pin}\\tNo=0\\tIndex=0\\tValid=1\\tDuress=0\\tType=2\\tMajorVer=12\\tMinorVer=0\\tFormat=0\\tTmp=@`,
+    label: 'Whole face (FACE)',
+    command: (pin) => range(15).map((fid) => `DATA UPDATE FACE PIN=${pin}\\tFID=${fid}\\tSIZE=@\\tVALID=1\\tTMP=@`).join('\n'),
   },
-  { label: 'Face piece (FACE)', command: (pin) => `DATA UPDATE FACE PIN=${pin}\\tFID=0\\tSIZE=@\\tVALID=1\\tTMP=@` },
+  {
+    label: 'Whole palm (BIODATA)',
+    command: (pin) =>
+      range(5)
+        .map((index) => `DATA UPDATE BIODATA Pin=${pin}\\tNo=0\\tIndex=${index}\\tValid=1\\tDuress=0\\tType=8\\tMajorVer=12\\tMinorVer=0\\tFormat=0\\tTmp=@`)
+        .join('\n'),
+  },
 ];
 
 function statusVariant(command: DeviceConsoleCommand) {
@@ -80,7 +90,7 @@ export function DeviceConsoleDialog({ deviceId, onClose }: { deviceId: string | 
               </Button>
             ))}
           </div>
-          <Textarea className="font-mono text-xs" rows={3} value={command} onChange={(event) => setCommand(event.target.value)} />
+          <Textarea className="font-mono text-xs" rows={6} value={command} onChange={(event) => setCommand(event.target.value)} />
           <div className="flex justify-end">
             <Button type="submit" disabled={!command.trim() || sendCommand.isPending}>
               <Send className="size-4" />

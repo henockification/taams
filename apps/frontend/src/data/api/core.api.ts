@@ -577,7 +577,7 @@ export const coreApi = {
   getDeviceConsole: (biometricDeviceId: string) =>
     coreFetch<DeviceConsoleResponse>(`/biometric-enrollment/devices/${biometricDeviceId}/console`),
   sendDeviceConsoleCommand: ({ biometricDeviceId, command }: { biometricDeviceId: string; command: string }) =>
-    coreFetch<{ success: boolean; commandId: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/console`, {
+    coreFetch<{ success: boolean; commandIds: number[] }>(`/biometric-enrollment/devices/${biometricDeviceId}/console`, {
       method: 'POST',
       body: JSON.stringify({ command }),
     }),

@@ -33,6 +33,24 @@ export function buildBiodataUpsertCommand(template: EnrollmentTemplate) {
   ].join('\t');
 }
 
+// NIR face (Type 2) as the older FACE table: one command per fragment (FID = Index) with its
+// decoded byte size. G3 Pro firmware answers -3 to BIODATA for face but accepts this.
+export function buildFaceUpsertCommand(template: EnrollmentTemplate) {
+  return [
+    `DATA UPDATE FACE PIN=${clean(template.pin)}`,
+    `FID=${template.bioIndex}`,
+    `SIZE=${Buffer.from(template.template, 'base64').length}`,
+    `VALID=${template.valid}`,
+    `TMP=${template.template}`,
+  ].join('\t');
+}
+
+export const FACE_BIO_TYPE = 2;
+
+export function buildTemplateUpsertCommand(template: EnrollmentTemplate) {
+  return template.bioType === FACE_BIO_TYPE ? buildFaceUpsertCommand(template) : buildBiodataUpsertCommand(template);
+}
+
 // Deleting the user also removes all of its templates on the device.
 export function buildUserDeleteCommand(pin: string) {
   return `DATA DELETE USERINFO PIN=${clean(pin)}`;

@@ -2075,7 +2075,7 @@
     "noReply": "ከመሳሪያው ምላሽ የለም",
     "console": "ኮንሶል",
     "consoleTitle": "የመሳሪያ ኮንሶል፦ {device}",
-    "consoleDescription": "ለዚህ መሳሪያ አንድ ትዕዛዝ ይላኩ እና ምላሹን ይመልከቱ። በመስኮች መካከል \\t ይጠቀሙ፤ Tmp=@ እና Size=@ ከተቀመጠው ቅጽ ይሞላሉ።",
+    "consoleDescription": "ለዚህ መሳሪያ ትዕዛዞችን ይላኩ (በአንድ መስመር አንድ) እና ምላሾቹን ይመልከቱ። በመስኮች መካከል \\t ይጠቀሙ፤ Tmp=@ እና Size=@ ከተቀመጠው ቅጽ ይሞላሉ።",
     "consolePin": "የሙከራ PIN",
     "consoleSend": "ላክ",
     "consoleQueued": "ትዕዛዙ ተሰልፏል። መሳሪያው በሚቀጥለው ጥያቄው ይወስደዋል።",

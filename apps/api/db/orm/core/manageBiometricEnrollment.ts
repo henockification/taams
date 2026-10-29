@@ -14,7 +14,7 @@ import { writeAuditEvent } from '../../../lib/audit';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   buildBiodataQueryCommand,
-  buildBiodataUpsertCommand,
+  buildTemplateUpsertCommand,
   buildUserDeleteCommand,
   buildUserUpsertCommand,
   QUERY_ALL_USERS_COMMAND,
@@ -348,7 +348,7 @@ function buildQueuedCommandText(
     case 'BIODATA_UPSERT': {
       const template = command.templateId ? templateById.get(command.templateId) : undefined;
       if (!template || !command.pin) return null;
-      return buildBiodataUpsertCommand({ ...template, pin: command.pin, template: decryptTemplate(template.templateEnc) });
+      return buildTemplateUpsertCommand({ ...template, pin: command.pin, template: decryptTemplate(template.templateEnc) });
     }
     case 'USER_DELETE':
       return command.pin ? buildUserDeleteCommand(command.pin) : null;
@@ -393,22 +393,33 @@ const CONSOLE_READ_ONLY_PREFIXES = ['DATA QUERY ', 'INFO', 'CHECK'];
 
 export class DeviceConsoleError extends Error {}
 
+const CONSOLE_MAX_COMMANDS = 50;
+
+// One command per line. Every line is checked before anything is queued.
 export async function queueDeviceConsoleCommand(input: { deviceId: string; command: string; triggeredBy: string | null }) {
   // Browser inputs cannot hold tabs, so "\t" typed literally is a field separator.
-  const command = input.command.replace(/\\t/g, '\t').replace(/[\r\n]+/g, ' ').trim();
-  const upper = command.toUpperCase();
-  if (!CONSOLE_COMMAND_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
-    throw new DeviceConsoleError(`Only commands starting with ${CONSOLE_COMMAND_PREFIXES.map((prefix) => prefix.trim()).join(', ')} can be sent`);
-  }
+  const commands = input.command
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\\t/g, '\t').trim())
+    .filter(Boolean);
+  if (commands.length === 0) throw new DeviceConsoleError('Enter a command');
+  if (commands.length > CONSOLE_MAX_COMMANDS) throw new DeviceConsoleError(`At most ${CONSOLE_MAX_COMMANDS} commands at a time`);
+
   const device = await db.query.biometricDevices.findFirst({ where: eq(biometricDevices.id, input.deviceId) });
   if (!device) throw new DeviceConsoleError('Device not found');
-  if (device.isEnrollmentMaster && !CONSOLE_READ_ONLY_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
-    throw new DeviceConsoleError('The enrollment master only accepts read commands');
+  for (const command of commands) {
+    const upper = command.toUpperCase();
+    if (!CONSOLE_COMMAND_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
+      throw new DeviceConsoleError(`Only commands starting with ${CONSOLE_COMMAND_PREFIXES.map((prefix) => prefix.trim()).join(', ')} can be sent`);
+    }
+    if (device.isEnrollmentMaster && !CONSOLE_READ_ONLY_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
+      throw new DeviceConsoleError('The enrollment master only accepts read commands');
+    }
   }
 
-  const [queued] = await db
+  const queued = await db
     .insert(biometricDeviceCommands)
-    .values({ deviceId: device.id, kind: 'QUERY', commandText: command })
+    .values(commands.map((commandText) => ({ deviceId: device.id, kind: 'QUERY', commandText })))
     .returning({ id: biometricDeviceCommands.id });
 
   await writeAuditEvent(db, {
@@ -417,9 +428,13 @@ export async function queueDeviceConsoleCommand(input: { deviceId: string; comma
     resourceId: device.id,
     resourceLabel: device.deviceName,
     departmentId: device.departmentId,
-    metadata: { commandId: queued.id, command: redactTemplates(command).slice(0, 500), triggeredBy: input.triggeredBy },
+    metadata: {
+      commandIds: queued.map((row) => row.id),
+      commands: commands.map((command) => redactTemplates(command).slice(0, 300)),
+      triggeredBy: input.triggeredBy,
+    },
   });
-  return { commandId: queued.id };
+  return { commandIds: queued.map((row) => row.id) };
 }
 
 // Recent commands (with the device's Return codes) and raw iclock traffic for one device.

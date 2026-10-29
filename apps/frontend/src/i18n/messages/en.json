@@ -2075,7 +2075,7 @@
     "noReply": "No reply from device",
     "console": "Console",
     "consoleTitle": "Device console: {device}",
-    "consoleDescription": "Send a single command to this device and see its reply. Use \\t between fields; Tmp=@ and Size=@ are filled from the stored template.",
+    "consoleDescription": "Send commands to this device (one per line) and see its replies. Use \\t between fields; Tmp=@ and Size=@ are filled from the stored template.",
     "consolePin": "Test PIN",
     "consoleSend": "Send",
     "consoleQueued": "Command queued. The device picks it up on its next poll.",
