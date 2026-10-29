@@ -18,7 +18,8 @@ import { unlockUserHandler } from './handlers/unlockUserHandler';
 import { restoreUserAccessHandler, revokeUserAccessHandler } from './handlers/userAccessHandlers';
 import { assignUserRolesHandler } from '../rbac/handlers/assignUserRolesHandler';
 import { disabledSignupHandler } from './handlers/disabledSignupHandler';
-import { requirePermission } from '../../middleware/rbac';
+import { requirePermission, requirePermissionOrRole } from '../../middleware/rbac';
+import { SYSTEM_ADMIN_ROLE_NAMES } from '../../lib/privileged-roles';
 
 const usersApp = new Hono();
 
@@ -230,7 +231,8 @@ usersApp.post('/users/signup', disabledSignupHandler);
 usersApp.get('/users/:id', requirePermission('users:read'), getUserHandler);
 usersApp.post('/users', requirePermission('users:create'), createUserHandler);
 usersApp.patch('/users/:id', requirePermission('users:update'), updateUserHandler);
-usersApp.post('/users/:id/unlock', requirePermission('users:update'), unlockUserHandler);
+// System administrators may unlock sign-in even without users:update.
+usersApp.post('/users/:id/unlock', requirePermissionOrRole(['users:update'], [...SYSTEM_ADMIN_ROLE_NAMES]), unlockUserHandler);
 usersApp.post('/users/:id/revoke-access', requirePermission('users:update'), revokeUserAccessHandler);
 usersApp.post('/users/:id/restore-access', requirePermission('users:update'), restoreUserAccessHandler);
 usersApp.post('/users/:id/roles', requirePermission('users:assign-roles'), assignUserRolesHandler);

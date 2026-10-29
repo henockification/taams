@@ -267,7 +267,14 @@ export default function BiometricEnrollmentPage() {
                     <TableCell className="text-xs text-muted-foreground">{device.lastCommandPollAt ? formatDateTime(device.lastCommandPollAt) : t('never')}</TableCell>
                     <TableCell className="text-right">{device.rosterSize}</TableCell>
                     <TableCell className="text-right">{device.pendingCommands}</TableCell>
-                    <TableCell className={device.failedCommands > 0 ? 'text-right font-medium text-destructive' : 'text-right'}>{device.failedCommands}</TableCell>
+                    <TableCell className={device.failedCommands > 0 ? 'text-right font-medium text-destructive' : 'text-right'}>
+                      {device.failedCommands}
+                      {device.failureReasons?.map((reason) => (
+                        <p key={`${reason.kind}:${reason.returnCode}`} className="text-xs font-normal text-muted-foreground">
+                          {reason.kind} · {reason.returnCode === null ? t('noReply') : `Return=${reason.returnCode}`} · {reason.count}
+                        </p>
+                      ))}
+                    </TableCell>
                     {canManage ? (
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">

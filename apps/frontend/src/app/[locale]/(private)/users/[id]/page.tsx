@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useSession } from '@/lib/auth-client';
+import { userHasPermission } from '@/config/app-navigation';
 import { EmployeeBiometricEnrollmentCard } from '@/components/biometric/employee-biometric-enrollment-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { notifications } from '@/lib/notifications';
@@ -38,6 +39,8 @@ interface User {
   phone?: string | null;
   emailVerified: boolean | null;
   locked?: boolean;
+  /** Refused with "Too many attempts" right now; Unlock clears it. */
+  signInThrottled?: boolean;
   lockedUntil?: string | null;
   failedLoginCount?: number;
   accessRevoked?: boolean;
@@ -205,6 +208,13 @@ export default function UserDetailPage() {
   };
 
   const isOwnAccount = session.data?.user?.id === user?.id;
+  // Unlocking is for system administrators and anyone allowed to update users (the API checks the same).
+  const viewerRoles = (session.data?.user?.role ?? []).map((role: string) => role.toLowerCase());
+  const canUnlock = ['super_admin', 'superadmin', 'admin', 'system_admin'].some((role) => viewerRoles.includes(role))
+    || userHasPermission(session.data?.user, 'users:update');
+  const signInBlocked = Boolean(user?.locked || user?.signInThrottled);
+  // Failed attempts that have not locked the account yet can be cleared too.
+  const canClearSignIn = Boolean(user && (signInBlocked || (user.failedLoginCount ?? 0) > 0));
   const accessPending = revokeAccess.isPending || restoreAccess.isPending;
 
   const biometricIdChanged = Boolean(user?.employee)
@@ -345,8 +355,8 @@ export default function UserDetailPage() {
                   {user.accessRevoked ? (
                     <Badge variant="destructive">{t('accessRevoked')}</Badge>
                   ) : (
-                    <Badge variant={user.locked ? 'destructive' : 'outline'}>
-                      {user.locked ? t('locked') : t('active')}
+                    <Badge variant={signInBlocked ? 'destructive' : 'outline'}>
+                      {user.locked ? t('locked') : user.signInThrottled ? t('signInThrottled') : t('active')}
                     </Badge>
                   )}
                   <div className="flex items-center gap-2">
@@ -414,10 +424,10 @@ export default function UserDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">{t('loginStatus')}</p>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
-                  <Badge variant={user.locked ? 'destructive' : 'outline'}>
-                    {user.locked ? t('locked') : t('active')}
+                  <Badge variant={signInBlocked ? 'destructive' : 'outline'}>
+                    {user.locked ? t('locked') : user.signInThrottled ? t('signInThrottled') : t('active')}
                   </Badge>
-                  {user.locked ? (
+                  {canUnlock && canClearSignIn ? (
                     <Button
                       size="sm"
                       onClick={handleUnlock}
@@ -431,6 +441,12 @@ export default function UserDetailPage() {
                   <p className="mt-2 text-sm text-muted-foreground">
                     {t('lockedUntil')}: {formatDateTime(user.lockedUntil)}
                   </p>
+                ) : null}
+                {user.signInThrottled ? (
+                  <p className="mt-2 text-sm text-muted-foreground">{t('signInThrottledHint')}</p>
+                ) : null}
+                {!signInBlocked && (user.failedLoginCount ?? 0) > 0 ? (
+                  <p className="mt-2 text-sm text-muted-foreground">{t('failedSignInAttempts', { count: user.failedLoginCount ?? 0 })}</p>
                 ) : null}
               </div>
               <Separator />

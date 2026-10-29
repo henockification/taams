@@ -30,7 +30,9 @@ const INSERT_CHUNK = 500;
 const TEMPLATE_INSERT_CHUNK = 200;
 // Commands per getrequest reply; tune with ZK_ADMS_COMMAND_BATCH during the pilot.
 const COMMAND_BATCH_MAX = Math.min(Math.max(Number.parseInt(process.env.ZK_ADMS_COMMAND_BATCH ?? '', 10) || 100, 1), 500);
-const COMMAND_BATCH_MAX_BYTES = 512 * 1024;
+// Bytes per getrequest reply. Device firmware reads replies into a small buffer, so a reply
+// of many ~2.7 KB templates gets cut off; 48 KB holds about one user's face + palm.
+const COMMAND_BATCH_MAX_BYTES = Math.min(Math.max(Number.parseInt(process.env.ZK_ADMS_COMMAND_MAX_KB ?? '', 10) || 48, 4), 512) * 1024;
 const COMMAND_REPLY_TIMEOUT_MS = 10 * 60 * 1000;
 const COMMAND_MAX_ATTEMPTS = 3;
 const DEFAULT_QUERY_BIO_TYPES = [2, 8];
@@ -355,6 +357,17 @@ function buildQueuedCommandText(
 export async function completeDeviceCommands(deviceId: string, replies: DeviceCommandReply[]) {
   if (replies.length === 0) return;
   const now = new Date();
+
+  // Rejections are logged always (not only with ZK_ADMS_DEBUG): the code says why the firmware refused.
+  const failures = replies.filter((reply) => reply.returnCode < 0);
+  if (failures.length) {
+    const byCode: Record<string, number> = {};
+    for (const reply of failures) {
+      const key = `${reply.cmd ?? '?'} Return=${reply.returnCode}`;
+      byCode[key] = (byCode[key] ?? 0) + 1;
+    }
+    console.warn('ZKTeco device rejected commands', { deviceId, failed: failures.length, of: replies.length, byCode, sampleIds: failures.slice(0, 5).map((reply) => reply.id) });
+  }
 
   await db.transaction(async (tx) => {
     const completed: (typeof biometricDeviceCommands.$inferSelect)[] = [];
@@ -805,6 +818,17 @@ export async function getEnrollmentOverview() {
     .from(biometricDeviceCommands)
     .where(inArray(biometricDeviceCommands.status, ['PENDING', 'SENT', 'FAILED']))
     .groupBy(biometricDeviceCommands.deviceId, biometricDeviceCommands.status);
+  // Why commands failed: the device's Return code, or null when it never answered (timed out).
+  const failureRows = await db
+    .select({
+      deviceId: biometricDeviceCommands.deviceId,
+      kind: biometricDeviceCommands.kind,
+      returnCode: biometricDeviceCommands.returnCode,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(biometricDeviceCommands)
+    .where(eq(biometricDeviceCommands.status, 'FAILED'))
+    .groupBy(biometricDeviceCommands.deviceId, biometricDeviceCommands.kind, biometricDeviceCommands.returnCode);
   const rosterRows = await db
     .select({ deviceId: biometricDeviceRoster.deviceId, count: sql<number>`count(*)::int` })
     .from(biometricDeviceRoster)
@@ -849,6 +873,10 @@ export async function getEnrollmentOverview() {
         rosterSize: rosterRows.find((row) => row.deviceId === device.id)?.count ?? 0,
         pendingCommands: counts.PENDING + counts.SENT,
         failedCommands: counts.FAILED,
+        failureReasons: failureRows
+          .filter((row) => row.deviceId === device.id)
+          .map(({ kind, returnCode, count }) => ({ kind, returnCode, count }))
+          .sort((a, b) => b.count - a.count),
       };
     }),
   };

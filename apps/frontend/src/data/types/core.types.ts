@@ -1392,6 +1392,8 @@ export type EnrollmentOverviewDevice = {
   rosterSize: number;
   pendingCommands: number;
   failedCommands: number;
+  // returnCode null: the device never answered the command.
+  failureReasons: { kind: string; returnCode: number | null; count: number }[];
 };
 export type EnrollmentOverview = {
   commandsEnabled: boolean;

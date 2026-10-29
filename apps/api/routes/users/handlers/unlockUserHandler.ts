@@ -3,6 +3,7 @@ import { db } from '../../../db/db';
 import { unlockUserLogin } from '../../../db/orm/auth/manageAuth';
 import { writeAuditEvent } from '../../../lib/audit';
 import { formatUser } from '../../rbac/handlers/formatters';
+import { clearSignInThrottle } from '../../../middleware/auth-rate-limit';
 
 export async function unlockUserHandler(c: Context) {
   try {
@@ -12,12 +13,15 @@ export async function unlockUserHandler(c: Context) {
     }
 
     const unlocked = await unlockUserLogin(userId);
+    // Also lift the "Too many attempts" block, which users experience as being locked too.
+    const clearedAttemptWindows = clearSignInThrottle([unlocked.email, unlocked.phone]);
 
     await writeAuditEvent(db, {
       action: 'USER_UNLOCKED',
       resourceType: 'user',
       resourceId: unlocked.id,
       resourceLabel: unlocked.email ?? unlocked.phone ?? unlocked.id,
+      metadata: { clearedAttemptWindows },
     });
 
     return c.json({

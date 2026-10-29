@@ -4,6 +4,7 @@ import { db } from '../../../db/db';
 import { employees } from '../../../db/schema';
 import { getUserById } from '../../../db/orm/users/getUserById';
 import { formatUserLock } from '../../rbac/handlers/formatters';
+import { isSignInThrottled } from '../../../middleware/auth-rate-limit';
 
 export async function getUserHandler(c: Context) {
   try {
@@ -45,6 +46,8 @@ export async function getUserHandler(c: Context) {
       updatedAt: user.updatedAt.toISOString(),
       image: user.image,
       ...formatUserLock(user),
+      // Refused with "Too many attempts" right now; the Unlock action clears this too.
+      signInThrottled: isSignInThrottled([user.email, user.phone]),
       // The detail page shows Restore access instead of Revoke access when these are set.
       accessRevoked: Boolean(user.accessRevokedAt),
       accessRevokedAt: user.accessRevokedAt ? user.accessRevokedAt.toISOString() : null,
