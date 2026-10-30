@@ -1223,10 +1223,10 @@ export function useBiometricEnrollmentSyncRuns(poll = false) {
 }
 
 // Polled every few seconds while the console is open so device replies show up on their own.
-export function useBiometricDeviceConsole(biometricDeviceId: string | null) {
+export function useBiometricDeviceConsole(biometricDeviceId: string | null, watchPin = '') {
   return useQuery({
-    queryKey: coreQueryKeys.biometricDeviceConsole(biometricDeviceId ?? ''),
-    queryFn: () => coreApi.getDeviceConsole(biometricDeviceId ?? ''),
+    queryKey: [...coreQueryKeys.biometricDeviceConsole(biometricDeviceId ?? ''), watchPin],
+    queryFn: () => coreApi.getDeviceConsole(biometricDeviceId ?? '', watchPin),
     enabled: Boolean(biometricDeviceId),
     refetchInterval: 5 * 1000,
   });

@@ -574,8 +574,10 @@ export const coreApi = {
     coreFetch<{ success: boolean; retried: number }>(`/biometric-enrollment/devices/${biometricDeviceId}/retry-failed`, {
       method: 'POST',
     }),
-  getDeviceConsole: (biometricDeviceId: string) =>
-    coreFetch<DeviceConsoleResponse>(`/biometric-enrollment/devices/${biometricDeviceId}/console`),
+  getDeviceConsole: (biometricDeviceId: string, watchPin = '') =>
+    coreFetch<DeviceConsoleResponse>(
+      `/biometric-enrollment/devices/${biometricDeviceId}/console?watchPin=${encodeURIComponent(watchPin)}`,
+    ),
   sendDeviceConsoleCommand: ({ biometricDeviceId, command }: { biometricDeviceId: string; command: string }) =>
     coreFetch<{ success: boolean; commandIds: number[] }>(`/biometric-enrollment/devices/${biometricDeviceId}/console`, {
       method: 'POST',

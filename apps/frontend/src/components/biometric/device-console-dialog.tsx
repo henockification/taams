@@ -16,28 +16,16 @@ import type { DeviceConsoleCommand } from '@/data/types/core.types';
 import { notifications } from '@/lib/notifications';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
-// "\t" is typed literally (the API turns it into a tab). "Tmp=@" / "Size=@" are filled by the
-// server from the stored template for that PIN, type and index.
-const range = (count: number) => Array.from({ length: count }, (_, index) => index);
-
 // One command per line. "\t" is typed literally (the API turns it into a tab). "Tmp=@" / "Size=@"
-// are filled by the server from the stored template for that PIN, type and index/FID.
+// are filled by the server from the stored template for that PIN, type and index.
+// BIODATA filters use "Pin=": with "PIN=" the device ignores the filter and uploads everyone.
 const PRESETS: { label: string; command: (pin: string) => string }[] = [
   { label: 'INFO', command: () => 'INFO' },
   { label: 'Query user', command: (pin) => `DATA QUERY USERINFO PIN=${pin}` },
-  { label: 'Query face', command: (pin) => `DATA QUERY BIODATA Type=2\\tPIN=${pin}` },
-  { label: 'Query palm', command: (pin) => `DATA QUERY BIODATA Type=8\\tPIN=${pin}` },
-  {
-    label: 'Whole face (FACE)',
-    command: (pin) => range(15).map((fid) => `DATA UPDATE FACE PIN=${pin}\\tFID=${fid}\\tSIZE=@\\tVALID=1\\tTMP=@`).join('\n'),
-  },
-  {
-    label: 'Whole palm (BIODATA)',
-    command: (pin) =>
-      range(5)
-        .map((index) => `DATA UPDATE BIODATA Pin=${pin}\\tNo=0\\tIndex=${index}\\tValid=1\\tDuress=0\\tType=8\\tMajorVer=12\\tMinorVer=0\\tFormat=0\\tTmp=@`)
-        .join('\n'),
-  },
+  { label: 'Query face', command: (pin) => `DATA QUERY BIODATA Type=2\\tPin=${pin}` },
+  { label: 'Query palm', command: (pin) => `DATA QUERY BIODATA Type=8\\tPin=${pin}` },
+  // Server-side: delete the user from this device, then send the user and all stored templates.
+  { label: 'Push user (clean)', command: (pin) => `PUSH USER PIN=${pin}` },
 ];
 
 function statusVariant(command: DeviceConsoleCommand) {
@@ -50,9 +38,10 @@ export function DeviceConsoleDialog({ deviceId, onClose }: { deviceId: string | 
   const t = useTranslations('biometricEnrollment');
   const common = useTranslations('common');
   const { formatDateTime } = useCalendarPreference();
-  const consoleQuery = useBiometricDeviceConsole(deviceId);
-  const sendCommand = useSendDeviceConsoleCommand();
   const [pin, setPin] = useState('');
+  // Lines naming the Test PIN are captured on the server however much other traffic there is.
+  const consoleQuery = useBiometricDeviceConsole(deviceId, pin);
+  const sendCommand = useSendDeviceConsoleCommand();
   const [command, setCommand] = useState('');
 
   const data = consoleQuery.data?.console;
@@ -125,6 +114,23 @@ export function DeviceConsoleDialog({ deviceId, onClose }: { deviceId: string | 
             </TableBody>
           </Table>
         </div>
+
+        {data?.watch ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">{t('consoleWatched', { pin: data.watch.pin, count: data.watch.lines.length })}</p>
+            {data.watch.lines.map((entry, index) => (
+              <div key={`${entry.at}-${index}`} className="rounded-md border p-2 font-mono text-xs">
+                <p className="flex flex-wrap items-center gap-2 font-semibold">
+                  {formatDateTime(entry.at)} · {entry.direction === 'device' ? '↑ device' : '↓ TAAMS'} · {entry.path}
+                  {entry.matchesTaams === null ? null : (
+                    <Badge variant={entry.matchesTaams ? 'default' : 'destructive'}>{entry.matchesTaams ? t('consoleMatches') : t('consoleDiffers')}</Badge>
+                  )}
+                </p>
+                <pre className="mt-1 whitespace-pre-wrap break-all">{entry.line}</pre>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="space-y-2">
           <p className="text-sm font-medium">{t('consoleTraffic')}</p>

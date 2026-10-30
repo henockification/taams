@@ -14,7 +14,7 @@ import { writeAuditEvent } from '../../../lib/audit';
 import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import {
   buildBiodataQueryCommand,
-  buildTemplateUpsertCommand,
+  buildBiodataUpsertCommand,
   buildUserDeleteCommand,
   buildUserUpsertCommand,
   QUERY_ALL_USERS_COMMAND,
@@ -22,7 +22,7 @@ import {
 import { computeTemplatesHash, planDeviceSync, type DevicePlan, type PlannerUser } from '../../../lib/zkteco/enrollment/sync-planner';
 import { decryptTemplate, encryptTemplate, hashTemplate } from '../../../lib/zkteco/enrollment/template-crypto';
 import type { DeviceCommandReply, EnrollmentTemplate, EnrollmentUser } from '../../../lib/zkteco/enrollment/types';
-import { getAdmsTraffic, redactTemplates } from '../../../lib/zkteco/adms-debug';
+import { getAdmsTraffic, getAdmsWatch, redactTemplates, setAdmsWatch } from '../../../lib/zkteco/adms-debug';
 
 type DbClient = typeof db | any;
 type Device = typeof biometricDevices.$inferSelect;
@@ -348,7 +348,7 @@ function buildQueuedCommandText(
     case 'BIODATA_UPSERT': {
       const template = command.templateId ? templateById.get(command.templateId) : undefined;
       if (!template || !command.pin) return null;
-      return buildTemplateUpsertCommand({ ...template, pin: command.pin, template: decryptTemplate(template.templateEnc) });
+      return buildBiodataUpsertCommand({ ...template, pin: command.pin, template: decryptTemplate(template.templateEnc) });
     }
     case 'USER_DELETE':
       return command.pin ? buildUserDeleteCommand(command.pin) : null;
@@ -407,6 +407,12 @@ export async function queueDeviceConsoleCommand(input: { deviceId: string; comma
 
   const device = await db.query.biometricDevices.findFirst({ where: eq(biometricDevices.id, input.deviceId) });
   if (!device) throw new DeviceConsoleError('Device not found');
+
+  // "PUSH USER PIN=<pin>": remove the user from this device, then send the user and every stored
+  // template exactly as a sync would, to test provisioning on a clean slate.
+  const pushUser = commands.length === 1 ? commands[0].match(/^PUSH USER PIN=(\S+)$/i) : null;
+  if (pushUser) return queueConsolePushUser(device, pushUser[1], input.triggeredBy);
+
   for (const command of commands) {
     const upper = command.toUpperCase();
     if (!CONSOLE_COMMAND_PREFIXES.some((prefix) => upper.startsWith(prefix))) {
@@ -437,10 +443,66 @@ export async function queueDeviceConsoleCommand(input: { deviceId: string; comma
   return { commandIds: queued.map((row) => row.id) };
 }
 
+async function queueConsolePushUser(device: Device, pin: string, triggeredBy: string | null) {
+  if (device.isEnrollmentMaster) throw new DeviceConsoleError('The enrollment master only accepts read commands');
+  const user = await db.query.biometricDeviceUsers.findFirst({ where: eq(biometricDeviceUsers.pin, pin) });
+  if (!user) throw new DeviceConsoleError(`PIN ${pin} is not in TAAMS`);
+  const templates = await db
+    .select({ id: biometricTemplates.id })
+    .from(biometricTemplates)
+    .where(eq(biometricTemplates.deviceUserId, user.id))
+    .orderBy(asc(biometricTemplates.bioType), asc(biometricTemplates.bioNo), asc(biometricTemplates.bioIndex));
+
+  const queued = await db
+    .insert(biometricDeviceCommands)
+    .values([
+      { deviceId: device.id, kind: 'QUERY', commandText: buildUserDeleteCommand(pin) },
+      { deviceId: device.id, kind: 'USER_UPSERT', pin },
+      ...templates.map((template) => ({ deviceId: device.id, kind: 'BIODATA_UPSERT', pin, templateId: template.id })),
+    ])
+    .returning({ id: biometricDeviceCommands.id });
+
+  await writeAuditEvent(db, {
+    action: 'BIOMETRIC_DEVICE_COMMAND_SENT',
+    resourceType: 'biometric_device',
+    resourceId: device.id,
+    resourceLabel: device.deviceName,
+    departmentId: device.departmentId,
+    metadata: { commandIds: queued.map((row) => row.id), commands: [`PUSH USER PIN=${pin}`], templates: templates.length, triggeredBy },
+  });
+  return { commandIds: queued.map((row) => row.id) };
+}
+
+// Marks each watched template line as identical to (or different from) the template TAAMS
+// holds for the same PIN / type / no / index.
+async function annotateWatchedLines(pin: string, lines: NonNullable<ReturnType<typeof getAdmsWatch>>['lines']) {
+  const stored = await db
+    .select({
+      bioType: biometricTemplates.bioType,
+      bioNo: biometricTemplates.bioNo,
+      bioIndex: biometricTemplates.bioIndex,
+      templateSha256: biometricTemplates.templateSha256,
+    })
+    .from(biometricTemplates)
+    .innerJoin(biometricDeviceUsers, eq(biometricDeviceUsers.id, biometricTemplates.deviceUserId))
+    .where(eq(biometricDeviceUsers.pin, pin));
+  const storedHash = new Map(stored.map((row) => [`${row.bioType}:${row.bioNo}:${row.bioIndex}`, row.templateSha256]));
+
+  return lines.map(({ fields, templateSha256, ...line }) => {
+    if (!templateSha256) return { ...line, matchesTaams: null };
+    const key = `${fields.type ?? '2'}:${fields.no ?? '0'}:${fields.index ?? fields.fid ?? '0'}`;
+    const expected = storedHash.get(key);
+    return { ...line, matchesTaams: expected ? expected === templateSha256 : false };
+  });
+}
+
 // Recent commands (with the device's Return codes) and raw iclock traffic for one device.
-export async function getDeviceConsole(deviceId: string) {
+export async function getDeviceConsole(deviceId: string, watchPin?: string | null) {
   const device = await db.query.biometricDevices.findFirst({ where: eq(biometricDevices.id, deviceId) });
   if (!device) throw new DeviceConsoleError('Device not found');
+  // undefined leaves the watch as it is; '' stops it.
+  if (device.serialNumber && watchPin !== undefined) setAdmsWatch(device.serialNumber, watchPin?.trim() || null);
+  const watch = device.serialNumber ? getAdmsWatch(device.serialNumber) : null;
 
   const commands = await db
     .select({
@@ -473,6 +535,7 @@ export async function getDeviceConsole(deviceId: string) {
         : `${command.kind}${command.pin ? ` PIN=${command.pin}` : ''}${templateId ? ' (stored template)' : ''}`,
     })),
     traffic: device.serialNumber ? getAdmsTraffic(device.serialNumber) : [],
+    watch: watch ? { pin: watch.pin, lines: await annotateWatchedLines(watch.pin, watch.lines) } : null,
   };
 }
 

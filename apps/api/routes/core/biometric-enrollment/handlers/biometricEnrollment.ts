@@ -187,7 +187,7 @@ export async function deprovisionEmployeeHandler(c: Context) {
 
 export async function getDeviceConsoleHandler(c: Context) {
   try {
-    return c.json({ success: true, console: await getDeviceConsole(c.req.param('id')) });
+    return c.json({ success: true, console: await getDeviceConsole(c.req.param('id'), c.req.query('watchPin')) });
   } catch (error) {
     if (error instanceof DeviceConsoleError) return validationErrorResponse(c, error.message);
     return coreErrorResponse(c, error, 'Failed to fetch the device console');

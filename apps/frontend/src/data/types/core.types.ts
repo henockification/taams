@@ -1459,6 +1459,11 @@ export type DeviceConsole = {
   lastCommandPollAt: string | null;
   commands: DeviceConsoleCommand[];
   traffic: DeviceConsoleTraffic[];
+  // Every line naming the watched PIN; matchesTaams compares the template with TAAMS's copy.
+  watch: {
+    pin: string;
+    lines: { at: string; direction: 'device' | 'server'; path: string; line: string; matchesTaams: boolean | null }[];
+  } | null;
 };
 export type DeviceConsoleResponse = { success: boolean; console: DeviceConsole };
 export type EnrollmentCommandRunResponse = { success: boolean; syncRunId: string; deviceId: string };
