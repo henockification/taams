@@ -302,6 +302,9 @@ export async function claimDeviceCommands(deviceId: string) {
     const cancelled: number[] = [];
     let bytes = 0;
 
+    // A face (15 pieces) or palm (5 pieces) is one template split up; the pieces of one
+    // PIN + type always go to the device in the same reply, never across two polls.
+    const groups: { key: string | null; items: { id: number; command: string }[] }[] = [];
     for (const command of candidates) {
       let text = buildQueuedCommandText(command, userByPin, templateById);
       if (text !== null && command.kind === 'QUERY' && text.includes('=@')) {
@@ -311,9 +314,21 @@ export async function claimDeviceCommands(deviceId: string) {
         cancelled.push(command.id);
         continue;
       }
-      if (lines.length > 0 && bytes + text.length > COMMAND_BATCH_MAX_BYTES) break;
-      bytes += text.length;
-      lines.push({ id: command.id, command: text });
+      const template = command.kind === 'BIODATA_UPSERT' && command.templateId ? templateById.get(command.templateId) : undefined;
+      const key = template ? `${command.pin}:${template.bioType}:${template.bioNo}` : null;
+      const last = groups[groups.length - 1];
+      if (key && last?.key === key) last.items.push({ id: command.id, command: text });
+      else groups.push({ key, items: [{ id: command.id, command: text }] });
+    }
+
+    for (const [index, group] of groups.entries()) {
+      const groupBytes = group.items.reduce((sum, item) => sum + item.command.length, 0);
+      if (lines.length > 0 && bytes + groupBytes > COMMAND_BATCH_MAX_BYTES) break;
+      // The last group may continue past this claim's row limit; leave it whole for the next poll.
+      const mayBeCut = group.key !== null && index === groups.length - 1 && candidates.length === COMMAND_BATCH_MAX;
+      if (lines.length > 0 && mayBeCut) break;
+      bytes += groupBytes;
+      lines.push(...group.items);
     }
 
     if (cancelled.length) {
