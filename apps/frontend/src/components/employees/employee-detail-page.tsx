@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label';
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
 import { DepartmentCombobox } from '@/components/employees/department-combobox';
 import { EmployeeDepartment } from '@/components/employees/employee-department';
+import { SearchableEmployeeSelect } from '@/components/employees/searchable-employee-select';
 import { DirectLeaveDialog } from '@/components/leave/direct-leave-dialog';
 import { canRecordDirectLeave } from '@/config/app-navigation';
 import { useSession } from '@/lib/auth-client';
@@ -46,7 +47,6 @@ import {
   useCreateEmployeeSupervisor,
   useDepartments,
   useEmployee,
-  useEmployees,
   useEmployeeSupervisors,
   useConvertEmployeeToContract,
   useCreateEmployeeUserAccount,
@@ -73,7 +73,6 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
   const employeeName = useEmployeeName();
   const { data: employeeResponse, isLoading } = useEmployee(employeeId);
   const { data: supervisorsResponse, isLoading: supervisorsLoading } = useEmployeeSupervisors(employeeId);
-  const { data: employeesResponse } = useEmployees();
   const { data: departmentsResponse } = useDepartments();
   const { data: biometricExemptionsResponse } = useBiometricExemptions();
   const createSupervisor = useCreateEmployeeSupervisor();
@@ -87,10 +86,14 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
   const canMarkOnLeave = canRecordDirectLeave(session.data?.user);
   const [contractDepartmentId, setContractDepartmentId] = useState('');
   const [contractSupervisorId, setContractSupervisorId] = useState('');
-  const { data: supervisorCandidatesResponse } = useSupervisorCandidates(convertOpen);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const {
+    data: supervisorCandidatesResponse,
+    isLoading: supervisorCandidatesLoading,
+    error: supervisorCandidatesError,
+  } = useSupervisorCandidates(convertOpen || dialogOpen);
   const [supervisorId, setSupervisorId] = useState('');
   const [isPrimary, setIsPrimary] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
@@ -113,9 +116,13 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
       || (employee.positionId && exemption.positionId === employee.positionId)
     )),
   );
-  const employeeOptions = useMemo(() => {
-    return (employeesResponse?.employees ?? []).filter((option) => option.id !== employeeId);
-  }, [employeeId, employeesResponse?.employees]);
+  // Active working employees across the roster, excluding this employee (same list as the
+  // supervisor assignments page).
+  const supervisorOptions = useMemo(() => (
+    (supervisorCandidatesResponse?.employees ?? [])
+      .filter((option) => option.id !== employeeId)
+      .sort((left, right) => employeeName(left).localeCompare(employeeName(right), undefined, { sensitivity: 'base' }))
+  ), [employeeId, employeeName, supervisorCandidatesResponse?.employees]);
 
   const startEditing = () => {
     if (!employee) return;
@@ -540,19 +547,18 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
               />
             </div>
             <div className="space-y-2">
-              <Label>{t('contractNewSupervisor')}</Label>
-              <Select value={contractSupervisorId} onValueChange={setContractSupervisorId}>
-                <SelectTrigger><SelectValue placeholder={t('selectSupervisor')} /></SelectTrigger>
-                <SelectContent>
-                  {(supervisorCandidatesResponse?.employees ?? [])
-                    .filter((option) => option.id !== employeeId)
-                    .map((option) => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {employeeName(option)} - {option.employeeCode}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="contract-supervisor">{t('contractNewSupervisor')}</Label>
+              <SearchableEmployeeSelect
+                id="contract-supervisor"
+                value={contractSupervisorId}
+                onValueChange={setContractSupervisorId}
+                employees={supervisorOptions}
+                disabled={supervisorCandidatesLoading}
+                placeholder={t('selectSupervisor')}
+                searchPlaceholder={t('searchEmployees')}
+                emptyMessage={t('noMatchingEmployees')}
+              />
+              {supervisorCandidatesError ? <p className="text-sm text-destructive">{supervisorCandidatesError.message}</p> : null}
             </div>
             <p className="text-xs text-muted-foreground">{t('moveToContractNote')}</p>
             <DialogFooter>
@@ -573,17 +579,18 @@ export function EmployeeDetailPage({ employeeId, backHref }: EmployeeDetailPageP
           </DialogHeader>
           <form className="space-y-4" onSubmit={saveSupervisor}>
             <div className="space-y-2">
-              <Label>{t('supervisor')}</Label>
-              <Select value={supervisorId} onValueChange={setSupervisorId}>
-                <SelectTrigger><SelectValue placeholder={t('selectSupervisor')} /></SelectTrigger>
-                <SelectContent>
-                  {employeeOptions.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {employeeName(option)} - {option.employeeCode}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="employee-supervisor">{t('supervisor')}</Label>
+              <SearchableEmployeeSelect
+                id="employee-supervisor"
+                value={supervisorId}
+                onValueChange={setSupervisorId}
+                employees={supervisorOptions}
+                disabled={supervisorCandidatesLoading}
+                placeholder={t('selectSupervisor')}
+                searchPlaceholder={t('searchEmployees')}
+                emptyMessage={t('noMatchingEmployees')}
+              />
+              {supervisorCandidatesError ? <p className="text-sm text-destructive">{supervisorCandidatesError.message}</p> : null}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">

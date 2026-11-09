@@ -2,7 +2,7 @@
 
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronsUpDown, Plus, UserRoundCog } from 'lucide-react';
+import { Plus, UserRoundCog } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { CalendarDateField } from '@/components/calendar/calendar-date-field';
@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -21,9 +20,9 @@ import {
 } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { EmployeeDepartment, useEmployeeDepartmentLabel } from '@/components/employees/employee-department';
+import { SearchableEmployeeSelect } from '@/components/employees/searchable-employee-select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -50,8 +49,6 @@ import {
 import type { Employee, EmployeeSupervisor, EmploymentStatus, EmploymentType } from '@/data/types/core.types';
 import { useEmployeeName } from '@/lib/employee-name';
 import { notifications } from '@/lib/notifications';
-import { matchesEmployeePickerSearch } from '@/lib/employee-picker-search';
-import { cn } from '@/lib/utils';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const allDepartmentsValue = '__all_departments';
@@ -471,89 +468,5 @@ function SwitchRow({ label, checked, onCheckedChange }: { label: ReactNode; chec
       <Label>{label}</Label>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>
-  );
-}
-
-function SearchableEmployeeSelect({
-  id,
-  value,
-  onValueChange,
-  employees,
-  disabled,
-  placeholder,
-  searchPlaceholder,
-  emptyMessage,
-}: {
-  id: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  employees: Employee[];
-  disabled?: boolean;
-  placeholder: string;
-  searchPlaceholder: string;
-  emptyMessage: string;
-}) {
-  const employeeName = useEmployeeName();
-  const employeeDepartmentLabel = useEmployeeDepartmentLabel();
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const selectedEmployee = employees.find((employee) => employee.id === value);
-  const matchingEmployees = employees.filter((employee) => matchesEmployeePickerSearch(employee, search));
-
-  return (
-    <Popover open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (!nextOpen) setSearch(''); }}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="h-10 w-full justify-between font-normal"
-        >
-          <span className="truncate">
-            {selectedEmployee ? `${employeeName(selectedEmployee)} - ${selectedEmployee.employeeCode}` : placeholder}
-          </span>
-          <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="p-0" style={{ width: 'var(--radix-popover-trigger-width)' }}>
-        <Command shouldFilter={false}>
-          <CommandInput placeholder={searchPlaceholder} value={search} onValueChange={setSearch} />
-          <CommandList>
-            <CommandEmpty>{emptyMessage}</CommandEmpty>
-            <p className="px-2 py-1 text-xs text-muted-foreground">{matchingEmployees.length} / {employees.length}</p>
-            <CommandGroup>
-              {matchingEmployees.map((employee) => {
-                const name = employeeName(employee);
-                const description = [
-                  employee.employeeCode,
-                  employeeDepartmentLabel(employee.id, employee.department?.nameEn ?? employee.sourceDepartmentName),
-                  employee.email,
-                  employee.phoneNumber,
-                ].filter(Boolean).join(' ');
-                return (
-                  <CommandItem
-                    key={employee.id}
-                    value={employee.id}
-                    onSelect={() => {
-                      onValueChange(employee.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check className={cn('size-4', value === employee.id ? 'opacity-100' : 'opacity-0')} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{description}</span>
-                    </span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }

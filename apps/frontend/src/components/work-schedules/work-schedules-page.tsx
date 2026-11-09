@@ -176,8 +176,8 @@ function effectiveSessionWindows(shift: Shift | undefined, segment: SegmentWindo
     opensBefore: segment.checkInOpensBeforeMinutes ?? (isFirst ? grace : departure),
     lateAfter: segment.lateAfterMinutes ?? shift?.lateAfterMinutes ?? 0,
     closesAfter: segment.checkOutClosesAfterMinutes ?? departure,
-    // Only a first session with its own check-in window ignores earlier punches.
-    ignoresEarlier: isFirst && segment.checkInOpensBeforeMinutes != null,
+    // Punches before the first session's check-in window are always ignored.
+    ignoresEarlier: isFirst,
     defaults: { opensBefore: isFirst ? grace : departure, lateAfter: shift?.lateAfterMinutes ?? 0, closesAfter: departure },
   };
 }

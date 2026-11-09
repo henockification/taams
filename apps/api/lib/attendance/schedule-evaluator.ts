@@ -81,7 +81,7 @@ export type AttendanceScheduleEvaluation = {
  * version are recalculated the next time they are listed, so no page keeps
  * showing results from rules that no longer apply.
  */
-export const ATTENDANCE_CALCULATION_VERSION = 2;
+export const ATTENDANCE_CALCULATION_VERSION = 3;
 
 const MINUTE = 60_000;
 const DEFAULT_DUPLICATE_PUNCH_WINDOW_MINUTES = 2;
@@ -146,6 +146,7 @@ function sessionPunches(
   spanStart: Date,
   spanEnd: Date,
   midpoint: Date,
+  checkInOpen: Date,
 ) {
   const inSpan = punches.filter((punch) => {
     const at = asDate(punch.punchTime).getTime();
@@ -153,7 +154,9 @@ function sessionPunches(
   });
   // The earliest check-in wins. Undeclared punches in the first half of the
   // session are check-ins, so a duplicate 08:40 after an 08:24 check-in is ignored.
+  // A punch before the session's check-in window opens is never a check-in.
   const checkIn = inSpan.find((punch) => {
+    if (asDate(punch.punchTime).getTime() < checkInOpen.getTime()) return false;
     const declaredDirection = punchDirection(punch.punchType);
     return declaredDirection ? declaredDirection === 'IN' : asDate(punch.punchTime).getTime() < midpoint.getTime();
   }) ?? null;
@@ -243,12 +246,12 @@ export function resolveSessionWindows(attendanceDate: string, shift: AttendanceS
 }
 
 /**
- * When the first session sets its own check-in window, punches before it are ignored (e.g. a
- * 07:40 punch when check-in opens at 08:00). Shifts still on the shared grace period keep counting them.
+ * Punches before the first session's check-in window are ignored (e.g. a 07:15 punch when
+ * check-in opens at 08:00), whether the window comes from the session's own setting or from
+ * the shift's grace period.
  */
 export function earliestAcceptedPunchTime(windows: AttendanceSessionWindow[]) {
-  const first = windows[0];
-  return first && first.segment.checkInOpensBeforeMinutes != null ? first.checkInOpen : null;
+  return windows[0]?.checkInOpen ?? null;
 }
 
 /** Evaluate every configured schedule segment as an independent attendance session. */
@@ -284,8 +287,8 @@ export function evaluateAttendancePunches(
     : ordered;
 
   const sessions: AttendanceSessionEvaluation[] = windows.map((window, index) => {
-    const { segment, start, end, spanStart, spanEnd, midpoint, completionAt } = window;
-    const { checkIn: checkInPunch, checkOut: checkOutPunch } = sessionPunches(accepted, spanStart, spanEnd, midpoint);
+    const { segment, start, end, spanStart, spanEnd, midpoint, completionAt, checkInOpen } = window;
+    const { checkIn: checkInPunch, checkOut: checkOutPunch } = sessionPunches(accepted, spanStart, spanEnd, midpoint, checkInOpen);
     const checkInAt = checkInPunch ? asDate(checkInPunch.punchTime) : null;
     const checkOutAt = checkOutPunch ? asDate(checkOutPunch.punchTime) : null;
     const completed = asOf.getTime() >= completionAt.getTime();
