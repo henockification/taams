@@ -417,6 +417,55 @@ export async function recalculateOpenAttendanceForShift(shiftId: string) {
   return { recalculatedDates: employeeIdsByDate.size, recalculatedRecords };
 }
 
+/**
+ * Re-evaluates the open (pending / returned) days of these employees between `from` and `to`
+ * (open-ended: up to today), after their schedule assignment changes. Approved days keep their
+ * result and no new records are created.
+ */
+export async function recalculateOpenAttendanceForEmployees(employeeIds: string[], from: string, to?: string | null) {
+  const ids = [...new Set(employeeIds)].filter(Boolean);
+  if (ids.length === 0) return { recalculatedDates: 0, recalculatedRecords: 0 };
+  const rows = await db
+    .select({ attendanceDate: attendanceDailyRecords.attendanceDate, employeeId: attendanceDailyRecords.employeeId })
+    .from(attendanceDailyRecords)
+    .where(and(
+      inArray(attendanceDailyRecords.employeeId, ids),
+      inArray(attendanceDailyRecords.status, ['PENDING_SUPERVISOR', 'RETURNED']),
+      gte(attendanceDailyRecords.attendanceDate, from),
+      to ? lte(attendanceDailyRecords.attendanceDate, to) : undefined,
+    ));
+  return regenerateByDate(rows);
+}
+
+/** Re-evaluates the open days of everyone assigned to this work schedule, within each assignment's period. */
+export async function recalculateOpenAttendanceForWorkSchedule(workScheduleId: string) {
+  const rows = await db.execute(sql`
+    SELECT DISTINCT r.attendance_date AS "attendanceDate", r.employee_id AS "employeeId"
+    FROM attendance_daily_records r
+    JOIN employee_work_schedules ews
+      ON ews.employee_id = r.employee_id
+     AND ews.work_schedule_id = ${workScheduleId}
+     AND ews.effective_from <= r.attendance_date
+     AND (ews.effective_to IS NULL OR ews.effective_to >= r.attendance_date)
+    WHERE r.status IN ('PENDING_SUPERVISOR', 'RETURNED')
+  `);
+  return regenerateByDate(((rows as any).rows ?? rows) as Array<{ attendanceDate: unknown; employeeId: string }>);
+}
+
+async function regenerateByDate(rows: Array<{ attendanceDate: unknown; employeeId: string }>) {
+  const employeeIdsByDate = new Map<string, string[]>();
+  for (const row of rows) {
+    const date = String(row.attendanceDate).slice(0, 10);
+    employeeIdsByDate.set(date, [...(employeeIdsByDate.get(date) ?? []), row.employeeId]);
+  }
+  let recalculatedRecords = 0;
+  for (const [date, employeeIds] of [...employeeIdsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    await generateAttendanceDailyRecords(date, { onlyEmployeeIds: employeeIds });
+    recalculatedRecords += employeeIds.length;
+  }
+  return { recalculatedDates: employeeIdsByDate.size, recalculatedRecords };
+}
+
 export async function getSupervisorAttendanceDailyRecords(input: ApprovalScope) {
   if (input.returnedOnly) return getSupervisorReturnedAttendanceDailyRecords(input);
   const range = resolveAttendanceDateRange(input);
