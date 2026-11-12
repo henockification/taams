@@ -528,6 +528,7 @@ export const AttendanceDailyRecordSchema = z.object({
   holiday: HolidaySchema.nullable().optional(),
 });
 
+// Ethiopian payroll month (1 Meskerem … 12 Nehase, which includes Pagume) and Ethiopian year.
 export const IfmisAttendancePeriodSchema = z.object({
   payMonth: z.coerce.number().int().min(1).max(12),
   payYear: z.coerce.number().int().min(2000).max(2200),
@@ -554,20 +555,31 @@ export const IfmisAttendanceRowSchema = z.object({
   calculatedAbsenteeism: z.number(),
   absenteeismAdjusted: z.boolean(),
   adjustmentNote: z.string().nullable(),
+  employeeCode: z.string().nullable(),
+  employmentType: z.string().nullable(),
+  departmentId: z.string().nullable(),
+  departmentName: z.string().nullable(),
 });
 
 export const IfmisAbsenceAdjustmentRequestSchema = IfmisAttendancePeriodSchema.extend({
   employeeId: UuidSchema,
   // null clears the adjustment and restores the calculated value.
-  absentDays: z.number().min(0).max(31).nullable(),
+  // Up to the period's length: 30 days, or 35/36 for Nehase with Pagume (checked by the server).
+  absentDays: z.number().min(0).max(36).nullable(),
   note: z.string().max(500).nullable().optional(),
 });
 
 export const IfmisReadinessIssueSchema = z.object({
-  code: z.enum(['MISSING_SCHEDULE', 'INVALID_SCHEDULE', 'MISSING_RECORD', 'NOT_HR_APPROVED', 'DUPLICATE_NAME']),
-  employeeId: UuidSchema,
+  code: z.enum(['MISSING_SCHEDULE', 'INVALID_SCHEDULE', 'MISSING_RECORD', 'AWAITING_SUPERVISOR', 'RETURNED', 'AWAITING_HR', 'PERIOD_NOT_ENDED', 'LEAVE_NOT_VERIFIED', 'DUPLICATE_NAME']),
+  // Empty for month-wide issues (leave verification, month not ended).
+  employeeId: z.string(),
   employeeName: z.string(),
+  employeeCode: z.string().nullable(),
+  employmentType: z.string().nullable(),
+  departmentName: z.string().nullable(),
+  /** First affected date; `dates` lists all of them. */
   date: z.string().nullable(),
+  dates: z.array(z.string()),
   message: z.string(),
 });
 

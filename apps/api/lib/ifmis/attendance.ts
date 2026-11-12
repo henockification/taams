@@ -1,19 +1,41 @@
 import { isEmployeeBiometricExempt } from '../biometric-exemptions';
 import { isIndefinitelyAbsent } from '../employees/absence';
+import { rosterCycleIndex } from '../attendance/roster';
+import { ethiopianToGregorian, pagumeDays } from '../ethiopian-calendar';
+
 export type IfmisReadinessIssueCode =
   | 'MISSING_SCHEDULE'
   | 'INVALID_SCHEDULE'
   | 'MISSING_RECORD'
-  | 'NOT_HR_APPROVED'
+  /** Daily record still with the supervisor (PENDING_SUPERVISOR). */
+  | 'AWAITING_SUPERVISOR'
+  /** Daily record returned to the supervisor for correction. */
+  | 'RETURNED'
+  /** Supervisor approved; HR approval outstanding. */
+  | 'AWAITING_HR'
+  /** The pay month has not ended, so its remaining days cannot be approved yet. */
+  | 'PERIOD_NOT_ENDED'
   | 'LEAVE_NOT_VERIFIED'
   | 'DUPLICATE_NAME';
 
+/** One issue per employee and kind; `dates` lists every affected day (empty when not date-based). */
 export type IfmisReadinessIssue = {
   code: IfmisReadinessIssueCode;
   employeeId: string;
   employeeName: string;
+  employeeCode: string | null;
+  employmentType: string | null;
+  departmentName: string | null;
+  /** First affected date. */
   date: string | null;
+  dates: string[];
   message: string;
+};
+
+const STATUS_ISSUES: Record<string, { code: IfmisReadinessIssueCode; label: string }> = {
+  PENDING_SUPERVISOR: { code: 'AWAITING_SUPERVISOR', label: 'awaiting supervisor approval' },
+  RETURNED: { code: 'RETURNED', label: 'returned for correction' },
+  SUPERVISOR_APPROVED: { code: 'AWAITING_HR', label: 'awaiting HR approval' },
 };
 
 export type IfmisAttendanceRow = {
@@ -37,6 +59,11 @@ export type IfmisAttendanceRow = {
 
 /** A row as previewed: the IFMIS row plus how its absenteeism was reached. */
 export type IfmisAttendancePreviewRow = IfmisAttendanceRow & {
+  /** For finding and filtering rows on the page; not sent to IFMIS. */
+  employeeCode: string | null;
+  employmentType: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
   /** Biometric exempt on at least one day of the month (absences come from leave, not records). */
   isBiometricExempt: boolean;
   /** Absenteeism before finance's adjustment. */
@@ -56,15 +83,23 @@ export type IfmisAttendanceSource = {
   unpaidLeaveDays?: Map<string, number>;
   /** Finance's absent-days override per employee for this pay month. */
   absenceAdjustments?: Map<string, IfmisAbsenceAdjustment>;
+  /** Addis Ababa date the preview is built on; later days of the month are not checked yet. */
+  today?: string;
 };
 
 const DAY_NAMES = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
-export function getGregorianMonthRange(payMonth: number, payYear: number) {
+/**
+ * Gregorian date range of an Ethiopian payroll month (payMonth 1–12, payYear in the Ethiopian
+ * calendar). Pagume belongs to Nehase's payroll, so month 12 runs to the end of Pagume.
+ * E.g. Tikimt (2) 2019 is 2026-10-11 to 2026-11-09.
+ */
+export function getPayPeriodRange(payMonth: number, payYear: number) {
   validatePeriod(payMonth, payYear);
-  const start = `${payYear}-${String(payMonth).padStart(2, '0')}-01`;
-  const endDate = new Date(Date.UTC(payYear, payMonth, 0));
-  const end = endDate.toISOString().slice(0, 10);
+  const start = ethiopianToGregorian(payYear, payMonth, 1);
+  const end = payMonth === 12
+    ? ethiopianToGregorian(payYear, 13, pagumeDays(payYear))
+    : ethiopianToGregorian(payYear, payMonth, 30);
   return { start, end };
 }
 
@@ -73,13 +108,18 @@ export function buildIfmisAttendancePreview(
   payMonth: number,
   payYear: number,
 ) {
-  const { start, end } = getGregorianMonthRange(payMonth, payYear);
+  const { start, end } = getPayPeriodRange(payMonth, payYear);
   const recordsByEmployeeDate = new Map(
     source.attendanceRecords.map((record) => [`${record.employeeId}:${String(record.attendanceDate)}`, record]),
   );
   const schedulesByEmployee = groupBy(source.scheduleAssignments, (assignment) => assignment.employeeId);
-  const issues: IfmisReadinessIssue[] = [];
+  const issues = new IssueCollector();
   const rows: IfmisAttendancePreviewRow[] = [];
+  // Days after today cannot have approved records yet; the month is blocked once instead.
+  const lastCheckedDate = source.today && source.today < end ? previousDate(source.today) : end;
+  if (lastCheckedDate < end) {
+    issues.add('PERIOD_NOT_ENDED', null, null, `This payroll month runs until ${end}; export it after the month has ended`);
+  }
 
   for (const employee of source.employees) {
     // Employees not paid through IFMIS are never exported (nor checked for readiness).
@@ -94,7 +134,10 @@ export function buildIfmisAttendancePreview(
     // Employees flagged as away indefinitely are not sent to IFMIS until the flag is cleared.
     if (isIndefinitelyAbsent(employee)) continue;
 
-    for (const date of datesInclusive(start, end)) {
+    const hireDate = employee.hireDate ? String(employee.hireDate).slice(0, 10) : null;
+    for (const date of datesInclusive(start, lastCheckedDate)) {
+      // No attendance is expected before the employee was hired.
+      if (hireDate && date < hireDate) continue;
       // Biometric-exempt days have no daily record: the employee counts as present, except
       // for approved unpaid leave. Finance can override the month's total.
       if (isEmployeeBiometricExempt(employee, source.biometricExemptions ?? [], date)) {
@@ -104,12 +147,12 @@ export function buildIfmisAttendancePreview(
       }
       const resolution = resolveScheduleWindow(date, assignments);
       if (resolution.kind === 'missing-assignment') {
-        issues.push(issue('MISSING_SCHEDULE', employee, date, `No effective work schedule for ${date}`));
+        issues.add('MISSING_SCHEDULE', employee, date, 'No work schedule assigned');
         continue;
       }
       if (resolution.kind === 'off-day') continue;
       if (resolution.kind === 'invalid') {
-        issues.push(issue('INVALID_SCHEDULE', employee, date, `The scheduled shift for ${date} has no valid active segments`));
+        issues.add('INVALID_SCHEDULE', employee, date, 'The scheduled shift has no valid active sessions');
         continue;
       }
       applicableDates.push({ date, window: resolution.window });
@@ -118,11 +161,12 @@ export function buildIfmisAttendancePreview(
     for (const { date, window } of applicableDates) {
       const record = recordsByEmployeeDate.get(`${employee.id}:${date}`);
       if (!record) {
-        issues.push(issue('MISSING_RECORD', employee, date, `Attendance record is missing for ${date}`));
+        issues.add('MISSING_RECORD', employee, date, 'No daily attendance record');
         continue;
       }
       if (record.status !== 'HR_APPROVED') {
-        issues.push(issue('NOT_HR_APPROVED', employee, date, `Attendance record for ${date} is ${record.status}`));
+        const statusIssue = STATUS_ISSUES[record.status] ?? { code: 'AWAITING_SUPERVISOR' as const, label: `is ${record.status}` };
+        issues.add(statusIssue.code, employee, date, `Attendance ${statusIssue.label}`);
         continue;
       }
 
@@ -146,6 +190,10 @@ export function buildIfmisAttendancePreview(
       firstNameAmharic: nullableText(employee.firstNameAm),
       fatherNameAmharic: nullableText(employee.middleNameAm),
       grandNameAmharic: nullableText(employee.lastNameAm),
+      employeeCode: nullableText(employee.employeeCode),
+      employmentType: nullableText(employee.employmentType),
+      departmentId: nullableText(employee.departmentId),
+      departmentName: departmentName(employee),
       absenteeism: roundTwo(adjustment ? adjustment.absentDays : absenteeism),
       late: roundTwo(late),
       currentStatus: employee.employmentStatus,
@@ -164,11 +212,41 @@ export function buildIfmisAttendancePreview(
     if (duplicates.length < 2) continue;
     for (const row of duplicates) {
       const employee = source.employees.find((candidate) => candidate.id === row.employeeId);
-      issues.push(issue('DUPLICATE_NAME', employee, null, 'Another employee has the same English name in this payroll period'));
+      issues.add('DUPLICATE_NAME', employee, null, 'Another employee has the same English name in this payroll period');
     }
   }
 
-  return { rows, issues, ready: rows.length > 0 && issues.length === 0 };
+  const issueList = issues.list();
+  return { rows, issues: issueList, ready: rows.length > 0 && issueList.length === 0 };
+}
+
+/** Collects issues as one entry per employee and kind, with the affected dates. */
+class IssueCollector {
+  private readonly issues = new Map<string, IfmisReadinessIssue>();
+
+  add(code: IfmisReadinessIssueCode, employee: any, date: string | null, message: string) {
+    const key = `${code}:${employee?.id ?? ''}`;
+    const existing = this.issues.get(key);
+    if (existing) {
+      if (date) existing.dates.push(date);
+      return;
+    }
+    this.issues.set(key, {
+      code,
+      employeeId: employee?.id ?? '',
+      employeeName: englishName(employee),
+      employeeCode: nullableText(employee?.employeeCode),
+      employmentType: nullableText(employee?.employmentType),
+      departmentName: departmentName(employee),
+      date,
+      dates: date ? [date] : [],
+      message,
+    });
+  }
+
+  list() {
+    return [...this.issues.values()];
+  }
 }
 
 type ScheduleWindow = { lateThreshold: Date; scheduledMinutes: number };
@@ -184,8 +262,18 @@ function resolveScheduleWindow(date: string, assignments: any[]): ScheduleResolu
     .find((item) => item.effectiveFrom <= date && (!item.effectiveTo || item.effectiveTo >= date));
   if (!assignment) return { kind: 'missing-assignment' };
 
+  // Same rules as daily record generation: a roster works its duty days counted from the
+  // assignment's start (e.g. 1 on / 2 off), a weekly schedule the weekdays it lists.
+  const schedule = assignment.workSchedule;
+  const isRoster = schedule?.scheduleType === 'ROSTER';
+  if (isRoster) {
+    const onDays = Number(schedule.rosterOnDays ?? 1);
+    const offDays = Number(schedule.rosterOffDays ?? 0);
+    if (rosterCycleIndex(date, String(assignment.effectiveFrom).slice(0, 10), onDays, offDays) >= onDays) return { kind: 'off-day' };
+  }
   const dayName = DAY_NAMES[new Date(`${date}T00:00:00`).getDay()];
-  const day = assignment.workSchedule?.days?.find((candidate: any) => candidate.dayOfWeek === dayName && candidate.isActive);
+  const day = schedule?.days?.find((candidate: any) => candidate.isActive
+    && (isRoster || String(candidate.dayOfWeek).toUpperCase() === dayName || String(candidate.dayOfWeek).toUpperCase() === 'ROSTER'));
   if (!day || day.isOffDay) return { kind: 'off-day' };
   const shift = day.shift;
   const segments = [...(shift?.segments ?? [])]
@@ -232,8 +320,14 @@ function validatePeriod(payMonth: number, payYear: number) {
   if (!Number.isInteger(payYear) || payYear < 2000 || payYear > 2200) throw new Error('Invalid pay year');
 }
 
-function issue(code: IfmisReadinessIssueCode, employee: any, date: string | null, message: string): IfmisReadinessIssue {
-  return { code, employeeId: employee?.id ?? '', employeeName: englishName(employee), date, message };
+function departmentName(employee: any) {
+  return nullableText(employee?.department?.nameEn ?? employee?.sourceDepartmentName);
+}
+
+function previousDate(date: string) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
 }
 
 function englishName(employee: any) {

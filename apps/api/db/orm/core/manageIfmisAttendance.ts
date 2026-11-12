@@ -12,24 +12,70 @@ import {
 } from '../../schema';
 import {
   buildIfmisAttendancePreview,
-  getGregorianMonthRange,
+  getPayPeriodRange,
   type IfmisAbsenceAdjustment,
   type IfmisAttendanceRow,
+  type IfmisReadinessIssue,
 } from '../../../lib/ifmis/attendance';
+import { addisToday } from '../../../lib/attendance/schedule-evaluator';
+import { isWorkingEmployee } from '../../../lib/employees/employment-status';
 import { isEmployeeBiometricExempt } from '../../../lib/biometric-exemptions';
-import { getLeaveDaysForDate, isUnpaidLeaveType } from './manageAttendanceApprovals';
+import { generateAttendanceDailyRecords, getLeaveDaysForDate, isUnpaidLeaveType } from './manageAttendanceApprovals';
 import { pushIfmisAttendanceRows } from '../../../lib/ifmis/oracle';
 import { writeAuditEvent } from '../../../lib/audit';
 import { isPermanentLeaveVerified } from './manageIsmisLeave';
 
-export async function getIfmisAttendancePreview(payMonth: number, payYear: number) {
-  const source = await loadSource(payMonth, payYear);
-  const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
-  const { start, end } = getGregorianMonthRange(payMonth, payYear);
+/**
+ * The month's IFMIS rows and readiness issues. Past duty days that never got a daily record
+ * (no device sync or refresh ran for them) are generated first, so they go through the normal
+ * supervisor and HR approval instead of blocking the month with nothing anyone can approve.
+ */
+async function buildPreview(payMonth: number, payYear: number) {
+  const { start, end } = getPayPeriodRange(payMonth, payYear);
+  let source = await loadSource(payMonth, payYear);
+  let preview = buildIfmisAttendancePreview(source, payMonth, payYear);
+  if (await generateMissingDailyRecords(preview.issues, source.employees)) {
+    source = await loadSource(payMonth, payYear);
+    preview = buildIfmisAttendancePreview(source, payMonth, payYear);
+  }
   if (exportsPermanentEmployees(source, preview) && !(await isPermanentLeaveVerified(start, end))) {
-    preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
+    preview.issues.push({
+      code: 'LEAVE_NOT_VERIFIED',
+      employeeId: '',
+      employeeName: 'Permanent employees',
+      employeeCode: null,
+      employmentType: 'PERMANENT',
+      departmentName: null,
+      date: null,
+      dates: [],
+      message: 'Complete the ISMIS permanent-employee leave verification for this payroll period',
+    });
     preview.ready = false;
   }
+  return preview;
+}
+
+async function generateMissingDailyRecords(issues: IfmisReadinessIssue[], employeeRows: any[]) {
+  const today = addisToday();
+  // Generation only creates records for working employees; retrying anyone else on every
+  // preview would do nothing.
+  const working = new Set(employeeRows.filter(isWorkingEmployee).map((employee) => employee.id));
+  const employeeIdsByDate = new Map<string, string[]>();
+  for (const issue of issues) {
+    if (issue.code !== 'MISSING_RECORD' || !working.has(issue.employeeId)) continue;
+    for (const date of issue.dates) {
+      if (date >= today) continue;
+      employeeIdsByDate.set(date, [...(employeeIdsByDate.get(date) ?? []), issue.employeeId]);
+    }
+  }
+  for (const [date, employeeIds] of [...employeeIdsByDate.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    await generateAttendanceDailyRecords(date, { onlyEmployeeIds: employeeIds });
+  }
+  return employeeIdsByDate.size > 0;
+}
+
+export async function getIfmisAttendancePreview(payMonth: number, payYear: number) {
+  const preview = await buildPreview(payMonth, payYear);
   const batches = await db.query.ifmisExportBatches.findMany({
     where: and(eq(ifmisExportBatches.payMonth, payMonth), eq(ifmisExportBatches.payYear, payYear)),
     orderBy: (table, { desc }) => [desc(table.createdAt)],
@@ -39,13 +85,7 @@ export async function getIfmisAttendancePreview(payMonth: number, payYear: numbe
 }
 
 export async function pushIfmisAttendance(payMonth: number, payYear: number, pushedBy: string) {
-  const source = await loadSource(payMonth, payYear);
-  const preview = buildIfmisAttendancePreview(source, payMonth, payYear);
-  const period = getGregorianMonthRange(payMonth, payYear);
-  if (exportsPermanentEmployees(source, preview) && !(await isPermanentLeaveVerified(period.start, period.end))) {
-    preview.issues.push({ code: 'LEAVE_NOT_VERIFIED', employeeId: '', employeeName: 'Permanent employees', date: null, message: 'Complete the ISMIS permanent-employee leave verification for this payroll period' });
-    preview.ready = false;
-  }
+  const preview = await buildPreview(payMonth, payYear);
   if (!preview.ready) throw new IfmisExportError('The payroll month is not ready for IFMIS', 'NOT_READY', preview.issues);
 
   let batchId: string | null = null;
@@ -94,13 +134,14 @@ function exportsPermanentEmployees(
 }
 
 async function loadSource(payMonth: number, payYear: number) {
-  const { start, end } = getGregorianMonthRange(payMonth, payYear);
+  const { start, end } = getPayPeriodRange(payMonth, payYear);
   const employeeRows = await db.query.employees.findMany({
     where: eq(employees.isActive, true),
+    with: { department: { columns: { nameEn: true } } },
     orderBy: (table, { asc }) => [asc(table.firstNameEn), asc(table.lastNameEn)],
   });
   const employeeIds = employeeRows.map((employee) => employee.id);
-  if (employeeIds.length === 0) return { employees: [], attendanceRecords: [], scheduleAssignments: [] };
+  if (employeeIds.length === 0) return { employees: [], attendanceRecords: [], scheduleAssignments: [], today: addisToday() };
 
   const [attendanceRecords, scheduleAssignments, exemptions, unpaidLeaves, adjustments] = await Promise.all([
     db.query.attendanceDailyRecords.findMany({
@@ -161,6 +202,7 @@ async function loadSource(payMonth: number, payYear: number) {
     biometricExemptions: exemptions,
     unpaidLeaveDays,
     absenceAdjustments,
+    today: addisToday(),
   };
 }
 
@@ -176,7 +218,7 @@ export async function setIfmisAbsenceAdjustment(input: {
   note?: string | null;
   updatedBy: string;
 }) {
-  const { start, end } = getGregorianMonthRange(input.payMonth, input.payYear);
+  const { start, end } = getPayPeriodRange(input.payMonth, input.payYear);
   const exported = await db.query.ifmisExportBatches.findFirst({
     where: and(
       eq(ifmisExportBatches.payMonth, input.payMonth),

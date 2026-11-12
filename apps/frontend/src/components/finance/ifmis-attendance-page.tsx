@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, Pencil, RefreshCw, Send } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -17,20 +17,70 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { useCompleteIsmisLeave, useIfmisAttendancePreview, useIsmisLeaveImport, useLatestIsmisLeaveImport, usePushIfmisAttendance, useSetIfmisAbsenceAdjustment } from '@/data/hooks/core.hooks';
-import type { IfmisAttendanceRow, IfmisExportStatus } from '@/data/types/core.types';
+import { IsmisLeaveVerification } from '@/components/attendance/ismis-leave-verification';
+import { useIfmisAttendancePreview, usePushIfmisAttendance, useSetIfmisAbsenceAdjustment } from '@/data/hooks/core.hooks';
+import type { EmploymentType, IfmisAttendanceRow, IfmisExportStatus, IfmisReadinessIssueCode } from '@/data/types/core.types';
 import { useSession } from '@/lib/auth-client';
 import { notifications } from '@/lib/notifications';
 import { userHasPermission } from '@/config/app-navigation';
+import { ethiopianToGregorian, gregorianToEthiopian } from '@/lib/calendar';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
 const MONTHS = Array.from({ length: 12 }, (_, index) => index + 1);
 
-function previousMonth() {
-  const value = new Date();
-  value.setMonth(value.getMonth() - 1);
-  return { payMonth: value.getMonth() + 1, payYear: value.getFullYear() };
+// Payroll months are Ethiopian (1 Meskerem … 12 Nehase); Nehase's payroll includes Pagume.
+function addisToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Addis_Ababa', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 }
+
+/** The last Ethiopian payroll month that has ended (Pagume still belongs to Nehase's). */
+function previousMonth() {
+  const today = gregorianToEthiopian(addisToday());
+  if (!today) return { payMonth: 1, payYear: 2019 };
+  const current = Math.min(today.month, 12);
+  return current === 1 ? { payMonth: 12, payYear: today.year - 1 } : { payMonth: current - 1, payYear: today.year };
+}
+
+/** Gregorian days of an Ethiopian payroll month, matching the API (e.g. Tikimt 2019: 2026-10-11 to 2026-11-09). */
+function payPeriodRange(payMonth: number, payYear: number) {
+  const start = ethiopianToGregorian(payYear, payMonth, 1);
+  const nextStart = payMonth === 12 ? ethiopianToGregorian(payYear + 1, 1, 1) : ethiopianToGregorian(payYear, payMonth + 1, 1);
+  if (!start || !nextStart) return null;
+  const end = new Date(`${nextStart}T00:00:00Z`);
+  end.setUTCDate(end.getUTCDate() - 1);
+  return { start, end: end.toISOString().slice(0, 10) };
+}
+
+const gregorianDate = (value: string) => new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  .format(new Date(`${value}T00:00:00Z`));
+
+const EMPLOYMENT_TYPES: EmploymentType[] = ['PERMANENT', 'CONTRACT', 'TEMPORARY', 'DAILY'];
+const ALL = 'all';
+// Issues that block the whole month rather than one employee; always shown, whatever the filters.
+const MONTH_WIDE_ISSUES = new Set<IfmisReadinessIssueCode>(['PERIOD_NOT_ENDED', 'LEAVE_NOT_VERIFIED']);
+// Grouped in the order someone has to act on them.
+const ISSUE_ORDER: IfmisReadinessIssueCode[] = [
+  'PERIOD_NOT_ENDED', 'LEAVE_NOT_VERIFIED', 'MISSING_SCHEDULE', 'INVALID_SCHEDULE', 'MISSING_RECORD',
+  'RETURNED', 'AWAITING_SUPERVISOR', 'AWAITING_HR', 'DUPLICATE_NAME',
+];
+const ISSUES_SHOWN_PER_GROUP = 200;
+
+type EmployeeFilters = { search: string; employmentType: string; department: string };
+
+function matchesFilters(
+  item: { employeeName: string; employeeCode: string | null; employmentType: string | null; departmentName: string | null; amharicName?: string },
+  filters: EmployeeFilters,
+) {
+  if (filters.employmentType !== ALL && item.employmentType !== filters.employmentType) return false;
+  if (filters.department !== ALL && item.departmentName !== filters.department) return false;
+  const terms = filters.search.normalize('NFKC').trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const text = [item.employeeName, item.amharicName, item.employeeCode].filter(Boolean).join(' ').normalize('NFKC').toLowerCase();
+  return terms.every((term) => text.includes(term));
+}
+
+const rowName = (row: IfmisAttendanceRow) => [row.firstName, row.fatherName, row.grandName].filter(Boolean).join(' ');
+const rowAmharicName = (row: IfmisAttendanceRow) => [row.firstNameAmharic, row.fatherNameAmharic, row.grandNameAmharic].filter(Boolean).join(' ');
 
 export function IfmisAttendancePage() {
   const t = useTranslations('core');
@@ -41,19 +91,43 @@ export function IfmisAttendancePage() {
   const [payYear, setPayYear] = useState(initial.payYear);
   const preview = useIfmisAttendancePreview({ payMonth, payYear });
   const push = usePushIfmisAttendance();
-  const leaveImport = useIsmisLeaveImport();
-  const completeLeave = useCompleteIsmisLeave();
-  const latestLeave = useLatestIsmisLeaveImport();
   const session = useSession();
   const data = preview.data;
   const succeeded = data?.batches.some((batch) => batch.status === 'SUCCEEDED') ?? false;
   const canPush = userHasPermission(session.data?.user, 'ifmis-attendance:push');
-  const [leaveFile, setLeaveFile] = useState<File | null>(null);
-  const monthStart = `${payYear}-${String(payMonth).padStart(2, '0')}-01`;
-  const monthEnd = new Date(Date.UTC(payYear, payMonth, 0)).toISOString().slice(0, 10);
+  const period = payPeriodRange(payMonth, payYear);
+  const monthStart = period?.start ?? '';
+  const monthEnd = period?.end ?? '';
+  const periodDays = period ? Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1 : 30;
   const [adjustingRow, setAdjustingRow] = useState<IfmisAttendanceRow | null>(null);
   const canAdjust = canPush && !succeeded;
-  const exemptCount = data?.rows.filter((row) => row.isBiometricExempt).length ?? 0;
+  const [filters, setFilters] = useState<EmployeeFilters>({ search: '', employmentType: ALL, department: ALL });
+  const deferredSearch = useDeferredValue(filters.search);
+  const activeFilters = useMemo(() => ({ ...filters, search: deferredSearch }), [deferredSearch, filters]);
+  const isFiltered = activeFilters.search.trim() !== '' || activeFilters.employmentType !== ALL || activeFilters.department !== ALL;
+
+  const rows = useMemo(() => data?.rows ?? [], [data?.rows]);
+  const issues = useMemo(() => data?.issues ?? [], [data?.issues]);
+  const exemptCount = rows.filter((row) => row.isBiometricExempt).length;
+  const departments = useMemo(
+    () => [...new Set(rows.map((row) => row.departmentName).filter((name): name is string => Boolean(name)))]
+      .sort((left, right) => left.localeCompare(right)),
+    [rows],
+  );
+  const visibleRows = useMemo(() => rows.filter((row) => matchesFilters({
+    employeeName: rowName(row),
+    amharicName: rowAmharicName(row),
+    employeeCode: row.employeeCode,
+    employmentType: row.employmentType,
+    departmentName: row.departmentName,
+  }, activeFilters)), [activeFilters, rows]);
+  const visibleIssues = useMemo(
+    () => issues.filter((issue) => MONTH_WIDE_ISSUES.has(issue.code) || matchesFilters(issue, activeFilters)),
+    [activeFilters, issues],
+  );
+  const issueGroups = useMemo(() => ISSUE_ORDER
+    .map((code) => ({ code, items: visibleIssues.filter((issue) => issue.code === code) }))
+    .filter((group) => group.items.length > 0), [visibleIssues]);
 
   async function handlePush() {
     try {
@@ -72,15 +146,19 @@ export function IfmisAttendancePage() {
     }
   }
 
+  const status = succeeded ? t('exported') : data?.ready ? t('ready') : t('notReady');
+
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full flex-col gap-4">
       <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <Select value={String(payMonth)} onValueChange={(value) => setPayMonth(Number(value))}>
             <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
-            <SelectContent>{MONTHS.map((month) => <SelectItem key={month} value={String(month)}>{t(`month${month}`)}</SelectItem>)}</SelectContent>
+            <SelectContent>{MONTHS.map((month) => <SelectItem key={month} value={String(month)}>{t(`ethiopianMonth${month}`)}</SelectItem>)}</SelectContent>
           </Select>
           <Input
+            aria-label={t('ifmisPayYearEthiopian')}
+            title={t('ifmisPayYearEthiopian')}
             className="w-28"
             type="number"
             min={2000}
@@ -88,6 +166,11 @@ export function IfmisAttendancePage() {
             value={payYear}
             onChange={(event) => setPayYear(Number(event.target.value))}
           />
+          {period ? (
+            <span className="text-sm text-muted-foreground">
+              {t('ifmisPayPeriodCovers', { from: gregorianDate(period.start), to: gregorianDate(period.end) })}
+            </span>
+          ) : null}
         </div>
         <Button variant="outline" onClick={() => preview.refetch()} disabled={preview.isFetching} className="w-full lg:w-auto">
           <RefreshCw className={preview.isFetching ? 'size-4 animate-spin' : 'size-4'} />
@@ -99,35 +182,74 @@ export function IfmisAttendancePage() {
         <Alert variant="destructive"><AlertCircle className="size-4" /><AlertTitle>{common('error')}</AlertTitle><AlertDescription>{preview.error.message}</AlertDescription></Alert>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-4">
-        <Summary label={t('employees')} value={data?.rows.length ?? 0} />
-        <Summary label={t('ifmisExemptEmployees')} value={exemptCount} />
-        <Summary label={t('readinessIssues')} value={data?.issues.length ?? 0} />
-        <Summary label={t('exportStatus')} value={succeeded ? t('exported') : data?.ready ? t('ready') : t('notReady')} />
+      {data ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-border px-3 py-2 text-sm">
+          <Badge variant={succeeded || data.ready ? 'default' : 'destructive'}>{status}</Badge>
+          <span>{t('ifmisEmployeeCount', { count: rows.length })}</span>
+          <span className="text-muted-foreground">{t('ifmisExemptCount', { count: exemptCount })}</span>
+          <span className={issues.length ? 'text-destructive' : 'text-muted-foreground'}>{t('ifmisIssueCount', { count: issues.length })}</span>
+        </div>
+      ) : null}
+
+      <IsmisLeaveVerification range={{ dateFrom: monthStart, dateTo: monthEnd }} />
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <Input
+          aria-label={t('employeeSearch')}
+          className="sm:w-72"
+          value={filters.search}
+          onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+          placeholder={t('searchEmployees')}
+        />
+        <Select value={filters.employmentType} onValueChange={(employmentType) => setFilters((current) => ({ ...current, employmentType }))}>
+          <SelectTrigger aria-label={t('employmentType')} className="sm:w-52"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>{t('allEmploymentTypes')}</SelectItem>
+            {EMPLOYMENT_TYPES.map((type) => <SelectItem key={type} value={type}>{t(`employmentType${type}`)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.department} onValueChange={(department) => setFilters((current) => ({ ...current, department }))}>
+          <SelectTrigger aria-label={t('department')} className="sm:w-64"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>{t('allDepartments')}</SelectItem>
+            {departments.map((department) => <SelectItem key={department} value={department}>{department}</SelectItem>)}
+          </SelectContent>
+        </Select>
       </div>
 
-      <Card>
-        <CardHeader><CardTitle>Permanent employee leave verification</CardTitle><CardDescription>Import the ISMIS Ethiopian-calendar report, review unmatched IDs, then confirm the check before payroll.</CardDescription></CardHeader>
-        <CardContent className="flex flex-col gap-3 md:flex-row md:items-center">
-          <Input type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} />
-          <Button disabled={!leaveFile || leaveImport.isPending} onClick={() => leaveFile && leaveImport.mutate(leaveFile)}>Import ISMIS leave</Button>
-          {latestLeave.data?.batch?.status === 'PENDING' ? <Button variant="outline" disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending} onClick={() => completeLeave.mutate({ batchId: latestLeave.data!.batch!.id, dateFrom: monthStart, dateTo: monthEnd })}>I checked permanent employee leave</Button> : null}
-          {latestLeave.data?.batch ? <span className="text-sm text-muted-foreground">{latestLeave.data.batch.status} · {latestLeave.data.batch.unmatchedCount} unmatched IDs</span> : null}
-        </CardContent>
-      </Card>
-
-      {data?.issues.length ? (
+      {issues.length ? (
         <Alert variant="destructive">
           <AlertCircle className="size-4" />
           <AlertTitle>{t('monthNotReady')}</AlertTitle>
           <AlertDescription>
-            <ul className="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5">
-              {data.issues.slice(0, 100).map((issue, index) => (
-                <li key={`${issue.employeeId}-${issue.date}-${issue.code}-${index}`}>
-                  {issue.employeeName}{issue.date ? ` · ${formatDate(issue.date)}` : ''}: {t(issueLabelKey(issue.code))}
-                </li>
+            <div className="mt-2 flex max-h-96 flex-col gap-3 overflow-y-auto pr-1">
+              {issueGroups.map((group) => (
+                <div key={group.code}>
+                  <p className="font-medium">
+                    {t(issueLabelKey(group.code))}
+                    {!MONTH_WIDE_ISSUES.has(group.code) ? <span className="font-normal opacity-75"> · {t('ifmisEmployeeCount', { count: group.items.length })}</span> : null}
+                  </p>
+                  {!MONTH_WIDE_ISSUES.has(group.code) ? (
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                      {group.items.slice(0, ISSUES_SHOWN_PER_GROUP).map((issue) => (
+                        <li key={`${issue.code}-${issue.employeeId}`}>
+                          {issue.employeeName}
+                          {issue.employeeCode ? <span className="opacity-75"> ({issue.employeeCode})</span> : null}
+                          {issue.departmentName ? <span className="opacity-75"> · {issue.departmentName}</span> : null}
+                          {issue.dates.length ? (
+                            <span className="opacity-75">
+                              {' · '}{t('ifmisIssueDays', { count: issue.dates.length })}
+                              {' ('}{formatDate(issue.dates[0])}{issue.dates.length > 1 ? ` – ${formatDate(issue.dates.at(-1)!)}` : ''}{')'}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ))}
-            </ul>
+              {isFiltered && visibleIssues.length < issues.length ? <p className="text-xs opacity-75">{t('ifmisIssuesFilteredOut')}</p> : null}
+            </div>
           </AlertDescription>
         </Alert>
       ) : data?.ready ? (
@@ -146,7 +268,7 @@ export function IfmisAttendancePage() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t('confirmIfmisPush')}</AlertDialogTitle>
-                <AlertDialogDescription>{t('confirmIfmisPushDescription', { month: payMonth, year: payYear, count: data?.rows.length ?? 0 })}</AlertDialogDescription>
+                <AlertDialogDescription>{t('confirmIfmisPushDescription', { month: t(`ethiopianMonth${payMonth}`), year: payYear, count: rows.length })}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter><AlertDialogCancel>{common('cancel')}</AlertDialogCancel><AlertDialogAction onClick={handlePush}>{t('pushToIfmis')}</AlertDialogAction></AlertDialogFooter>
             </AlertDialogContent>
@@ -158,40 +280,47 @@ export function IfmisAttendancePage() {
               <Table className="min-w-[78rem]">
                 <TableHeader><TableRow>
                   <TableHead>{t('employee')}</TableHead><TableHead>{t('amharicName')}</TableHead>
+                  <TableHead>{t('department')}</TableHead>
                   <TableHead>{t('absenteeismDays')}</TableHead><TableHead>{t('lateDays')}</TableHead>
                   <TableHead>{t('currentStatus')}</TableHead><TableHead>{t('approved')}</TableHead>
                   <TableHead>{t('payMonth')}</TableHead><TableHead>{t('payYear')}</TableHead>
                   <TableHead className="text-right">{t('actions')}</TableHead>
                 </TableRow></TableHeader>
-                <TableBody>{data?.rows.map((row) => (
-                  <TableRow key={row.employeeId}>
-                    <TableCell className="font-medium">
-                      {[row.firstName, row.fatherName, row.grandName].filter(Boolean).join(' ')}
-                      {row.isBiometricExempt ? (
-                        <Badge variant="outline" className="ml-2 border-emerald-500 text-emerald-700 dark:text-emerald-400">{t('biometricExempt')}</Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>{[row.firstNameAmharic, row.fatherNameAmharic, row.grandNameAmharic].filter(Boolean).join(' ') || '-'}</TableCell>
-                    <TableCell>
-                      <span>{row.absenteeism.toFixed(2)}</span>
-                      {row.absenteeismAdjusted ? (
-                        <span className="block text-xs text-muted-foreground" title={row.adjustmentNote ?? undefined}>
-                          {t('absentDaysAdjusted', { value: row.calculatedAbsenteeism.toFixed(2) })}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>{row.late.toFixed(2)}</TableCell>
-                    <TableCell><Badge variant="outline">{row.currentStatus}</Badge></TableCell><TableCell>{row.approved}</TableCell>
-                    <TableCell>{row.payMonth}</TableCell><TableCell>{row.payYear}</TableCell>
-                    <TableCell className="text-right">
-                      {row.isBiometricExempt && canAdjust ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => setAdjustingRow(row)}>
-                          <Pencil className="size-4" />{t('adjustAbsentDays')}
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))}</TableBody>
+                <TableBody>
+                  {visibleRows.length === 0 ? (
+                    <TableRow><TableCell colSpan={10} className="py-6 text-center text-sm text-muted-foreground">{t('noMatchingEmployees')}</TableCell></TableRow>
+                  ) : visibleRows.map((row) => (
+                    <TableRow key={row.employeeId}>
+                      <TableCell className="font-medium">
+                        {rowName(row)}
+                        {row.employeeCode ? <span className="block text-xs font-normal text-muted-foreground">{row.employeeCode}{row.employmentType ? ` · ${t(`employmentType${row.employmentType}`)}` : ''}</span> : null}
+                        {row.isBiometricExempt ? (
+                          <Badge variant="outline" className="mt-1 border-emerald-500 text-emerald-700 dark:text-emerald-400">{t('biometricExempt')}</Badge>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{rowAmharicName(row) || '-'}</TableCell>
+                      <TableCell>{row.departmentName ?? '-'}</TableCell>
+                      <TableCell>
+                        <span>{row.absenteeism.toFixed(2)}</span>
+                        {row.absenteeismAdjusted ? (
+                          <span className="block text-xs text-muted-foreground" title={row.adjustmentNote ?? undefined}>
+                            {t('absentDaysAdjusted', { value: row.calculatedAbsenteeism.toFixed(2) })}
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell>{row.late.toFixed(2)}</TableCell>
+                      <TableCell><Badge variant="outline">{row.currentStatus}</Badge></TableCell><TableCell>{row.approved}</TableCell>
+                      <TableCell>{row.payMonth}</TableCell><TableCell>{row.payYear}</TableCell>
+                      <TableCell className="text-right">
+                        {row.isBiometricExempt && canAdjust ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => setAdjustingRow(row)}>
+                            <Pencil className="size-4" />{t('adjustAbsentDays')}
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
               </Table>
             </div>
           )}
@@ -202,6 +331,7 @@ export function IfmisAttendancePage() {
         row={adjustingRow}
         payMonth={payMonth}
         payYear={payYear}
+        periodDays={periodDays}
         onClose={() => setAdjustingRow(null)}
       />
 
@@ -222,10 +352,12 @@ export function IfmisAttendancePage() {
   );
 }
 
-function AbsenceAdjustmentDialog({ row, payMonth, payYear, onClose }: {
+function AbsenceAdjustmentDialog({ row, payMonth, payYear, periodDays, onClose }: {
   row: IfmisAttendanceRow | null;
   payMonth: number;
   payYear: number;
+  /** 30, or 35/36 for Nehase with Pagume. */
+  periodDays: number;
   onClose: () => void;
 }) {
   const t = useTranslations('core');
@@ -246,8 +378,8 @@ function AbsenceAdjustmentDialog({ row, payMonth, payYear, onClose }: {
 
   async function submit(value: number | null) {
     if (!row) return;
-    if (value !== null && (!Number.isFinite(value) || value < 0 || value > 31)) {
-      notifications.show({ title: common('error'), message: t('absentDaysInvalid'), color: 'red' });
+    if (value !== null && (!Number.isFinite(value) || value < 0 || value > periodDays)) {
+      notifications.show({ title: common('error'), message: t('absentDaysInvalid', { max: periodDays }), color: 'red' });
       return;
     }
     try {
@@ -279,7 +411,7 @@ function AbsenceAdjustmentDialog({ row, payMonth, payYear, onClose }: {
               id="ifmis-absent-days"
               type="number"
               min={0}
-              max={31}
+              max={periodDays}
               step={0.5}
               value={absentDays}
               onChange={(event) => setAbsentDays(event.target.value)}
@@ -307,22 +439,22 @@ function AbsenceAdjustmentDialog({ row, payMonth, payYear, onClose }: {
   );
 }
 
-function Summary({ label, value }: { label: string; value: string | number }) {
-  return <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold">{value}</p></CardContent></Card>;
-}
-
 function batchVariant(status: IfmisExportStatus): 'default' | 'destructive' | 'secondary' {
   if (status === 'SUCCEEDED') return 'default';
   if (status === 'FAILED') return 'destructive';
   return 'secondary';
 }
 
-function issueLabelKey(code: string) {
-  const labels: Record<string, 'ifmisIssueMissingSchedule' | 'ifmisIssueInvalidSchedule' | 'ifmisIssueMissingRecord' | 'ifmisIssueNotApproved' | 'ifmisIssueDuplicateName'> = {
+function issueLabelKey(code: IfmisReadinessIssueCode) {
+  const labels: Record<IfmisReadinessIssueCode, string> = {
     MISSING_SCHEDULE: 'ifmisIssueMissingSchedule',
     INVALID_SCHEDULE: 'ifmisIssueInvalidSchedule',
     MISSING_RECORD: 'ifmisIssueMissingRecord',
-    NOT_HR_APPROVED: 'ifmisIssueNotApproved',
+    AWAITING_SUPERVISOR: 'ifmisIssueAwaitingSupervisor',
+    RETURNED: 'ifmisIssueReturned',
+    AWAITING_HR: 'ifmisIssueAwaitingHr',
+    PERIOD_NOT_ENDED: 'ifmisIssuePeriodNotEnded',
+    LEAVE_NOT_VERIFIED: 'ifmisIssueLeaveNotVerified',
     DUPLICATE_NAME: 'ifmisIssueDuplicateName',
   };
   return labels[code] ?? 'ifmisIssueMissingRecord';

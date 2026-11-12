@@ -1,9 +1,10 @@
 'use client';
 
 import { type ReactNode, useDeferredValue, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, CheckCircle2, FileSpreadsheet, History, Info, RefreshCw, RotateCcw, ScanLine, Wrench } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, History, RefreshCw, RotateCcw, ScanLine, Wrench } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
+import { IsmisLeaveVerification } from '@/components/attendance/ismis-leave-verification';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -49,10 +50,6 @@ import {
   useSupervisorApproveAttendanceDailyRecord,
   useSupervisorApproveAttendanceDailyRecords,
   useSupervisorAttendanceDailyRecords,
-  useCompleteIsmisLeave,
-  useRejectIsmisLeave,
-  useIsmisLeaveImport,
-  useLatestIsmisLeaveImport,
 } from '@/data/hooks/core.hooks';
 import type { AttendanceDailyRecord, AttendanceDailyRecordStatus, EmploymentType } from '@/data/types/core.types';
 import { useEmployeeName } from '@/lib/employee-name';
@@ -155,7 +152,6 @@ export function AttendanceApprovalsPage({
   const [customDateFilters, setCustomDateFilters] = useState({ fromDate: initialDate ?? today(), toDate: initialDate ?? today() });
   const [returningRecord, setReturningRecord] = useState<AttendanceDailyRecord | null>(null);
   const [isBulkReturnOpen, setIsBulkReturnOpen] = useState(false);
-  const [isLeaveDialogOpen, setIsLeaveDialogOpen] = useState(false);
   const [historyRecord, setHistoryRecord] = useState<AttendanceDailyRecord | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [correctingRecord, setCorrectingRecord] = useState<AttendanceDailyRecord | null>(null);
@@ -191,11 +187,6 @@ export function AttendanceApprovalsPage({
   const returnRecord = useReturnAttendanceDailyRecord();
   const hrBatchReturn = useHrReturnAttendanceDailyRecords();
   const isHrMode = mode === 'hr';
-  const leaveImport = useIsmisLeaveImport();
-  const completeLeave = useCompleteIsmisLeave();
-  const rejectLeave = useRejectIsmisLeave();
-  const latestLeave = useLatestIsmisLeaveImport(isHrMode);
-  const [leaveFile, setLeaveFile] = useState<File | null>(null);
   const session = useSession();
   // The history dialog reads audit events, which only some roles may see.
   const canViewHistory = userHasPermission(session.data?.user, 'reports-audit:read');
@@ -342,42 +333,6 @@ export function AttendanceApprovalsPage({
     });
   }
 
-  // These run through mutateAsync so the result message shows even though the buttons
-  // that started them disappear once the import status changes.
-  async function handleLeaveImport() {
-    if (!leaveFile) return;
-    try {
-      const batch = await leaveImport.mutateAsync(leaveFile);
-      notifications.show({
-        title: batch.unmatchedCount > 0 ? common('error') : common('success'),
-        message: batch.unmatchedCount > 0
-          ? t('ismisLeaveImportedUnmatched', { count: batch.unmatchedCount, ids: (batch.unmatchedEmployeeIds ?? []).slice(0, 5).join(', ') })
-          : t('ismisLeaveImported', { employees: batch.matchedCount, days: batch.dayCount }),
-        color: batch.unmatchedCount > 0 ? 'red' : 'green',
-      });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  }
-
-  async function handleLeaveCheck(batchId: string) {
-    try {
-      const result = await completeLeave.mutateAsync({ batchId, ...leaveCheckRange });
-      notifications.show({ title: common('success'), message: t('ismisLeaveCheckCompleted', { count: result.recalculatedRecords }), color: 'green' });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  }
-
-  async function handleLeaveDiscard(batchId: string) {
-    try {
-      await rejectLeave.mutateAsync(batchId);
-      notifications.show({ title: common('success'), message: t('ismisLeaveImportDiscarded'), color: 'green' });
-    } catch (error) {
-      notifications.show({ title: common('error'), message: error instanceof Error ? error.message : t('saveFailed'), color: 'red' });
-    }
-  }
-
   async function handleCorrection() {
     if (!correctingRecord || !correction.time || !correction.reason.trim()) return;
     try {
@@ -429,14 +384,7 @@ export function AttendanceApprovalsPage({
 
   return (
     <div className="flex w-full flex-col gap-4">
-      {isHrMode ? (
-        <IsmisLeaveReminder
-          batch={latestLeave.data?.batch ?? null}
-          formatDate={formatDate}
-          onOpen={() => setIsLeaveDialogOpen(true)}
-          t={t}
-        />
-      ) : null}
+      {isHrMode ? <IsmisLeaveVerification range={leaveCheckRange} /> : null}
       {!isHrMode ? <DelegationBanner user={session.data?.user} /> : null}
       {!isHrMode && !isReturnedView && returnedCount > 0 ? (
         <Card className="border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40">
@@ -938,61 +886,6 @@ export function AttendanceApprovalsPage({
         </DialogContent>
       </Dialog>
 
-      {isHrMode ? (
-        <Dialog open={isLeaveDialogOpen} onOpenChange={setIsLeaveDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('ismisLeaveVerification')}</DialogTitle>
-              <DialogDescription>{t('ismisLeaveVerificationDescription')}</DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-4">
-              {latestLeave.data?.batch ? (
-                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-                  {t('ismisLeaveLatestImport', {
-                    file: latestLeave.data.batch.sourceFileName,
-                    status: t(`ismisStatus${latestLeave.data.batch.status}`),
-                    matched: latestLeave.data.batch.matchedCount,
-                    unmatched: latestLeave.data.batch.unmatchedCount,
-                  })}
-                </p>
-              ) : null}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="ismis-leave-file">{t('ismisLeaveFile')}</Label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input id="ismis-leave-file" type="file" accept=".xlsx,.xls" onChange={(event) => setLeaveFile(event.target.files?.[0] ?? null)} />
-                  <Button type="button" disabled={!leaveFile || leaveImport.isPending} onClick={handleLeaveImport}>
-                    <FileSpreadsheet className="size-4" />
-                    {t('importIsmisLeave')}
-                  </Button>
-                </div>
-              </div>
-              {latestLeave.data?.batch?.status === 'PENDING' ? (
-                <div className="flex flex-col gap-2 border-t border-border pt-4">
-                  <p className="text-xs text-muted-foreground">
-                    {t('ismisLeaveCheckCovers', { from: formatDate(leaveCheckRange.dateFrom), to: formatDate(leaveCheckRange.dateTo) })}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      disabled={latestLeave.data.batch.unmatchedCount > 0 || completeLeave.isPending}
-                      onClick={() => handleLeaveCheck(latestLeave.data!.batch!.id)}
-                    >
-                      <CheckCircle2 className="size-4" />
-                      {t('confirmIsmisLeaveChecked')}
-                    </Button>
-                    <Button type="button" variant="ghost" disabled={rejectLeave.isPending} onClick={() => handleLeaveDiscard(latestLeave.data!.batch!.id)}>
-                      {t('discardIsmisImport')}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsLeaveDialogOpen(false)}>{common('close')}</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      ) : null}
 
       <Dialog open={Boolean(historyRecord)} onOpenChange={(open) => { if (!open) setHistoryRecord(null); }}>
         <DialogContent className="max-w-2xl">
@@ -1038,55 +931,6 @@ function summarize(records: AttendanceDailyRecord[]) {
     SUPERVISOR_APPROVED: 0,
     HR_APPROVED: 0,
   });
-}
-
-type IsmisLeaveBatch = {
-  sourceFileName: string;
-  status: 'PENDING' | 'COMPLETED' | 'REJECTED';
-  unmatchedCount: number;
-  completedAt?: string | null;
-};
-
-function IsmisLeaveReminder({
-  batch,
-  formatDate,
-  onOpen,
-  t,
-}: {
-  batch: IsmisLeaveBatch | null;
-  formatDate: (value: string) => string;
-  onOpen: () => void;
-  t: ReturnType<typeof useTranslations>;
-}) {
-  const pending = batch?.status === 'PENDING';
-  const unmatched = pending && batch.unmatchedCount > 0;
-  const tone = unmatched
-    ? 'border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200'
-    : pending
-      ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-      : 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200';
-  const Icon = unmatched || pending ? AlertTriangle : Info;
-  const message = unmatched
-    ? t('ismisLeaveBannerUnmatched', { count: batch.unmatchedCount })
-    : pending
-      ? t('ismisLeaveBannerPending')
-      : t('ismisLeaveBannerReminder');
-
-  return (
-    <div role="status" className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-md border px-3 py-1.5 text-xs ${tone}`}>
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 flex-1">
-        {message}
-        {batch?.status === 'COMPLETED' && batch.completedAt ? (
-          <span className="opacity-75"> · {t('ismisLeaveLastChecked', { date: formatDate(batch.completedAt.slice(0, 10)) })}</span>
-        ) : null}
-      </span>
-      <Button type="button" size="sm" variant="outline" className="h-7 bg-background text-xs" onClick={onOpen}>
-        <FileSpreadsheet className="size-3.5" />
-        {t('verifyIsmisLeave')}
-      </Button>
-    </div>
-  );
 }
 
 /** HR can return any supervisor-approved record, even one it cannot approve yet. */

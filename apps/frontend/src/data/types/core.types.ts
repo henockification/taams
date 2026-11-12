@@ -413,7 +413,16 @@ export type PunchType = 'IN' | 'OUT' | 'BREAK_IN' | 'BREAK_OUT' | 'UNKNOWN';
 export type PunchSource = 'DEVICE' | 'MANUAL' | 'IMPORT' | 'MOBILE' | 'WEB';
 export type AttendanceDailyRecordStatus = 'PENDING_SUPERVISOR' | 'RETURNED' | 'SUPERVISOR_APPROVED' | 'HR_APPROVED';
 export type IfmisExportStatus = 'PROCESSING' | 'SUCCEEDED' | 'FAILED';
-export type IfmisReadinessIssueCode = 'MISSING_SCHEDULE' | 'INVALID_SCHEDULE' | 'MISSING_RECORD' | 'NOT_HR_APPROVED' | 'DUPLICATE_NAME';
+export type IfmisReadinessIssueCode =
+  | 'MISSING_SCHEDULE'
+  | 'INVALID_SCHEDULE'
+  | 'MISSING_RECORD'
+  | 'AWAITING_SUPERVISOR'
+  | 'RETURNED'
+  | 'AWAITING_HR'
+  | 'PERIOD_NOT_ENDED'
+  | 'LEAVE_NOT_VERIFIED'
+  | 'DUPLICATE_NAME';
 
 export type IfmisAttendanceRow = {
   employeeId: string;
@@ -437,13 +446,22 @@ export type IfmisAttendanceRow = {
   calculatedAbsenteeism: number;
   absenteeismAdjusted: boolean;
   adjustmentNote: string | null;
+  employeeCode: string | null;
+  employmentType: EmploymentType | null;
+  departmentId: string | null;
+  departmentName: string | null;
 };
 
+/** One issue per employee and kind; `dates` lists every affected day. */
 export type IfmisReadinessIssue = {
   code: IfmisReadinessIssueCode;
   employeeId: string;
   employeeName: string;
+  employeeCode: string | null;
+  employmentType: EmploymentType | null;
+  departmentName: string | null;
   date: string | null;
+  dates: string[];
   message: string;
 };
 
