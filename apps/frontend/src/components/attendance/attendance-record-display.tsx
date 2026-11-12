@@ -110,12 +110,13 @@ export function AttendanceSessions({
     return <span className="text-sm text-muted-foreground">{legacyAttendanceRule(record)}</span>;
   }
 
-  return <div className="space-y-2">{recordAttendanceSessions(record).map((session) => (
+  const sessions = recordAttendanceSessions(record);
+  return <div className="space-y-2">{sessions.map((session, index) => (
     <div key={`${record.id}:${session.segmentId}`} className="flex flex-wrap items-center gap-1.5 text-sm">
       <span className="min-w-24 font-medium">{session.name}</span>
-      <span>{sessionPunchLabel(session, 'IN', formatDateTime, t)}</span>
+      <span>{sessionPunchLabel(session, 'IN', formatDateTime, t, punchSlotKey(index, sessions.length, 'IN'))}</span>
       <span className="text-muted-foreground">/</span>
-      <span>{sessionPunchLabel(session, 'OUT', formatDateTime, t)}</span>
+      <span>{sessionPunchLabel(session, 'OUT', formatDateTime, t, punchSlotKey(index, sessions.length, 'OUT'))}</span>
       <Badge variant={sessionBadgeVariant(session)}>{t(sessionStatusKey(session))}</Badge>
     </div>
   ))}</div>;
@@ -210,16 +211,41 @@ export function materializeAttendanceSession(session: AttendanceSessionEvaluatio
   };
 }
 
+/**
+ * Name of a punch on a two-session day: morning check-in, lunch check-out, lunch check-in and
+ * afternoon check-out. Single-session shifts (e.g. a 24-hour duty) and other layouts keep the
+ * plain check-in / check-out.
+ */
+function punchSlotKey(index: number, sessionCount: number, direction: 'IN' | 'OUT') {
+  if (sessionCount !== 2) return direction === 'IN' ? 'checkIn' : 'checkOut';
+  if (direction === 'IN') return index === 0 ? 'morningCheckIn' : 'lunchCheckIn';
+  return index === 0 ? 'lunchCheckOut' : 'afternoonCheckOut';
+}
+
 function sessionPunchLabel(
   session: AttendanceSessionEvaluation,
   direction: 'IN' | 'OUT',
   formatDateTime: DateTimeFormatter,
   t: AttendanceTranslator,
+  slotKey: string,
 ) {
   const value = direction === 'IN' ? session.checkInAt : session.checkOutAt;
   const status = direction === 'IN' ? session.checkInStatus : session.checkOutStatus;
-  if (!value && status === 'ON_LEAVE') return '-';
-  if (!value) return t(status === 'PENDING' ? 'sessionPendingPunch' : direction === 'IN' ? 'missingCheckIn' : 'missingCheckOut');
+  const slot = t(slotKey);
+  if (!value && status === 'ON_LEAVE') return `${slot}: -`;
+  if (!value) return `${slot}: ${t(status === 'PENDING' ? 'sessionPendingPunch' : direction === 'IN' ? 'missingCheckIn' : 'missingCheckOut')}`;
+  return `${slot}: ${sessionPunchDetail(session, direction, value, status, formatDateTime, t)}`;
+}
+
+/** The punch time, followed by its late / early / pending detail when there is one. */
+function sessionPunchDetail(
+  session: AttendanceSessionEvaluation,
+  direction: 'IN' | 'OUT',
+  value: string,
+  status: string,
+  formatDateTime: DateTimeFormatter,
+  t: AttendanceTranslator,
+) {
   const time = formatDateTime(value, {
     year: undefined,
     month: undefined,
@@ -235,7 +261,7 @@ function sessionPunchLabel(
   if (direction === 'OUT' && status === 'EARLY') return `${time} ${t('earlyCheckOut')} (${session.earlyCheckoutMinutes} min)`;
   if (direction === 'OUT' && status === 'LATE') return `${time} ${t('lateCheckOut')} (${session.lateCheckoutMinutes} min)`;
   if (status === 'PENDING') return `${time} ${t('sessionPending')}`;
-  return `${time} ${t(direction === 'IN' ? 'checkIn' : 'checkOut')}`;
+  return time;
 }
 
 function legacyAttendanceRule(record: AttendanceDailyRecord) {

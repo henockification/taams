@@ -81,7 +81,8 @@ const allEmploymentTypesValue = '__all_employment_types';
 // Only contract and permanent employees are managed; other types are not applicable.
 const employmentTypes: EmploymentType[] = ['CONTRACT', 'PERMANENT'];
 const defaultPageSize = 50;
-const correctionPunchTypes = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT'] as const;
+// In the order they happen in a day: morning in, lunch out, lunch in, afternoon out.
+const correctionPunchTypes = ['IN', 'BREAK_OUT', 'BREAK_IN', 'OUT'] as const;
 
 /** Worked time and leave together exceed one day, e.g. full punches on a full leave day. */
 function hasLeaveAttendanceConflict(record: AttendanceDailyRecord) {

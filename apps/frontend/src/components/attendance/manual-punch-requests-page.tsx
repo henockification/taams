@@ -47,7 +47,8 @@ import { notifications } from '@/lib/notifications';
 import { useSession } from '@/lib/auth-client';
 import { useCalendarPreference } from '@/providers/CalendarPreferenceProvider';
 
-const punchTypes: PunchType[] = ['IN', 'OUT', 'BREAK_IN', 'BREAK_OUT', 'UNKNOWN'];
+// In the order they happen in a day: morning in, lunch out, lunch in, afternoon out.
+const punchTypes: PunchType[] = ['IN', 'BREAK_OUT', 'BREAK_IN', 'OUT', 'UNKNOWN'];
 
 const initialRequestForm = {
   requestedPunchTime: '',
@@ -229,7 +230,7 @@ export function ManualPunchRequestsPage({
                           </TableCell>
                         ) : null}
                         <TableCell className="whitespace-nowrap">{formatDateTime(request.requestedPunchTime)}</TableCell>
-                        <TableCell><Badge variant="secondary">{request.requestedPunchType}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary">{t(`correctionPunchType${request.requestedPunchType}`)}</Badge></TableCell>
                         <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">
@@ -302,7 +303,7 @@ export function ManualPunchRequestsPage({
               <Field label={t('punchType')} id="request-type">
                 <Select value={form.requestedPunchType} onValueChange={(value) => setForm((current) => ({ ...current, requestedPunchType: value as PunchType }))}>
                   <SelectTrigger id="request-type" className="w-full"><SelectValue placeholder={t('selectPunchType')} /></SelectTrigger>
-                  <SelectContent>{punchTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                  <SelectContent>{punchTypes.map((type) => <SelectItem key={type} value={type}>{t(`correctionPunchType${type}`)}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <Field label={t('reason')} id="request-reason">

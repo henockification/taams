@@ -207,9 +207,16 @@ function Summary({ label, value, detail }: { label: string; value: number; detai
 
 function correctionHref(record: AttendanceDailyRecord) {
   const sessions = recordAttendanceSessions(record);
-  const missingCheckIn = sessions.find((session) => session.checkInStatus === 'MISSING');
-  const missingCheckOut = sessions.find((session) => session.checkOutStatus === 'MISSING');
-  const punchType: PunchType = missingCheckIn ? 'IN' : missingCheckOut ? 'OUT' : 'UNKNOWN';
+  const missingCheckInIndex = sessions.findIndex((session) => session.checkInStatus === 'MISSING');
+  const missingCheckOutIndex = sessions.findIndex((session) => session.checkOutStatus === 'MISSING');
+  const missingCheckIn = sessions[missingCheckInIndex];
+  const missingCheckOut = sessions[missingCheckOutIndex];
+  // Morning check-in / lunch check-in, lunch check-out / afternoon check-out, by session position.
+  const punchType: PunchType = missingCheckIn
+    ? missingCheckInIndex === 0 ? 'IN' : 'BREAK_IN'
+    : missingCheckOut
+      ? missingCheckOutIndex === sessions.length - 1 ? 'OUT' : 'BREAK_OUT'
+      : 'UNKNOWN';
   const scheduledTime = missingCheckIn?.scheduledStartAt ?? missingCheckOut?.scheduledEndAt;
   const query = new URLSearchParams({
     open: 'true',
